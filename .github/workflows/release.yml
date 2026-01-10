@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build binaries for all platforms
+        run: |
+          # This triggers your Makefile and injects the tag name
+          make build-all VERSION=${{ github.ref_name }}
+
+      - name: Build and Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/taracode-darwin-amd64
+            dist/taracode-darwin-arm64
+            dist/taracode-linux-amd64
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-brew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate Checksum
+        id: calc_hash
+        run: |
+          URL="https://github.com/tara-vision/taracode/archive/refs/tags/${{ github.ref_name }}.tar.gz"
+          HASH=$(curl -L $URL | shasum -a 256 | awk '{print $1}')
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Checkout Tap Repo
+        uses: actions/checkout@v4
+        with:
+          repository: tara-vision/homebrew-taracode
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }} # Uses your PAT
+          path: homebrew-tap
+
+      - name: Update Formula File
+        run: |
+          cd homebrew-tap
+          # Use sed to replace the URL and SHA256 lines
+          sed -i "s|url \".*\"|url \"${{ steps.calc_hash.outputs.url }}\"|" Formula/taracode.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${{ steps.calc_hash.outputs.hash }}\"|" Formula/taracode.rb
+          
+          # Configure Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Commit and Push
+          git add Formula/taracode.rb
+          git commit -m "Update taracode to ${{ github.ref_name }}"
+          git push origin main

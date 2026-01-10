@@ -1,0 +1,37 @@
+# Binaries
+taracode
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+dist/
+
+# Test binary
+*.test
+
+# Output of go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Config with sensitive data
+.taracode/
+TARACODE.md
+RELEASE.md
+config.yaml
+*.log
+.DS_Store
+
+# Claude/AI assistant files
+.claude/
+CLAUDE.md

@@ -1,0 +1,15 @@
+# Tara Code Configuration File
+# Copy this to ~/.taracode/config.yaml
+
+# vLLM Server Host (required)
+# The base URL of your vLLM server
+host: http://your-vllm-server:8000
+
+# API Key (optional)
+# Leave empty or omit for local servers without authentication
+key: ""
+
+# Model name (optional)
+# The model is auto-detected from your vLLM server via /v1/models endpoint.
+# Only specify this as a fallback if auto-detection fails.
+# model: Qwen/Qwen2.5-7B-Instruct
