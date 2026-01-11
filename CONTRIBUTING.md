@@ -34,6 +34,22 @@ make build
 make test
 ```
 
+### Testing with LLM
+
+For testing the full application, use Qwen3 (the officially supported model):
+
+```bash
+# Install the recommended model
+ollama pull qwen3:30b
+
+# Or for smaller hardware
+ollama pull qwen3:14b
+
+# Run taracode
+export TARACODE_HOST=http://localhost:11434
+./taracode
+```
+
 ### Code Style
 
 - Follow standard Go conventions and formatting
@@ -70,7 +86,8 @@ refactor: simplify tool registry logic
 
 - Use the GitHub issue tracker
 - Include steps to reproduce
-- Include your environment (OS, Go version, vLLM server info)
+- Include your environment (OS, Go version, LLM server info)
+- Specify your model (Qwen3 is officially supported)
 - Include relevant logs or error messages
 
 ### Feature Requests

@@ -1,5 +1,7 @@
 # Tara Code Roadmap
 
+**Officially Supported Model:** Qwen3 family (`qwen3:30b` recommended)
+
 ## Implemented Features
 
 ### Core
@@ -94,7 +96,13 @@
 
 ## Version History
 
-### v0.2.1 (Current)
+### v0.2.2 (Current)
+- **Officially Supported Model**: Qwen3 family selected as the official model
+- Recommended: `qwen3:30b` for best results, `qwen3:14b` for smaller hardware
+- Optimized system prompt for consistent tool calling behavior
+- Added git safety: models cannot commit without explicit user permission
+
+### v0.2.1
 - **Streaming Fix**: Disabled HTTP client timeout for streaming LLM responses
 - Prevents premature disconnection during long-running streaming responses
 - Improves reliability for models with longer generation times

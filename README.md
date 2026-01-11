@@ -16,6 +16,26 @@ An AI-powered CLI assistant for software development, powered by local LLMs.
 - **No subscriptions**: One-time setup, no recurring costs
 - **Full control**: Choose your model, configure your workflow
 
+## Officially Supported Model
+
+**Qwen3** is the officially supported model family for Tara Code.
+
+| Model | Size | RAM Required | Recommendation |
+|-------|------|--------------|----------------|
+| `qwen3:8b` | 8B | ~8GB | Good for basic tasks |
+| `qwen3:14b` | 14B | ~16GB | Balanced performance |
+| `qwen3:30b` | 30B | ~32GB | **Recommended** - Best results |
+
+```bash
+# Install with Ollama
+ollama pull qwen3:30b
+
+# Or for smaller hardware
+ollama pull qwen3:14b
+```
+
+> **Note**: Other models may work but are not officially tested or supported. Qwen3 provides the best balance of instruction following, tool calling, and code understanding.
+
 ## Requirements
 
 - Go 1.21 or later (for building from source)
@@ -117,9 +137,12 @@ Set `TARACODE_HOST` environment variable or create `~/.taracode/config.yaml`:
 
 ```yaml
 host: http://localhost:11434  # LLM server URL
+model: qwen3:30b              # Recommended model (see Officially Supported Model)
 vendor: ""                    # auto, vllm, ollama, llama.cpp (empty = auto-detect)
 key: ""                       # optional API key
 ```
+
+> **Tip**: Always specify `model: qwen3:30b` (or `qwen3:14b` for smaller hardware) for best results.
 
 ### CLI Flags
 

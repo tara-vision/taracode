@@ -872,85 +872,6 @@ type ToolCall struct {
 	Params map[string]interface{} `json:"params"`
 }
 
-// normalizeToolName maps alternative tool names to our standard tool names
-// This handles models that use different naming conventions (e.g., gpt-oss uses various prefixes)
-func normalizeToolName(name string) string {
-	toolNameMap := map[string]string{
-		// repo_browser prefix
-		"repo_browser.list_files":      "list_files",
-		"repo_browser.read_file":       "read_file",
-		"repo_browser.open_file":       "read_file",
-		"repo_browser.write_file":      "write_file",
-		"repo_browser.find_files":      "find_files",
-		"repo_browser.search_files":    "search_files",
-		// file_editor prefix
-		"file_editor.write_file":       "write_file",
-		"file_editor.edit_file":        "edit_file",
-		"file_editor.append_file":      "append_file",
-		"file_editor.insert_lines":     "insert_lines",
-		"file_editor.replace_lines":    "replace_lines",
-		"file_editor.delete_lines":     "delete_lines",
-		// file_manager prefix
-		"file_manager.copy_file":       "copy_file",
-		"file_manager.move_file":       "move_file",
-		"file_manager.delete_file":     "delete_file",
-		"file_manager.create_directory": "create_directory",
-		// shell/container prefix
-		"shell.execute_command":        "execute_command",
-		"container.exec":               "execute_command",
-		"tool.execute_command":         "execute_command",
-		// git prefix
-		"git.status":                   "git_status",
-		"git.diff":                     "git_diff",
-		"git.log":                      "git_log",
-		"git.add":                      "git_add",
-		"git.commit":                   "git_commit",
-		"git.branch":                   "git_branch",
-		// tool_ prefix
-		"tool_list_files":              "list_files",
-		"tool_read_file":               "read_file",
-		"tool_write_file":              "write_file",
-		"tool_find_files":              "find_files",
-		"tool_search_files":            "search_files",
-		"tool_edit_file":               "edit_file",
-		"tool_execute_command":         "execute_command",
-	}
-	if mapped, ok := toolNameMap[name]; ok {
-		return mapped
-	}
-	return name
-}
-
-// convertNativeToolCalls converts OpenAI native tool_calls to our internal ToolCall format
-// This supports models like gpt-oss that use native function calling instead of JSON-in-content
-func convertNativeToolCalls(nativeToolCalls []openai.ToolCall) []*ToolCall {
-	var toolCalls []*ToolCall
-	for _, tc := range nativeToolCalls {
-		if tc.Function.Name == "" {
-			continue
-		}
-		toolName := normalizeToolName(tc.Function.Name)
-		var params map[string]interface{}
-		if tc.Function.Arguments != "" {
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &params); err != nil {
-				params = make(map[string]interface{})
-			} else {
-				// Check if model wrapped params inside: {"tool": "name", "params": {...}}
-				if nestedParams, ok := params["params"].(map[string]interface{}); ok {
-					params = nestedParams
-				}
-			}
-		} else {
-			params = make(map[string]interface{})
-		}
-		toolCalls = append(toolCalls, &ToolCall{
-			Tool:   toolName,
-			Params: params,
-		})
-	}
-	return toolCalls
-}
-
 // cleanResponse removes thinking tags and extracts displayable content
 func cleanResponse(response string) string {
 	// Remove <think>...</think> blocks (DeepSeek R1 reasoning)
@@ -1370,7 +1291,6 @@ func (a *Assistant) processMessageStreaming(userMessage string) error {
 		}
 
 		filter := NewStreamFilter()
-		nativeToolCalls := make(map[int]*openai.ToolCall)
 
 		// Buffer the response while showing spinner (Claude Code style)
 		for {
@@ -1387,31 +1307,8 @@ func (a *Assistant) processMessageStreaming(userMessage string) error {
 			}
 
 			if len(chunk.Choices) > 0 {
-				delta := chunk.Choices[0].Delta
-				filter.Process(delta.Content)
-				// Collect native tool_calls (for models like gpt-oss)
-				for _, tc := range delta.ToolCalls {
-					idx := 0
-					if tc.Index != nil {
-						idx = *tc.Index
-					}
-					if existing, ok := nativeToolCalls[idx]; ok {
-						existing.Function.Arguments += tc.Function.Arguments
-						if tc.Function.Name != "" {
-							existing.Function.Name = tc.Function.Name
-						}
-					} else {
-						newTC := openai.ToolCall{
-							ID:   tc.ID,
-							Type: tc.Type,
-							Function: openai.FunctionCall{
-								Name:      tc.Function.Name,
-								Arguments: tc.Function.Arguments,
-							},
-						}
-						nativeToolCalls[idx] = &newTC
-					}
-				}
+				delta := chunk.Choices[0].Delta.Content
+				filter.Process(delta)
 			}
 
 			// Capture usage from final chunk (when StreamOptions.IncludeUsage is true)
@@ -1435,18 +1332,6 @@ func (a *Assistant) processMessageStreaming(userMessage string) error {
 
 		// Parse for tool calls from content (supports multiple)
 		toolCalls, displayText := parseToolCalls(fullResponse)
-
-		// Convert and merge native tool_calls (for models like gpt-oss)
-		if len(nativeToolCalls) > 0 {
-			var nativeSlice []openai.ToolCall
-			for i := 0; i < len(nativeToolCalls); i++ {
-				if tc, ok := nativeToolCalls[i]; ok {
-					nativeSlice = append(nativeSlice, *tc)
-				}
-			}
-			nativeConverted := convertNativeToolCalls(nativeSlice)
-			toolCalls = append(nativeConverted, toolCalls...)
-		}
 
 		if len(toolCalls) == 0 {
 			// No tool calls - render the response with Glamour
@@ -1610,12 +1495,6 @@ func (a *Assistant) processMessageNonStreaming(userMessage string) error {
 
 		// Parse for tool calls from content (supports multiple)
 		toolCalls, displayText := parseToolCalls(assistantResponse)
-
-		// Check for native tool_calls (for models like gpt-oss)
-		if len(resp.Choices[0].Message.ToolCalls) > 0 {
-			nativeConverted := convertNativeToolCalls(resp.Choices[0].Message.ToolCalls)
-			toolCalls = append(nativeConverted, toolCalls...)
-		}
 
 		// If no tool calls, render and print response
 		if len(toolCalls) == 0 {
