@@ -42,9 +42,12 @@ taracode --version
 
 ### Environment Setup
 
-For new machines, remember to point to your LLM server:
+For new machines, install the recommended model and configure the server:
 
 ```bash
+# Install the officially supported model
+ollama pull qwen3:30b
+
 # Add this to your .zshrc or .bashrc
 
 # For Ollama
