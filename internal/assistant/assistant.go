@@ -876,29 +876,37 @@ type ToolCall struct {
 // This handles models that use different naming conventions (e.g., gpt-oss uses various prefixes)
 func normalizeToolName(name string) string {
 	toolNameMap := map[string]string{
+		// repo_browser prefix
 		"repo_browser.list_files":      "list_files",
 		"repo_browser.read_file":       "read_file",
+		"repo_browser.open_file":       "read_file",
 		"repo_browser.write_file":      "write_file",
 		"repo_browser.find_files":      "find_files",
 		"repo_browser.search_files":    "search_files",
+		// file_editor prefix
 		"file_editor.write_file":       "write_file",
 		"file_editor.edit_file":        "edit_file",
 		"file_editor.append_file":      "append_file",
 		"file_editor.insert_lines":     "insert_lines",
 		"file_editor.replace_lines":    "replace_lines",
 		"file_editor.delete_lines":     "delete_lines",
+		// file_manager prefix
 		"file_manager.copy_file":       "copy_file",
 		"file_manager.move_file":       "move_file",
 		"file_manager.delete_file":     "delete_file",
 		"file_manager.create_directory": "create_directory",
+		// shell/container prefix
 		"shell.execute_command":        "execute_command",
 		"container.exec":               "execute_command",
+		"tool.execute_command":         "execute_command",
+		// git prefix
 		"git.status":                   "git_status",
 		"git.diff":                     "git_diff",
 		"git.log":                      "git_log",
 		"git.add":                      "git_add",
 		"git.commit":                   "git_commit",
 		"git.branch":                   "git_branch",
+		// tool_ prefix
 		"tool_list_files":              "list_files",
 		"tool_read_file":               "read_file",
 		"tool_write_file":              "write_file",
