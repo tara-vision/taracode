@@ -27,7 +27,6 @@ go.work.sum
 # Config with sensitive data
 .taracode/
 TARACODE.md
-RELEASE.md
 config.yaml
 *.log
 .DS_Store
