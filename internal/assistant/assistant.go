@@ -197,6 +197,53 @@ You have FULL ACCESS to the user's filesystem and can execute commands. You ARE 
 
 CRITICAL: You are PROJECT-AWARE and AUTONOMOUS. When the user asks a question about the project, you MUST proactively explore the codebase using your tools to find the answer. NEVER give up after one failed attempt.
 
+## TASK COMPLETION (VERY IMPORTANT)
+
+You MUST complete tasks fully. DO NOT just explain what you would do - actually DO IT.
+
+- If asked to CREATE a file → YOU MUST use write_file to create it
+- If asked to MODIFY code → YOU MUST use edit_file/append_file to change it
+- If asked to EXPLAIN something → First read the files, then provide explanation
+- NEVER ask "Would you like me to proceed?" - just complete the task
+- NEVER say "I can create this file" - actually CREATE the file
+
+## FILE CREATION DETECTION (READ THIS CAREFULLY)
+
+When the user's request contains ANY of these phrases, you MUST use write_file:
+- "in a file called X" → use write_file with file_path "X"
+- "to a file named X" → use write_file with file_path "X"
+- "create X.md" → use write_file with file_path "X.md"
+- "write to X" → use write_file with file_path "X"
+- "save as X" → use write_file with file_path "X"
+
+Example: "explain the project in a markdown file called README2.md"
+- This means: explore project, then write_file to README2.md
+- This does NOT mean: show markdown in the chat
+
+WRONG: Displaying content in chat when user asked for a file
+RIGHT: Using write_file tool to create the actual file
+
+## EXPLORE BEFORE CREATING (CRITICAL)
+
+When asked to create documentation or explain a project:
+1. FIRST use list_files to see the project structure
+2. THEN use read_file to read README.md, main.go, and other key files
+3. ONLY AFTER reading actual files, use write_file to create documentation
+
+DO NOT write generic content. Your documentation MUST reflect the ACTUAL project:
+- Use real file names from the project (not made-up names like main.py)
+- Include actual features you discovered by reading files
+- Reference real directories and structure you found
+
+## THINK STEP BY STEP
+
+Before responding, think through these steps:
+1. WHAT does the user want? (explain? create? modify? find?)
+2. EXPLORE - use list_files and read_file to understand the project
+3. ANALYZE - what did I learn from the files I read?
+4. ACT - execute the task using tools (write_file, edit_file, etc.)
+5. CONFIRM - tell the user what was done
+
 ## FILE OPERATIONS
 
 1. read_file - Read file contents (optionally specific line range)
@@ -313,7 +360,60 @@ EFFICIENCY TIP: When you need information from multiple sources, request them al
 
 - Output ONLY JSON when using a tool, no other text
 - Do NOT wrap JSON in code blocks
-- After gathering information, provide a comprehensive answer`
+- After gathering information, provide a comprehensive answer
+
+## WORKFLOW PATTERNS (Learn these patterns - do NOT copy the example file paths)
+
+PATTERN A - Explaining Code:
+When asked to explain a file or codebase:
+1. FIRST: Use read_file to read the ACTUAL file the user mentioned
+2. THEN: Analyze what you read
+3. FINALLY: Provide structured explanation with: Overview, Key Components, How It Works
+
+PATTERN B - Creating Documentation (MUST write the file):
+When asked to create a markdown/documentation file:
+1. FIRST: Use list_files and read_file to explore the ACTUAL project structure
+2. THEN: Read key files like README.md, main.go, config files to understand the project
+3. FINALLY: YOU MUST use write_file to actually create the file - do NOT just show content
+
+PATTERN C - Finding Information:
+When asked "where is X handled?" or "find X":
+1. FIRST: Use search_files with relevant keywords from the user's question
+2. THEN: Use read_file on the files that matched
+3. FINALLY: Explain what you found with file paths and line references
+
+PATTERN D - Modifying Code:
+When asked to add/change code:
+1. FIRST: Use read_file to see the current content
+2. THEN: Use edit_file, append_file, or insert_lines as appropriate
+3. FINALLY: Confirm what was changed
+
+## OUTPUT FORMAT FOR EXPLANATIONS
+
+When explaining code or projects, structure your response like this:
+
+## Overview
+[2-3 sentences describing the purpose]
+
+## Key Components
+- **Component 1**: Description
+- **Component 2**: Description
+
+## How It Works
+[Explain the flow or architecture]
+
+## Important Files
+- path/to/file1 - purpose
+- path/to/file2 - purpose
+
+## FINAL REMINDER (ALWAYS CHECK THIS BEFORE RESPONDING)
+
+Before you finish responding, ask yourself:
+1. Did the user ask for a FILE to be created? (look for "file called", "named", ".md", ".txt", etc.)
+2. If YES → Did I use write_file? If not, I MUST use write_file NOW.
+3. Do NOT just show content - actually CREATE the file with write_file tool.
+
+If user said "in a file called X.md" and you haven't used write_file yet → STOP and use write_file.`
 
 // detectModel queries the /v1/models endpoint to get the served model
 func detectModel(ctx gocontext.Context, httpClient *http.Client, host, apiKey string) (string, error) {
@@ -399,10 +499,24 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 			return nil, fmt.Errorf("failed to detect model and no fallback configured: %w", err)
 		}
 	} else if len(models) > 0 {
-		model = models[0]
-		if configModel != "" && configModel != model {
-			fmt.Println(renderer.InfoMessage(fmt.Sprintf("Configured model '%s' ignored. Using server model: %s", configModel, model)))
+		// Check if configured model is available on server
+		if configModel != "" {
+			configModelFound := false
+			for _, m := range models {
+				if m == configModel {
+					configModelFound = true
+					break
+				}
+			}
+			if configModelFound {
+				model = configModel
+				fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using configured model: %s", model)))
+			} else {
+				model = models[0]
+				fmt.Println(renderer.WarningMessage(fmt.Sprintf("Configured model '%s' not available on server. Available: %v. Using: %s", configModel, models, model)))
+			}
 		} else {
+			model = models[0]
 			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Auto-detected model: %s", model)))
 		}
 	} else {
@@ -924,28 +1038,151 @@ func cleanResponse(response string) string {
 	return strings.TrimSpace(cleaned)
 }
 
+// normalizeJSON cleans up JSON that may have been corrupted by model text wrapping
+// It removes extra whitespace and newlines that aren't part of actual string content
+func normalizeJSON(jsonStr string) string {
+	// Remove carriage returns
+	result := strings.ReplaceAll(jsonStr, "\r", "")
+
+	// Process character by character to handle strings properly
+	var normalized strings.Builder
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(result); i++ {
+		c := result[i]
+
+		if escaped {
+			normalized.WriteByte(c)
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && inString {
+			normalized.WriteByte(c)
+			escaped = true
+			continue
+		}
+
+		if c == '"' {
+			inString = !inString
+			normalized.WriteByte(c)
+			continue
+		}
+
+		if inString {
+			// Inside a string - convert actual newlines to \n escape sequence
+			if c == '\n' {
+				normalized.WriteString("\\n")
+			} else if c == '\t' {
+				normalized.WriteString("\\t")
+			} else {
+				normalized.WriteByte(c)
+			}
+		} else {
+			// Outside string - skip whitespace except single spaces
+			if c == '\n' || c == '\t' {
+				// Skip newlines and tabs outside strings
+				continue
+			} else if c == ' ' {
+				// Collapse multiple spaces to single space
+				if normalized.Len() > 0 {
+					lastChar := normalized.String()[normalized.Len()-1]
+					if lastChar != ' ' && lastChar != '{' && lastChar != '[' && lastChar != ':' && lastChar != ',' {
+						normalized.WriteByte(c)
+					}
+				}
+			} else {
+				normalized.WriteByte(c)
+			}
+		}
+	}
+
+	return normalized.String()
+}
+
+// extractJSONObjects finds JSON objects starting with {"tool" using brace matching
+func extractJSONObjects(text string) []string {
+	var results []string
+
+	// Find all positions where a tool call JSON might start
+	toolPattern := regexp.MustCompile(`\{\s*"tool"\s*:`)
+	indices := toolPattern.FindAllStringIndex(text, -1)
+
+	for _, idx := range indices {
+		start := idx[0]
+		depth := 0
+		inString := false
+		escaped := false
+		end := -1
+
+		for i := start; i < len(text); i++ {
+			c := text[i]
+
+			if escaped {
+				escaped = false
+				continue
+			}
+
+			if c == '\\' && inString {
+				escaped = true
+				continue
+			}
+
+			if c == '"' {
+				inString = !inString
+				continue
+			}
+
+			if !inString {
+				if c == '{' {
+					depth++
+				} else if c == '}' {
+					depth--
+					if depth == 0 {
+						end = i + 1
+						break
+					}
+				}
+			}
+		}
+
+		if end > start {
+			jsonStr := text[start:end]
+			results = append(results, jsonStr)
+		}
+	}
+
+	return results
+}
+
 // parseToolCalls extracts ALL tool calls from the model's response (supports multiple tools)
 func parseToolCalls(response string) ([]*ToolCall, string) {
 	cleaned := cleanResponse(response)
 	var toolCalls []*ToolCall
 	seen := make(map[string]bool) // Track seen tool calls to avoid duplicates
+	var firstToolIdx int = -1
 
-	// Pattern to match tool call JSON objects
-	// Matches: {"tool": "name", "params": {...}}
-	jsonPattern := regexp.MustCompile(`\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"params"\s*:\s*(\{[^{}]*\})\s*\}`)
+	// Extract JSON objects using brace matching (handles nested objects and multiline)
+	jsonObjects := extractJSONObjects(cleaned)
 
-	matches := jsonPattern.FindAllStringSubmatch(cleaned, -1)
-	for _, match := range matches {
-		if len(match) >= 1 {
-			// Try to unmarshal the full match
-			var toolCall ToolCall
-			if err := json.Unmarshal([]byte(match[0]), &toolCall); err == nil {
-				if toolCall.Tool != "" {
-					// Create a key to track duplicates
-					key := match[0]
-					if !seen[key] {
-						seen[key] = true
-						toolCalls = append(toolCalls, &toolCall)
+	for _, jsonStr := range jsonObjects {
+		// Normalize the JSON to fix text-wrapping artifacts
+		normalized := normalizeJSON(jsonStr)
+
+		// Try to unmarshal
+		var toolCall ToolCall
+		if err := json.Unmarshal([]byte(normalized), &toolCall); err == nil {
+			if toolCall.Tool != "" {
+				// Create a key to track duplicates
+				key := toolCall.Tool + ":" + fmt.Sprintf("%v", toolCall.Params)
+				if !seen[key] {
+					seen[key] = true
+					toolCalls = append(toolCalls, &toolCall)
+
+					// Track position of first tool call
+					if firstToolIdx == -1 {
+						firstToolIdx = strings.Index(cleaned, jsonStr)
 					}
 				}
 			}
@@ -954,19 +1191,57 @@ func parseToolCalls(response string) ([]*ToolCall, string) {
 
 	// Also try to find JSON arrays of tool calls
 	// [{"tool": "...", "params": {...}}, {"tool": "...", "params": {...}}]
-	arrayPattern := regexp.MustCompile(`\[\s*(\{[^[\]]*"tool"[^[\]]*\}\s*,?\s*)+\]`)
-	if arrayMatch := arrayPattern.FindString(cleaned); arrayMatch != "" {
-		var arrayToolCalls []ToolCall
-		if err := json.Unmarshal([]byte(arrayMatch), &arrayToolCalls); err == nil {
-			for i := range arrayToolCalls {
-				if arrayToolCalls[i].Tool != "" {
-					// Check for duplicates
-					tcJSON, _ := json.Marshal(arrayToolCalls[i])
-					key := string(tcJSON)
-					if !seen[key] {
-						seen[key] = true
-						toolCalls = append(toolCalls, &arrayToolCalls[i])
+	arrayPattern := regexp.MustCompile(`\[\s*\{`)
+	if arrayIdx := arrayPattern.FindStringIndex(cleaned); arrayIdx != nil {
+		// Find matching closing bracket
+		start := arrayIdx[0]
+		depth := 0
+		inString := false
+		escaped := false
+		end := -1
+
+		for i := start; i < len(cleaned); i++ {
+			c := cleaned[i]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' && inString {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = !inString
+				continue
+			}
+			if !inString {
+				if c == '[' {
+					depth++
+				} else if c == ']' {
+					depth--
+					if depth == 0 {
+						end = i + 1
+						break
 					}
+				}
+			}
+		}
+
+		if end > start {
+			arrayStr := normalizeJSON(cleaned[start:end])
+			var arrayToolCalls []ToolCall
+			if err := json.Unmarshal([]byte(arrayStr), &arrayToolCalls); err == nil {
+				for i := range arrayToolCalls {
+					if arrayToolCalls[i].Tool != "" {
+						key := arrayToolCalls[i].Tool + ":" + fmt.Sprintf("%v", arrayToolCalls[i].Params)
+						if !seen[key] {
+							seen[key] = true
+							toolCalls = append(toolCalls, &arrayToolCalls[i])
+						}
+					}
+				}
+				if firstToolIdx == -1 || start < firstToolIdx {
+					firstToolIdx = start
 				}
 			}
 		}
@@ -974,14 +1249,10 @@ func parseToolCalls(response string) ([]*ToolCall, string) {
 
 	// Extract text before first tool call for display
 	textBefore := cleaned
-	if len(toolCalls) > 0 {
-		// Find first occurrence of tool JSON pattern
-		firstIdx := jsonPattern.FindStringIndex(cleaned)
-		if firstIdx != nil && firstIdx[0] > 0 {
-			textBefore = strings.TrimSpace(cleaned[:firstIdx[0]])
-		} else {
-			textBefore = ""
-		}
+	if len(toolCalls) > 0 && firstToolIdx > 0 {
+		textBefore = strings.TrimSpace(cleaned[:firstToolIdx])
+	} else if len(toolCalls) > 0 {
+		textBefore = ""
 	}
 
 	return toolCalls, textBefore

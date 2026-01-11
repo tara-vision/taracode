@@ -159,6 +159,93 @@ func selectFile(workingDir string) (string, error) {
 	return result, nil
 }
 
+// getFilesInDirectory returns all files in a specific directory (non-recursive or recursive based on flag)
+func getFilesInDirectory(dir string, baseDir string, recursive bool) ([]string, error) {
+	var files []string
+
+	walkFn := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip errors
+		}
+
+		base := filepath.Base(path)
+
+		// Skip hidden files/dirs
+		if strings.HasPrefix(base, ".") && base != "." {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Skip common directories
+		skipDirs := []string{"node_modules", "vendor", "__pycache__", "dist", "build"}
+		for _, skip := range skipDirs {
+			if info.IsDir() && base == skip {
+				return filepath.SkipDir
+			}
+		}
+
+		// Skip the root directory itself
+		if path == dir {
+			return nil
+		}
+
+		// For non-recursive, skip subdirectories' contents
+		if !recursive && info.IsDir() {
+			return filepath.SkipDir
+		}
+
+		// Only include files, not directories
+		if !info.IsDir() {
+			relPath, _ := filepath.Rel(baseDir, path)
+			files = append(files, relPath)
+		}
+
+		return nil
+	}
+
+	err := filepath.Walk(dir, walkFn)
+	return files, err
+}
+
+// expandDirectoryReference expands a directory path to include all its files
+func expandDirectoryReference(dirPath string, workingDir string) (string, error) {
+	fullPath := filepath.Join(workingDir, dirPath)
+
+	// Get all files in the directory (recursive)
+	files, err := getFilesInDirectory(fullPath, workingDir, true)
+	if err != nil {
+		return "", fmt.Errorf("failed to read directory %s: %w", dirPath, err)
+	}
+
+	if len(files) == 0 {
+		return fmt.Sprintf("\n\n**Directory: `%s`** (empty or no readable files)\n", dirPath), nil
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("\n\n**Directory: `%s`** (%d files)\n", dirPath, len(files)))
+
+	for _, file := range files {
+		filePath := filepath.Join(workingDir, file)
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			// Skip files we can't read
+			continue
+		}
+
+		// Determine file extension for syntax highlighting
+		ext := filepath.Ext(file)
+		if ext != "" {
+			ext = ext[1:] // Remove leading dot
+		}
+
+		result.WriteString(fmt.Sprintf("\n**File: `%s`**\n```%s\n%s\n```\n", file, ext, string(content)))
+	}
+
+	return result.String(), nil
+}
+
 // expandFileReferences detects @ symbols and expands them with file content
 func expandFileReferences(message string, workingDir string) (string, error) {
 	// Pattern: @ followed by optional whitespace/path or standalone @
@@ -203,22 +290,38 @@ func expandFileReferences(message string, workingDir string) (string, error) {
 			remainingText = strings.TrimPrefix(part, filePath)
 		}
 
-		// Read file content
 		fullPath := filepath.Join(workingDir, filePath)
-		content, err := os.ReadFile(fullPath)
+
+		// Check if path is a directory
+		info, err := os.Stat(fullPath)
 		if err != nil {
-			return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+			return "", fmt.Errorf("failed to access %s: %w", filePath, err)
 		}
 
-		// Determine file extension for syntax highlighting hint
-		ext := filepath.Ext(filePath)
-		if ext != "" {
-			ext = ext[1:] // Remove leading dot
-		}
+		if info.IsDir() {
+			// Expand directory to include all files
+			expanded, err := expandDirectoryReference(filePath, workingDir)
+			if err != nil {
+				return "", err
+			}
+			result += expanded + remainingText
+		} else {
+			// Read single file content
+			content, err := os.ReadFile(fullPath)
+			if err != nil {
+				return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+			}
 
-		// Append expanded file reference
-		result += fmt.Sprintf("\n\n**File: `%s`**\n```%s\n%s\n```%s",
-			filePath, ext, string(content), remainingText)
+			// Determine file extension for syntax highlighting hint
+			ext := filepath.Ext(filePath)
+			if ext != "" {
+				ext = ext[1:] // Remove leading dot
+			}
+
+			// Append expanded file reference
+			result += fmt.Sprintf("\n\n**File: `%s`**\n```%s\n%s\n```%s",
+				filePath, ext, string(content), remainingText)
+		}
 	}
 
 	return result, nil
