@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # taracode installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/tara-vision/taracode/main/install.sh | bash
+# Usage: curl -fsSL https://code.tara.vision/install.sh | bash
 #
 
 set -e

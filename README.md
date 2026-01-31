@@ -38,7 +38,7 @@ ollama pull gemma3:12b    # For limited hardware
 **Quick install (recommended):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tara-vision/taracode/main/install.sh | bash
+curl -fsSL https://code.tara.vision/install.sh | bash
 ```
 
 **Homebrew (macOS / Linux):**
