@@ -1,0 +1,61 @@
+name: Kubernetes Deployment
+description: Deploy application to Kubernetes cluster
+variables:
+  namespace: default
+  manifest: k8s/deployment.yaml
+  image: ""
+  replicas: "1"
+
+steps:
+  - name: Validate manifest exists
+    action: read_file
+    params:
+      file_path: "{{manifest}}"
+    on_failure: abort
+
+  - name: Check cluster connectivity
+    action: kubectl_get
+    params:
+      resource: nodes
+    verify:
+      contains: "Ready"
+    on_failure: abort
+
+  - name: Create namespace if needed
+    action: execute_command
+    params:
+      command: "kubectl create namespace {{namespace}} --dry-run=client -o yaml | kubectl apply -f -"
+    on_failure: skip
+
+  - name: Apply deployment
+    action: kubectl_apply
+    params:
+      file: "{{manifest}}"
+      namespace: "{{namespace}}"
+    checkpoint: true
+    on_failure: abort
+
+  - name: Wait for rollout
+    action: execute_command
+    params:
+      command: "kubectl rollout status deployment -n {{namespace}} --timeout=300s"
+    timeout: 300
+    verify:
+      contains: "successfully rolled out"
+    on_failure: rollback
+
+  - name: Verify pods running
+    action: kubectl_get
+    params:
+      resource: pods
+      namespace: "{{namespace}}"
+    verify:
+      contains: "Running"
+    on_failure: skip
+
+  - name: Show deployment status
+    action: kubectl_describe
+    params:
+      resource: deployment
+      namespace: "{{namespace}}"
+    on_failure: skip

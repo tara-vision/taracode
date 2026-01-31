@@ -1,0 +1,91 @@
+# Tara Code Configuration File
+# Copy this to ~/.taracode/config.yaml
+
+# Ollama Server Host (required)
+# The base URL of your Ollama server
+host: http://localhost:11434
+
+# API Key (optional)
+# Leave empty or omit for local servers without authentication
+key: ""
+
+# Model name (optional)
+# The model is auto-detected from your Ollama server via /v1/models endpoint.
+# Only specify this if auto-detection fails or you want a specific model.
+# model: gemma3:27b
+
+# Search Configuration
+search:
+  # Primary search provider: "brave", "duckduckgo", or "searxng"
+  # If brave_api_key is set and primary is not specified, Brave will be used automatically
+  primary: duckduckgo
+
+  # Fallback provider when primary fails
+  fallback: searxng
+
+  # Brave Search API key (optional)
+  # Get your API key from: https://brave.com/search/api/
+  # When configured, Brave becomes the default primary search provider
+  # brave_api_key: your-brave-api-key-here
+
+  # Custom SearXNG instance URL (optional)
+  # searxng_instance: https://your-searxng-instance.com
+
+  # Search timeout (default: 10s)
+  timeout: 10s
+
+  # Number of retries before falling back (default: 1)
+  retry_count: 1
+
+# Context budget display
+# Shows token usage in prompt like [5.0k/32k]
+show_context_budget: true
+max_context_tokens: 32768
+
+# Edit preview mode
+# Shows diff before applying edit_file operations
+preview_edits: true
+preview_threshold: 0
+
+# Security configuration
+security:
+  # Default severity filter for security scans (empty = all severities)
+  # Examples: "HIGH,CRITICAL" or "MEDIUM,HIGH,CRITICAL"
+  default_severity: ""
+
+# MCP (Model Context Protocol) Configuration
+# MCP enables integration with external tools and services via MCP servers.
+# Servers are spawned as subprocesses and communicate via JSON-RPC over stdio.
+mcp:
+  # Enable or disable MCP support (default: true)
+  enabled: true
+
+  # List of MCP server configurations
+  servers:
+    # GitHub MCP Server - provides GitHub integration tools
+    # - name: github
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    #   env:
+    #     GITHUB_TOKEN: "${GITHUB_TOKEN}"  # Uses env var expansion
+    #   auto_connect: false                # Set true to connect on startup
+    #   timeout: 30s                       # Connection timeout
+
+    # Brave Search MCP Server - provides web search capabilities
+    # - name: brave-search
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+    #   env:
+    #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
+
+    # Filesystem MCP Server - provides filesystem access
+    # - name: filesystem
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
+
+    # PostgreSQL MCP Server - provides database access
+    # - name: postgres
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-postgres"]
+    #   env:
+    #     POSTGRES_CONNECTION_STRING: "${DATABASE_URL}"

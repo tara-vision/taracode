@@ -1,0 +1,34 @@
+# Binaries
+taracode
+taracode-linux
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+dist/
+
+# Test binary
+*.test
+
+# Output of go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Config with sensitive data
+.taracode/
+TARACODE.md
+config.yaml
+*.log
+.DS_Store
+

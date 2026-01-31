@@ -1,0 +1,48 @@
+name: Docker Build and Push
+description: Build a Docker image and optionally push to registry
+variables:
+  image_name: myapp
+  tag: latest
+  dockerfile: Dockerfile
+  context: "."
+  registry: ""
+
+steps:
+  - name: Validate Dockerfile exists
+    action: read_file
+    params:
+      file_path: "{{dockerfile}}"
+    on_failure: abort
+
+  - name: Build Docker image
+    action: docker_build
+    params:
+      image: "{{image_name}}:{{tag}}"
+      dockerfile: "{{dockerfile}}"
+      context: "{{context}}"
+    checkpoint: true
+    verify:
+      command: "docker images {{image_name}}:{{tag}} --format '{{.Repository}}:{{.Tag}}'"
+      contains: "{{image_name}}:{{tag}}"
+    on_failure: abort
+
+  - name: Test image runs
+    action: execute_command
+    params:
+      command: "docker run --rm {{image_name}}:{{tag}} echo 'Container runs successfully'"
+    verify:
+      contains: "Container runs successfully"
+    on_failure: skip
+
+  - name: Tag for registry
+    action: execute_command
+    params:
+      command: "docker tag {{image_name}}:{{tag}} {{registry}}/{{image_name}}:{{tag}}"
+    on_failure: skip
+
+  - name: Push to registry
+    action: execute_command
+    params:
+      command: "docker push {{registry}}/{{image_name}}:{{tag}}"
+    checkpoint: true
+    on_failure: skip

@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ github.ref_name }}
+      arm64_sha: ${{ steps.checksums.outputs.arm64 }}
+      amd64_sha: ${{ steps.checksums.outputs.amd64 }}
+      linux_sha: ${{ steps.checksums.outputs.linux }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build binaries for all platforms
+        run: make build-all VERSION=${{ github.ref_name }}
+
+      - name: Calculate checksums
+        id: checksums
+        run: |
+          ARM64=$(shasum -a 256 dist/taracode-darwin-arm64 | awk '{print $1}')
+          AMD64=$(shasum -a 256 dist/taracode-darwin-amd64 | awk '{print $1}')
+          LINUX=$(shasum -a 256 dist/taracode-linux-amd64 | awk '{print $1}')
+
+          echo "arm64=$ARM64" >> $GITHUB_OUTPUT
+          echo "amd64=$AMD64" >> $GITHUB_OUTPUT
+          echo "linux=$LINUX" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/taracode-darwin-amd64
+            dist/taracode-darwin-arm64
+            dist/taracode-linux-amd64
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-brew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Tap Repo
+        uses: actions/checkout@v4
+        with:
+          repository: tara-vision/homebrew-taracode
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Formula File
+        run: |
+          cd homebrew-tap
+          VERSION="${{ needs.release.outputs.version }}"
+          VERSION_NUM="${VERSION#v}"  # Remove 'v' prefix for formula version
+
+          cat > Formula/taracode.rb << 'EOF'
+          class Taracode < Formula
+            desc "DevOps & Cloud AI Assistant - Kubernetes, Terraform, Docker, multi-cloud"
+            homepage "https://github.com/tara-vision/taracode"
+            version "VERSION_PLACEHOLDER"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/tara-vision/taracode/releases/download/vVERSION_PLACEHOLDER/taracode-darwin-arm64"
+                sha256 "ARM64_PLACEHOLDER"
+              end
+              on_intel do
+                url "https://github.com/tara-vision/taracode/releases/download/vVERSION_PLACEHOLDER/taracode-darwin-amd64"
+                sha256 "AMD64_PLACEHOLDER"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/tara-vision/taracode/releases/download/vVERSION_PLACEHOLDER/taracode-linux-amd64"
+                sha256 "LINUX_PLACEHOLDER"
+              end
+            end
+
+            def install
+              binary_name = if OS.mac?
+                Hardware::CPU.arm? ? "taracode-darwin-arm64" : "taracode-darwin-amd64"
+              else
+                "taracode-linux-amd64"
+              end
+              bin.install binary_name => "taracode"
+            end
+
+            def caveats
+              <<~EOS
+                taracode requires Ollama for LLM inference:
+
+                  brew install ollama
+                  ollama pull gemma3:27b
+                  taracode
+
+                For more info: https://github.com/tara-vision/taracode
+              EOS
+            end
+
+            test do
+              assert_match "taracode version", shell_output("#{bin}/taracode --version")
+            end
+          end
+          EOF
+
+          # Replace placeholders
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION_NUM}/g" Formula/taracode.rb
+          sed -i "s/ARM64_PLACEHOLDER/${{ needs.release.outputs.arm64_sha }}/g" Formula/taracode.rb
+          sed -i "s/AMD64_PLACEHOLDER/${{ needs.release.outputs.amd64_sha }}/g" Formula/taracode.rb
+          sed -i "s/LINUX_PLACEHOLDER/${{ needs.release.outputs.linux_sha }}/g" Formula/taracode.rb
+
+          # Configure Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit and Push
+          git add Formula/taracode.rb
+          git commit -m "Update taracode to ${VERSION}"
+          git tag -a ${VERSION} -m "Release ${VERSION}"
+          git push origin main
+          git push origin ${VERSION}

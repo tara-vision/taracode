@@ -1,0 +1,67 @@
+name: Terraform Apply
+description: Initialize, plan, and apply Terraform configuration
+variables:
+  working_dir: "."
+  var_file: ""
+  auto_approve: "false"
+
+steps:
+  - name: Validate Terraform files exist
+    action: find_files
+    params:
+      pattern: "{{working_dir}}/*.tf"
+    verify:
+      contains: ".tf"
+    on_failure: abort
+
+  - name: Initialize Terraform
+    action: terraform_init
+    params:
+      working_dir: "{{working_dir}}"
+    verify:
+      contains: "Terraform has been successfully initialized"
+    on_failure: abort
+
+  - name: Validate configuration
+    action: execute_command
+    params:
+      command: "cd {{working_dir}} && terraform validate"
+    verify:
+      contains: "Success"
+    on_failure: abort
+
+  - name: Create execution plan
+    action: terraform_plan
+    params:
+      working_dir: "{{working_dir}}"
+      var_file: "{{var_file}}"
+      out: "tfplan"
+    checkpoint: true
+    on_failure: abort
+
+  - name: Show plan summary
+    action: execute_command
+    params:
+      command: "cd {{working_dir}} && terraform show -no-color tfplan | head -50"
+    on_failure: skip
+
+  - name: Apply changes
+    action: terraform_apply
+    params:
+      working_dir: "{{working_dir}}"
+      plan: "tfplan"
+      auto_approve: true
+    checkpoint: true
+    on_failure: rollback
+
+  - name: Show outputs
+    action: terraform_output
+    params:
+      working_dir: "{{working_dir}}"
+    on_failure: skip
+
+  - name: Clean up plan file
+    action: delete_file
+    params:
+      file_path: "{{working_dir}}/tfplan"
+    on_failure: skip

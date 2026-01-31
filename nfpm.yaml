@@ -1,0 +1,16 @@
+name: taracode
+arch: amd64
+platform: linux
+version: "${VERSION}"
+maintainer: "Tara Vision, LLC <contact@tara.vision>"
+description: "DevOps & Cloud AI Assistant - expert guidance for Kubernetes, Terraform, Docker, and multi-cloud (AWS, Azure, GCP)"
+vendor: "Tara Vision, LLC"
+homepage: "https://github.com/tara-vision/taracode"
+license: "MIT"
+contents:
+  - src: ./dist/taracode-linux-amd64
+    dst: /usr/local/bin/taracode
+    file_info:
+      mode: 0755
+section: utils
+priority: optional

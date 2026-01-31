@@ -1,0 +1,45 @@
+name: Git Release
+description: Create a new release with version bump, tag, and changelog
+variables:
+  version: ""
+  branch: main
+  message: "Release {{version}}"
+
+steps:
+  - name: Check git status
+    action: git_status
+    verify:
+      contains: "nothing to commit"
+    on_failure: abort
+
+  - name: Ensure on correct branch
+    action: execute_command
+    params:
+      command: "git checkout {{branch}}"
+    on_failure: abort
+
+  - name: Pull latest changes
+    action: execute_command
+    params:
+      command: "git pull origin {{branch}}"
+    on_failure: abort
+
+  - name: Create release tag
+    action: execute_command
+    params:
+      command: "git tag -a {{version}} -m '{{message}}'"
+    checkpoint: true
+    on_failure: abort
+
+  - name: Show release info
+    action: git_log
+    params:
+      count: 5
+    on_failure: skip
+
+  - name: Push tag to remote
+    action: execute_command
+    params:
+      command: "git push origin {{version}}"
+    checkpoint: true
+    on_failure: rollback
