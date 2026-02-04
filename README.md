@@ -182,6 +182,7 @@ Full DevSecOps capabilities with audit logging:
 | `/undo`        | Undo file modifications        |
 | `/diff`        | Show session changes           |
 | `/tools`       | List available tools           |
+| `/upgrade`     | Check for and install updates  |
 | `/help`        | Show help                      |
 
 ## Configuration

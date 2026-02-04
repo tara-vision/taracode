@@ -138,6 +138,13 @@ func GetSlashCommands() []SlashCommand {
 		{"/tools", "List available AI tools"},
 		{"/usage", "Show token usage statistics"},
 		{"/help", "Show help message"},
+		// Upgrade
+		{"/upgrade", "Check for and install updates"},
+		{"/upgrade check", "Check for new version"},
+		{"/upgrade now", "Upgrade to latest version"},
+		{"/upgrade skip", "Skip the current available update"},
+		{"/upgrade changelog", "Show full release notes"},
+		{"/upgrade status", "Show upgrade state information"},
 	}
 }
 

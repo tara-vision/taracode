@@ -23,6 +23,7 @@ import (
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
+	"github.com/tara-vision/taracode/internal/upgrade"
 	"github.com/tara-vision/taracode/internal/watch"
 )
 
@@ -161,6 +162,14 @@ func startREPL() {
 		}
 	}
 
+	// Start async version check (non-blocking)
+	updateResultChan := make(chan *upgrade.CheckResult, 1)
+	if viper.GetBool("upgrade.auto_check") {
+		CheckForUpdateAsync(Version, updateResultChan)
+	} else {
+		close(updateResultChan)
+	}
+
 	// Initialize MCP manager if enabled
 	var mcpManager *mcp.Manager
 	mcpConfig := GetMCPConfig()
@@ -225,6 +234,14 @@ func startREPL() {
 		os.Exit(1)
 	}
 	defer rl.Close()
+
+	// Check for update result (non-blocking)
+	select {
+	case updateResult := <-updateResultChan:
+		ShowUpdateBanner(updateResult)
+	default:
+		// No result yet, continue without blocking
+	}
 
 	// Main REPL loop
 	for {
@@ -552,6 +569,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /context --agents    - Show per-agent context usage")
 		fmt.Println("    /tools               - List available AI tools")
 		fmt.Println("    /usage        - Show token usage statistics")
+		fmt.Println("    /upgrade      - Check for and install updates")
 		fmt.Println("    /help         - Show this help message")
 		fmt.Println("    exit          - Exit Tara Code")
 		fmt.Println()
@@ -791,6 +809,10 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/watch":
 		// Screen monitoring and analysis
 		handleWatchCommand(args, *asst, watchMonitor, os.TempDir())
+
+	case "/upgrade":
+		// Check for and install updates
+		handleUpgradeCommand(args)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)

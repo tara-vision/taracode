@@ -89,3 +89,34 @@ mcp:
     #   args: ["-y", "@modelcontextprotocol/server-postgres"]
     #   env:
     #     POSTGRES_CONNECTION_STRING: "${DATABASE_URL}"
+
+# Memory (Persistent Project Knowledge) Configuration
+memory:
+  # Enable or disable memory feature (default: true)
+  enabled: true
+
+  # Maximum number of memories per project (default: 500)
+  max_memories: 500
+
+  # Maximum tokens to inject into prompt (default: 2000)
+  max_context_tokens: 2000
+
+  # Auto-cleanup memories not used in N days (default: 90)
+  retention_days: 90
+
+  # Detect and suggest memories from conversation (default: true)
+  auto_capture: true
+
+# Upgrade (Auto-update) Configuration
+upgrade:
+  # Check for updates on startup (default: true)
+  # Set to false to disable automatic update checks
+  auto_check: true
+
+  # Automatically install updates without prompting (default: false)
+  # When true, updates are installed immediately without confirmation
+  # Use with caution - recommended to keep this false
+  auto_upgrade: false
+
+  # Show changelog when update is available (default: true)
+  show_changelog: true
