@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://code.tara.vision/documentation
+    about: Check the documentation for usage guides and examples
+  - name: Discussions
+    url: https://github.com/tara-vision/taracode/discussions
+    about: Ask questions and share ideas in GitHub Discussions

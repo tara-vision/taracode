@@ -1,15 +1,22 @@
 ## Description
-Brief description of changes.
+
+Brief description of what this PR does.
+
+## Related Issue
+
+Fixes #(issue number) or Related to #(issue number)
 
 ## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Refactoring
-- [ ] Other (describe):
 
-## Testing
-How were these changes tested?
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+- [ ] Refactoring (no functional changes)
+
+## How Has This Been Tested?
+
+Describe the tests you ran:
 
 - [ ] Tested locally with Ollama
 - [ ] Added/updated unit tests
@@ -17,8 +24,12 @@ How were these changes tested?
 - [ ] Tested on Linux
 
 ## Checklist
-- [ ] Code follows project style guidelines
-- [ ] Self-reviewed the code
+
+- [ ] My code follows the project style guidelines
+- [ ] I have performed a self-review of my code
+- [ ] `gofmt -s -l .` shows no files (code is formatted)
+- [ ] `go vet ./...` passes
 - [ ] `make test` passes
 - [ ] `make build` succeeds
-- [ ] Documentation updated if needed
+- [ ] I have updated documentation if needed
+- [ ] My changes generate no new warnings

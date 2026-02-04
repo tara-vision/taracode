@@ -1,11 +1,33 @@
 # taracode
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.23-blue.svg)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/tara-vision/taracode)](https://goreportcard.com/report/github.com/tara-vision/taracode)
+<p align="center">
+  <strong>DevOps & Cloud AI Assistant</strong><br>
+  Expert guidance for Kubernetes, Terraform, Docker, and multi-cloud deployments.<br>
+  Runs locally with Ollama for complete privacy.
+</p>
 
-**DevOps & Cloud AI Assistant** - Expert guidance for Kubernetes, Terraform, Docker, and multi-cloud deployments. Runs
-locally with Ollama for complete privacy.
+<p align="center">
+  <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=flat-square&color=blue" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="License: MIT"></a>
+  <a href="https://goreportcard.com/report/github.com/tara-vision/taracode"><img src="https://goreportcard.com/badge/github.com/tara-vision/taracode?style=flat-square" alt="Go Report Card"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.23-00ADD8.svg?style=flat-square" alt="Go Version"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/tara-vision/taracode/stargazers"><img src="https://img.shields.io/github/stars/tara-vision/taracode?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/tara-vision/taracode/network/members"><img src="https://img.shields.io/github/forks/tara-vision/taracode?style=flat-square" alt="Forks"></a>
+  <a href="https://github.com/tara-vision/taracode/issues"><img src="https://img.shields.io/github/issues/tara-vision/taracode?style=flat-square" alt="Issues"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#features">Features</a> •
+  <a href="#commands">Commands</a> •
+  <a href="https://code.tara.vision/documentation">Documentation</a> •
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+---
 
 ## Why taracode?
 
@@ -13,7 +35,7 @@ locally with Ollama for complete privacy.
 - **58 Built-in Tools** - DevOps, security scanning, file operations, git, web search
 - **Multi-Agent System** - 7 specialized agents for complex tasks
 - **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
-- **No Account Required** - Just install and use
+- **No Account Required** - Open source, just install and use
 
 ## Quick Start
 
@@ -44,8 +66,7 @@ curl -fsSL https://code.tara.vision/install.sh | bash
 **Homebrew (macOS / Linux):**
 
 ```bash
-brew tap tara-vision/tap
-brew install taracode
+brew install tara-vision/tap/taracode
 ```
 
 **Go install:**
@@ -55,6 +76,7 @@ go install github.com/tara-vision/taracode@latest
 ```
 
 **Manual download:**
+
 Download binaries from [GitHub Releases](https://github.com/tara-vision/taracode/releases)
 
 ### 4. Run
@@ -62,7 +84,7 @@ Download binaries from [GitHub Releases](https://github.com/tara-vision/taracode
 ```bash
 cd your-project
 taracode
-> /init    # Enable project features
+> /init    # Initialize project features
 ```
 
 That's it! Start asking questions about your infrastructure.
@@ -187,6 +209,8 @@ agents:
   enabled: true
 ```
 
+See [config.example.yaml](config.example.yaml) for all options.
+
 ## Supported LLM Backends
 
 | Backend       | Setup                 | Notes                      |
@@ -204,14 +228,23 @@ make test      # Run tests
 make install   # Install to /usr/local/bin
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
+and [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+For security issues, please see our [Security Policy](SECURITY.md).
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## About
+---
 
-Built by [Tara Vision, LLC](https://tara.vision) | Created by [Dejan Stefanoski](https://stefanoski.nl)
+<p align="center">
+  Built with ❤️ by <a href="https://tara.vision">Tara Vision</a> · Created by <a href="https://github.com/dayanstef">Dejan Stefanoski</a>
+</p>

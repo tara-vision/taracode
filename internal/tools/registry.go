@@ -408,9 +408,9 @@ func (r *Registry) GetToolList() []ToolInfo {
 // securityToolsWithSeverity maps security tools to their severity parameter name
 // Only tools that support severity filtering are included
 var securityToolsWithSeverity = map[string]string{
-	"trivy_scan": "severity",          // --severity HIGH,CRITICAL
-	"sast_scan":  "severity",          // --severity ERROR,WARNING
-	"tfsec_scan": "minimum_severity",  // --minimum-severity HIGH
+	"trivy_scan": "severity",         // --severity HIGH,CRITICAL
+	"sast_scan":  "severity",         // --severity ERROR,WARNING
+	"tfsec_scan": "minimum_severity", // --minimum-severity HIGH
 }
 
 // InjectSecurityDefaults injects default security configuration into tool parameters

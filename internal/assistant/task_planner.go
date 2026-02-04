@@ -54,9 +54,9 @@ func (tp *TaskPlanner) PlanTask(taskDescription string) (*storage.TaskExecution,
 
 // TaskPlan is the intermediate plan structure from LLM
 type TaskPlan struct {
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Steps       []storage.TaskStep  `json:"steps"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Steps       []storage.TaskStep `json:"steps"`
 }
 
 // generatePlan uses the LLM to create an execution plan
@@ -176,9 +176,9 @@ func (tp *TaskPlanner) parsePlanResponse(response string) (*TaskPlan, error) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Steps       []struct {
-			Name         string `json:"name"`
-			Description  string `json:"description"`
-			Action       struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Action      struct {
 				Type    string                 `json:"type"`
 				Tool    string                 `json:"tool,omitempty"`
 				Params  map[string]interface{} `json:"params,omitempty"`

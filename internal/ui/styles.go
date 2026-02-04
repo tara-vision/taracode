@@ -53,19 +53,19 @@ var (
 
 // Icon constants
 const (
-	IconSuccess  = "✓"
-	IconError    = "✗"
-	IconArrow    = "→"
-	IconWarning  = "⚠"
-	IconInfo     = "ℹ"
-	IconFolder   = "📁"
-	IconSession  = "📝"
-	IconTip      = "💡"
-	IconStar     = "🌟"
-	IconThinking = "⠋"
-	IconImage    = "📷"
-	IconCloud    = "☁️"
-	IconLock     = "🔒"
+	IconSuccess     = "✓"
+	IconError       = "✗"
+	IconArrow       = "→"
+	IconWarning     = "⚠"
+	IconInfo        = "ℹ"
+	IconFolder      = "📁"
+	IconSession     = "📝"
+	IconTip         = "💡"
+	IconStar        = "🌟"
+	IconThinking    = "⠋"
+	IconImage       = "📷"
+	IconCloud       = "☁️"
+	IconLock        = "🔒"
 	IconShield      = "🛡"
 	IconDanger      = "⛔"
 	IconDiagnostics = "🔬"
@@ -76,55 +76,55 @@ const (
 var (
 	// Destructive operations - high risk (soft red on light red)
 	SecurityDestructive = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#991B1B")).
-		Background(lipgloss.Color("#FEE2E2")).
-		Bold(true).
-		Padding(0, 1)
+				Foreground(lipgloss.Color("#991B1B")).
+				Background(lipgloss.Color("#FEE2E2")).
+				Bold(true).
+				Padding(0, 1)
 
 	// Execute operations - elevated risk (soft orange on light orange)
 	SecurityExecute = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#9A3412")).
-		Background(lipgloss.Color("#FFEDD5")).
-		Bold(true).
-		Padding(0, 1)
+			Foreground(lipgloss.Color("#9A3412")).
+			Background(lipgloss.Color("#FFEDD5")).
+			Bold(true).
+			Padding(0, 1)
 
 	// Write/Git operations - moderate risk (soft amber on light amber)
 	SecurityWrite = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#92400E")).
-		Background(lipgloss.Color("#FEF3C7")).
-		Bold(true).
-		Padding(0, 1)
+			Foreground(lipgloss.Color("#92400E")).
+			Background(lipgloss.Color("#FEF3C7")).
+			Bold(true).
+			Padding(0, 1)
 
 	// Security audit box style
 	SecurityAuditBox = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(Warning).
-		Padding(0, 1).
-		Width(60)
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(Warning).
+				Padding(0, 1).
+				Width(60)
 
 	// Security audit header
 	SecurityAuditHeader = lipgloss.NewStyle().
-		Foreground(Warning).
-		Bold(true)
+				Foreground(Warning).
+				Bold(true)
 
 	// Security audit label style
 	SecurityAuditLabel = lipgloss.NewStyle().
-		Foreground(Muted).
-		Width(12)
+				Foreground(Muted).
+				Width(12)
 
 	// Security audit value style
 	SecurityAuditValue = lipgloss.NewStyle().
-		Bold(true)
+				Bold(true)
 
 	// Security implication style
 	SecurityImplication = lipgloss.NewStyle().
-		Foreground(Warning).
-		Italic(true)
+				Foreground(Warning).
+				Italic(true)
 
 	// Batch indicator style
 	BatchIndicator = lipgloss.NewStyle().
-		Foreground(Info).
-		Bold(true)
+			Foreground(Info).
+			Bold(true)
 )
 
 // Security mode colors (softer pastel variants)
@@ -137,29 +137,29 @@ var (
 var (
 	// Security mode banner box - prominent red/orange border
 	SecurityModeBannerBox = lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(SecurityOrange).
-		Padding(0, 2).
-		Width(64)
+				Border(lipgloss.DoubleBorder()).
+				BorderForeground(SecurityOrange).
+				Padding(0, 2).
+				Width(64)
 
 	// Security mode title - bold with shield icon
 	SecurityModeTitle = lipgloss.NewStyle().
-		Foreground(SecurityOrange).
-		Bold(true)
+				Foreground(SecurityOrange).
+				Bold(true)
 
 	// Security mode subtitle
 	SecurityModeSubtitle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FBBF24")).
-		Italic(true)
+				Foreground(lipgloss.Color("#FBBF24")).
+				Italic(true)
 
 	// Security mode feature bullet
 	SecurityModeBullet = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#F97316"))
+				Foreground(lipgloss.Color("#F97316"))
 
 	// Security mode prompt indicator
 	SecurityModePrompt = lipgloss.NewStyle().
-		Foreground(SecurityOrange).
-		Bold(true)
+				Foreground(SecurityOrange).
+				Bold(true)
 )
 
 // Display constants

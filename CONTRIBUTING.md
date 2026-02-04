@@ -51,10 +51,20 @@ ollama pull gemma3:27b
 ### Code Style
 
 - Follow standard Go conventions and formatting
-- Run `go fmt` before committing
-- Run `go vet` to catch common issues
+- Run `gofmt -s -w .` before committing (the `-s` flag simplifies code)
+- Run `go vet ./...` to catch common issues
 - Keep functions focused and well-documented
 - Write tests for new functionality
+
+**Formatting check:**
+
+```bash
+# Check if any files need formatting
+gofmt -s -l .
+
+# Auto-format all files
+gofmt -s -w .
+```
 
 ## Submitting Changes
 

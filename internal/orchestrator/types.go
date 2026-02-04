@@ -9,12 +9,12 @@ import (
 
 // OrchestratorConfig defines orchestrator configuration
 type OrchestratorConfig struct {
-	Enabled            bool   `yaml:"enabled" json:"enabled"`
-	DefaultRouting     string `yaml:"default_routing" json:"default_routing"` // auto, manual, task-based
-	FallbackModel      string `yaml:"fallback_model" json:"fallback_model"`
-	TimeoutMultiplier  float64 `yaml:"timeout_multiplier" json:"timeout_multiplier"`
-	MaxReplans         int    `yaml:"max_replans" json:"max_replans"`
-	AutoDiagnostics    bool   `yaml:"auto_diagnostics" json:"auto_diagnostics"`
+	Enabled           bool    `yaml:"enabled" json:"enabled"`
+	DefaultRouting    string  `yaml:"default_routing" json:"default_routing"` // auto, manual, task-based
+	FallbackModel     string  `yaml:"fallback_model" json:"fallback_model"`
+	TimeoutMultiplier float64 `yaml:"timeout_multiplier" json:"timeout_multiplier"`
+	MaxReplans        int     `yaml:"max_replans" json:"max_replans"`
+	AutoDiagnostics   bool    `yaml:"auto_diagnostics" json:"auto_diagnostics"`
 }
 
 // DefaultOrchestratorConfig returns default configuration
@@ -31,16 +31,16 @@ func DefaultOrchestratorConfig() OrchestratorConfig {
 
 // TaskState tracks the state of a task during orchestration
 type TaskState struct {
-	TaskID       string                      `json:"task_id"`
-	Status       storage.TaskExecutionStatus `json:"status"`
-	CurrentStep  int                         `json:"current_step"`
-	TotalSteps   int                         `json:"total_steps"`
-	ActiveAgent  agent.Type                  `json:"active_agent"`
-	StartedAt    time.Time                   `json:"started_at"`
-	UpdatedAt    time.Time                   `json:"updated_at"`
-	ReplanCount  int                         `json:"replan_count"`
-	Context      *SharedContext              `json:"context"`
-	Handoffs     []agent.Handoff             `json:"handoffs"`
+	TaskID      string                      `json:"task_id"`
+	Status      storage.TaskExecutionStatus `json:"status"`
+	CurrentStep int                         `json:"current_step"`
+	TotalSteps  int                         `json:"total_steps"`
+	ActiveAgent agent.Type                  `json:"active_agent"`
+	StartedAt   time.Time                   `json:"started_at"`
+	UpdatedAt   time.Time                   `json:"updated_at"`
+	ReplanCount int                         `json:"replan_count"`
+	Context     *SharedContext              `json:"context"`
+	Handoffs    []agent.Handoff             `json:"handoffs"`
 }
 
 // SharedContext manages context shared between agents
@@ -137,11 +137,11 @@ func (sc *SharedContext) Clear() {
 
 // StepResult represents the result of executing a step
 type StepResult struct {
-	StepIndex   int                  `json:"step_index"`
-	AgentType   agent.Type           `json:"agent_type"`
+	StepIndex   int                    `json:"step_index"`
+	AgentType   agent.Type             `json:"agent_type"`
 	Result      *agent.ExecutionResult `json:"result"`
-	StartedAt   time.Time            `json:"started_at"`
-	CompletedAt time.Time            `json:"completed_at"`
+	StartedAt   time.Time              `json:"started_at"`
+	CompletedAt time.Time              `json:"completed_at"`
 }
 
 // ExecutionEvent represents an event during task execution

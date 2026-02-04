@@ -19,7 +19,7 @@ type ProjectTypeInfo struct {
 // ToolMapping maps frameworks/tools to relevant taracode tools
 var ToolMapping = map[string][]string{
 	// Infrastructure as Code
-	"terraform": {"terraform_init", "terraform_plan", "terraform_apply", "terraform_destroy", "terraform_output", "terraform_state", "tfsec_scan"},
+	"terraform":  {"terraform_init", "terraform_plan", "terraform_apply", "terraform_destroy", "terraform_output", "terraform_state", "tfsec_scan"},
 	"kubernetes": {"kubectl_get", "kubectl_apply", "kubectl_delete", "kubectl_describe", "kubectl_logs", "kubectl_exec", "kubesec_scan"},
 	"helm":       {"helm_list", "helm_install", "kubectl_get", "kubectl_apply"},
 	"docker":     {"docker_build", "docker_ps", "docker_logs", "docker_compose", "docker_exec", "trivy_scan"},

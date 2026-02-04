@@ -57,9 +57,9 @@ func startREPL() {
 	workingDir, _ := os.Getwd()
 
 	// Sandbox directory tracking
-	projectRoot := workingDir    // Fixed at startup, becomes sandbox root after init
-	currentRelDir := ""          // Relative path from project root (empty = at root)
-	currentAbsDir := workingDir  // Current absolute path for file operations
+	projectRoot := workingDir   // Fixed at startup, becomes sandbox root after init
+	currentRelDir := ""         // Relative path from project root (empty = at root)
+	currentAbsDir := workingDir // Current absolute path for file operations
 
 	// Create renderer for styled output
 	renderer := ui.NewRenderer()
@@ -345,13 +345,36 @@ func startREPL() {
 				// Check if init succeeded
 				if isInitializedProject(projectRoot) {
 					isProjectInitialized = true
+					taracodeDir := filepath.Join(projectRoot, ".taracode")
+					// Initialize memory manager if not already done
+					if memoryManager == nil {
+						mm, err := memory.NewManager(taracodeDir)
+						if err == nil {
+							memoryManager = mm
+						}
+					}
+					// Initialize history manager if not already done
+					if historyManager == nil {
+						session := asst.GetSession()
+						sessionID := "default"
+						if session != nil {
+							sessionID = session.ID
+						}
+						hm, err := history.NewManager(taracodeDir, sessionID)
+						if err == nil {
+							historyManager = hm
+							// Set history manager on tool registry for automatic tracking
+							if registry := asst.GetToolRegistry(); registry != nil {
+								registry.SetHistoryManager(hm)
+							}
+						}
+					}
 					// Auto-connect MCP servers after init
 					if mcpManager != nil {
 						mcpManager.AutoConnect(context.Background())
 					}
 					// Initialize TaskBridge if not already done
 					if taskBridge == nil {
-						taracodeDir := filepath.Join(projectRoot, ".taracode")
 						taskMgr, err := storage.NewTaskManager(taracodeDir)
 						if err == nil {
 							taskBridge = orchestrator.NewTaskBridgeFromProvider(
@@ -1342,10 +1365,10 @@ func extractFilesRead(messages []storage.ConversationMessage) []string {
 func exportAuditJSON(session *storage.Session, log *storage.AuditLog) {
 	// Create export structure
 	export := struct {
-		SessionID   string               `json:"session_id"`
-		SessionName string               `json:"session_name"`
-		ExportedAt  string               `json:"exported_at"`
-		Mode        string               `json:"mode"`
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+		ExportedAt  string `json:"exported_at"`
+		Mode        string `json:"mode"`
 		Summary     struct {
 			TotalEntries int `json:"total_entries"`
 			TotalAllow   int `json:"total_allow"`

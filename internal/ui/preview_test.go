@@ -7,11 +7,11 @@ import (
 
 func TestGenerateUnifiedDiff(t *testing.T) {
 	tests := []struct {
-		name        string
-		oldContent  string
-		newContent  string
-		oldString   string
-		newString   string
+		name         string
+		oldContent   string
+		newContent   string
+		oldString    string
+		newString    string
 		wantContains []string
 	}{
 		{

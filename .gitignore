@@ -1,6 +1,6 @@
 # Binaries
 taracode
-taracode-linux
+taracode-*
 *.exe
 *.exe~
 *.dll

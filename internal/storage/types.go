@@ -17,13 +17,13 @@ type Session struct {
 
 // ConversationMessage represents a single message in conversation
 type ConversationMessage struct {
-	Role       string            `json:"role"` // user, assistant, system, tool
-	Content    string            `json:"content"`
-	Timestamp  time.Time         `json:"timestamp"`
-	ToolCalls  []ToolCallRecord  `json:"tool_calls,omitempty"`  // Multiple tool calls per message (native function calling)
-	ToolCallID string            `json:"tool_call_id,omitempty"` // For tool response messages
-	ToolCall   *ToolCallRecord   `json:"tool_call,omitempty"`    // Deprecated: kept for backward compatibility with old sessions
-	Usage      *TokenUsage       `json:"usage,omitempty"`
+	Role       string           `json:"role"` // user, assistant, system, tool
+	Content    string           `json:"content"`
+	Timestamp  time.Time        `json:"timestamp"`
+	ToolCalls  []ToolCallRecord `json:"tool_calls,omitempty"`   // Multiple tool calls per message (native function calling)
+	ToolCallID string           `json:"tool_call_id,omitempty"` // For tool response messages
+	ToolCall   *ToolCallRecord  `json:"tool_call,omitempty"`    // Deprecated: kept for backward compatibility with old sessions
+	Usage      *TokenUsage      `json:"usage,omitempty"`
 }
 
 // ToolCallRecord captures tool execution details
@@ -229,7 +229,7 @@ type TaskStep struct {
 	CompletedAt  *time.Time     `json:"completed_at,omitempty"`
 	Duration     int64          `json:"duration_ms,omitempty"`
 	RetryCount   int            `json:"retry_count,omitempty"`
-	Checkpoint   bool           `json:"checkpoint,omitempty"`    // Create checkpoint before this step
+	Checkpoint   bool           `json:"checkpoint,omitempty"`   // Create checkpoint before this step
 	Verification *TaskVerify    `json:"verification,omitempty"` // Optional verification after step
 }
 
@@ -237,13 +237,13 @@ type TaskStep struct {
 type TaskStepStatus string
 
 const (
-	StepStatusPending    TaskStepStatus = "pending"
-	StepStatusRunning    TaskStepStatus = "running"
-	StepStatusCompleted  TaskStepStatus = "completed"
-	StepStatusFailed     TaskStepStatus = "failed"
-	StepStatusSkipped    TaskStepStatus = "skipped"
-	StepStatusVerifying  TaskStepStatus = "verifying"
-	StepStatusRetrying   TaskStepStatus = "retrying"
+	StepStatusPending   TaskStepStatus = "pending"
+	StepStatusRunning   TaskStepStatus = "running"
+	StepStatusCompleted TaskStepStatus = "completed"
+	StepStatusFailed    TaskStepStatus = "failed"
+	StepStatusSkipped   TaskStepStatus = "skipped"
+	StepStatusVerifying TaskStepStatus = "verifying"
+	StepStatusRetrying  TaskStepStatus = "retrying"
 )
 
 // TaskAction defines what a step should do
@@ -267,13 +267,13 @@ const (
 
 // TaskVerify defines how to verify a step completed successfully
 type TaskVerify struct {
-	Type      TaskVerifyType `json:"type"`
-	Command   string         `json:"command,omitempty"`   // Shell command to run
-	Expected  string         `json:"expected,omitempty"`  // Expected output (substring match)
-	Tool      string         `json:"tool,omitempty"`      // Tool to run for verification
+	Type      TaskVerifyType         `json:"type"`
+	Command   string                 `json:"command,omitempty"`  // Shell command to run
+	Expected  string                 `json:"expected,omitempty"` // Expected output (substring match)
+	Tool      string                 `json:"tool,omitempty"`     // Tool to run for verification
 	Params    map[string]interface{} `json:"params,omitempty"`
-	Timeout   int            `json:"timeout,omitempty"`   // Timeout in seconds
-	OnFailure string         `json:"on_failure,omitempty"` // "retry", "skip", "abort", "rollback"
+	Timeout   int                    `json:"timeout,omitempty"`    // Timeout in seconds
+	OnFailure string                 `json:"on_failure,omitempty"` // "retry", "skip", "abort", "rollback"
 }
 
 // TaskVerifyType defines the verification method
@@ -288,11 +288,11 @@ const (
 
 // TaskCheckpoint captures the state at a point in time for rollback
 type TaskCheckpoint struct {
-	ID        string    `json:"id"`
-	StepIndex int       `json:"step_index"` // Step index this checkpoint was created before
-	CreatedAt time.Time `json:"created_at"`
+	ID        string       `json:"id"`
+	StepIndex int          `json:"step_index"` // Step index this checkpoint was created before
+	CreatedAt time.Time    `json:"created_at"`
 	Files     []FileBackup `json:"files,omitempty"` // Files backed up at this checkpoint
-	Note      string    `json:"note,omitempty"`
+	Note      string       `json:"note,omitempty"`
 }
 
 // FileBackup tracks a file backup for rollback
@@ -304,8 +304,8 @@ type FileBackup struct {
 
 // TaskIndex tracks all task executions
 type TaskIndex struct {
-	ActiveTaskID string             `json:"active_task_id,omitempty"`
-	Tasks        []TaskMetadata     `json:"tasks"`
+	ActiveTaskID string         `json:"active_task_id,omitempty"`
+	Tasks        []TaskMetadata `json:"tasks"`
 }
 
 // TaskMetadata contains summary info about a task execution
@@ -321,21 +321,21 @@ type TaskMetadata struct {
 
 // TaskTemplate defines a reusable task definition (YAML)
 type TaskTemplate struct {
-	Name        string                 `yaml:"name" json:"name"`
-	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	Variables   map[string]string      `yaml:"variables,omitempty" json:"variables,omitempty"`
-	Steps       []TaskTemplateStep     `yaml:"steps" json:"steps"`
+	Name        string             `yaml:"name" json:"name"`
+	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
+	Variables   map[string]string  `yaml:"variables,omitempty" json:"variables,omitempty"`
+	Steps       []TaskTemplateStep `yaml:"steps" json:"steps"`
 }
 
 // TaskTemplateStep defines a step in a task template
 type TaskTemplateStep struct {
-	Name        string                 `yaml:"name" json:"name"`
-	Action      string                 `yaml:"action" json:"action"` // Tool name or "command"
-	Params      map[string]interface{} `yaml:"params,omitempty" json:"params,omitempty"`
-	Verify      *TaskTemplateVerify    `yaml:"verify,omitempty" json:"verify,omitempty"`
-	Checkpoint  bool                   `yaml:"checkpoint,omitempty" json:"checkpoint,omitempty"`
-	OnFailure   string                 `yaml:"on_failure,omitempty" json:"on_failure,omitempty"`
-	Timeout     int                    `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Name       string                 `yaml:"name" json:"name"`
+	Action     string                 `yaml:"action" json:"action"` // Tool name or "command"
+	Params     map[string]interface{} `yaml:"params,omitempty" json:"params,omitempty"`
+	Verify     *TaskTemplateVerify    `yaml:"verify,omitempty" json:"verify,omitempty"`
+	Checkpoint bool                   `yaml:"checkpoint,omitempty" json:"checkpoint,omitempty"`
+	OnFailure  string                 `yaml:"on_failure,omitempty" json:"on_failure,omitempty"`
+	Timeout    int                    `yaml:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
 // TaskTemplateVerify defines verification in a template

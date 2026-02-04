@@ -27,8 +27,8 @@ type Memory struct {
 	ID         string         `json:"id"`
 	Category   MemoryCategory `json:"category"`
 	Content    string         `json:"content"`
-	Context    string         `json:"context,omitempty"`    // Additional context about when/why
-	Tags       []string       `json:"tags,omitempty"`       // Searchable tags
+	Context    string         `json:"context,omitempty"` // Additional context about when/why
+	Tags       []string       `json:"tags,omitempty"`    // Searchable tags
 	Source     MemorySource   `json:"source"`
 	CreatedAt  time.Time      `json:"created_at"`
 	LastUsedAt time.Time      `json:"last_used_at"`
@@ -46,7 +46,7 @@ type MemoryIndex struct {
 type MemoryMetadata struct {
 	ID         string         `json:"id"`
 	Category   MemoryCategory `json:"category"`
-	Preview    string         `json:"preview"`     // First 80 chars of content
+	Preview    string         `json:"preview"` // First 80 chars of content
 	Tags       []string       `json:"tags,omitempty"`
 	CreatedAt  time.Time      `json:"created_at"`
 	LastUsedAt time.Time      `json:"last_used_at"`
@@ -57,9 +57,9 @@ type MemoryMetadata struct {
 type MemoryConfig struct {
 	Enabled          bool             `json:"enabled"`
 	MaxMemories      int              `json:"max_memories"`
-	MaxContextTokens int              `json:"max_context_tokens"` // Max tokens to inject into prompt
-	RetentionDays    int              `json:"retention_days"`     // Auto-cleanup after N days of non-use
-	AutoCapture      bool             `json:"auto_capture"`       // Detect and suggest memories
+	MaxContextTokens int              `json:"max_context_tokens"`   // Max tokens to inject into prompt
+	RetentionDays    int              `json:"retention_days"`       // Auto-cleanup after N days of non-use
+	AutoCapture      bool             `json:"auto_capture"`         // Detect and suggest memories
 	Categories       []MemoryCategory `json:"categories,omitempty"` // Enabled categories (nil = all)
 }
 
@@ -84,15 +84,15 @@ type MemoryExport struct {
 
 // MemoryStats contains statistics about the memory store
 type MemoryStats struct {
-	TotalMemories     int            `json:"total_memories"`
-	ByCategory        map[string]int `json:"by_category"`
-	BySource          map[string]int `json:"by_source"`
-	TotalUseCount     int            `json:"total_use_count"`
-	OldestMemory      *time.Time     `json:"oldest_memory,omitempty"`
-	NewestMemory      *time.Time     `json:"newest_memory,omitempty"`
-	MostUsedID        string         `json:"most_used_id,omitempty"`
-	MostUsedContent   string         `json:"most_used_content,omitempty"`
-	MostUsedCount     int            `json:"most_used_count"`
-	UnusedCount       int            `json:"unused_count"` // Memories never injected
-	EstimatedTokens   int            `json:"estimated_tokens"`
+	TotalMemories   int            `json:"total_memories"`
+	ByCategory      map[string]int `json:"by_category"`
+	BySource        map[string]int `json:"by_source"`
+	TotalUseCount   int            `json:"total_use_count"`
+	OldestMemory    *time.Time     `json:"oldest_memory,omitempty"`
+	NewestMemory    *time.Time     `json:"newest_memory,omitempty"`
+	MostUsedID      string         `json:"most_used_id,omitempty"`
+	MostUsedContent string         `json:"most_used_content,omitempty"`
+	MostUsedCount   int            `json:"most_used_count"`
+	UnusedCount     int            `json:"unused_count"` // Memories never injected
+	EstimatedTokens int            `json:"estimated_tokens"`
 }

@@ -22,11 +22,11 @@ type MCPConfig struct {
 
 // MCPTool represents a tool discovered from an MCP server
 type MCPTool struct {
-	Name        string                 // Prefixed name: "github.list_repos"
-	ServerName  string                 // Server that provides this tool
-	OriginalName string                // Original name without prefix
-	Description string
-	InputSchema map[string]interface{}
+	Name         string // Prefixed name: "github.list_repos"
+	ServerName   string // Server that provides this tool
+	OriginalName string // Original name without prefix
+	Description  string
+	InputSchema  map[string]interface{}
 }
 
 // MCPConnection represents a connection to an MCP server

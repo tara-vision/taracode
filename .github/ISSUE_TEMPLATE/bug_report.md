@@ -1,35 +1,42 @@
 ---
 name: Bug Report
 about: Report a bug with taracode
-title: '[Bug] '
+title: ''
 labels: bug
-assignees: dayanstef
+assignees: ''
 ---
 
 ## Description
-A clear description of the bug.
+
+A clear and concise description of the bug.
 
 ## Steps to Reproduce
-1. Run `taracode ...`
+
+1. Run `taracode`
 2. Enter '...'
 3. See error
 
 ## Expected Behavior
+
 What you expected to happen.
 
 ## Actual Behavior
+
 What actually happened.
 
 ## Environment
-- taracode version: [e.g., v0.4.5]
-- OS: [e.g., macOS 14, Ubuntu 22.04]
-- Ollama version: [e.g., 0.1.32]
-- Model: [e.g., gemma3:27b]
 
-## Logs
+- **taracode version**: [run `taracode --version`]
+- **OS**: [e.g., macOS 14.2, Ubuntu 22.04]
+- **Ollama version**: [run `ollama --version`]
+- **Model**: [e.g., gemma3:27b]
+
+## Logs / Error Output
+
 ```
 Paste relevant output here
 ```
 
 ## Additional Context
-Any other relevant information.
+
+Any other relevant information, screenshots, or context about the problem.

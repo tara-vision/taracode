@@ -15,24 +15,24 @@ import (
 
 var (
 	watchHeaderStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#A78BFA"))
+				Bold(true).
+				Foreground(lipgloss.Color("#A78BFA"))
 
 	watchActiveStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#2dd4bf"))
+				Foreground(lipgloss.Color("#2dd4bf"))
 
 	watchInactiveStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#94A3B8"))
+				Foreground(lipgloss.Color("#94A3B8"))
 
 	watchErrorStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FCA5A5")).
-		Bold(true)
+			Foreground(lipgloss.Color("#FCA5A5")).
+			Bold(true)
 
 	watchWarningStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FCD34D"))
+				Foreground(lipgloss.Color("#FCD34D"))
 
 	watchImprovementStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#93C5FD"))
+				Foreground(lipgloss.Color("#93C5FD"))
 )
 
 // handleWatchCommand handles the /watch command and subcommands

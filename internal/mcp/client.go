@@ -16,10 +16,10 @@ import (
 
 // Client is an MCP client that communicates with an MCP server via stdio
 type Client struct {
-	cmd        *exec.Cmd
-	stdin      io.WriteCloser
-	stdout     *bufio.Reader
-	stderr     io.ReadCloser
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+	stderr io.ReadCloser
 
 	mu         sync.Mutex
 	nextID     int64
@@ -53,8 +53,8 @@ type jsonRPCResponse struct {
 
 // jsonRPCError represents a JSON-RPC 2.0 error
 type jsonRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
@@ -166,7 +166,7 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Parse server info
 	var initResult struct {
-		ProtocolVersion string     `json:"protocolVersion"`
+		ProtocolVersion string      `json:"protocolVersion"`
 		Capabilities    interface{} `json:"capabilities"`
 		ServerInfo      *ServerInfo `json:"serverInfo"`
 	}

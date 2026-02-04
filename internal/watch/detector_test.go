@@ -60,8 +60,8 @@ func TestHasSignificantChange(t *testing.T) {
 		expected  bool
 	}{
 		{"identical below threshold", 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0.15, false},
-		{"5% change below 15% threshold", 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFC, 0.15, false},     // 2 bits = 3.1%
-		{"20% change above 15% threshold", 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFF00000, 0.15, true},      // 20 bits = 31%
+		{"5% change below 15% threshold", 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFC, 0.15, false}, // 2 bits = 3.1%
+		{"20% change above 15% threshold", 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFF00000, 0.15, true}, // 20 bits = 31%
 		{"completely different", 0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0.15, true},
 	}
 

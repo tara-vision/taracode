@@ -11,10 +11,10 @@ import (
 
 // PermissionChoice represents a user's permission choice
 type PermissionChoice struct {
-	Allowed    bool                         // Whether this execution is allowed
-	SavePerm   permissions.Permission       // Permission to save (empty if not saving)
-	SaveScope  string                       // "tool" or "category" (empty if not saving)
-	Category   permissions.PermissionCategory // The category (for category saves)
+	Allowed   bool                           // Whether this execution is allowed
+	SavePerm  permissions.Permission         // Permission to save (empty if not saving)
+	SaveScope string                         // "tool" or "category" (empty if not saving)
+	Category  permissions.PermissionCategory // The category (for category saves)
 }
 
 // PromptToolPermission asks the user for permission to execute a tool

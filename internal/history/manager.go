@@ -547,10 +547,10 @@ func (m *Manager) GetStats() map[string]int {
 
 // FileDiff represents a diff for a single file
 type FileDiff struct {
-	Path        string
-	Operation   string // "modified", "created", "deleted", "moved", "copied"
+	Path         string
+	Operation    string // "modified", "created", "deleted", "moved", "copied"
 	OriginalPath string // For move operations
-	Diff        string // Unified diff content
+	Diff         string // Unified diff content
 }
 
 // GenerateDiff generates unified diffs for all file changes in the session
