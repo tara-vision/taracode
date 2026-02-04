@@ -10,17 +10,17 @@ import (
 
 // FailureDiagnostics provides detailed analysis of failures
 type FailureDiagnostics struct {
-	ToolName    string            `json:"tool_name"`
+	ToolName    string                 `json:"tool_name"`
 	Params      map[string]interface{} `json:"params"`
-	Error       string            `json:"error"`
-	ExitCode    int               `json:"exit_code,omitempty"`
-	Stderr      string            `json:"stderr,omitempty"`
-	Stdout      string            `json:"stdout,omitempty"`
-	RootCause   string            `json:"root_cause"`
-	Suggestion  string            `json:"suggestion"`
-	Context     string            `json:"context,omitempty"`
-	Severity    string            `json:"severity"` // low, medium, high, critical
-	Recoverable bool              `json:"recoverable"`
+	Error       string                 `json:"error"`
+	ExitCode    int                    `json:"exit_code,omitempty"`
+	Stderr      string                 `json:"stderr,omitempty"`
+	Stdout      string                 `json:"stdout,omitempty"`
+	RootCause   string                 `json:"root_cause"`
+	Suggestion  string                 `json:"suggestion"`
+	Context     string                 `json:"context,omitempty"`
+	Severity    string                 `json:"severity"` // low, medium, high, critical
+	Recoverable bool                   `json:"recoverable"`
 }
 
 // DiagnoseFailure analyzes a tool call failure and provides actionable information

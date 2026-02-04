@@ -324,7 +324,6 @@ func FormatConnectionError(host string, err error) string {
 	return sb.String()
 }
 
-
 // VerboseToolError represents a detailed tool error for verbose mode
 type VerboseToolError struct {
 	ToolName    string

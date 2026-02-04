@@ -32,9 +32,9 @@ const (
 
 // PermissionConfig represents the structure stored in .taracode/permissions.json
 type PermissionConfig struct {
-	Version    int                           `json:"version"`
+	Version    int                               `json:"version"`
 	Categories map[PermissionCategory]Permission `json:"categories"`
-	Tools      map[string]Permission         `json:"tools"`
+	Tools      map[string]Permission             `json:"tools"`
 }
 
 // toolCategoryMap maps tool names to their categories

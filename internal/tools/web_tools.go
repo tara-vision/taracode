@@ -15,16 +15,16 @@ import (
 )
 
 const (
-	defaultNumResults  = 5
-	maxNumResults      = 10
-	defaultMaxLength   = 50000
-	webFetchTimeout    = 15 * time.Second
-	userAgent          = "taracode/1.0 (+https://tara.vision)"
+	defaultNumResults = 5
+	maxNumResults     = 10
+	defaultMaxLength  = 50000
+	webFetchTimeout   = 15 * time.Second
+	userAgent         = "taracode/1.0 (+https://tara.vision)"
 )
 
 var (
 	// searchOrchestrator manages search providers with fallback
-	searchOrchestrator *search.Orchestrator
+	searchOrchestrator     *search.Orchestrator
 	searchOrchestratorOnce sync.Once
 
 	// onProviderSwitch is called when search falls back to another provider
@@ -338,23 +338,23 @@ func extractTextContent(html string) string {
 // decodeHTMLEntities decodes common HTML entities
 func decodeHTMLEntities(s string) string {
 	entities := map[string]string{
-		"&amp;":   "&",
-		"&lt;":    "<",
-		"&gt;":    ">",
-		"&quot;":  "\"",
-		"&apos;":  "'",
-		"&#39;":   "'",
-		"&nbsp;":  " ",
-		"&ndash;": "-",
-		"&mdash;": "-",
-		"&lsquo;": "'",
-		"&rsquo;": "'",
-		"&ldquo;": "\"",
-		"&rdquo;": "\"",
+		"&amp;":    "&",
+		"&lt;":     "<",
+		"&gt;":     ">",
+		"&quot;":   "\"",
+		"&apos;":   "'",
+		"&#39;":    "'",
+		"&nbsp;":   " ",
+		"&ndash;":  "-",
+		"&mdash;":  "-",
+		"&lsquo;":  "'",
+		"&rsquo;":  "'",
+		"&ldquo;":  "\"",
+		"&rdquo;":  "\"",
 		"&hellip;": "...",
-		"&copy;":  "(c)",
-		"&reg;":   "(R)",
-		"&trade;": "(TM)",
+		"&copy;":   "(c)",
+		"&reg;":    "(R)",
+		"&trade;":  "(TM)",
 	}
 
 	for entity, replacement := range entities {

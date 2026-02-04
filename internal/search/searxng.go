@@ -126,8 +126,8 @@ type searxngResponse struct {
 		PrettyURL     string   `json:"pretty_url"`
 		PublishedDate string   `json:"publishedDate,omitempty"`
 	} `json:"results"`
-	Answers         []string `json:"answers"`
-	Infoboxes       []struct {
+	Answers   []string `json:"answers"`
+	Infoboxes []struct {
 		Infobox string `json:"infobox"`
 		ID      string `json:"id"`
 		Content string `json:"content"`

@@ -16,19 +16,19 @@ type AnalyzeFunc func(prompt string, images []*assistant.ImageData) (string, err
 
 // WatchMonitor coordinates screen monitoring and analysis
 type WatchMonitor struct {
-	config     WatchConfig
+	config      WatchConfig
 	analyzeFunc AnalyzeFunc
-	tempDir    string
+	tempDir     string
 
 	// State management
-	mu             sync.RWMutex
-	state          WatchState
-	startTime      time.Time
-	lastCapture    time.Time
-	lastAnalysis   time.Time
-	totalCaptures  int
-	totalAnalyses  int
-	displayCount   int
+	mu            sync.RWMutex
+	state         WatchState
+	startTime     time.Time
+	lastCapture   time.Time
+	lastAnalysis  time.Time
+	totalCaptures int
+	totalAnalyses int
+	displayCount  int
 
 	// Previous capture hash for change detection
 	lastHash uint64

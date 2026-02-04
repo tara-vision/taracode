@@ -20,7 +20,7 @@ type Spinner struct {
 	frames           []string
 	interval         time.Duration
 	message          string
-	baseMessage      string        // Original message without elapsed time
+	baseMessage      string // Original message without elapsed time
 	stop             chan struct{}
 	done             chan struct{}
 	mu               sync.Mutex

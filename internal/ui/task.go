@@ -12,63 +12,63 @@ import (
 var (
 	// Task header style
 	TaskHeaderStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(Primary).
-		Padding(0, 1)
+			Bold(true).
+			Foreground(Primary).
+			Padding(0, 1)
 
 	// Task box style
 	TaskBoxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(Primary).
-		Padding(0, 1).
-		Width(70)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(Primary).
+			Padding(0, 1).
+			Width(70)
 
 	// Step status styles
 	StepPending = lipgloss.NewStyle().
-		Foreground(Muted)
+			Foreground(Muted)
 
 	StepRunning = lipgloss.NewStyle().
-		Foreground(Info).
-		Bold(true)
+			Foreground(Info).
+			Bold(true)
 
 	StepCompleted = lipgloss.NewStyle().
-		Foreground(Success)
+			Foreground(Success)
 
 	StepFailed = lipgloss.NewStyle().
-		Foreground(Error)
+			Foreground(Error)
 
 	StepSkipped = lipgloss.NewStyle().
-		Foreground(Warning)
+			Foreground(Warning)
 
 	// Step number style
 	StepNumber = lipgloss.NewStyle().
-		Foreground(Muted).
-		Width(4)
+			Foreground(Muted).
+			Width(4)
 
 	// Step name style
 	StepName = lipgloss.NewStyle().
-		Bold(true)
+			Bold(true)
 
 	// Task status styles
 	TaskStatusPending = lipgloss.NewStyle().
-		Foreground(Muted).
-		Bold(true)
+				Foreground(Muted).
+				Bold(true)
 
 	TaskStatusRunning = lipgloss.NewStyle().
-		Foreground(Info).
-		Bold(true)
+				Foreground(Info).
+				Bold(true)
 
 	TaskStatusCompleted = lipgloss.NewStyle().
-		Foreground(Success).
-		Bold(true)
+				Foreground(Success).
+				Bold(true)
 
 	TaskStatusFailed = lipgloss.NewStyle().
-		Foreground(Error).
-		Bold(true)
+				Foreground(Error).
+				Bold(true)
 
 	TaskStatusPaused = lipgloss.NewStyle().
-		Foreground(Warning).
-		Bold(true)
+				Foreground(Warning).
+				Bold(true)
 )
 
 // Step status icons

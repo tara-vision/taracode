@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	braveAPIEndpoint = "https://api.search.brave.com/res/v1/web/search"
+	braveAPIEndpoint    = "https://api.search.brave.com/res/v1/web/search"
 	braveDefaultTimeout = 10 * time.Second
 )
 

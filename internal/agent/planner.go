@@ -33,18 +33,18 @@ type TaskPlan struct {
 
 // PlanStep represents a single step in the plan
 type PlanStep struct {
-	Index        int      `json:"index"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	AgentType    Type     `json:"agent_type"`
-	ActionType   string   `json:"action_type"` // tool, command, analyze
-	Tool         string   `json:"tool,omitempty"`
-	Command      string   `json:"command,omitempty"`
-	Prompt       string   `json:"prompt,omitempty"`
-	DependsOn    []int    `json:"depends_on,omitempty"`
-	Checkpoint   bool     `json:"checkpoint,omitempty"`
-	Verification string   `json:"verification,omitempty"`
-	OnFailure    string   `json:"on_failure,omitempty"` // retry, skip, abort, rollback
+	Index        int    `json:"index"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	AgentType    Type   `json:"agent_type"`
+	ActionType   string `json:"action_type"` // tool, command, analyze
+	Tool         string `json:"tool,omitempty"`
+	Command      string `json:"command,omitempty"`
+	Prompt       string `json:"prompt,omitempty"`
+	DependsOn    []int  `json:"depends_on,omitempty"`
+	Checkpoint   bool   `json:"checkpoint,omitempty"`
+	Verification string `json:"verification,omitempty"`
+	OnFailure    string `json:"on_failure,omitempty"` // retry, skip, abort, rollback
 }
 
 // CanHandle returns true for planning-related tasks

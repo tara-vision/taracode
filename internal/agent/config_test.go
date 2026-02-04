@@ -35,11 +35,11 @@ func TestGetAgentConfig(t *testing.T) {
 		expectedTemp float32
 	}{
 		{TypePlanner, 0.3},
-		{TypeCoder, 0.4},      // Coder uses higher temperature for creative code generation
+		{TypeCoder, 0.4}, // Coder uses higher temperature for creative code generation
 		{TypeTester, 0.2},
-		{TypeReviewer, 0.5},   // Reviewer uses higher temperature for varied feedback
-		{TypeDevOps, 0.3},     // DevOps temperature for infrastructure tasks
-		{TypeSecurity, 0.2},   // Security uses low temperature for precise analysis
+		{TypeReviewer, 0.5}, // Reviewer uses higher temperature for varied feedback
+		{TypeDevOps, 0.3},   // DevOps temperature for infrastructure tasks
+		{TypeSecurity, 0.2}, // Security uses low temperature for precise analysis
 		{TypeDiagnostics, 0.2},
 	}
 

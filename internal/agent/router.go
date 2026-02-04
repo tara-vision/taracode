@@ -16,9 +16,9 @@ const (
 
 // RoutingRule defines a rule for routing tasks to agents
 type RoutingRule struct {
-	Pattern   string `yaml:"pattern" json:"pattern"`     // Regex pattern to match
+	Pattern   string `yaml:"pattern" json:"pattern"`       // Regex pattern to match
 	AgentType Type   `yaml:"agent_type" json:"agent_type"` // Agent to route to
-	Priority  int    `yaml:"priority" json:"priority"`   // Higher = checked first
+	Priority  int    `yaml:"priority" json:"priority"`     // Higher = checked first
 }
 
 // Router handles agent selection based on task content and routing rules
@@ -177,11 +177,11 @@ func (r *Router) RouteByToolName(toolName string) Type {
 
 // GetRoutingInfo returns information about how a prompt would be routed
 type RoutingInfo struct {
-	Prompt        string `json:"prompt"`
-	MatchedRule   string `json:"matched_rule,omitempty"`
-	MatchedAgent  Type   `json:"matched_agent"`
-	Confidence    string `json:"confidence"` // high, medium, low
-	Alternatives  []Type `json:"alternatives,omitempty"`
+	Prompt       string `json:"prompt"`
+	MatchedRule  string `json:"matched_rule,omitempty"`
+	MatchedAgent Type   `json:"matched_agent"`
+	Confidence   string `json:"confidence"` // high, medium, low
+	Alternatives []Type `json:"alternatives,omitempty"`
 }
 
 // ExplainRouting explains how a prompt would be routed

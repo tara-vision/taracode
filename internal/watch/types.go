@@ -45,10 +45,10 @@ type Finding struct {
 
 // AnalysisResult contains the LLM's findings from analyzing a screenshot
 type AnalysisResult struct {
-	Timestamp    time.Time `json:"timestamp"`
-	ScreenCount  int       `json:"screen_count"`
-	Findings     []Finding `json:"findings"`
-	RawResponse  string    `json:"raw_response,omitempty"`
+	Timestamp    time.Time     `json:"timestamp"`
+	ScreenCount  int           `json:"screen_count"`
+	Findings     []Finding     `json:"findings"`
+	RawResponse  string        `json:"raw_response,omitempty"`
 	AnalysisTime time.Duration `json:"analysis_time"`
 }
 
@@ -81,12 +81,12 @@ func (r *AnalysisResult) WarningCount() int {
 
 // ScreenCapture represents a captured screenshot
 type ScreenCapture struct {
-	Path       string    `json:"path"`
-	DisplayID  int       `json:"display_id"`
-	Width      int       `json:"width"`
-	Height     int       `json:"height"`
-	Timestamp  time.Time `json:"timestamp"`
-	Hash       uint64    `json:"hash"`
+	Path      string    `json:"path"`
+	DisplayID int       `json:"display_id"`
+	Width     int       `json:"width"`
+	Height    int       `json:"height"`
+	Timestamp time.Time `json:"timestamp"`
+	Hash      uint64    `json:"hash"`
 }
 
 // WatchConfig holds configuration for the watch monitor

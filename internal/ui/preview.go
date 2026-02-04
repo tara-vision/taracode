@@ -9,12 +9,12 @@ import (
 
 // EditPreview represents a preview of an edit operation
 type EditPreview struct {
-	FilePath   string
-	OldContent string
-	NewContent string
-	OldString  string
-	NewString  string
-	LinesAdded int
+	FilePath     string
+	OldContent   string
+	NewContent   string
+	OldString    string
+	NewString    string
+	LinesAdded   int
 	LinesRemoved int
 }
 

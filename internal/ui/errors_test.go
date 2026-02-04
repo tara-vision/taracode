@@ -204,4 +204,3 @@ func TestFormatConnectionError(t *testing.T) {
 		t.Error("Expected suggestion to start ollama")
 	}
 }
-
