@@ -779,7 +779,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		handleDiff(historyManager, args, workingDir)
 
 	case "/remember":
-		handleRemember(memoryManager, args)
+		handleRemember(memoryManager, args, asst)
 
 	case "/memory":
 		handleMemory(memoryManager, args)
@@ -2704,7 +2704,7 @@ func exportDiffToPatch(historyManager *history.Manager, workingDir string) {
 }
 
 // handleRemember saves a new memory about the project
-func handleRemember(mm *memory.Manager, args []string) {
+func handleRemember(mm *memory.Manager, args []string, asst **assistant.Assistant) {
 	if mm == nil {
 		fmt.Println("Memory not available.")
 		fmt.Println("Initialize the project with /init first.")
@@ -2754,6 +2754,11 @@ func handleRemember(mm *memory.Manager, args []string) {
 		fmt.Printf("   Tags: %s\n", strings.Join(tags, ", "))
 	}
 	fmt.Println()
+
+	// Refresh system prompt to include the new memory
+	if asst != nil && *asst != nil {
+		(*asst).RefreshSystemPrompt()
+	}
 }
 
 // detectMemoryCategory determines the category based on content keywords

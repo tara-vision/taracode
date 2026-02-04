@@ -984,6 +984,15 @@ func (a *Assistant) GetProjectContext() *context.ProjectContext {
 	return a.projectCtx
 }
 
+// RefreshSystemPrompt rebuilds the system prompt to include any new memories or context
+func (a *Assistant) RefreshSystemPrompt() {
+	a.systemPrompt = buildSystemPromptWithModeAndTools(a.workingDir, a.storage, a.mode, a.useNativeTools)
+	// Update system message in conversation
+	if len(a.conversation) > 0 && a.conversation[0].Role == openai.ChatMessageRoleSystem {
+		a.conversation[0].Content = a.systemPrompt
+	}
+}
+
 // SetMode switches the operating mode and rebuilds the system prompt
 func (a *Assistant) SetMode(mode string) error {
 	targetMode := storage.OperatingMode(mode)

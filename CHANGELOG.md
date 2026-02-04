@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-02-04
+
+### Fixed
+
+- **Memories not immediately available after `/remember`** - System prompt now refreshes after saving a memory,
+  making it immediately available to the AI without needing to restart the session
+
 ## [1.0.1] - 2026-02-04
 
 ### Fixed
@@ -67,7 +74,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v1.0.2...HEAD
+
+[1.0.2]: https://github.com/tara-vision/taracode/compare/v1.0.1...v1.0.2
 
 [1.0.1]: https://github.com/tara-vision/taracode/compare/v1.0.0...v1.0.1
 
