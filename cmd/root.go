@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/mcp"
+	"github.com/tara-vision/taracode/internal/provider"
 )
 
 var (
@@ -114,6 +115,89 @@ func GetMCPConfig() mcp.MCPConfig {
 	}
 
 	return cfg
+}
+
+// GetHostsConfig returns the hosts configuration from viper
+// Supports both new multi-host config and legacy single-host config
+func GetHostsConfig() provider.HostsConfig {
+	// Check for new hosts configuration
+	if viper.IsSet("hosts") {
+		cfg := provider.NewHostsConfig()
+
+		// Get hosts map
+		var hostsMap map[string]interface{}
+		if err := viper.UnmarshalKey("hosts", &hostsMap); err == nil {
+			for name, hostData := range hostsMap {
+				if h, ok := hostData.(map[string]interface{}); ok {
+					hostCfg := provider.HostConfig{
+						Name:     name,
+						Priority: 10, // default priority
+					}
+
+					if url, ok := h["url"].(string); ok {
+						hostCfg.URL = url
+					}
+					if vendor, ok := h["vendor"].(string); ok {
+						hostCfg.Vendor = vendor
+					}
+					if apiKey, ok := h["api_key"].(string); ok {
+						hostCfg.APIKey = apiKey
+					}
+					if fallback, ok := h["fallback"].(string); ok {
+						hostCfg.Fallback = fallback
+					}
+					switch p := h["priority"].(type) {
+					case int:
+						hostCfg.Priority = p
+					case float64:
+						hostCfg.Priority = int(p)
+					}
+					if timeout, ok := h["timeout"].(string); ok {
+						if d, err := time.ParseDuration(timeout); err == nil {
+							hostCfg.Timeout = d
+						}
+					}
+					if models, ok := h["models"].([]interface{}); ok {
+						for _, m := range models {
+							if model, ok := m.(string); ok {
+								hostCfg.Models = append(hostCfg.Models, model)
+							}
+						}
+					}
+
+					if hostCfg.URL != "" {
+						cfg.Hosts[name] = hostCfg
+					}
+				}
+			}
+		}
+
+		// Get default host
+		cfg.DefaultHost = viper.GetString("default_host")
+		if cfg.DefaultHost == "" && len(cfg.Hosts) > 0 {
+			// If no default specified, use first host by priority
+			minPriority := 999
+			for name, h := range cfg.Hosts {
+				if h.Priority < minPriority {
+					minPriority = h.Priority
+					cfg.DefaultHost = name
+				}
+			}
+		}
+
+		return cfg
+	}
+
+	// Fall back to legacy single-host configuration
+	host := viper.GetString("host")
+	apiKey := viper.GetString("key")
+	vendor := viper.GetString("vendor")
+
+	if host == "" {
+		return provider.NewHostsConfig()
+	}
+
+	return provider.NewHostsConfigFromLegacy(host, apiKey, vendor)
 }
 
 // ValidSeverityLevels defines the valid severity levels for security scans

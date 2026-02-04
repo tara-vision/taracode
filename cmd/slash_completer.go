@@ -138,6 +138,10 @@ func GetSlashCommands() []SlashCommand {
 		{"/tools", "List available AI tools"},
 		{"/usage", "Show token usage statistics"},
 		{"/help", "Show help message"},
+		// Hosts (Multi-Host v2.0)
+		{"/hosts", "Show all configured hosts and their status"},
+		{"/hosts check", "Force health check on all hosts"},
+		{"/hosts reconnect", "Reconnect to unhealthy hosts"},
 		// Upgrade
 		{"/upgrade", "Check for and install updates"},
 		{"/upgrade check", "Check for new version"},

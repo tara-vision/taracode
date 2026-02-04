@@ -28,6 +28,7 @@ type AgentsConfig struct {
 // AgentConfigYAML represents an agent's configuration in YAML format
 type AgentConfigYAML struct {
 	Model            string   `yaml:"model" mapstructure:"model"`
+	Host             string   `yaml:"host,omitempty" mapstructure:"host"` // Host name from hosts config
 	Temperature      float32  `yaml:"temperature" mapstructure:"temperature"`
 	MaxContextTokens int      `yaml:"max_context_tokens" mapstructure:"max_context_tokens"`
 	ToolCategories   []string `yaml:"tool_categories" mapstructure:"tool_categories"`
@@ -159,6 +160,9 @@ func mergeAgentConfigYAML(base, override *AgentConfigYAML) *AgentConfigYAML {
 	if override.Model != "" {
 		result.Model = override.Model
 	}
+	if override.Host != "" {
+		result.Host = override.Host
+	}
 	if override.Temperature != 0 {
 		result.Temperature = override.Temperature
 	}
@@ -218,6 +222,7 @@ func (ac *AgentsConfig) GetAgentConfig(agentType Type) Config {
 
 	return Config{
 		Model:            yamlCfg.Model,
+		Host:             yamlCfg.Host,
 		Temperature:      yamlCfg.Temperature,
 		MaxContextTokens: yamlCfg.MaxContextTokens,
 		ToolCategories:   yamlCfg.ToolCategories,
@@ -259,14 +264,20 @@ fallback_model: gemma3:27b
 timeout_multiplier: 1.0
 
 # Individual agent configurations
+# Each agent can specify:
+#   - model: LLM model to use
+#   - host: Named host from hosts config (optional, uses default if not set)
+#   - temperature, max_context_tokens, timeout, etc.
 planner:
   model: gemma3:12b
+  # host: primary        # Uncomment to use specific host
   temperature: 0.3
   max_context_tokens: 4096
   timeout: 60
 
 coder:
   model: gemma3:27b
+  # host: primary        # Use powerful GPU host for coding
   temperature: 0.4
   max_context_tokens: 16384
   tool_categories:
@@ -285,7 +296,8 @@ tester:
   timeout: 180
 
 reviewer:
-  model: gemma3:27b
+  model: llama3.2:3b
+  # host: local          # Use lightweight local model for reviews
   temperature: 0.5
   max_context_tokens: 12288
   tool_categories:
@@ -316,6 +328,7 @@ security:
 
 diagnostics:
   model: gemma3:12b
+  # host: local          # Quick diagnostics on local
   temperature: 0.2
   max_context_tokens: 4096
   tool_categories:

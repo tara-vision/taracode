@@ -15,6 +15,7 @@ import (
 type TaskBridge struct {
 	orchestrator *Orchestrator
 	providerPool *provider.Pool
+	hostPool     *provider.HostPool // Multi-host support (v2.0)
 	toolRegistry *tools.Registry
 	taskManager  *storage.TaskManager
 	workingDir   string
@@ -50,8 +51,18 @@ func (tb *TaskBridge) InitializeWithConfig(cfg agent.AgentsConfig) error {
 	// Create agent registry
 	agentRegistry := agent.NewRegistry(tb.toolRegistry)
 
-	// Initialize with provider and config
-	if err := agentRegistry.InitializeWithConfig(tb.providerPool.GetDefault(), cfg); err != nil {
+	// Initialize with appropriate provider source
+	var err error
+	if tb.hostPool != nil {
+		// Use multi-host pool with per-agent host assignment
+		err = agentRegistry.InitializeWithHostPool(tb.hostPool, cfg)
+	} else if tb.providerPool != nil {
+		// Use single provider pool
+		err = agentRegistry.InitializeWithConfig(tb.providerPool.GetDefault(), cfg)
+	} else {
+		return fmt.Errorf("no provider pool or host pool configured")
+	}
+	if err != nil {
 		return fmt.Errorf("failed to initialize agent registry: %w", err)
 	}
 
@@ -307,9 +318,35 @@ func NewTaskBridgeFromProvider(
 	}
 }
 
+// NewTaskBridgeFromHostPool creates a TaskBridge using a multi-host pool (v2.0)
+// This enables per-agent host assignment with fallback support
+func NewTaskBridgeFromHostPool(
+	hostPool *provider.HostPool,
+	toolReg *tools.Registry,
+	taskMgr *storage.TaskManager,
+	workingDir string,
+) *TaskBridge {
+	return &TaskBridge{
+		hostPool:     hostPool,
+		toolRegistry: toolReg,
+		taskManager:  taskMgr,
+		workingDir:   workingDir,
+	}
+}
+
 // GetProviderPool returns the provider pool
 func (tb *TaskBridge) GetProviderPool() *provider.Pool {
 	return tb.providerPool
+}
+
+// GetHostPool returns the multi-host pool (v2.0)
+func (tb *TaskBridge) GetHostPool() *provider.HostPool {
+	return tb.hostPool
+}
+
+// HasHostPool returns true if using multi-host configuration
+func (tb *TaskBridge) HasHostPool() bool {
+	return tb.hostPool != nil
 }
 
 // SetWorkingDir updates the working directory

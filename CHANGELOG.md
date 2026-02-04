@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-02-04
+
+### Added
+
+- **Multi-Host Support** - Connect to multiple Ollama/LLM hosts simultaneously with fallback logic
+  - Configure named hosts in `~/.taracode/config.yaml` with the new `hosts:` section
+  - Per-agent host assignment - run different agents on different hosts
+  - Automatic fallback when a host becomes unavailable
+  - Background health checking with configurable intervals
+  - `/hosts` command to view status of all configured hosts
+  - `/hosts check` to force health check on all hosts
+  - `/hosts reconnect` to reconnect to unhealthy hosts
+  - Priority-based host selection for optimal load distribution
+- **Model Switching with Host Awareness** - `/model` now shows models from all healthy hosts
+  - Seamlessly switch between models on different hosts
+  - Model preference persists across assistant recreation
+
+### Changed
+
+- Version bump from 1.x to 2.x due to configuration schema changes
+- Agent registry now supports initialization from host pool
+- TaskBridge supports both single-host and multi-host operation modes
+
+### Fixed
+
+- Thread-safety improvements in HostPool with proper mutex handling
+- Race condition in health check cancellation
+
+### Migration Notes
+
+- **Backward compatible**: Existing `host:` configuration continues to work unchanged
+- To enable multi-host, add a `hosts:` section to config (see config.example.yaml)
+- The `/hosts` command is only available when multi-host mode is configured
+
+## [1.0.3] - 2026-02-04
+
+### Fixed
+
+- Minor bug fixes and stability improvements
+
 ## [1.0.2] - 2026-02-04
 
 ### Fixed
@@ -74,7 +114,11 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.0...HEAD
+
+[2.0.0]: https://github.com/tara-vision/taracode/compare/v1.0.3...v2.0.0
+
+[1.0.3]: https://github.com/tara-vision/taracode/compare/v1.0.2...v1.0.3
 
 [1.0.2]: https://github.com/tara-vision/taracode/compare/v1.0.1...v1.0.2
 

@@ -1,7 +1,10 @@
 # Tara Code Configuration File
 # Copy this to ~/.taracode/config.yaml
 
-# Ollama Server Host (required)
+# =============================================================================
+# SINGLE HOST CONFIGURATION (Legacy - still fully supported)
+# =============================================================================
+# Ollama Server Host (required for single-host mode)
 # The base URL of your Ollama server
 host: http://localhost:11434
 
@@ -13,6 +16,52 @@ key: ""
 # The model is auto-detected from your Ollama server via /v1/models endpoint.
 # Only specify this if auto-detection fails or you want a specific model.
 # model: gemma3:27b
+
+# =============================================================================
+# MULTI-HOST CONFIGURATION (v2.0)
+# =============================================================================
+# Configure multiple LLM hosts with fallback support and per-agent assignment.
+# When using multi-host mode, the 'host' field above is ignored.
+#
+# hosts:
+#   # Primary GPU server - high-performance models
+#   primary:
+#     url: http://ollama.tara.lab
+#     vendor: ollama           # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
+#     # api_key: ""            # optional: API key if required
+#     models: [gemma3:27b, qwen2.5-coder:32b]  # optional: available models
+#     timeout: 30s             # connection timeout
+#     priority: 1              # lower = higher priority
+#
+#   # Local fallback - lightweight models
+#   local:
+#     url: http://localhost:11434
+#     fallback: primary        # use 'primary' if this host is unavailable
+#     priority: 2
+#
+# # Which host to use by default
+# default_host: primary
+#
+# =============================================================================
+# PER-AGENT HOST ASSIGNMENT
+# =============================================================================
+# Assign specific hosts to agents in the agents section of config:
+#
+# agents:
+#   planner:
+#     model: gemma3:12b
+#     host: local            # Use local for quick planning
+#
+#   coder:
+#     model: qwen2.5-coder:32b
+#     host: primary          # Use powerful GPU for code generation
+#
+#   reviewer:
+#     model: llama3.2:3b
+#     host: local            # Use lightweight model for reviews
+#
+# Run /hosts in the REPL to see host status and health.
+# =============================================================================
 
 # Search Configuration
 search:

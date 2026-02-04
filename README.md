@@ -183,6 +183,7 @@ Full DevSecOps capabilities with audit logging:
 | `/diff`        | Show session changes           |
 | `/tools`       | List available tools           |
 | `/upgrade`     | Check for and install updates  |
+| `/hosts`       | Multi-host status (v2.0)       |
 | `/help`        | Show help                      |
 
 ## Configuration
@@ -190,9 +191,21 @@ Full DevSecOps capabilities with audit logging:
 Create `~/.taracode/config.yaml`:
 
 ```yaml
-# Ollama Server
+# Single Host (simple setup)
 host: http://localhost:11434
 model: gemma3:27b
+
+# Multi-Host Setup (v2.0) - for multiple Ollama servers
+hosts:
+  primary:
+    url: http://ollama.tara.lab
+    models: [gemma3:27b, qwen2.5-coder:32b]
+    priority: 1
+  local:
+    url: http://localhost:11434
+    fallback: primary      # Use primary if local is down
+    priority: 2
+default_host: primary
 
 # Search
 search:
@@ -205,9 +218,14 @@ memory:
   enabled: true
   auto_capture: true
 
-# Agents
+# Per-agent host assignment
 agents:
-  enabled: true
+  coder:
+    host: primary
+    model: qwen2.5-coder:32b
+  reviewer:
+    host: local
+    model: llama3.2:3b
 ```
 
 See [config.example.yaml](config.example.yaml) for all options.

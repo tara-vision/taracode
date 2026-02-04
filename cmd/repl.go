@@ -20,6 +20,7 @@ import (
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/orchestrator"
 	"github.com/tara-vision/taracode/internal/permissions"
+	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -28,25 +29,48 @@ import (
 )
 
 func startREPL() {
+	// Check for multi-host configuration first (v2.0)
+	hostsCfg := GetHostsConfig()
+	useMultiHost := !hostsCfg.IsEmpty() && len(hostsCfg.Hosts) > 1
+
 	// Get configuration from config or environment
 	host := viper.GetString("host")
+	apiKey := viper.GetString("key")
+	model := viper.GetString("model")
+	vendor := viper.GetString("vendor")
+
+	// For multi-host mode, use default host settings if not overridden
+	if useMultiHost {
+		if defaultHost, ok := hostsCfg.GetDefaultHost(); ok {
+			// Use host URL if not set via legacy config
+			if host == "" {
+				host = defaultHost.URL
+			}
+			// Use host API key if not set
+			if apiKey == "" && defaultHost.APIKey != "" {
+				apiKey = defaultHost.APIKey
+			}
+			// Use host vendor if not set
+			if vendor == "" && defaultHost.Vendor != "" {
+				vendor = defaultHost.Vendor
+			}
+			// Use first model from host's models list if not set
+			if model == "" && len(defaultHost.Models) > 0 {
+				model = defaultHost.Models[0]
+			}
+		}
+	}
+
+	// Validate host configuration
 	if host == "" {
 		fmt.Fprintln(os.Stderr, "Error: LLM server host not found.")
 		fmt.Fprintln(os.Stderr, "Set it via:")
 		fmt.Fprintln(os.Stderr, "  - Environment variable: export TARACODE_HOST=http://ollama.tara.lab")
 		fmt.Fprintln(os.Stderr, "  - Config file: ~/.taracode/config.yaml")
 		fmt.Fprintln(os.Stderr, "  - Command flag: --host http://ollama.tara.lab")
+		fmt.Fprintln(os.Stderr, "  - Multi-host config: hosts: section in config.yaml")
 		os.Exit(1)
 	}
-
-	// API key is optional for local servers
-	apiKey := viper.GetString("key")
-
-	// Model is optional - will be auto-detected from server
-	model := viper.GetString("model")
-
-	// Vendor is optional - will be auto-detected from host URL
-	vendor := viper.GetString("vendor")
 
 	// Streaming is enabled by default (--no-stream to disable)
 	streaming := !viper.GetBool("no_stream")
@@ -196,21 +220,52 @@ func startREPL() {
 	// Initialize watch monitor for screen monitoring (nil until /watch start)
 	var watchMonitor *watch.WatchMonitor
 
+	// Initialize HostPool for multi-host support (v2.0)
+	var hostPool *provider.HostPool
+	if useMultiHost {
+		hostPool = provider.NewHostPool(hostsCfg)
+		connectCtx, connectCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		if err := hostPool.ConnectAll(connectCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: some hosts failed to connect: %v\n", err)
+		}
+		connectCancel()
+
+		// Start background health checks
+		hostPool.StartHealthChecks(context.Background())
+
+		// Show multi-host status
+		fmt.Printf("%s Multi-host mode: %d/%d hosts connected\n",
+			ui.SuccessStyle.Render(ui.IconSuccess),
+			hostPool.HealthyCount(),
+			hostPool.HostCount())
+	}
+
 	// Initialize TaskBridge for multi-agent orchestration
 	var taskBridge *orchestrator.TaskBridge
 	if isProjectInitialized {
 		taracodeDir := filepath.Join(projectRoot, ".taracode")
 		taskMgr, err := storage.NewTaskManager(taracodeDir)
 		if err == nil {
-			// Create TaskBridge with the assistant's provider
-			taskBridge = orchestrator.NewTaskBridgeFromProvider(
-				asst.GetProvider(),
-				asst.GetToolRegistry(),
-				taskMgr,
-				currentAbsDir,
-				host,
-				apiKey,
-			)
+			// Create TaskBridge with appropriate provider source
+			if hostPool != nil {
+				// Use multi-host pool for per-agent host assignment
+				taskBridge = orchestrator.NewTaskBridgeFromHostPool(
+					hostPool,
+					asst.GetToolRegistry(),
+					taskMgr,
+					currentAbsDir,
+				)
+			} else {
+				// Use single provider (legacy mode)
+				taskBridge = orchestrator.NewTaskBridgeFromProvider(
+					asst.GetProvider(),
+					asst.GetToolRegistry(),
+					taskMgr,
+					currentAbsDir,
+					host,
+					apiKey,
+				)
+			}
 			// Load agent configuration from global config and project overrides
 			agentsCfg := agent.LoadAgentsConfig(projectRoot)
 			if err := taskBridge.InitializeWithConfig(agentsCfg); err != nil {
@@ -251,6 +306,10 @@ func startREPL() {
 			if watchMonitor != nil && watchMonitor.IsRunning() {
 				watchMonitor.Stop()
 			}
+			// Stop host health checks if running
+			if hostPool != nil {
+				hostPool.Close()
+			}
 			// Generate summary on exit if session has messages
 			handleExitWithSummary(asst)
 			break
@@ -269,6 +328,10 @@ func startREPL() {
 			// Stop watch monitor if running
 			if watchMonitor != nil && watchMonitor.IsRunning() {
 				watchMonitor.Stop()
+			}
+			// Stop host health checks if running
+			if hostPool != nil {
+				hostPool.Close()
 			}
 			handleExitWithSummary(asst)
 			break
@@ -394,14 +457,25 @@ func startREPL() {
 					if taskBridge == nil {
 						taskMgr, err := storage.NewTaskManager(taracodeDir)
 						if err == nil {
-							taskBridge = orchestrator.NewTaskBridgeFromProvider(
-								asst.GetProvider(),
-								asst.GetToolRegistry(),
-								taskMgr,
-								currentAbsDir,
-								host,
-								apiKey,
-							)
+							if hostPool != nil {
+								// Use multi-host pool for per-agent host assignment
+								taskBridge = orchestrator.NewTaskBridgeFromHostPool(
+									hostPool,
+									asst.GetToolRegistry(),
+									taskMgr,
+									currentAbsDir,
+								)
+							} else {
+								// Use single provider (legacy mode)
+								taskBridge = orchestrator.NewTaskBridgeFromProvider(
+									asst.GetProvider(),
+									asst.GetToolRegistry(),
+									taskMgr,
+									currentAbsDir,
+									host,
+									apiKey,
+								)
+							}
 							// Load agent configuration
 							agentsCfg := agent.LoadAgentsConfig(projectRoot)
 							_ = taskBridge.InitializeWithConfig(agentsCfg)
@@ -458,8 +532,17 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return
 		}
+		// Get current host and model from existing assistant to preserve state
+		currentHost := host
+		currentModel := model
+		currentVendor := vendor
+		if provInfo := (*asst).GetProviderInfo(); provInfo != nil {
+			currentHost = provInfo.Host
+			currentModel = provInfo.Model
+			currentVendor = provInfo.Type.String()
+		}
 		// Reinitialize assistant to pick up new context
-		newAsst, err := assistant.New(host, apiKey, model, vendor, streaming, enableSpinner)
+		newAsst, err := assistant.New(currentHost, apiKey, currentModel, currentVendor, streaming, enableSpinner)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reinitializing assistant: %v\n", err)
 			return
@@ -740,7 +823,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		handleShowPlan(*asst)
 
 	case "/model":
-		handleModelSwitch(*asst)
+		handleModelSwitch(asst, taskBridge, streaming, enableSpinner)
 
 	case "/permissions":
 		handlePermissions(*asst, args)
@@ -813,6 +896,10 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/upgrade":
 		// Check for and install updates
 		handleUpgradeCommand(args)
+
+	case "/hosts":
+		// Multi-host status and management (v2.0)
+		handleHostsCommand(args, taskBridge)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
@@ -1832,21 +1919,100 @@ func handleShowPlan(asst *assistant.Assistant) {
 	fmt.Println()
 }
 
+// modelWithHost combines model info with host name for multi-host display
+type modelWithHost struct {
+	provider.ModelInfo
+	HostName string
+	HostURL  string // URL for recreating assistant if host changes
+	APIKey   string
+	Vendor   string
+}
+
 // handleModelSwitch lists available models and allows switching
-func handleModelSwitch(asst *assistant.Assistant) {
+func handleModelSwitch(asst **assistant.Assistant, taskBridge *orchestrator.TaskBridge, streaming, enableSpinner bool) {
 	// Get current model
-	currentModel := asst.GetCurrentModel()
+	currentModel := (*asst).GetCurrentModel()
+	currentHost := ""
+	if provInfo := (*asst).GetProviderInfo(); provInfo != nil {
+		currentHost = provInfo.Host
+	}
 	fmt.Printf("Current model: %s\n\n", currentModel)
 
-	// List available models
-	models, err := asst.ListModels()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.EnhanceError(err))
-		fmt.Println()
-		return
+	var allModels []modelWithHost
+
+	// Check for multi-host mode
+	if taskBridge != nil && taskBridge.HasHostPool() {
+		hostPool := taskBridge.GetHostPool()
+		hostInfos := hostPool.GetHostInfo()
+
+		// Collect models from all healthy hosts
+		for _, hostInfo := range hostInfos {
+			if hostInfo.Status != provider.HostStatusHealthy {
+				continue
+			}
+			conn, ok := hostPool.GetConnection(hostInfo.Name)
+			if !ok || conn.Provider == nil {
+				continue
+			}
+
+			// Get models from this host's provider
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			hostModels, err := conn.Provider.DetectModels(ctx)
+			cancel()
+
+			if err != nil {
+				continue
+			}
+
+			// Get detailed model info if provider supports it
+			if mm, ok := conn.Provider.(provider.ModelManager); ok {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				detailedModels, err := mm.ListModels(ctx)
+				cancel()
+
+				if err == nil {
+					for _, dm := range detailedModels {
+						allModels = append(allModels, modelWithHost{
+							ModelInfo: provider.ModelInfo{
+								Name:   dm.Name,
+								Size:   dm.Size,
+								Params: dm.Params,
+							},
+							HostName: hostInfo.Name,
+							HostURL:  conn.Config.URL,
+							APIKey:   conn.Config.APIKey,
+							Vendor:   conn.Config.Vendor,
+						})
+					}
+					continue
+				}
+			}
+
+			// Fall back to basic model list
+			for _, modelName := range hostModels {
+				allModels = append(allModels, modelWithHost{
+					ModelInfo: provider.ModelInfo{Name: modelName},
+					HostName:  hostInfo.Name,
+					HostURL:   conn.Config.URL,
+					APIKey:    conn.Config.APIKey,
+					Vendor:    conn.Config.Vendor,
+				})
+			}
+		}
+	} else {
+		// Single host mode - use assistant's ListModels
+		models, err := (*asst).ListModels()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, ui.EnhanceError(err))
+			fmt.Println()
+			return
+		}
+		for _, m := range models {
+			allModels = append(allModels, modelWithHost{ModelInfo: m, HostName: ""})
+		}
 	}
 
-	if len(models) == 0 {
+	if len(allModels) == 0 {
 		fmt.Println("No models available.")
 		fmt.Println("Pull a model with: ollama pull gemma3:27b")
 		fmt.Println()
@@ -1854,13 +2020,26 @@ func handleModelSwitch(asst *assistant.Assistant) {
 	}
 
 	// Build items for the selector
-	items := make([]string, len(models))
-	for i, m := range models {
+	items := make([]string, len(allModels))
+	for i, m := range allModels {
 		indicator := "  "
 		if m.Name == currentModel {
 			indicator = "* "
 		}
-		items[i] = fmt.Sprintf("%s%s (%s, %s)", indicator, m.Name, m.Params, m.FormatSize())
+
+		// Include host name for multi-host mode
+		hostLabel := ""
+		if m.HostName != "" {
+			hostLabel = fmt.Sprintf(" [%s]", m.HostName)
+		}
+
+		if m.Params != "" && m.Size > 0 {
+			items[i] = fmt.Sprintf("%s%s (%s, %s)%s", indicator, m.Name, m.Params, m.FormatSize(), hostLabel)
+		} else if m.Params != "" {
+			items[i] = fmt.Sprintf("%s%s (%s)%s", indicator, m.Name, m.Params, hostLabel)
+		} else {
+			items[i] = fmt.Sprintf("%s%s%s", indicator, m.Name, hostLabel)
+		}
 	}
 
 	// Show interactive selector
@@ -1878,23 +2057,45 @@ func handleModelSwitch(asst *assistant.Assistant) {
 		return
 	}
 
-	selectedModel := models[idx].Name
+	selected := allModels[idx]
+	selectedModel := selected.Name
 
-	if selectedModel == currentModel {
+	if selectedModel == currentModel && (selected.HostURL == "" || selected.HostURL == currentHost) {
 		fmt.Printf("Already using %s\n", selectedModel)
 		fmt.Println()
 		return
 	}
 
-	// Switch to the selected model
-	fmt.Printf("Switching from %s to %s...\n", currentModel, selectedModel)
+	// Check if we need to switch hosts (multi-host mode)
+	needsHostSwitch := selected.HostURL != "" && selected.HostURL != currentHost
 
-	if err := asst.SwitchModel(selectedModel); err != nil {
-		fmt.Fprintf(os.Stderr, "Error switching model: %v\n", err)
-		return
+	if needsHostSwitch {
+		// Update persisted model BEFORE creating new assistant
+		// This prevents the warning about saved model not being available
+		if storage := (*asst).GetStorage(); storage != nil {
+			_ = storage.SetPreferredModel(selectedModel)
+		}
+
+		// Recreate assistant with new host
+		fmt.Printf("Switching to %s on host %s...\n", selectedModel, selected.HostName)
+
+		newAsst, err := assistant.New(selected.HostURL, selected.APIKey, selectedModel, selected.Vendor, streaming, enableSpinner)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error switching host: %v\n", err)
+			return
+		}
+		*asst = newAsst
+		fmt.Printf("Now using: %s [%s]\n", selectedModel, selected.HostName)
+	} else {
+		// Same host, just switch model
+		fmt.Printf("Switching from %s to %s...\n", currentModel, selectedModel)
+
+		if err := (*asst).SwitchModel(selectedModel); err != nil {
+			fmt.Fprintf(os.Stderr, "Error switching model: %v\n", err)
+			return
+		}
+		fmt.Printf("Now using: %s\n", selectedModel)
 	}
-
-	fmt.Printf("Now using: %s\n", selectedModel)
 	fmt.Println()
 }
 

@@ -64,6 +64,65 @@ func (r *Registry) InitializeWithConfig(prov provider.Provider, cfg AgentsConfig
 	return nil
 }
 
+// InitializeWithHostPool creates agent instances with per-agent host assignment from a HostPool
+func (r *Registry) InitializeWithHostPool(hostPool *provider.HostPool, cfg AgentsConfig) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.initialized {
+		return nil
+	}
+
+	// Get default provider once - must have at least one healthy host
+	defaultProv, err := hostPool.GetDefault()
+	if err != nil {
+		// Try fallback to any healthy host
+		defaultProv, _, err = hostPool.GetDefaultWithFallback()
+		if err != nil {
+			return fmt.Errorf("no healthy hosts available: %w", err)
+		}
+	}
+
+	// Helper to get provider for an agent based on config
+	getProviderForAgent := func(agentType Type) provider.Provider {
+		agentCfg := cfg.GetAgentConfig(agentType)
+		if agentCfg.Host != "" {
+			// Try to get provider for specific host
+			prov, _, err := hostPool.GetProviderWithFallback(agentCfg.Host)
+			if err == nil {
+				return prov
+			}
+		}
+		// Fall back to default host
+		return defaultProv
+	}
+
+	// Create all agent types with their configurations and host assignments
+	r.agents[TypePlanner] = NewPlannerAgent(getProviderForAgent(TypePlanner), r.toolReg)
+	r.agents[TypePlanner].SetConfig(cfg.GetAgentConfig(TypePlanner))
+
+	r.agents[TypeCoder] = NewCoderAgent(getProviderForAgent(TypeCoder), r.toolReg)
+	r.agents[TypeCoder].SetConfig(cfg.GetAgentConfig(TypeCoder))
+
+	r.agents[TypeTester] = NewTesterAgent(getProviderForAgent(TypeTester), r.toolReg)
+	r.agents[TypeTester].SetConfig(cfg.GetAgentConfig(TypeTester))
+
+	r.agents[TypeReviewer] = NewReviewerAgent(getProviderForAgent(TypeReviewer), r.toolReg)
+	r.agents[TypeReviewer].SetConfig(cfg.GetAgentConfig(TypeReviewer))
+
+	r.agents[TypeDevOps] = NewDevOpsAgent(getProviderForAgent(TypeDevOps), r.toolReg)
+	r.agents[TypeDevOps].SetConfig(cfg.GetAgentConfig(TypeDevOps))
+
+	r.agents[TypeSecurity] = NewSecurityAgent(getProviderForAgent(TypeSecurity), r.toolReg)
+	r.agents[TypeSecurity].SetConfig(cfg.GetAgentConfig(TypeSecurity))
+
+	r.agents[TypeDiagnostics] = NewDiagnosticsAgent(getProviderForAgent(TypeDiagnostics), r.toolReg)
+	r.agents[TypeDiagnostics].SetConfig(cfg.GetAgentConfig(TypeDiagnostics))
+
+	r.initialized = true
+	return nil
+}
+
 // Get returns an agent by type
 func (r *Registry) Get(agentType Type) (Agent, error) {
 	r.mu.RLock()

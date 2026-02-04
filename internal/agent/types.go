@@ -86,6 +86,7 @@ func AllTypes() []Type {
 type Config struct {
 	Type             Type     `yaml:"type" json:"type"`
 	Model            string   `yaml:"model" json:"model"`
+	Host             string   `yaml:"host,omitempty" json:"host,omitempty"` // Host name from hosts config
 	Temperature      float32  `yaml:"temperature" json:"temperature"`
 	MaxContextTokens int      `yaml:"max_context_tokens" json:"max_context_tokens"`
 	ToolCategories   []string `yaml:"tool_categories,omitempty" json:"tool_categories,omitempty"`
