@@ -254,6 +254,14 @@ func initConfig() {
 	viper.SetDefault("memory.retention_days", 90)
 	viper.SetDefault("memory.auto_capture", true)
 
+	// Upgrade (Auto-update) configuration defaults
+	// auto_check: Check for updates on startup (default: true)
+	// auto_upgrade: Automatically install updates without prompting (default: false)
+	// show_changelog: Show changelog when update is available (default: true)
+	viper.SetDefault("upgrade.auto_check", true)
+	viper.SetDefault("upgrade.auto_upgrade", false)
+	viper.SetDefault("upgrade.show_changelog", true)
+
 	viper.SetEnvPrefix("TARACODE")
 	viper.AutomaticEnv()
 
