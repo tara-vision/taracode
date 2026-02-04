@@ -7,24 +7,24 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=flat-square&color=blue" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="License: MIT"></a>
-  <a href="https://goreportcard.com/report/github.com/tara-vision/taracode"><img src="https://goreportcard.com/badge/github.com/tara-vision/taracode?style=flat-square" alt="Go Report Card"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.23-00ADD8.svg?style=flat-square" alt="Go Version"></a>
+  <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=for-the-badge&logo=github&color=blue" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://goreportcard.com/report/github.com/tara-vision/taracode"><img src="https://goreportcard.com/badge/github.com/tara-vision/taracode?style=for-the-badge" alt="Go Report Card"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/tara-vision/taracode/stargazers"><img src="https://img.shields.io/github/stars/tara-vision/taracode?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/tara-vision/taracode/network/members"><img src="https://img.shields.io/github/forks/tara-vision/taracode?style=flat-square" alt="Forks"></a>
-  <a href="https://github.com/tara-vision/taracode/issues"><img src="https://img.shields.io/github/issues/tara-vision/taracode?style=flat-square" alt="Issues"></a>
+  <a href="https://github.com/tara-vision/taracode/stargazers"><img src="https://img.shields.io/github/stars/tara-vision/taracode?style=for-the-badge&logo=github&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/tara-vision/taracode/network/members"><img src="https://img.shields.io/github/forks/tara-vision/taracode?style=for-the-badge&logo=github&color=orange" alt="Forks"></a>
+  <a href="https://github.com/tara-vision/taracode/issues"><img src="https://img.shields.io/github/issues/tara-vision/taracode?style=for-the-badge&logo=github&color=red" alt="Issues"></a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#features">Features</a> •
-  <a href="#commands">Commands</a> •
-  <a href="https://code.tara.vision/documentation">Documentation</a> •
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue?style=flat-square" alt="Quick Start"></a>
+  <a href="#features"><img src="https://img.shields.io/badge/Features-purple?style=flat-square" alt="Features"></a>
+  <a href="#commands"><img src="https://img.shields.io/badge/Commands-teal?style=flat-square" alt="Commands"></a>
+  <a href="https://code.tara.vision/documentation"><img src="https://img.shields.io/badge/Documentation-green?style=flat-square" alt="Documentation"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributing-orange?style=flat-square" alt="Contributing"></a>
 </p>
 
 ---
