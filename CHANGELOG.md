@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-02-05
+
+### Fixed
+
+- **Multi-host fallback now works in main chat loop** - HostPool is properly wired to Assistant for automatic
+  fallback when the primary host becomes unavailable
+- **Accurate host health status display** - `/hosts` now shows correct healthy/total count; hosts are only marked
+  healthy after connectivity verification via `DetectModels()`
+- **Fallback notification** - Users now see clear feedback when fallback occurs:
+  "Primary host unavailable, switched to: <host>"
+- **Fallback failure reporting** - When no fallback is available, the error is now properly reported to the user
+
+### Added
+
+- `isHostRetryableError()` helper for detecting connection errors that should trigger fallback
+- `switchToFallbackProvider()` method in Assistant for seamless host switching
+- `SetHostPool()` method to wire HostPool to Assistant
+
 ## [2.0.0] - 2026-02-04
 
 ### Added
@@ -26,8 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Version bump from 1.x to 2.x due to configuration schema changes
-- Agent registry now supports initialization from host pool
+- Version bumps from 1.x to 2.x due to configuration schema changes
+- Agent registry now supports initialization from the host pool
 - TaskBridge supports both single-host and multi-host operation modes
 
 ### Fixed
@@ -114,7 +132,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.1...HEAD
+
+[2.0.1]: https://github.com/tara-vision/taracode/compare/v2.0.0...v2.0.1
 
 [2.0.0]: https://github.com/tara-vision/taracode/compare/v1.0.3...v2.0.0
 
