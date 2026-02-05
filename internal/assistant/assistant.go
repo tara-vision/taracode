@@ -81,6 +81,22 @@ func isRetryable(err error) bool {
 		strings.Contains(errMsg, "temporary failure")
 }
 
+// isHostRetryableError checks if an error indicates a host connection failure
+// that should trigger a fallback to another host (v2.0 multi-host support)
+func isHostRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "connection refused") ||
+		strings.Contains(errMsg, "host is down") ||
+		strings.Contains(errMsg, "no such host") ||
+		strings.Contains(errMsg, "i/o timeout") ||
+		strings.Contains(errMsg, "dial tcp") ||
+		strings.Contains(errMsg, "network is unreachable") ||
+		strings.Contains(errMsg, "connection reset")
+}
+
 // withRetry executes fn with exponential backoff retry for transient errors
 func withRetry[T any](ctx gocontext.Context, operation string, fn func() (T, error)) (T, error) {
 	var result T
@@ -142,6 +158,9 @@ type Assistant struct {
 
 	// Last AI response (for suggestion detection)
 	lastResponse string
+
+	// Multi-host fallback support (v2.0)
+	hostPool *provider.HostPool
 }
 
 // StreamFilter handles real-time filtering of think tags during streaming
@@ -921,6 +940,30 @@ func (a *Assistant) GetToolRegistry() *tools.Registry {
 // GetProvider returns the LLM provider
 func (a *Assistant) GetProvider() provider.Provider {
 	return a.provider
+}
+
+// SetHostPool sets the host pool for multi-host fallback support (v2.0)
+func (a *Assistant) SetHostPool(pool *provider.HostPool) {
+	a.hostPool = pool
+}
+
+// switchToFallbackProvider attempts to switch to a healthy fallback host (v2.0)
+// Returns the name of the host switched to, or an error if no fallback available
+func (a *Assistant) switchToFallbackProvider() (string, error) {
+	if a.hostPool == nil {
+		return "", fmt.Errorf("no host pool configured")
+	}
+
+	prov, hostName, err := a.hostPool.GetDefaultWithFallback()
+	if err != nil {
+		return "", err
+	}
+
+	// Update provider and client
+	a.provider = prov
+	a.client = prov.CreateClient()
+
+	return hostName, nil
 }
 
 // AddMCPToolDefinition adds an MCP tool definition for LLM function calling
@@ -2218,6 +2261,17 @@ func (a *Assistant) processMessageStreamingWithImages(userMessage string, images
 			}
 
 			stream, err = a.client.CreateChatCompletionStream(ctx, req)
+		}
+
+		// If still failing with connection error, try host fallback (v2.0)
+		if err != nil && isHostRetryableError(err) && a.hostPool != nil {
+			if hostName, switchErr := a.switchToFallbackProvider(); switchErr == nil {
+				fmt.Printf("\n%s Primary host unavailable, switched to: %s\n", ui.IconWarning, hostName)
+				stream, err = a.client.CreateChatCompletionStream(ctx, req)
+			} else {
+				// Fallback also failed - log for visibility
+				fmt.Printf("\n%s Primary host unavailable, no fallback available: %v\n", ui.IconWarning, switchErr)
+			}
 		}
 
 		if err != nil {

@@ -238,6 +238,9 @@ func startREPL() {
 			ui.SuccessStyle.Render(ui.IconSuccess),
 			hostPool.HealthyCount(),
 			hostPool.HostCount())
+
+		// Wire HostPool to Assistant for automatic fallback (v2.0)
+		asst.SetHostPool(hostPool)
 	}
 
 	// Initialize TaskBridge for multi-agent orchestration

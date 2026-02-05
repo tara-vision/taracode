@@ -69,13 +69,16 @@ func (p *HostPool) Connect(ctx context.Context, name string) error {
 	}
 
 	conn.Provider = prov
-	conn.MarkHealthy(latency)
 
-	// Detect available models
+	// Detect available models to verify connectivity
 	models, err := prov.DetectModels(ctx)
-	if err == nil {
-		conn.Models = models
+	if err != nil {
+		conn.MarkUnavailable(err)
+		return fmt.Errorf("failed to verify host %q connectivity: %w", name, err)
 	}
+
+	conn.Models = models
+	conn.MarkHealthy(latency)
 
 	return nil
 }
