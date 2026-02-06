@@ -26,7 +26,7 @@ key: ""
 # hosts:
 #   # Primary GPU server - high-performance models
 #   primary:
-#     url: http://ollama.tara.lab
+#     url: http://gpu-server:11434
 #     vendor: ollama           # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
 #     # api_key: ""            # optional: API key if required
 #     models: [gemma3:27b, qwen2.5-coder:32b]  # optional: available models
@@ -155,6 +155,31 @@ memory:
 
   # Detect and suggest memories from conversation (default: true)
   auto_capture: true
+
+# Context Management (v2.0.2)
+context:
+  # Maximum lines per tool output (default: 500, 0 = unlimited)
+  # Prevents large tool outputs from consuming the context window
+  max_tool_output_lines: 500
+
+  # Maximum characters per tool output (default: 15000, 0 = unlimited)
+  max_tool_output_chars: 15000
+
+  # Maximum tool call iterations per message (default: 10)
+  # Limits how many consecutive tool calls the AI can make per user message
+  max_tool_iterations: 10
+
+  # Auto-compact conversation when context is filling up (default: true)
+  # Uses LLM to summarize older messages, keeping recent ones intact
+  compaction_enabled: true
+
+  # Trigger compaction at this fraction of max_context_tokens (default: 0.75)
+  # 0.75 = compact when 75% of context window is used
+  compaction_threshold: 0.75
+
+  # Number of recent message pairs to keep during compaction (default: 4)
+  # These messages are never summarized
+  compaction_keep_recent: 4
 
 # Upgrade (Auto-update) Configuration
 upgrade:

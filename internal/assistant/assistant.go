@@ -29,14 +29,14 @@ import (
 
 // Timeout and retry constants
 const (
-	defaultConnectTimeout = 10 * time.Second
-	providerInitTimeout   = 2 * time.Minute // Timeout for provider initialization with retries
-	maxRetries            = 3
-	initialBackoff        = 1 * time.Second
-	maxBackoff            = 30 * time.Second
-	apiResponseTimeout    = 5 * time.Minute
-	modelOperationTimeout = 30 * time.Second // Timeout for model list/switch operations
-	maxToolIterations     = 10               // Max tool call iterations before stopping
+	defaultConnectTimeout    = 10 * time.Second
+	providerInitTimeout      = 2 * time.Minute // Timeout for provider initialization with retries
+	maxRetries               = 3
+	initialBackoff           = 1 * time.Second
+	maxBackoff               = 30 * time.Second
+	apiResponseTimeout       = 5 * time.Minute
+	modelOperationTimeout    = 30 * time.Second // Timeout for model list/switch operations
+	defaultMaxToolIterations = 10               // Default max tool call iterations before stopping
 )
 
 // newHTTPClient creates an HTTP client for streaming LLM responses.
@@ -161,6 +161,15 @@ type Assistant struct {
 
 	// Multi-host fallback support (v2.0)
 	hostPool *provider.HostPool
+
+	// Context management (v2.0.2)
+	truncationCfg   TruncationConfig
+	compactionCfg   CompactionConfig
+	compactionState *CompactionState
+	maxIterations   int // Configurable max tool iterations per message
+
+	// Truncation tracking for /context display
+	truncationEvents []TruncationResult
 }
 
 // StreamFilter handles real-time filtering of think tags during streaming
@@ -888,6 +897,27 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		Content: systemPrompt,
 	}
 
+	// Load context management configuration (v2.0.2)
+	maxToolOutputLines := viper.GetInt("context.max_tool_output_lines")
+	maxToolOutputChars := viper.GetInt("context.max_tool_output_chars")
+	maxIter := viper.GetInt("context.max_tool_iterations")
+	if maxIter <= 0 {
+		maxIter = 10 // default
+	}
+	if maxIter > 50 {
+		maxIter = 50 // cap
+	}
+
+	compactionEnabled := viper.GetBool("context.compaction_enabled") && !viper.GetBool("context.no_compaction")
+	compactionThreshold := viper.GetFloat64("context.compaction_threshold")
+	if compactionThreshold <= 0 || compactionThreshold > 1.0 {
+		compactionThreshold = 0.75
+	}
+	compactionKeepRecent := viper.GetInt("context.compaction_keep_recent")
+	if compactionKeepRecent <= 0 {
+		compactionKeepRecent = 4
+	}
+
 	return &Assistant{
 		provider:       prov,
 		client:         client,
@@ -905,6 +935,19 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		sessionUsage:   &storage.TokenUsage{},
 		useNativeTools: true, // Start with native tools enabled
 		permMgr:        permMgr,
+		truncationCfg: TruncationConfig{
+			MaxLines: maxToolOutputLines,
+			MaxChars: maxToolOutputChars,
+		},
+		compactionCfg: CompactionConfig{
+			Enabled:    compactionEnabled,
+			Threshold:  compactionThreshold,
+			KeepRecent: compactionKeepRecent,
+			MaxTokens:  viper.GetInt("max_context_tokens"),
+		},
+		compactionState:  NewCompactionState(),
+		maxIterations:    maxIter,
+		truncationEvents: make([]TruncationResult, 0),
 	}, nil
 }
 
@@ -945,6 +988,92 @@ func (a *Assistant) GetProvider() provider.Provider {
 // SetHostPool sets the host pool for multi-host fallback support (v2.0)
 func (a *Assistant) SetHostPool(pool *provider.HostPool) {
 	a.hostPool = pool
+}
+
+// GetContextInfo returns detailed context budget information (v2.0.2)
+func (a *Assistant) GetContextInfo() ContextInfo {
+	systemTokens := 0
+	conversationTokens := 0
+	for i, msg := range a.conversation {
+		tokens := EstimateTokens(msg.Content)
+		if i == 0 {
+			systemTokens = tokens
+		} else {
+			conversationTokens += tokens
+		}
+	}
+	toolDefTokens := EstimateToolDefsTokens(a.toolDefs)
+	totalTokens := systemTokens + conversationTokens + toolDefTokens
+	maxTokens := a.compactionCfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 32768
+	}
+
+	return ContextInfo{
+		SystemPromptTokens:  systemTokens,
+		ToolDefsTokens:      toolDefTokens,
+		ConversationTokens:  conversationTokens,
+		TotalTokens:         totalTokens,
+		MaxTokens:           maxTokens,
+		MessageCount:        len(a.conversation),
+		CompactionEvents:    a.compactionState.Events,
+		TruncationEvents:    a.truncationEvents,
+		CompactionEnabled:   a.compactionCfg.Enabled,
+		CompactionThreshold: a.compactionCfg.Threshold,
+		MaxIterations:       a.maxIterations,
+	}
+}
+
+// ContextInfo holds detailed context budget information for display
+type ContextInfo struct {
+	SystemPromptTokens  int
+	ToolDefsTokens      int
+	ConversationTokens  int
+	TotalTokens         int
+	MaxTokens           int
+	MessageCount        int
+	CompactionEvents    []CompactionEvent
+	TruncationEvents    []TruncationResult
+	CompactionEnabled   bool
+	CompactionThreshold float64
+	MaxIterations       int
+}
+
+// ForceCompact triggers immediate conversation compaction regardless of threshold
+func (a *Assistant) ForceCompact() error {
+	if len(a.conversation) < a.compactionCfg.KeepRecent*2+3 {
+		return fmt.Errorf("conversation too short to compact (%d messages, need at least %d)",
+			len(a.conversation), a.compactionCfg.KeepRecent*2+3)
+	}
+
+	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), 60*time.Second)
+	defer cancel()
+
+	// Force compaction with a very low threshold
+	forceCfg := a.compactionCfg
+	forceCfg.Enabled = true
+	forceCfg.Threshold = 0.0 // Always trigger
+
+	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, forceCfg, a.client, a.model)
+	if err != nil {
+		return fmt.Errorf("compaction failed: %w", err)
+	}
+	if event != nil {
+		a.conversation = compacted
+		a.compactionState.Events = append(a.compactionState.Events, *event)
+		a.compactionState.TotalCompacted += event.MessagesBefore - event.MessagesAfter
+	}
+	return nil
+}
+
+// GetSessionUsage returns current token usage stats
+func (a *Assistant) GetSessionUsage() *storage.TokenUsage {
+	return a.sessionUsage
+}
+
+// GetConversationLength returns the number of messages in the conversation
+func (a *Assistant) GetConversationLength() int {
+	return len(a.conversation)
 }
 
 // switchToFallbackProvider attempts to switch to a healthy fallback host (v2.0)
@@ -2225,7 +2354,22 @@ func (a *Assistant) processMessageStreamingWithImages(userMessage string, images
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), apiResponseTimeout)
 	defer cancel()
 
-	for i := 0; i < maxToolIterations; i++ {
+	for i := 0; i < a.maxIterations; i++ {
+		// Auto-compact conversation if context budget is getting high (v2.0.2)
+		if ShouldCompact(a.conversation, a.toolDefs, a.compactionCfg) {
+			compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, a.compactionCfg, a.client, a.model)
+			if err == nil && event != nil {
+				a.conversation = compacted
+				a.compactionState.Events = append(a.compactionState.Events, *event)
+				a.compactionState.TotalCompacted += event.MessagesBefore - event.MessagesAfter
+				fmt.Printf("  %s Context compacted: %dk -> %dk tokens (%d messages summarized)\n",
+					ui.IconInfo,
+					event.TokensBefore/1000,
+					event.TokensAfter/1000,
+					event.MessagesBefore-event.MessagesAfter)
+			}
+		}
+
 		// Start thinking spinner with Claude Code style status line
 		var thinkingSpinner *ui.Spinner
 		if a.enableSpinner {
@@ -2577,14 +2721,23 @@ func (a *Assistant) processMessageStreamingWithImages(userMessage string, images
 					result = fmt.Sprintf("Error: %v", err)
 				}
 
+				// Apply tool output truncation (v2.0.2)
+				if !isError {
+					truncResult := TruncateToolOutput(result, toolCall.Tool, a.truncationCfg)
+					if truncResult.WasTruncated {
+						result = truncResult.Output
+						a.truncationEvents = append(a.truncationEvents, truncResult)
+					}
+				}
+
 				// Stop tool spinner
 				if toolSpinner != nil {
 					toolSpinner.Stop()
 				}
 			}
 
-			// Print concise tool status using renderer
-			fmt.Println(a.renderer.FormatToolStatus(toolCall.Tool, toolCall.Params, result, isError))
+			// Print concise tool status using renderer (with duration)
+			fmt.Println(a.renderer.FormatToolStatusWithDuration(toolCall.Tool, toolCall.Params, result, isError, duration))
 
 			// Build tool result message
 			if hasNativeToolCalls && toolCall.ID != "" {
@@ -2672,7 +2825,22 @@ func (a *Assistant) processMessageNonStreamingWithImages(userMessage string, ima
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), apiResponseTimeout)
 	defer cancel()
 
-	for i := 0; i < maxToolIterations; i++ {
+	for i := 0; i < a.maxIterations; i++ {
+		// Auto-compact conversation if context budget is getting high (v2.0.2)
+		if ShouldCompact(a.conversation, a.toolDefs, a.compactionCfg) {
+			compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, a.compactionCfg, a.client, a.model)
+			if err == nil && event != nil {
+				a.conversation = compacted
+				a.compactionState.Events = append(a.compactionState.Events, *event)
+				a.compactionState.TotalCompacted += event.MessagesBefore - event.MessagesAfter
+				fmt.Printf("  %s Context compacted: %dk -> %dk tokens (%d messages summarized)\n",
+					ui.IconInfo,
+					event.TokensBefore/1000,
+					event.TokensAfter/1000,
+					event.MessagesBefore-event.MessagesAfter)
+			}
+		}
+
 		// Start thinking spinner with Claude Code style status line
 		var thinkingSpinner *ui.Spinner
 		if a.enableSpinner {
@@ -2936,14 +3104,23 @@ func (a *Assistant) processMessageNonStreamingWithImages(userMessage string, ima
 					result = fmt.Sprintf("Error: %v", err)
 				}
 
+				// Apply tool output truncation (v2.0.2)
+				if !isError {
+					truncResult := TruncateToolOutput(result, toolCall.Tool, a.truncationCfg)
+					if truncResult.WasTruncated {
+						result = truncResult.Output
+						a.truncationEvents = append(a.truncationEvents, truncResult)
+					}
+				}
+
 				// Stop tool spinner
 				if toolSpinner != nil {
 					toolSpinner.Stop()
 				}
 			}
 
-			// Print concise tool status using renderer
-			fmt.Println(a.renderer.FormatToolStatus(toolCall.Tool, toolCall.Params, result, isError))
+			// Print concise tool status using renderer (with duration)
+			fmt.Println(a.renderer.FormatToolStatusWithDuration(toolCall.Tool, toolCall.Params, result, isError, duration))
 
 			// Build tool result message
 			if hasNativeToolCalls && toolCall.ID != "" {

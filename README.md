@@ -167,24 +167,27 @@ Full DevSecOps capabilities with audit logging:
 
 ## Commands
 
-| Command        | Description                    |
-|----------------|--------------------------------|
-| `/init`        | Initialize project             |
-| `/mode`        | Switch mode (devops, security) |
-| `/model`       | Switch between models          |
-| `/task`        | Execute multi-step tasks       |
-| `/agent`       | Manage specialized agents      |
-| `/watch`       | Screen monitoring              |
-| `/memory`      | Project memory management      |
-| `/permissions` | Tool permission controls       |
-| `/audit`       | Security audit log             |
-| `/history`     | File operation history         |
-| `/undo`        | Undo file modifications        |
-| `/diff`        | Show session changes           |
-| `/tools`       | List available tools           |
-| `/upgrade`     | Check for and install updates  |
-| `/hosts`       | Multi-host status (v2.0)       |
-| `/help`        | Show help                      |
+| Command        | Description                     |
+|----------------|---------------------------------|
+| `/init`        | Initialize project              |
+| `/mode`        | Switch mode (devops, security)  |
+| `/model`       | Switch between models           |
+| `/task`        | Execute multi-step tasks        |
+| `/agent`       | Manage specialized agents       |
+| `/watch`       | Screen monitoring               |
+| `/memory`      | Project memory management       |
+| `/permissions` | Tool permission controls        |
+| `/audit`       | Security audit log              |
+| `/history`     | File operation history          |
+| `/undo`        | Undo file modifications         |
+| `/diff`        | Show session changes            |
+| `/tools`       | List available tools            |
+| `/upgrade`     | Check for and install updates   |
+| `/context`     | Context window budget breakdown |
+| `/compact`     | Force conversation compaction   |
+| `/stats`       | Session statistics              |
+| `/hosts`       | Multi-host status (v2.0)        |
+| `/help`        | Show help                       |
 
 ## Configuration
 
@@ -198,8 +201,8 @@ model: gemma3:27b
 # Multi-Host Setup (v2.0) - for multiple Ollama servers
 hosts:
   primary:
-    url: http://ollama.tara.lab
-    models: [gemma3:27b, qwen2.5-coder:32b]
+    url: http://gpu-server:11434
+    models: [ gemma3:27b, qwen2.5-coder:32b ]
     priority: 1
   local:
     url: http://localhost:11434

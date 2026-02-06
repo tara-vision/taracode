@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-02-06
+
+### Added
+
+- **Context Window Management** - Intelligent context budget management for local LLMs with limited context windows
+  - **Tool output truncation** - Automatically truncates large tool outputs to prevent context overflow
+    (configurable: `context.max_tool_output_lines`, `context.max_tool_output_chars`)
+  - **Conversation compaction** - Auto-summarizes older messages via LLM when context usage exceeds threshold,
+    keeping system prompt and recent messages intact (`context.compaction_enabled`, `context.compaction_threshold`)
+  - **Tool-specific truncation hints** - Truncation notices include actionable hints per tool
+    (e.g., "Use start_line/end_line" for read_file, "Use --tail" for kubectl_logs)
+  - **Binary content detection** - Automatically detects and truncates binary tool output
+- **`/compact` command** - Force conversation compaction on demand
+- **`/stats` command** - Session statistics showing context usage, compaction history, truncation events,
+  file operations, and settings
+- **Tool execution duration display** - Tool status output now shows execution time for operations
+  taking longer than 1 second (e.g., `[2.3s]`)
+- **Enhanced `/context` command** - Shows detailed context budget breakdown (system prompt, tool definitions,
+  conversation tokens, available space), compaction history, and truncation events
+- **Configurable max tool iterations** - `context.max_tool_iterations` config option and `--max-iterations`
+  CLI flag to limit consecutive tool calls per message (default: 10)
+- **CLI flags** - `--max-tool-output`, `--max-iterations`, `--no-compaction` for runtime overrides
+
+### Changed
+
+- Context budget display in `/context` now shows per-component token breakdown
+- Tool iteration limit is now configurable instead of hardcoded
+
+### Fixed
+
+- **Help text alignment** - Consistent column width across all `/help` command entries
+- **Session delete UX** - `/session delete <id>` now checks session existence before prompting for confirmation
+- **UTF-8 safety** - String truncation uses rune-safe slicing to prevent splitting multi-byte characters
+- **Grammar** - Singular/plural handling in compaction summaries ("1 tool call" vs "2 tool calls")
+
 ## [2.0.1] - 2026-02-05
 
 ### Fixed
@@ -132,7 +167,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.2...HEAD
+
+[2.0.2]: https://github.com/tara-vision/taracode/compare/v2.0.1...v2.0.2
 
 [2.0.1]: https://github.com/tara-vision/taracode/compare/v2.0.0...v2.0.1
 

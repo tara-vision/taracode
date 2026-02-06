@@ -135,6 +135,8 @@ func GetSlashCommands() []SlashCommand {
 		// Other
 		{"/context", "Show what's in the LLM context window"},
 		{"/context --agents", "Show per-agent context usage"},
+		{"/compact", "Force conversation compaction to free context space"},
+		{"/stats", "Show session statistics (tokens, compaction, truncation)"},
 		{"/tools", "List available AI tools"},
 		{"/usage", "Show token usage statistics"},
 		{"/help", "Show help message"},

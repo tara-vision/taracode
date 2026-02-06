@@ -23,6 +23,9 @@ var (
 	noStream      bool
 	noSpinner     bool
 	verboseErrors bool
+	maxToolOutput int
+	maxIterations int
+	noCompaction  bool
 	Version       = "dev"
 )
 
@@ -255,7 +258,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.taracode/config.yaml)")
-	rootCmd.PersistentFlags().StringVar(&host, "host", "", "LLM server URL (e.g., http://ollama.tara.lab)")
+	rootCmd.PersistentFlags().StringVar(&host, "host", "", "LLM server URL (e.g., http://localhost:11434)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "key", "", "API key (optional for local servers)")
 	rootCmd.PersistentFlags().StringVar(&model, "model", "", "model name (optional, auto-detected from server)")
 	rootCmd.PersistentFlags().StringVar(&vendor, "vendor", "", "LLM vendor (auto, vllm, ollama, llama.cpp)")
@@ -264,6 +267,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noStream, "no-stream", false, "disable streaming output (show response all at once)")
 	rootCmd.PersistentFlags().BoolVar(&noSpinner, "no-spinner", false, "disable spinner animations")
 	rootCmd.PersistentFlags().BoolVar(&verboseErrors, "verbose-errors", false, "show detailed failure diagnostics with suggestions")
+	rootCmd.PersistentFlags().IntVar(&maxToolOutput, "max-tool-output", 0, "max lines per tool output (0 = use config default)")
+	rootCmd.PersistentFlags().IntVar(&maxIterations, "max-iterations", 0, "max tool call iterations per message (0 = use config default)")
+	rootCmd.PersistentFlags().BoolVar(&noCompaction, "no-compaction", false, "disable automatic conversation compaction")
 
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
 	viper.BindPFlag("key", rootCmd.PersistentFlags().Lookup("key"))
@@ -274,6 +280,9 @@ func init() {
 	viper.BindPFlag("no_stream", rootCmd.PersistentFlags().Lookup("no-stream"))
 	viper.BindPFlag("no_spinner", rootCmd.PersistentFlags().Lookup("no-spinner"))
 	viper.BindPFlag("verbose_errors", rootCmd.PersistentFlags().Lookup("verbose-errors"))
+	viper.BindPFlag("context.max_tool_output_lines", rootCmd.PersistentFlags().Lookup("max-tool-output"))
+	viper.BindPFlag("context.max_tool_iterations", rootCmd.PersistentFlags().Lookup("max-iterations"))
+	viper.BindPFlag("context.no_compaction", rootCmd.PersistentFlags().Lookup("no-compaction"))
 }
 
 func initConfig() {
@@ -337,6 +346,20 @@ func initConfig() {
 	viper.SetDefault("memory.max_context_tokens", 2000)
 	viper.SetDefault("memory.retention_days", 90)
 	viper.SetDefault("memory.auto_capture", true)
+
+	// Context management defaults (v2.0.2)
+	// max_tool_output_lines: Max lines per tool output (500 default, 0 = unlimited)
+	// max_tool_output_chars: Max chars per tool output (15000 default, 0 = unlimited)
+	// max_tool_iterations: Max tool call iterations per message (10 default)
+	// compaction_enabled: Auto-compact conversation when context budget is high (default: true)
+	// compaction_threshold: Trigger compaction at this fraction of max_context_tokens (default: 0.75)
+	// compaction_keep_recent: Keep this many recent message pairs during compaction (default: 4)
+	viper.SetDefault("context.max_tool_output_lines", 500)
+	viper.SetDefault("context.max_tool_output_chars", 15000)
+	viper.SetDefault("context.max_tool_iterations", 10)
+	viper.SetDefault("context.compaction_enabled", true)
+	viper.SetDefault("context.compaction_threshold", 0.75)
+	viper.SetDefault("context.compaction_keep_recent", 4)
 
 	// Upgrade (Auto-update) configuration defaults
 	// auto_check: Check for updates on startup (default: true)

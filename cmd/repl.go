@@ -65,9 +65,9 @@ func startREPL() {
 	if host == "" {
 		fmt.Fprintln(os.Stderr, "Error: LLM server host not found.")
 		fmt.Fprintln(os.Stderr, "Set it via:")
-		fmt.Fprintln(os.Stderr, "  - Environment variable: export TARACODE_HOST=http://ollama.tara.lab")
+		fmt.Fprintln(os.Stderr, "  - Environment variable: export TARACODE_HOST=http://localhost:11434")
 		fmt.Fprintln(os.Stderr, "  - Config file: ~/.taracode/config.yaml")
-		fmt.Fprintln(os.Stderr, "  - Command flag: --host http://ollama.tara.lab")
+		fmt.Fprintln(os.Stderr, "  - Command flag: --host http://localhost:11434")
 		fmt.Fprintln(os.Stderr, "  - Multi-host config: hosts: section in config.yaml")
 		os.Exit(1)
 	}
@@ -653,11 +653,13 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("  Other:")
 		fmt.Println("    /context             - Show what's in the LLM context window")
 		fmt.Println("    /context --agents    - Show per-agent context usage")
+		fmt.Println("    /compact             - Force conversation compaction")
+		fmt.Println("    /stats               - Show session statistics")
 		fmt.Println("    /tools               - List available AI tools")
-		fmt.Println("    /usage        - Show token usage statistics")
-		fmt.Println("    /upgrade      - Check for and install updates")
-		fmt.Println("    /help         - Show this help message")
-		fmt.Println("    exit          - Exit Tara Code")
+		fmt.Println("    /usage               - Show token usage statistics")
+		fmt.Println("    /upgrade             - Check for and install updates")
+		fmt.Println("    /help                - Show this help message")
+		fmt.Println("    exit                 - Exit Tara Code")
 		fmt.Println()
 		fmt.Println("  File References (requires /init):")
 		fmt.Println("    @<Tab>   - Show file completion list")
@@ -903,6 +905,14 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/hosts":
 		// Multi-host status and management (v2.0)
 		handleHostsCommand(args, taskBridge)
+
+	case "/compact":
+		// Force conversation compaction (v2.0.2)
+		handleCompact(*asst)
+
+	case "/stats":
+		// Session statistics (v2.0.2)
+		handleStats(*asst, historyManager)
 
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
@@ -1241,13 +1251,72 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│  Context Window Contents                                            │")
+	fmt.Println("│  Context Window                                                     │")
 	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+
+	// Context budget breakdown (v2.0.2)
+	ctxInfo := asst.GetContextInfo()
+	usedPct := 0
+	if ctxInfo.MaxTokens > 0 {
+		usedPct = ctxInfo.TotalTokens * 100 / ctxInfo.MaxTokens
+	}
+	availableTokens := ctxInfo.MaxTokens - ctxInfo.TotalTokens
+	if availableTokens < 0 {
+		availableTokens = 0
+	}
+
+	// Color-code the percentage
+	budgetLine := fmt.Sprintf("Context Budget: %.1fk / %.1fk tokens (%d%%)",
+		float64(ctxInfo.TotalTokens)/1000.0,
+		float64(ctxInfo.MaxTokens)/1000.0,
+		usedPct)
+	fmt.Println(formatBoxLine(budgetLine))
+	fmt.Println(formatBoxLine(""))
+	fmt.Println(formatBoxLine(fmt.Sprintf("  System prompt:    %.1fk tokens", float64(ctxInfo.SystemPromptTokens)/1000.0)))
+	fmt.Println(formatBoxLine(fmt.Sprintf("  Tool definitions: %.1fk tokens", float64(ctxInfo.ToolDefsTokens)/1000.0)))
+	compactionNote := ""
+	if len(ctxInfo.CompactionEvents) > 0 {
+		compactionNote = fmt.Sprintf(", %d compactions", len(ctxInfo.CompactionEvents))
+	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("  Conversation:     %.1fk tokens (%d messages%s)",
+		float64(ctxInfo.ConversationTokens)/1000.0,
+		ctxInfo.MessageCount,
+		compactionNote)))
+	fmt.Println(formatBoxLine(fmt.Sprintf("  Available:        %.1fk tokens", float64(availableTokens)/1000.0)))
+
+	// Compaction info
+	if len(ctxInfo.CompactionEvents) > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+		fmt.Println(formatBoxLine("Compaction History"))
+		for i, evt := range ctxInfo.CompactionEvents {
+			fmt.Println(formatBoxLine(fmt.Sprintf("  #%d: %.1fk -> %.1fk (%d messages summarized)",
+				i+1,
+				float64(evt.TokensBefore)/1000.0,
+				float64(evt.TokensAfter)/1000.0,
+				evt.MessagesBefore-evt.MessagesAfter)))
+		}
+	}
+
+	// Truncation info
+	if len(ctxInfo.TruncationEvents) > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+		fmt.Println(formatBoxLine(fmt.Sprintf("Truncated Outputs: %d", len(ctxInfo.TruncationEvents))))
+		showCount := len(ctxInfo.TruncationEvents)
+		if showCount > 5 {
+			showCount = 5
+		}
+		for i := 0; i < showCount; i++ {
+			evt := ctxInfo.TruncationEvents[i]
+			fmt.Println(formatBoxLine(fmt.Sprintf("  %s: %d -> %d lines", evt.ToolName, evt.OrigLines, evt.KeptLines)))
+		}
+		if len(ctxInfo.TruncationEvents) > 5 {
+			fmt.Println(formatBoxLine(fmt.Sprintf("  ... and %d more", len(ctxInfo.TruncationEvents)-5)))
+		}
+	}
 
 	// Session info
 	session := asst.GetSession()
 	if session != nil {
-		// Count user/assistant messages
 		userMsgs := 0
 		assistMsgs := 0
 		toolCalls := 0
@@ -1260,20 +1329,19 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 			}
 			toolCalls += len(msg.ToolCalls)
 		}
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 		fmt.Println(formatBoxLine(fmt.Sprintf("Session: %s", ui.TruncateID(session.ID, 0))))
 		fmt.Println(formatBoxLine(fmt.Sprintf("  Messages: %d user, %d assistant", userMsgs, assistMsgs)))
 		if toolCalls > 0 {
 			fmt.Println(formatBoxLine(fmt.Sprintf("  Tool calls: %d", toolCalls)))
 		}
-	} else {
-		fmt.Println(formatBoxLine("Session: None"))
 	}
 
-	// Token usage
+	// Token usage from LLM
 	usage := asst.GetUsage()
 	if usage != nil && usage.TotalTokens > 0 {
 		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
-		fmt.Println(formatBoxLine(fmt.Sprintf("Tokens Used: %d (prompt: %d, completion: %d)",
+		fmt.Println(formatBoxLine(fmt.Sprintf("LLM Tokens: %d (prompt: %d, completion: %d)",
 			usage.TotalTokens, usage.PromptTokens, usage.CompletionTokens)))
 	}
 
@@ -1314,7 +1382,6 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 			fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 			fmt.Println(formatBoxLine(fmt.Sprintf("Project Memories: %d total, %d in context", memCount, len(relevantMems))))
 			if len(relevantMems) > 0 {
-				// Show first 3 memories
 				showCount := len(relevantMems)
 				if showCount > 3 {
 					showCount = 3
@@ -1334,13 +1401,12 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 		}
 	}
 
-	// Files read in this session (extract from tool calls)
+	// Files read in this session
 	if session != nil && len(session.Messages) > 0 {
 		filesRead := extractFilesRead(session.Messages)
 		if len(filesRead) > 0 {
 			fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 			fmt.Println(formatBoxLine("Files Read This Session"))
-			// Show up to 10 most recent
 			displayCount := len(filesRead)
 			if displayCount > 10 {
 				displayCount = 10
@@ -1358,7 +1424,7 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 		}
 	}
 
-	// Operating mode
+	// Operating mode and settings
 	mode := asst.GetMode()
 	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 	if mode == storage.ModeSecurity {
@@ -1366,6 +1432,120 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 	} else {
 		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s (%d DevOps tools)", mode, tools.GetToolCount())))
 	}
+	compactionStatus := "disabled"
+	if ctxInfo.CompactionEnabled {
+		compactionStatus = fmt.Sprintf("enabled (threshold: %.0f%%)", ctxInfo.CompactionThreshold*100)
+	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Compaction: %s", compactionStatus)))
+	fmt.Println(formatBoxLine(fmt.Sprintf("Max iterations: %d", ctxInfo.MaxIterations)))
+
+	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
+	fmt.Println()
+}
+
+// handleCompact forces immediate conversation compaction (v2.0.2)
+func handleCompact(asst *assistant.Assistant) {
+	fmt.Println()
+	ctxInfo := asst.GetContextInfo()
+	fmt.Printf("Current context: %.1fk / %.1fk tokens (%d messages)\n",
+		float64(ctxInfo.TotalTokens)/1000.0,
+		float64(ctxInfo.MaxTokens)/1000.0,
+		ctxInfo.MessageCount)
+
+	if !ctxInfo.CompactionEnabled {
+		fmt.Println("Note: Auto-compaction is disabled. Forcing manual compaction.")
+	}
+
+	err := asst.ForceCompact()
+	if err != nil {
+		fmt.Printf("Compaction failed: %v\n", err)
+		fmt.Println()
+		return
+	}
+
+	newInfo := asst.GetContextInfo()
+	fmt.Printf("Compacted: %.1fk -> %.1fk tokens (%d -> %d messages)\n",
+		float64(ctxInfo.TotalTokens)/1000.0,
+		float64(newInfo.TotalTokens)/1000.0,
+		ctxInfo.MessageCount,
+		newInfo.MessageCount)
+	fmt.Println()
+}
+
+// handleStats shows session statistics (v2.0.2)
+func handleStats(asst *assistant.Assistant, hm *history.Manager) {
+	fmt.Println()
+	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
+	fmt.Println("│  Session Statistics                                                 │")
+	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+
+	// Context budget
+	ctxInfo := asst.GetContextInfo()
+	usedPct := 0
+	if ctxInfo.MaxTokens > 0 {
+		usedPct = ctxInfo.TotalTokens * 100 / ctxInfo.MaxTokens
+	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Context: %.1fk / %.1fk tokens (%d%%)",
+		float64(ctxInfo.TotalTokens)/1000.0,
+		float64(ctxInfo.MaxTokens)/1000.0,
+		usedPct)))
+	fmt.Println(formatBoxLine(fmt.Sprintf("Messages: %d", ctxInfo.MessageCount)))
+
+	// LLM token usage
+	usage := asst.GetUsage()
+	if usage != nil && usage.TotalTokens > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+		fmt.Println(formatBoxLine(fmt.Sprintf("LLM Tokens: %d total", usage.TotalTokens)))
+		fmt.Println(formatBoxLine(fmt.Sprintf("  Prompt: %d  Completion: %d", usage.PromptTokens, usage.CompletionTokens)))
+	}
+
+	// Compaction events
+	if len(ctxInfo.CompactionEvents) > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+		fmt.Println(formatBoxLine(fmt.Sprintf("Compactions: %d", len(ctxInfo.CompactionEvents))))
+		for _, evt := range ctxInfo.CompactionEvents {
+			fmt.Println(formatBoxLine(fmt.Sprintf("  %.1fk -> %.1fk (%d msgs removed)",
+				float64(evt.TokensBefore)/1000.0,
+				float64(evt.TokensAfter)/1000.0,
+				evt.MessagesBefore-evt.MessagesAfter)))
+		}
+	}
+
+	// Truncation events
+	if len(ctxInfo.TruncationEvents) > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+		fmt.Println(formatBoxLine(fmt.Sprintf("Truncated outputs: %d", len(ctxInfo.TruncationEvents))))
+		totalSaved := 0
+		for _, evt := range ctxInfo.TruncationEvents {
+			totalSaved += evt.OrigChars - evt.KeptChars
+		}
+		fmt.Println(formatBoxLine(fmt.Sprintf("  Chars saved: %d", totalSaved)))
+	}
+
+	// File operations
+	if hm != nil {
+		ops := hm.GetAllHistory()
+		if len(ops) > 0 {
+			fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+			fmt.Println(formatBoxLine(fmt.Sprintf("File operations: %d", len(ops))))
+			opTypes := make(map[history.OperationType]int)
+			for _, op := range ops {
+				opTypes[op.Type]++
+			}
+			for opType, count := range opTypes {
+				fmt.Println(formatBoxLine(fmt.Sprintf("  %s: %d", string(opType), count)))
+			}
+		}
+	}
+
+	// Settings
+	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
+	compactionStatus := "disabled"
+	if ctxInfo.CompactionEnabled {
+		compactionStatus = fmt.Sprintf("enabled (%.0f%% threshold)", ctxInfo.CompactionThreshold*100)
+	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Compaction: %s", compactionStatus)))
+	fmt.Println(formatBoxLine(fmt.Sprintf("Max iterations: %d per message", ctxInfo.MaxIterations)))
 
 	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
 	fmt.Println()
@@ -1785,6 +1965,13 @@ func handleDeleteSession(asst *assistant.Assistant, sessionID string) {
 	storage := asst.GetStorage()
 	if storage == nil {
 		fmt.Fprintf(os.Stderr, "Error: storage not initialized\n")
+		return
+	}
+
+	// Check if session exists before asking for confirmation
+	if _, err := storage.GetSession(sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: session not found: %s\n", sessionID)
+		fmt.Println()
 		return
 	}
 
