@@ -601,6 +601,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /permissions reset        - Reset all to default")
 		fmt.Println("    /permissions allow <t|c>  - Always allow tool or category")
 		fmt.Println("    /permissions deny <t|c>   - Always deny tool or category")
+		fmt.Println("    /permissions ask <t|c>    - Always ask before using tool or category")
 		fmt.Println()
 		fmt.Println("  Security Audit (security mode only):")
 		fmt.Println("    /audit                    - View security audit log")
@@ -649,6 +650,11 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /watch start              - Start continuous monitoring")
 		fmt.Println("    /watch stop               - Stop monitoring")
 		fmt.Println("    /watch status             - Show monitoring state")
+		fmt.Println()
+		fmt.Println("  Multi-Host (v2.0):")
+		fmt.Println("    /hosts               - Show status of all configured hosts")
+		fmt.Println("    /hosts check         - Force health check on all hosts")
+		fmt.Println("    /hosts reconnect     - Reconnect to unhealthy hosts")
 		fmt.Println()
 		fmt.Println("  Other:")
 		fmt.Println("    /context             - Show what's in the LLM context window")
@@ -2380,7 +2386,7 @@ func handlePermissions(asst *assistant.Assistant, args []string) {
 			fmt.Printf("Tool '%s' → %s\n", target, perm)
 		} else {
 			fmt.Printf("Unknown tool or category: %s\n", target)
-			fmt.Println("Valid categories: read, write, execute, git, destructive")
+			fmt.Println("Valid categories: read, write, execute, git, destructive, mcp")
 			fmt.Println("Use /tools to see valid tool names.")
 		}
 		fmt.Println()

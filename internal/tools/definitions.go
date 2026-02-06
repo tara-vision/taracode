@@ -518,7 +518,7 @@ func GetToolDefinitions() []openai.Tool {
 		// =============================================================================
 		{
 			Name:        "get_datetime",
-			Description: "Get the current date and time. Use this for any time-related questions instead of web search.",
+			Description: "MANDATORY: Call this tool for ANY question about date, time, day of week, or 'what day is today'. Returns accurate local time. You MUST call this tool - never guess the date from memory.",
 			Category:    "utility",
 			Parameters: map[string]interface{}{
 				"type": "object",

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-02-07
+
+### Fixed
+
+- **get_datetime permission** - `get_datetime` tool was incorrectly categorized as "destructive", requiring user
+  approval for every date/time query. Now correctly categorized as a read-only operation (auto-allowed).
+- **Date/time answers** - Date/time questions now always return the correct answer. The application
+  detects date/time queries and injects the real datetime into context, so the LLM cannot hallucinate
+  dates from training data. Previously the 27B model would ignore the `get_datetime` tool and guess wrong.
+- **git_stash permission** - `git_stash` tool was missing from permission category map, defaulting to
+  "destructive". Now correctly categorized as a git operation.
+- **Help text completeness** - `/permissions ask` subcommand was missing from `/help` output. `/hosts`
+  commands were not listed in `/help`. Both are now included.
+- **Permission error message** - `mcp` category was missing from the valid categories hint shown when
+  an invalid tool or category name is provided.
+
+### Changed
+
+- Date/time questions are now intercepted at the application level with automatic datetime injection,
+  removing dependency on LLM tool-calling behavior for reliable answers
+- System prompt (both compact and full variants) now includes a dedicated CRITICAL RULE section for
+  date/time handling
+- Removed private host references (`ollama.tara.lab`) from all public documentation and examples, replaced
+  with generic `gpu-server:11434` or `localhost:11434`
+
 ## [2.0.2] - 2026-02-06
 
 ### Added
@@ -167,7 +192,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.3...HEAD
+
+[2.0.3]: https://github.com/tara-vision/taracode/compare/v2.0.2...v2.0.3
 
 [2.0.2]: https://github.com/tara-vision/taracode/compare/v2.0.1...v2.0.2
 

@@ -58,6 +58,7 @@ var toolCategoryMap = map[string]PermissionCategory{
 	"helm_list":        CategoryRead,
 	"web_search":       CategoryRead,
 	"web_fetch":        CategoryRead,
+	"get_datetime":     CategoryRead,
 	"trivy_scan":       CategoryRead,
 	"gitleaks_scan":    CategoryRead,
 	"secrets_scan":     CategoryRead,
@@ -85,6 +86,7 @@ var toolCategoryMap = map[string]PermissionCategory{
 	// Git mutation operations
 	"git_add":    CategoryGit,
 	"git_commit": CategoryGit,
+	"git_stash":  CategoryGit,
 
 	// Destructive operations
 	"delete_file":       CategoryDestructive,

@@ -250,6 +250,14 @@ You have deep expertise in:
 - Monitoring & Observability (Prometheus, Grafana, CloudWatch)
 - Security & Compliance (RBAC, Pod Security, Secrets management)
 
+## CRITICAL RULE - DATE AND TIME
+
+When the user asks about the current date, time, day of week, or anything like "what day is today":
+- You MUST call the get_datetime tool
+- You MUST then tell the user the result (e.g., "Today is Saturday, February 7, 2026.")
+- NEVER guess the date from your training data - it will be wrong
+- NEVER use web_search or execute_command for this - use get_datetime
+
 ## BEHAVIOR
 
 1. Use tools to accomplish tasks - read files before editing, validate before applying
@@ -316,6 +324,14 @@ CORRECT EXAMPLES:
 WRONG (will not work):
 {"file_name": "X.md", "content": "..."} - WRONG, missing "tool" and "params"
 {"action": "write", "file": "X.md"} - WRONG format
+
+## CRITICAL RULE - DATE AND TIME
+
+When the user asks about the current date, time, day of week, or anything like "what day is today":
+- You MUST call the get_datetime tool
+- You MUST then tell the user the result (e.g., "Today is Saturday, February 7, 2026.")
+- NEVER guess the date from your training data - it will be wrong
+- NEVER use web_search or execute_command for this - use get_datetime
 
 ## BEHAVIOR
 
@@ -2294,10 +2310,60 @@ func (a *Assistant) ProcessMessage(userMessage string) error {
 
 // ProcessMessageWithImages handles user messages that may include images
 func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*ImageData) error {
+	// Auto-inject datetime for date/time questions so the LLM has the answer
+	userMessage = a.injectDatetimeIfNeeded(userMessage)
+
 	if a.streaming {
 		return a.processMessageStreamingWithImages(userMessage, images)
 	}
 	return a.processMessageNonStreamingWithImages(userMessage, images)
+}
+
+// isDatetimeQuestion checks if a message is asking about current date/time
+func isDatetimeQuestion(msg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	patterns := []string{
+		"what day is",
+		"what date is",
+		"what time is",
+		"what's the date",
+		"what's the time",
+		"what is the date",
+		"what is the time",
+		"what is today",
+		"what's today",
+		"current date",
+		"current time",
+		"today's date",
+		"day of the week",
+		"day is today",
+		"day is tomorrow",
+		"date today",
+		"time now",
+		"what day are we",
+		"tell me the date",
+		"tell me the time",
+		"tell me what day",
+		"tell me what time",
+	}
+	for _, p := range patterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// injectDatetimeIfNeeded appends current datetime to the message if it's a date/time question
+func (a *Assistant) injectDatetimeIfNeeded(userMessage string) string {
+	if !isDatetimeQuestion(userMessage) {
+		return userMessage
+	}
+	result, err := tools.GetDateTime(map[string]interface{}{}, "")
+	if err != nil {
+		return userMessage
+	}
+	return userMessage + "\n\n[System: Here is the current date/time from get_datetime tool - use this to answer the user's question]\n" + result
 }
 
 // buildUserMessage creates an OpenAI message with optional images
