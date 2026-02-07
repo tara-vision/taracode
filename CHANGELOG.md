@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-02-07
+
+### Added
+
+- **Global model generation options** - Configure `temperature`, `top_p`, and `num_predict` in `config.yaml`
+  under a new `model:` section. These apply to the main chat loop and serve as defaults for agents.
+  - `model.temperature` - Sampling randomness, 0.0-2.0 (default: 0.7)
+  - `model.top_p` - Nucleus sampling threshold, 0.0-1.0 (default: 0.9)
+  - `model.num_predict` - Max tokens per response, 0 = model default (default: 0)
+- **Agent TopP and NumPredict** - Agents now support `top_p` and `num_predict` settings in `agents.yaml`,
+  inheriting global model options as defaults when not explicitly set
+- **`/stats` model options** - Session statistics now display configured model generation options
+- **`/agent config` TopP/NumPredict** - Agent config display now shows `top_p` and `num_predict` settings
+
+### Fixed
+
+- **Tool call format resilience** - Models outputting `tool_code`, `tool_name`, `function`, or `action`
+  as the tool name key (instead of `tool`) are now recognized correctly
+- **Empty response recovery** - When the LLM returns an empty response after tool execution, a nudge
+  mechanism re-prompts with the original question for a direct answer
+- **WebSearch parameter flexibility** - `web_search` now accepts `search_query`, `q`, and `search`
+  as alternative parameter names for the query
+- **get_datetime tool example** - Added JSON example for `get_datetime` in the system prompt to
+  prevent models from hallucinating non-existent tool names like `datetime_tools`
+- **datetime tool alias** - `datetime` is now recognized as an alias for `get_datetime` in both
+  tool registry and permission system (models sometimes omit the `get_` prefix)
+
 ## [2.0.3] - 2026-02-07
 
 ### Fixed

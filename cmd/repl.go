@@ -36,7 +36,7 @@ func startREPL() {
 	// Get configuration from config or environment
 	host := viper.GetString("host")
 	apiKey := viper.GetString("key")
-	model := viper.GetString("model")
+	model := model // from --model flag (not via viper; model: is a config section)
 	vendor := viper.GetString("vendor")
 
 	// For multi-host mode, use default host settings if not overridden
@@ -271,6 +271,10 @@ func startREPL() {
 			}
 			// Load agent configuration from global config and project overrides
 			agentsCfg := agent.LoadAgentsConfig(projectRoot)
+			agentsCfg.ApplyGlobalModelOptions(
+				float32(viper.GetFloat64("model.top_p")),
+				viper.GetInt("model.num_predict"),
+			)
 			if err := taskBridge.InitializeWithConfig(agentsCfg); err != nil {
 				// Log but don't fail - agents will use default config
 				fmt.Fprintf(os.Stderr, "Warning: failed to initialize agents with config: %v\n", err)
@@ -481,6 +485,10 @@ func startREPL() {
 							}
 							// Load agent configuration
 							agentsCfg := agent.LoadAgentsConfig(projectRoot)
+							agentsCfg.ApplyGlobalModelOptions(
+								float32(viper.GetFloat64("model.top_p")),
+								viper.GetInt("model.num_predict"),
+							)
 							_ = taskBridge.InitializeWithConfig(agentsCfg)
 						}
 					}
@@ -1552,6 +1560,15 @@ func handleStats(asst *assistant.Assistant, hm *history.Manager) {
 	}
 	fmt.Println(formatBoxLine(fmt.Sprintf("Compaction: %s", compactionStatus)))
 	fmt.Println(formatBoxLine(fmt.Sprintf("Max iterations: %d per message", ctxInfo.MaxIterations)))
+	// Model generation options
+	temp := viper.GetFloat64("model.temperature")
+	topP := viper.GetFloat64("model.top_p")
+	numPredict := viper.GetInt("model.num_predict")
+	numPredictStr := "model default"
+	if numPredict > 0 {
+		numPredictStr = fmt.Sprintf("%d", numPredict)
+	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Model options: temp=%.1f top_p=%.1f num_predict=%s", temp, topP, numPredictStr)))
 
 	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
 	fmt.Println()

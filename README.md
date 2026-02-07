@@ -196,7 +196,6 @@ Create `~/.taracode/config.yaml`:
 ```yaml
 # Single Host (simple setup)
 host: http://localhost:11434
-model: gemma3:27b
 
 # Multi-Host Setup (v2.0) - for multiple Ollama servers
 hosts:
@@ -209,6 +208,12 @@ hosts:
     fallback: primary      # Use primary if local is down
     priority: 2
 default_host: primary
+
+# Model generation options (v2.0.4)
+model:
+  temperature: 0.7     # Sampling randomness (0.0-2.0)
+  top_p: 0.9           # Nucleus sampling threshold (0.0-1.0)
+  num_predict: 0       # Max tokens per response (0 = model default)
 
 # Search
 search:

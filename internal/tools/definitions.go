@@ -1482,6 +1482,7 @@ func getDefinitionsMap() map[string]ToolDefinition {
 		"web_search":        {Category: "web"},
 		"web_fetch":         {Category: "web"},
 		"get_datetime":      {Category: "utility"},
+		"datetime":          {Category: "utility"},
 		"kubectl_get":       {Category: "kubernetes"},
 		"kubectl_apply":     {Category: "kubernetes"},
 		"kubectl_delete":    {Category: "kubernetes"},

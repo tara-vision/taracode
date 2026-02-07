@@ -71,6 +71,7 @@ func NewRegistry() *Registry {
 
 	// Utility tools
 	r.RegisterTool("get_datetime", GetDateTime)
+	r.RegisterTool("datetime", GetDateTime) // alias: models sometimes omit the get_ prefix
 
 	// Kubernetes tools
 	r.RegisterTool("kubectl_get", KubectlGet)

@@ -88,6 +88,8 @@ type Config struct {
 	Model            string   `yaml:"model" json:"model"`
 	Host             string   `yaml:"host,omitempty" json:"host,omitempty"` // Host name from hosts config
 	Temperature      float32  `yaml:"temperature" json:"temperature"`
+	TopP             float32  `yaml:"top_p" json:"top_p"`
+	NumPredict       int      `yaml:"num_predict" json:"num_predict"`
 	MaxContextTokens int      `yaml:"max_context_tokens" json:"max_context_tokens"`
 	ToolCategories   []string `yaml:"tool_categories,omitempty" json:"tool_categories,omitempty"`
 	MaxToolIter      int      `yaml:"max_tool_iterations" json:"max_tool_iterations"`

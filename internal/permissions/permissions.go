@@ -59,6 +59,7 @@ var toolCategoryMap = map[string]PermissionCategory{
 	"web_search":       CategoryRead,
 	"web_fetch":        CategoryRead,
 	"get_datetime":     CategoryRead,
+	"datetime":         CategoryRead,
 	"trivy_scan":       CategoryRead,
 	"gitleaks_scan":    CategoryRead,
 	"secrets_scan":     CategoryRead,

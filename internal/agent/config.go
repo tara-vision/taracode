@@ -30,6 +30,8 @@ type AgentConfigYAML struct {
 	Model            string   `yaml:"model" mapstructure:"model"`
 	Host             string   `yaml:"host,omitempty" mapstructure:"host"` // Host name from hosts config
 	Temperature      float32  `yaml:"temperature" mapstructure:"temperature"`
+	TopP             float32  `yaml:"top_p" mapstructure:"top_p"`
+	NumPredict       int      `yaml:"num_predict" mapstructure:"num_predict"`
 	MaxContextTokens int      `yaml:"max_context_tokens" mapstructure:"max_context_tokens"`
 	ToolCategories   []string `yaml:"tool_categories" mapstructure:"tool_categories"`
 	Timeout          int      `yaml:"timeout" mapstructure:"timeout"`
@@ -166,6 +168,12 @@ func mergeAgentConfigYAML(base, override *AgentConfigYAML) *AgentConfigYAML {
 	if override.Temperature != 0 {
 		result.Temperature = override.Temperature
 	}
+	if override.TopP != 0 {
+		result.TopP = override.TopP
+	}
+	if override.NumPredict != 0 {
+		result.NumPredict = override.NumPredict
+	}
 	if override.MaxContextTokens != 0 {
 		result.MaxContextTokens = override.MaxContextTokens
 	}
@@ -185,6 +193,25 @@ func mergeAgentConfigYAML(base, override *AgentConfigYAML) *AgentConfigYAML {
 	result.AutoInvoke = override.AutoInvoke
 
 	return &result
+}
+
+// ApplyGlobalModelOptions sets global top_p and num_predict on agents that don't
+// have per-agent overrides. Temperature is already per-agent, so it is not touched.
+func (ac *AgentsConfig) ApplyGlobalModelOptions(topP float32, numPredict int) {
+	for _, cfg := range []*AgentConfigYAML{
+		ac.Planner, ac.Coder, ac.Tester, ac.Reviewer,
+		ac.DevOps, ac.Security, ac.Diagnostics,
+	} {
+		if cfg == nil {
+			continue
+		}
+		if cfg.TopP == 0 {
+			cfg.TopP = topP
+		}
+		if cfg.NumPredict == 0 {
+			cfg.NumPredict = numPredict
+		}
+	}
 }
 
 // GetAgentConfig returns the Config for a specific agent type from AgentsConfig
@@ -224,6 +251,8 @@ func (ac *AgentsConfig) GetAgentConfig(agentType Type) Config {
 		Model:            yamlCfg.Model,
 		Host:             yamlCfg.Host,
 		Temperature:      yamlCfg.Temperature,
+		TopP:             yamlCfg.TopP,
+		NumPredict:       yamlCfg.NumPredict,
 		MaxContextTokens: yamlCfg.MaxContextTokens,
 		ToolCategories:   yamlCfg.ToolCategories,
 		Timeout:          timeout,

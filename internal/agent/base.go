@@ -390,6 +390,8 @@ func (a *BaseAgent) Execute(ctx context.Context, execCtx *ExecutionContext) (*Ex
 		Model:       a.config.Model,
 		Messages:    messages,
 		Temperature: a.config.Temperature,
+		TopP:        a.config.TopP,
+		MaxTokens:   a.config.NumPredict,
 	}
 
 	if len(toolDefs) > 0 {

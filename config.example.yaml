@@ -63,6 +63,23 @@ key: ""
 # Run /hosts in the REPL to see host status and health.
 # =============================================================================
 
+# =============================================================================
+# MODEL GENERATION OPTIONS (v2.0.4)
+# =============================================================================
+# Control how the LLM generates responses. These apply to the main chat.
+# Agents inherit top_p and num_predict as defaults (agents have their own temperature).
+model:
+  # Sampling randomness: 0.0 = deterministic, 2.0 = maximum randomness (default: 0.7)
+  temperature: 0.7
+
+  # Nucleus sampling: only consider tokens within this cumulative probability (default: 0.9)
+  # Lower = more focused, higher = more diverse
+  top_p: 0.9
+
+  # Maximum tokens per response, 0 = model default / no limit (default: 0)
+  # Useful for controlling response length and context window usage
+  num_predict: 0
+
 # Search Configuration
 search:
   # Primary search provider: "brave", "duckduckgo", or "searxng"

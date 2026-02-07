@@ -206,6 +206,8 @@ func showAgentStatus(bridge *orchestrator.TaskBridge, args []string) {
 	fmt.Println("Configuration:")
 	fmt.Printf("  Model: %s\n", agentModelStyle.Render(cfg.Model))
 	fmt.Printf("  Temperature: %.2f\n", cfg.Temperature)
+	fmt.Printf("  Top P: %.2f\n", cfg.TopP)
+	fmt.Printf("  Num Predict: %d\n", cfg.NumPredict)
 	fmt.Printf("  Max Context: %d tokens\n", cfg.MaxContextTokens)
 	fmt.Printf("  Max Tool Iterations: %d\n", cfg.MaxToolIter)
 	fmt.Printf("  Timeout: %ds\n", cfg.Timeout)
@@ -326,6 +328,12 @@ func handleAgentConfig(bridge *orchestrator.TaskBridge, args []string) {
 	fmt.Println()
 	fmt.Printf("  Model:              %s\n", agentModelStyle.Render(cfg.Model))
 	fmt.Printf("  Temperature:        %.2f\n", cfg.Temperature)
+	fmt.Printf("  Top P:              %.2f\n", cfg.TopP)
+	if cfg.NumPredict > 0 {
+		fmt.Printf("  Num Predict:        %d\n", cfg.NumPredict)
+	} else {
+		fmt.Printf("  Num Predict:        0 (model default)\n")
+	}
 	fmt.Printf("  Max Context Tokens: %d\n", cfg.MaxContextTokens)
 	fmt.Printf("  Max Tool Iterations: %d\n", cfg.MaxToolIter)
 	fmt.Printf("  Timeout:            %ds\n", cfg.Timeout)

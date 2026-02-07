@@ -273,7 +273,10 @@ func init() {
 
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
 	viper.BindPFlag("key", rootCmd.PersistentFlags().Lookup("key"))
-	viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))
+	// Note: "model" is NOT bound to viper because config.yaml uses "model:" as a
+	// section (model.temperature, model.top_p, etc). Binding "model" to a pflag
+	// shadows nested model.* keys in viper. The --model flag value is read directly
+	// from the package-level variable instead.
 	viper.BindPFlag("vendor", rootCmd.PersistentFlags().Lookup("vendor"))
 	viper.BindPFlag("mode", rootCmd.PersistentFlags().Lookup("mode"))
 	viper.BindPFlag("security.default_severity", rootCmd.PersistentFlags().Lookup("severity"))
@@ -360,6 +363,14 @@ func initConfig() {
 	viper.SetDefault("context.compaction_enabled", true)
 	viper.SetDefault("context.compaction_threshold", 0.75)
 	viper.SetDefault("context.compaction_keep_recent", 4)
+
+	// Model generation options (v2.0.4)
+	// temperature: Sampling randomness, 0.0-2.0 (default: 0.7)
+	// top_p: Nucleus sampling threshold, 0.0-1.0 (default: 0.9)
+	// num_predict: Max tokens per response, 0 = model default (default: 0)
+	viper.SetDefault("model.temperature", 0.7)
+	viper.SetDefault("model.top_p", 0.9)
+	viper.SetDefault("model.num_predict", 0)
 
 	// Upgrade (Auto-update) configuration defaults
 	// auto_check: Check for updates on startup (default: true)

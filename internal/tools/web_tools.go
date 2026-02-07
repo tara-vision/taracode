@@ -97,8 +97,15 @@ func getSearchOrchestrator() *search.Orchestrator {
 
 // WebSearch performs a web search and returns formatted results
 func WebSearch(params map[string]interface{}, workingDir string) (string, error) {
-	query, ok := params["query"].(string)
-	if !ok || strings.TrimSpace(query) == "" {
+	// Accept alternative param names for query (models sometimes use different keys)
+	var query string
+	for _, key := range []string{"query", "search_query", "q", "search"} {
+		if q, ok := params[key].(string); ok && strings.TrimSpace(q) != "" {
+			query = q
+			break
+		}
+	}
+	if query == "" {
 		return "", fmt.Errorf("query parameter is required")
 	}
 

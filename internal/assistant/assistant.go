@@ -167,6 +167,7 @@ type Assistant struct {
 	compactionCfg   CompactionConfig
 	compactionState *CompactionState
 	maxIterations   int // Configurable max tool iterations per message
+	modelOptions    ModelOptions
 
 	// Truncation tracking for /context display
 	truncationEvents []TruncationResult
@@ -371,6 +372,10 @@ When the user asks about the current date, time, day of week, or anything like "
 
 {"tool": "web_search", "params": {"query": "kubernetes ingress nginx", "num_results": 5}}
 {"tool": "web_fetch", "params": {"url": "https://kubernetes.io/docs/..."}}
+
+## UTILITY TOOLS
+
+{"tool": "get_datetime", "params": {}}
 
 ## KUBERNETES TOOLS
 
@@ -924,6 +929,13 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		maxIter = 50 // cap
 	}
 
+	// Load model generation options (v2.0.4)
+	modelOpts := ModelOptions{
+		Temperature: float32(viper.GetFloat64("model.temperature")),
+		TopP:        float32(viper.GetFloat64("model.top_p")),
+		NumPredict:  viper.GetInt("model.num_predict"),
+	}
+
 	compactionEnabled := viper.GetBool("context.compaction_enabled") && !viper.GetBool("context.no_compaction")
 	compactionThreshold := viper.GetFloat64("context.compaction_threshold")
 	if compactionThreshold <= 0 || compactionThreshold > 1.0 {
@@ -963,6 +975,7 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		},
 		compactionState:  NewCompactionState(),
 		maxIterations:    maxIter,
+		modelOptions:     modelOpts,
 		truncationEvents: make([]TruncationResult, 0),
 	}, nil
 }
@@ -1923,7 +1936,8 @@ func normalizeJSON(jsonStr string) string {
 }
 
 // tryConvertToToolCall attempts to convert alternative JSON formats to standard tool call format
-// This handles models that output {"file_name": "X", "content": "Y"} instead of proper tool format
+// This handles models that output {"file_name": "X", "content": "Y"} instead of proper tool format,
+// or {"tool_code": "web_search", "query": "..."} with flat params instead of nested "params" object.
 func tryConvertToToolCall(jsonStr string) *ToolCall {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -1933,6 +1947,32 @@ func tryConvertToToolCall(jsonStr string) *ToolCall {
 	// Already has "tool" key - not a malformed call
 	if _, hasToolKey := raw["tool"]; hasToolKey {
 		return nil
+	}
+
+	// Handle alternative tool name keys: "tool_code", "tool_name", "function", "action"
+	var toolName string
+	for _, key := range []string{"tool_code", "tool_name", "function", "action"} {
+		if name, ok := raw[key].(string); ok && name != "" {
+			toolName = name
+			break
+		}
+	}
+	if toolName != "" {
+		// Collect remaining keys as params (exclude the tool name key and known metadata)
+		params := make(map[string]interface{})
+		skipKeys := map[string]bool{
+			"tool_code": true, "tool_name": true, "function": true,
+			"action": true, "source": true, "id": true,
+		}
+		for k, v := range raw {
+			if !skipKeys[k] {
+				params[k] = v
+			}
+		}
+		return &ToolCall{
+			Tool:   toolName,
+			Params: params,
+		}
 	}
 
 	// Detect write_file pattern: has "content" and some file path key
@@ -2445,14 +2485,14 @@ func (a *Assistant) processMessageStreamingWithImages(userMessage string, images
 		}
 
 		// Build request - try with tools first, fall back without if not supported
-		req := openai.ChatCompletionRequest{
+		req := a.modelOptions.ApplyTo(openai.ChatCompletionRequest{
 			Model:    a.model,
 			Messages: a.conversation,
 			Tools:    a.toolDefs, // Add tool definitions for function calling
 			StreamOptions: &openai.StreamOptions{
 				IncludeUsage: true,
 			},
-		}
+		})
 
 		stream, err := a.client.CreateChatCompletionStream(ctx, req)
 
@@ -2616,6 +2656,18 @@ func (a *Assistant) processMessageStreamingWithImages(userMessage string, images
 		if len(toolCalls) == 0 {
 			// No tool calls - render the response with Glamour
 			displayedText := cleanResponse(fullResponse)
+
+			// If the model returned an empty response after tool execution,
+			// nudge it to answer using the tool results already in context.
+			// Explicitly forbid tool use to prevent infinite tool-calling loops.
+			if displayedText == "" && i > 0 {
+				a.conversation = append(a.conversation, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleUser,
+					Content: fmt.Sprintf("DO NOT call any tools. Using ONLY the tool results already provided above, give a direct answer to: %s", userMessage),
+				})
+				continue
+			}
+
 			if displayedText != "" {
 				fmt.Println(ui.RenderMarkdown(displayedText))
 			}
@@ -2916,11 +2968,11 @@ func (a *Assistant) processMessageNonStreamingWithImages(userMessage string, ima
 		}
 
 		// Build request - try with tools first, fall back without if not supported
-		req := openai.ChatCompletionRequest{
+		req := a.modelOptions.ApplyTo(openai.ChatCompletionRequest{
 			Model:    a.model,
 			Messages: a.conversation,
 			Tools:    a.toolDefs, // Add tool definitions for function calling
-		}
+		})
 
 		resp, err := a.client.CreateChatCompletion(ctx, req)
 
@@ -2998,6 +3050,20 @@ func (a *Assistant) processMessageNonStreamingWithImages(userMessage string, ima
 
 		// If no tool calls, render and print response
 		if len(toolCalls) == 0 {
+			// If the model returned an empty response after tool execution,
+			// nudge it to answer using the tool results instead of breaking.
+			if displayText == "" && i > 0 {
+				a.conversation = append(a.conversation, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleAssistant,
+					Content: "",
+				})
+				a.conversation = append(a.conversation, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleUser,
+					Content: "Please answer the question using the tool results above.",
+				})
+				continue
+			}
+
 			if displayText != "" {
 				// Render with Glamour for syntax highlighting
 				fmt.Println(ui.RenderMarkdown(displayText))
