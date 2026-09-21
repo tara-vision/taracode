@@ -1,8 +1,11 @@
 package models
 
 import (
-	"errors"
-	"os/exec"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -99,24 +102,78 @@ func TestDefaultNameResolvesViaFind(t *testing.T) {
 	}
 }
 
+// modelLiteralPattern matches the model-name families that must live only in the registry.
+var modelLiteralPattern = regexp.MustCompile(`(gemma4|qwen3\.[568]|glm-4\.7|muse-glimmer|nemotron|ministral)`)
+
+// moduleRoot returns the directory containing go.mod, walking up from the current working directory.
+// go test runs with the package directory as its working directory, so this finds the repository
+// root regardless of which package the test runs from.
+func moduleRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getwd: %w", err)
+	}
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no go.mod found above %s", dir)
+		}
+		dir = parent
+	}
+}
+
 // TestNoModelLiteralsOutsideTheRegistry is the repo-wide guard: every Ollama model name in Go code
 // must come from this registry (embedded in registry.yaml), not from a string literal. It excludes
-// tests (which pin exact names on purpose) and this package (the registry itself).
+// tests (which pin exact names on purpose), this package (the registry itself), .git and vendor.
+//
+// This walks the module tree in pure Go rather than shelling out to git grep: a subprocess is
+// invisible to the Go test cache, so a change to a file the old exec-based version policed (but that
+// this package's test inputs do not otherwise depend on) could leave go test reporting a stale
+// (cached) PASS. Reading every file directly makes each one a real input to this test, so the cache
+// is invalidated whenever any of them changes.
 func TestNoModelLiteralsOutsideTheRegistry(t *testing.T) {
-	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	root, err := moduleRoot()
 	if err != nil {
-		t.Skipf("not inside a git checkout: %v", err)
+		t.Fatalf("find module root: %v", err)
 	}
-	cmd := exec.Command("git", "grep", "-n", "-E",
-		`(gemma4|qwen3\.[568]|glm-4\.7|muse-glimmer|nemotron|ministral)`,
-		"--", "*.go", ":!*_test.go", ":!internal/models/")
-	cmd.Dir = strings.TrimSpace(string(root))
-	out, err := cmd.Output()
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && exitErr.ExitCode() != 1 {
-		t.Fatalf("git grep failed: %v", err) // exit 1 is "no match", the pass case
+
+	var hits []string
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch rel {
+			case ".git", "internal/models", "vendor":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if modelLiteralPattern.MatchString(line) {
+				hits = append(hits, fmt.Sprintf("%s:%d:%s", rel, i+1, line))
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("walk module tree: %v", walkErr)
 	}
-	if len(strings.TrimSpace(string(out))) > 0 {
-		t.Fatalf("model names must live in the registry only:\n%s", out)
+	if len(hits) > 0 {
+		t.Fatalf("model names must live in the registry only:\n%s", strings.Join(hits, "\n"))
 	}
 }
