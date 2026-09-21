@@ -148,10 +148,11 @@ main() {
         sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     fi
 
-    if command -v taracode >/dev/null 2>&1; then
-        info "Installed: $(taracode --version 2>/dev/null | head -1 || echo unknown)"
-    else
-        warn "taracode installed but not in PATH. Add ${INSTALL_DIR} to your PATH."
+    info "Installed: $("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | head -1 || echo unknown)"
+    if ! command -v taracode >/dev/null 2>&1; then
+        warn "taracode is not in PATH. Add ${INSTALL_DIR} to your PATH."
+    elif [ "$(command -v taracode)" != "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        warn "Another taracode is first in PATH: $(command -v taracode). Run ${INSTALL_DIR}/${BINARY_NAME} or fix your PATH."
     fi
 
     echo ""
