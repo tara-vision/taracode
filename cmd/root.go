@@ -286,6 +286,8 @@ func init() {
 	viper.BindPFlag("context.max_tool_output_lines", rootCmd.PersistentFlags().Lookup("max-tool-output"))
 	viper.BindPFlag("context.max_tool_iterations", rootCmd.PersistentFlags().Lookup("max-iterations"))
 	viper.BindPFlag("context.no_compaction", rootCmd.PersistentFlags().Lookup("no-compaction"))
+
+	rootCmd.AddCommand(doctorCmd)
 }
 
 func initConfig() {

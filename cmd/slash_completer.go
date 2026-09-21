@@ -143,6 +143,7 @@ func GetSlashCommands() []SlashCommand {
 		{"/think low", "Low reasoning effort"},
 		{"/think medium", "Medium reasoning effort"},
 		{"/think high", "High reasoning effort"},
+		{"/doctor", "Diagnose the LLM server, installed models and external tools"},
 		{"/stats", "Show session statistics (tokens, compaction, truncation)"},
 		{"/tools", "List available AI tools"},
 		{"/usage", "Show token usage statistics"},
