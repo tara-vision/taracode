@@ -224,7 +224,7 @@ func handleHostsHelp() {
 	fmt.Println("    hosts:")
 	fmt.Println("      primary:")
 	fmt.Println("        url: http://gpu-server:11434")
-	fmt.Println("        models: [gemma3:27b, qwen2.5-coder:32b]")
+	fmt.Println("        models: [qwen3.8:27b, qwen3.6:35b]")
 	fmt.Println("        priority: 1")
 	fmt.Println("      local:")
 	fmt.Println("        url: http://localhost:11434")
@@ -237,10 +237,10 @@ func handleHostsHelp() {
 	fmt.Println("    agents:")
 	fmt.Println("      coder:")
 	fmt.Println("        host: primary")
-	fmt.Println("        model: qwen2.5-coder:32b")
+	fmt.Println("        model: qwen3.8:27b")
 	fmt.Println("      reviewer:")
 	fmt.Println("        host: local")
-	fmt.Println("        model: llama3.2:3b")
+	fmt.Println("        model: gemma4:e4b")
 	fmt.Println()
 }
 
