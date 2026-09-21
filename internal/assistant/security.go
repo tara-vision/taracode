@@ -44,9 +44,10 @@ func (a *Assistant) checkToolPermission(toolName string, params map[string]inter
 		// Save permission if requested
 		if choice.SavePerm != "" {
 			var err error
-			if choice.SaveScope == "tool" {
+			switch choice.SaveScope {
+			case "tool":
 				err = a.permMgr.SetToolPermission(toolName, choice.SavePerm)
-			} else if choice.SaveScope == "category" {
+			case "category":
 				err = a.permMgr.SetCategoryPermission(choice.Category, choice.SavePerm)
 			}
 			if err == nil {
@@ -71,7 +72,9 @@ func (a *Assistant) GetPermissionManager() *permissions.Manager {
 // checkSecurityAudit enforces audit-first behavior in security mode
 // This is called AFTER permission check passes, providing an additional layer of protection
 // Returns (allowed, resultMessage) - if not allowed, resultMessage contains the denial message
-func (a *Assistant) checkSecurityAudit(toolName string, params map[string]interface{}, batch *ui.BatchAuditContext) (bool, string) {
+func (a *Assistant) checkSecurityAudit(
+	toolName string, params map[string]interface{}, batch *ui.BatchAuditContext,
+) (bool, string) {
 	// Only enforce in security mode
 	if a.mode != storage.ModeSecurity {
 		return true, ""
@@ -264,7 +267,7 @@ func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, stri
 	}
 
 	// Read current file content
-	content, err := os.ReadFile(absPath)
+	content, err := os.ReadFile(absPath) //nolint:gosec // absPath resolves within the project working directory
 	if err != nil {
 		return true, "", nil // Let the tool handle the error
 	}

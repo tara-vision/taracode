@@ -78,7 +78,7 @@ func (a *Assistant) LoadSession(id string) error {
 	}
 
 	a.session = session
-	a.storage.SetActiveSession(id)
+	_ = a.storage.SetActiveSession(id)
 
 	// Rebuild conversation from session messages
 	systemPrompt := buildSystemPromptWithModeAndTools(a.workingDir, a.storage, a.mode, a.useNativeTools)
@@ -167,7 +167,7 @@ func (a *Assistant) GenerateSummary() (string, error) {
 			if len(content) > 500 {
 				content = content[:500] + "..."
 			}
-			conversationText.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
+			fmt.Fprintf(&conversationText, "%s: %s\n", msg.Role, content)
 		}
 	}
 
@@ -180,14 +180,18 @@ func (a *Assistant) GenerateSummary() (string, error) {
 		Model: a.model,
 		Messages: []openai.ChatCompletionMessage{
 			{
-				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are a helpful assistant. Summarize the following DevOps conversation in 1-2 sentences. Focus on what was accomplished or discussed. Be concise.",
+				Role: openai.ChatMessageRoleSystem,
+				Content: "You are a helpful assistant. Summarize the following DevOps conversation in 1-2 sentences. Focus on " +
+					"what was accomplished or discussed. Be concise.",
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
 				Content: conversationText.String(),
 			},
 		},
+		//nolint:staticcheck // MaxTokens (not MaxCompletionTokens) is what non-reasoning
+		// OpenAI-compatible local servers (Ollama/vLLM/llama.cpp) honor; see go-openai's
+		// reasoning_validator.go, which only requires MaxCompletionTokens for o1-series models.
 		MaxTokens: 100,
 	}
 
@@ -221,7 +225,7 @@ func (a *Assistant) GenerateSummary() (string, error) {
 
 	// Save the summary to storage
 	if a.storage != nil && a.session != nil {
-		a.storage.UpdateSessionSummary(a.session.ID, summary)
+		_ = a.storage.UpdateSessionSummary(a.session.ID, summary)
 		a.session.Summary = summary
 	}
 

@@ -45,9 +45,9 @@ func (f *StreamFilter) Process(chunk string) string {
 					f.buffer.Reset()
 				}
 				// Otherwise keep buffering
-			} else if strings.HasPrefix("<think", bufStr) {
+			} else if strings.HasPrefix("<think", bufStr) { //nolint:revive // keep buffering
 				// Partial match, keep buffering
-			} else if len(bufStr) > 0 && bufStr[0] == '<' && len(bufStr) < 7 {
+			} else if len(bufStr) > 0 && bufStr[0] == '<' && len(bufStr) < 7 { //nolint:revive // keep buffering
 				// Could still be <think, keep buffering up to 7 chars
 			} else {
 				// Not a think tag, flush buffer to display
@@ -127,11 +127,12 @@ func normalizeJSON(jsonStr string) string {
 
 		if inString {
 			// Inside a string - convert actual newlines to \n escape sequence
-			if c == '\n' {
+			switch c {
+			case '\n':
 				normalized.WriteString("\\n")
-			} else if c == '\t' {
+			case '\t':
 				normalized.WriteString("\\t")
-			} else {
+			default:
 				normalized.WriteByte(c)
 			}
 		} else {
@@ -156,9 +157,10 @@ func normalizeJSON(jsonStr string) string {
 	return normalized.String()
 }
 
-// tryConvertToToolCall attempts to convert alternative JSON formats to standard tool call format
+// tryConvertToToolCall attempts to convert alternative JSON formats to standard tool call format.
 // This handles models that output {"file_name": "X", "content": "Y"} instead of proper tool format,
 // or {"tool_code": "web_search", "query": "..."} with flat params instead of nested "params" object.
+// It tries each recognized pattern in turn (legacy JSON fallback parser, retired in Phase 2).
 func tryConvertToToolCall(jsonStr string) *ToolCall {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -170,7 +172,25 @@ func tryConvertToToolCall(jsonStr string) *ToolCall {
 		return nil
 	}
 
-	// Handle alternative tool name keys: "tool_code", "tool_name", "function", "action"
+	if tc := detectAlternativeToolNamePattern(raw); tc != nil {
+		return tc
+	}
+	if tc := detectWriteFilePattern(raw); tc != nil {
+		return tc
+	}
+	if tc := detectReadFilePattern(raw); tc != nil {
+		return tc
+	}
+	if tc := detectCommandExecutionPattern(raw); tc != nil {
+		return tc
+	}
+
+	return nil
+}
+
+// detectAlternativeToolNamePattern handles alternative tool name keys:
+// "tool_code", "tool_name", "function", "action"
+func detectAlternativeToolNamePattern(raw map[string]interface{}) *ToolCall {
 	var toolName string
 	for _, key := range []string{"tool_code", "tool_name", "function", "action"} {
 		if name, ok := raw[key].(string); ok && name != "" {
@@ -178,63 +198,76 @@ func tryConvertToToolCall(jsonStr string) *ToolCall {
 			break
 		}
 	}
-	if toolName != "" {
-		// Collect remaining keys as params (exclude the tool name key and known metadata)
-		params := make(map[string]interface{})
-		skipKeys := map[string]bool{
-			"tool_code": true, "tool_name": true, "function": true,
-			"action": true, "source": true, "id": true,
-		}
-		for k, v := range raw {
-			if !skipKeys[k] {
-				params[k] = v
-			}
-		}
-		return &ToolCall{
-			Tool:   toolName,
-			Params: params,
+	if toolName == "" {
+		return nil
+	}
+	// Collect remaining keys as params (exclude the tool name key and known metadata)
+	params := make(map[string]interface{})
+	skipKeys := map[string]bool{
+		"tool_code": true, "tool_name": true, "function": true,
+		"action": true, "source": true, "id": true,
+	}
+	for k, v := range raw {
+		if !skipKeys[k] {
+			params[k] = v
 		}
 	}
-
-	// Detect write_file pattern: has "content" and some file path key
-	if content, hasContent := raw["content"]; hasContent {
-		var filePath string
-		for _, key := range []string{"file_path", "file_name", "filename", "path", "name"} {
-			if fp, ok := raw[key].(string); ok && fp != "" {
-				filePath = fp
-				break
-			}
-		}
-		if filePath != "" {
-			return &ToolCall{
-				Tool: "write_file",
-				Params: map[string]interface{}{
-					"file_path": filePath,
-					"content":   content,
-				},
-			}
-		}
+	return &ToolCall{
+		Tool:   toolName,
+		Params: params,
 	}
+}
 
-	// Detect read_file pattern: has file path but no content
-	for _, key := range []string{"file_path", "file_name", "filename", "path", "file"} {
+// detectWriteFilePattern detects the write_file pattern: has "content" and some file path key
+func detectWriteFilePattern(raw map[string]interface{}) *ToolCall {
+	content, hasContent := raw["content"]
+	if !hasContent {
+		return nil
+	}
+	var filePath string
+	for _, key := range []string{"file_path", "file_name", "filename", "path", "name"} {
 		if fp, ok := raw[key].(string); ok && fp != "" {
-			// Check if this looks like a read operation (no content, or has "read" action)
-			if _, hasContent := raw["content"]; !hasContent {
-				if action, ok := raw["action"].(string); ok {
-					if action == "read" || action == "open" || action == "get" {
-						return &ToolCall{
-							Tool:   "read_file",
-							Params: map[string]interface{}{"file_path": fp},
-						}
-					}
-				}
-			}
+			filePath = fp
 			break
 		}
 	}
+	if filePath == "" {
+		return nil
+	}
+	return &ToolCall{
+		Tool: "write_file",
+		Params: map[string]interface{}{
+			"file_path": filePath,
+			"content":   content,
+		},
+	}
+}
 
-	// Detect command execution pattern
+// detectReadFilePattern detects the read_file pattern: has a file path but no content
+func detectReadFilePattern(raw map[string]interface{}) *ToolCall {
+	for _, key := range []string{"file_path", "file_name", "filename", "path", "file"} {
+		fp, ok := raw[key].(string)
+		if !ok || fp == "" {
+			continue
+		}
+		// Check if this looks like a read operation (no content, or has "read" action)
+		if _, hasContent := raw["content"]; !hasContent {
+			if action, ok := raw["action"].(string); ok {
+				if action == "read" || action == "open" || action == "get" {
+					return &ToolCall{
+						Tool:   "read_file",
+						Params: map[string]interface{}{"file_path": fp},
+					}
+				}
+			}
+		}
+		break
+	}
+	return nil
+}
+
+// detectCommandExecutionPattern detects the command execution pattern
+func detectCommandExecutionPattern(raw map[string]interface{}) *ToolCall {
 	for _, key := range []string{"command", "cmd", "shell", "exec"} {
 		if cmd, ok := raw[key].(string); ok && cmd != "" {
 			return &ToolCall{
@@ -243,7 +276,6 @@ func tryConvertToToolCall(jsonStr string) *ToolCall {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -313,14 +345,37 @@ func extractJSONObjectsWithPattern(text string, pattern string) []string {
 	return results
 }
 
-// parseToolCalls extracts ALL tool calls from the model's response (supports multiple tools)
+// parseToolCalls extracts ALL tool calls from the model's response (supports multiple tools).
+// It runs each extraction phase in turn (legacy JSON fallback parser, retired in Phase 2),
+// sharing a dedup set, the accumulated tool calls, and the position of the first match.
 func parseToolCalls(response string) ([]*ToolCall, string) {
 	cleaned := cleanResponse(response)
 	var toolCalls []*ToolCall
 	seen := make(map[string]bool) // Track seen tool calls to avoid duplicates
-	var firstToolIdx int = -1
+	firstToolIdx := -1
 
-	// Extract JSON objects using brace matching (handles nested objects and multiline)
+	extractStandardToolCalls(cleaned, seen, &toolCalls, &firstToolIdx)
+	extractArrayToolCalls(cleaned, seen, &toolCalls, &firstToolIdx)
+
+	// Fallback: if no standard tool calls found, try to convert alternative JSON formats
+	if len(toolCalls) == 0 {
+		extractFallbackToolCalls(cleaned, seen, &toolCalls, &firstToolIdx)
+	}
+
+	// Extract text before first tool call for display
+	textBefore := cleaned
+	if len(toolCalls) > 0 && firstToolIdx > 0 {
+		textBefore = strings.TrimSpace(cleaned[:firstToolIdx])
+	} else if len(toolCalls) > 0 {
+		textBefore = ""
+	}
+
+	return toolCalls, textBefore
+}
+
+// extractStandardToolCalls finds JSON objects using brace matching (handles nested objects and
+// multiline) and unmarshals each into a ToolCall, appending new (non-duplicate) matches.
+func extractStandardToolCalls(cleaned string, seen map[string]bool, toolCalls *[]*ToolCall, firstToolIdx *int) {
 	jsonObjects := extractJSONObjects(cleaned)
 
 	for _, jsonStr := range jsonObjects {
@@ -335,100 +390,96 @@ func parseToolCalls(response string) ([]*ToolCall, string) {
 				key := toolCall.Tool + ":" + fmt.Sprintf("%v", toolCall.Params)
 				if !seen[key] {
 					seen[key] = true
-					toolCalls = append(toolCalls, &toolCall)
+					*toolCalls = append(*toolCalls, &toolCall)
 
 					// Track position of first tool call
-					if firstToolIdx == -1 {
-						firstToolIdx = strings.Index(cleaned, jsonStr)
+					if *firstToolIdx == -1 {
+						*firstToolIdx = strings.Index(cleaned, jsonStr)
 					}
 				}
 			}
 		}
 	}
+}
 
-	// Also try to find JSON arrays of tool calls
-	// [{"tool": "...", "params": {...}}, {"tool": "...", "params": {...}}]
+// extractArrayToolCalls looks for a JSON array of tool calls -
+// [{"tool": "...", "params": {...}}, {"tool": "...", "params": {...}}] - and appends any new
+// (non-duplicate) matches.
+func extractArrayToolCalls(cleaned string, seen map[string]bool, toolCalls *[]*ToolCall, firstToolIdx *int) {
 	arrayPattern := regexp.MustCompile(`\[\s*\{`)
-	if arrayIdx := arrayPattern.FindStringIndex(cleaned); arrayIdx != nil {
-		// Find matching closing bracket
-		start := arrayIdx[0]
-		depth := 0
-		inString := false
-		escaped := false
-		end := -1
+	arrayIdx := arrayPattern.FindStringIndex(cleaned)
+	if arrayIdx == nil {
+		return
+	}
+	// Find matching closing bracket
+	start := arrayIdx[0]
+	depth := 0
+	inString := false
+	escaped := false
+	end := -1
 
-		for i := start; i < len(cleaned); i++ {
-			c := cleaned[i]
-			if escaped {
-				escaped = false
-				continue
-			}
-			if c == '\\' && inString {
-				escaped = true
-				continue
-			}
-			if c == '"' {
-				inString = !inString
-				continue
-			}
-			if !inString {
-				if c == '[' {
-					depth++
-				} else if c == ']' {
-					depth--
-					if depth == 0 {
-						end = i + 1
-						break
-					}
-				}
-			}
+	for i := start; i < len(cleaned); i++ {
+		c := cleaned[i]
+		if escaped {
+			escaped = false
+			continue
 		}
-
-		if end > start {
-			arrayStr := normalizeJSON(cleaned[start:end])
-			var arrayToolCalls []ToolCall
-			if err := json.Unmarshal([]byte(arrayStr), &arrayToolCalls); err == nil {
-				for i := range arrayToolCalls {
-					if arrayToolCalls[i].Tool != "" {
-						key := arrayToolCalls[i].Tool + ":" + fmt.Sprintf("%v", arrayToolCalls[i].Params)
-						if !seen[key] {
-							seen[key] = true
-							toolCalls = append(toolCalls, &arrayToolCalls[i])
-						}
-					}
-				}
-				if firstToolIdx == -1 || start < firstToolIdx {
-					firstToolIdx = start
+		if c == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString {
+			if c == '[' {
+				depth++
+			} else if c == ']' {
+				depth--
+				if depth == 0 {
+					end = i + 1
+					break
 				}
 			}
 		}
 	}
 
-	// Fallback: if no standard tool calls found, try to convert alternative JSON formats
-	if len(toolCalls) == 0 {
-		allJsonObjects := extractAllJSONObjects(cleaned)
-		for _, jsonStr := range allJsonObjects {
-			normalized := normalizeJSON(jsonStr)
-			if converted := tryConvertToToolCall(normalized); converted != nil {
-				key := converted.Tool + ":" + fmt.Sprintf("%v", converted.Params)
-				if !seen[key] {
-					seen[key] = true
-					toolCalls = append(toolCalls, converted)
-					if firstToolIdx == -1 {
-						firstToolIdx = strings.Index(cleaned, jsonStr)
+	if end > start {
+		arrayStr := normalizeJSON(cleaned[start:end])
+		var arrayToolCalls []ToolCall
+		if err := json.Unmarshal([]byte(arrayStr), &arrayToolCalls); err == nil {
+			for i := range arrayToolCalls {
+				if arrayToolCalls[i].Tool != "" {
+					key := arrayToolCalls[i].Tool + ":" + fmt.Sprintf("%v", arrayToolCalls[i].Params)
+					if !seen[key] {
+						seen[key] = true
+						*toolCalls = append(*toolCalls, &arrayToolCalls[i])
 					}
+				}
+			}
+			if *firstToolIdx == -1 || start < *firstToolIdx {
+				*firstToolIdx = start
+			}
+		}
+	}
+}
+
+// extractFallbackToolCalls tries to convert alternative (non-standard) JSON formats found
+// anywhere in the text into tool calls, appending any new (non-duplicate) matches.
+func extractFallbackToolCalls(cleaned string, seen map[string]bool, toolCalls *[]*ToolCall, firstToolIdx *int) {
+	allJSONObjects := extractAllJSONObjects(cleaned)
+	for _, jsonStr := range allJSONObjects {
+		normalized := normalizeJSON(jsonStr)
+		if converted := tryConvertToToolCall(normalized); converted != nil {
+			key := converted.Tool + ":" + fmt.Sprintf("%v", converted.Params)
+			if !seen[key] {
+				seen[key] = true
+				*toolCalls = append(*toolCalls, converted)
+				if *firstToolIdx == -1 {
+					*firstToolIdx = strings.Index(cleaned, jsonStr)
 				}
 			}
 		}
 	}
-
-	// Extract text before first tool call for display
-	textBefore := cleaned
-	if len(toolCalls) > 0 && firstToolIdx > 0 {
-		textBefore = strings.TrimSpace(cleaned[:firstToolIdx])
-	} else if len(toolCalls) > 0 {
-		textBefore = ""
-	}
-
-	return toolCalls, textBefore
 }

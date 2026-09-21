@@ -21,8 +21,9 @@ func (a *Assistant) SendMessageForPlanning(prompt string) (string, error) {
 	// Build a minimal conversation with just the planning prompt
 	messages := []openai.ChatCompletionMessage{
 		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: "You are a task planning assistant. Generate structured JSON plans for executing multi-step tasks. Be concise and practical.",
+			Role: openai.ChatMessageRoleSystem,
+			Content: "You are a task planning assistant. Generate structured JSON plans for executing " +
+				"multi-step tasks. Be concise and practical.",
 		},
 		{
 			Role:    openai.ChatMessageRoleUser,
@@ -44,7 +45,7 @@ func (a *Assistant) SendMessageForPlanning(prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create planning stream: %w", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	var response strings.Builder
 
