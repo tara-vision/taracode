@@ -12,7 +12,8 @@ import (
 )
 
 // baseSystemPromptCompact is used when native function calling is available (no tool examples needed)
-const baseSystemPromptCompact = `You are Tara Code, a DevOps & Cloud AI assistant specialized in infrastructure automation, container orchestration, and cloud platforms.
+const baseSystemPromptCompact = `You are Tara Code, a DevOps & Cloud AI assistant specialized in infrastructure ` +
+	`automation, container orchestration, and cloud platforms.
 
 ## DEVOPS EXPERTISE
 
@@ -39,7 +40,8 @@ When the user asks about the current date, time, day of week, or anything like "
 3. Be concise - after tool execution, confirm briefly what was done
 4. Consider security implications in all recommendations`
 
-const baseSystemPrompt = `You are Tara Code, a DevOps & Cloud AI assistant specialized in infrastructure automation, container orchestration, and cloud platforms.
+const baseSystemPrompt = `You are Tara Code, a DevOps & Cloud AI assistant specialized in infrastructure automation, ` +
+	`container orchestration, and cloud platforms.
 
 ## DEVOPS EXPERTISE
 
@@ -91,7 +93,8 @@ To use a tool, output JSON with "tool" and "params" keys:
 {"tool": "tool_name", "params": {"param1": "value1", "param2": "value2"}}
 
 CORRECT EXAMPLES:
-{"tool": "write_file", "params": {"file_path": "deployment.yaml", "content": "apiVersion: apps/v1\nkind: Deployment..."}}
+{"tool": "write_file", "params": {"file_path": "deployment.yaml", "content": "apiVersion: apps/v1\nkind: ` +
+	`Deployment..."}}
 {"tool": "kubectl_get", "params": {"resource": "pods", "namespace": "default"}}
 {"tool": "terraform_plan", "params": {"out": "plan.tfplan"}}
 
@@ -226,7 +229,8 @@ Use web_fetch when:
 - User provides a URL to analyze`
 
 // securitySystemPromptCompact is used when native function calling is available
-const securitySystemPromptCompact = `You are Tara Code in SECURITY MODE - a DevSecOps AI assistant specialized in application security, vulnerability assessment, and secure infrastructure.
+const securitySystemPromptCompact = `You are Tara Code in SECURITY MODE - a DevSecOps AI assistant specialized in ` +
+	`application security, vulnerability assessment, and secure infrastructure.
 
 ## SECURITY EXPERTISE
 
@@ -256,7 +260,8 @@ READ-ONLY operations (scans, reads, queries) are allowed without confirmation.
 5. Validate infrastructure configs (tfsec_scan, kubesec_scan)
 6. Never output actual secret values - always redact!`
 
-const securitySystemPrompt = `You are Tara Code in SECURITY MODE - a DevSecOps AI assistant specialized in application security, vulnerability assessment, and secure infrastructure.
+const securitySystemPrompt = `You are Tara Code in SECURITY MODE - a DevSecOps AI assistant specialized in ` +
+	`application security, vulnerability assessment, and secure infrastructure.
 
 ## SECURITY EXPERTISE
 
@@ -350,7 +355,8 @@ Examples:
 {"tool": "trivy_scan", "params": {"target": ".", "type": "fs", "severity": "HIGH,CRITICAL"}}
 {"tool": "trivy_scan", "params": {"target": "./terraform", "type": "config"}}
 
-Use when: Scanning Docker images before deployment, checking filesystem for vulnerabilities, auditing Terraform/K8s configs.
+Use when: Scanning Docker images before deployment, checking filesystem for vulnerabilities, auditing Terraform/K8s ` +
+	`configs.
 
 ### 2. gitleaks_scan - Git Secrets Detection
 Detects hardcoded secrets, API keys, and credentials in git repositories.
@@ -563,15 +569,12 @@ func buildSystemPrompt(workingDir string, storageMgr *storage.Manager) string {
 	return buildSystemPromptWithModeAndTools(workingDir, storageMgr, storage.ModeDevOps, false)
 }
 
-// buildSystemPromptWithMode creates the system prompt with the specified mode
-func buildSystemPromptWithMode(workingDir string, storageMgr *storage.Manager, mode storage.OperatingMode) string {
-	return buildSystemPromptWithModeAndTools(workingDir, storageMgr, mode, false)
-}
-
 // buildSystemPromptWithModeAndTools creates the system prompt with mode and native tools flag
 // When useNativeTools is true, uses compact prompts (tool definitions come from API tools parameter)
 // When useNativeTools is false, uses full prompts with JSON-in-content tool examples
-func buildSystemPromptWithModeAndTools(workingDir string, storageMgr *storage.Manager, mode storage.OperatingMode, useNativeTools bool) string {
+func buildSystemPromptWithModeAndTools(
+	workingDir string, storageMgr *storage.Manager, mode storage.OperatingMode, useNativeTools bool,
+) string {
 	var prompt string
 	if mode == storage.ModeSecurity {
 		if useNativeTools {
@@ -589,8 +592,10 @@ func buildSystemPromptWithModeAndTools(workingDir string, storageMgr *storage.Ma
 
 	// Check for TARACODE.md in current directory
 	taracodeFile := filepath.Join(workingDir, "TARACODE.md")
+	//nolint:gosec // reads TARACODE.md from the project's own working directory
 	if content, err := os.ReadFile(taracodeFile); err == nil {
-		prompt += fmt.Sprintf("\n\n## PROJECT CONTEXT\nThe following is project-specific guidance from TARACODE.md:\n\n%s", string(content))
+		prompt += fmt.Sprintf("\n\n## PROJECT CONTEXT\nThe following is project-specific guidance from TARACODE.md:\n\n%s",
+			string(content))
 	}
 
 	// Include relevant project memories if available
@@ -606,7 +611,9 @@ func buildSystemPromptWithModeAndTools(workingDir string, storageMgr *storage.Ma
 				for _, mem := range memories {
 					prompt += fmt.Sprintf("- [%s] %s\n", mem.Category, mem.Content)
 					// Increment use count asynchronously to avoid blocking
-					go memoryMgr.IncrementUseCount(mem.ID)
+					go func(id string) {
+						_ = memoryMgr.IncrementUseCount(id)
+					}(mem.ID)
 				}
 			}
 		}
@@ -619,9 +626,10 @@ func buildSystemPromptWithModeAndTools(workingDir string, storageMgr *storage.Ma
 			prompt += fmt.Sprintf("**%s**\n", plan.Title)
 			for i, task := range plan.Tasks {
 				status := "[ ]"
-				if task.Status == storage.TaskStatusCompleted {
+				switch task.Status {
+				case storage.TaskStatusCompleted:
 					status = "[x]"
-				} else if task.Status == storage.TaskStatusInProgress {
+				case storage.TaskStatusInProgress:
 					status = "[>]"
 				}
 				prompt += fmt.Sprintf("%d. %s %s\n", i+1, status, task.Content)

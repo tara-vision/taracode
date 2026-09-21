@@ -87,6 +87,7 @@ func InitProject(workingDir string) error {
 
 // extractBuildCommands extracts build commands from Makefile
 func extractBuildCommands(workingDir string, ctx *context.ProjectContext) {
+	//nolint:gosec // reads Makefile from the project's own working directory
 	content, err := os.ReadFile(filepath.Join(workingDir, "Makefile"))
 	if err != nil {
 		return
@@ -95,7 +96,9 @@ func extractBuildCommands(workingDir string, ctx *context.ProjectContext) {
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		// Match targets that are not indented and end with :
-		if strings.HasSuffix(line, ":") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(line, ".") && !strings.HasPrefix(line, " ") {
+		isTarget := strings.HasSuffix(line, ":") && !strings.HasPrefix(line, "\t") &&
+			!strings.HasPrefix(line, ".") && !strings.HasPrefix(line, " ")
+		if isTarget {
 			target := strings.TrimSuffix(line, ":")
 			// Skip targets with special characters or spaces
 			if !strings.ContainsAny(target, " \t$%") {
@@ -145,10 +148,10 @@ func generateTaracodeMD(workingDir string, ctx *context.ProjectContext) error {
 	// Project overview
 	sb.WriteString("## Project Overview\n\n")
 	if ctx.ProjectType != "" {
-		sb.WriteString(fmt.Sprintf("**Type:** %s project\n", ctx.ProjectType))
+		fmt.Fprintf(&sb, "**Type:** %s project\n", ctx.ProjectType)
 	}
 	if ctx.ModuleName != "" {
-		sb.WriteString(fmt.Sprintf("**Module:** %s\n", ctx.ModuleName))
+		fmt.Fprintf(&sb, "**Module:** %s\n", ctx.ModuleName)
 	}
 	sb.WriteString("\n")
 
@@ -161,7 +164,7 @@ func generateTaracodeMD(workingDir string, ctx *context.ProjectContext) error {
 	if len(ctx.ImportantFiles) > 0 {
 		sb.WriteString("## Key Files\n\n")
 		for _, file := range ctx.ImportantFiles {
-			sb.WriteString(fmt.Sprintf("- **`%s`** - %s\n", file.Path, file.Summary))
+			fmt.Fprintf(&sb, "- **`%s`** - %s\n", file.Path, file.Summary)
 		}
 		sb.WriteString("\n")
 	}
@@ -178,18 +181,19 @@ func generateTaracodeMD(workingDir string, ctx *context.ProjectContext) error {
 	// Git info
 	if ctx.GitInfo != nil && ctx.GitInfo.Branch != "" {
 		sb.WriteString("## Git Info\n\n")
-		sb.WriteString(fmt.Sprintf("- **Branch:** %s\n", ctx.GitInfo.Branch))
+		fmt.Fprintf(&sb, "- **Branch:** %s\n", ctx.GitInfo.Branch)
 		if ctx.GitInfo.RemoteURL != "" {
-			sb.WriteString(fmt.Sprintf("- **Remote:** %s\n", ctx.GitInfo.RemoteURL))
+			fmt.Fprintf(&sb, "- **Remote:** %s\n", ctx.GitInfo.RemoteURL)
 		}
 		if ctx.GitInfo.LastCommit != "" {
-			sb.WriteString(fmt.Sprintf("- **Last commit:** %s\n", ctx.GitInfo.LastCommit))
+			fmt.Fprintf(&sb, "- **Last commit:** %s\n", ctx.GitInfo.LastCommit)
 		}
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("---\n*Edit this file to add custom instructions for Tara Code.*\n")
 
+	//nolint:gosec // TARACODE.md is project documentation meant to be user-readable
 	return os.WriteFile(filepath.Join(workingDir, "TARACODE.md"), []byte(sb.String()), 0644)
 }
 
