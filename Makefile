@@ -5,6 +5,9 @@ BINARY=taracode
 # Package path for the Version variable
 PKG=github.com/tara-vision/taracode/cmd
 GOBIN=$(shell go env GOPATH)/bin
+GOLANGCI ?= $(shell command -v golangci-lint 2>/dev/null || echo $(GOBIN)/golangci-lint)
+GOVULNCHECK ?= $(shell command -v govulncheck 2>/dev/null || echo $(GOBIN)/govulncheck)
+GORELEASER ?= $(shell command -v goreleaser 2>/dev/null || echo $(GOBIN)/goreleaser)
 
 # Default version (used for local builds)
 VERSION ?= $(shell git describe --tags --always --dirty)
@@ -22,10 +25,10 @@ test:
 	go test -race ./...
 
 lint:
-	$(GOBIN)/golangci-lint run ./...
+	$(GOLANGCI) run ./...
 
 vuln:
-	$(GOBIN)/govulncheck ./...
+	$(GOVULNCHECK) ./...
 
 clean:
 	rm -f $(BINARY)
@@ -48,4 +51,4 @@ build-all:
 
 # Local dry run of the release pipeline (no publishing, no signing)
 snapshot:
-	$(GOBIN)/goreleaser release --snapshot --clean --skip=publish,sign
+	$(GORELEASER) release --snapshot --clean --skip=publish,sign

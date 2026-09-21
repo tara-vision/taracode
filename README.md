@@ -85,7 +85,7 @@ go install github.com/tara-vision/taracode@latest
 
 **Manual download:**
 
-Download binaries from [GitHub Releases](https://github.com/tara-vision/taracode/releases)
+Download binaries from [GitHub Releases](https://github.com/tara-vision/taracode/releases). Every release ships checksums, a cosign signature and SLSA provenance; see [SECURITY.md](SECURITY.md#verifying-downloads) to verify a download.
 
 ### 4. Run
 
