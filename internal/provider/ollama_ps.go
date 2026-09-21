@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // ContextReporter is implemented by providers that can report the context window
@@ -46,8 +47,14 @@ func (p *OllamaProvider) LoadedContextLength(ctx context.Context, model string) 
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
+	// Ollama reports an untagged configured model ("foo") as "foo:latest" in /api/ps.
+	want := model
+	if !strings.Contains(model, ":") {
+		want = model + ":latest"
+	}
+
 	for _, m := range ps.Models {
-		if m.Name == model || m.Model == model {
+		if m.Name == model || m.Name == want || m.Model == model || m.Model == want {
 			return m.ContextLength, nil
 		}
 	}
