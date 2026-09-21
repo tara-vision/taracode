@@ -62,6 +62,13 @@ func resolveDoctorTarget() (targetHost, apiKey, vendor string) {
 	return targetHost, apiKey, vendor
 }
 
+// doctorResolveWindow is the resolveWindow function every Diagnose call in this file passes: the
+// context window taracode would request for a model with this native maximum, from the same
+// config key and resolver a live turn uses.
+func doctorResolveWindow(modelMax int) (int, string) {
+	return assistant.ResolveContextWindow(viper.GetString("context.window"), modelMax)
+}
+
 // runDoctor builds a provider for hostURL and runs models.Diagnose against it. It is the testable
 // core of the command: asserting a real process exit code is awkward under go test, so tests call
 // this (and doctorExitCode) directly instead of driving the command through cobra's Execute.
@@ -71,7 +78,7 @@ func runDoctor(ctx context.Context, hostURL, apiKey, vendor, configuredModel str
 		return models.Report{}, fmt.Errorf("doctor: create provider: %w", err)
 	}
 	ramGB, _ := models.HostRAMGB()
-	return models.Diagnose(ctx, prov.LLM(), hostURL, ramGB, configuredModel, exec.LookPath), nil
+	return models.Diagnose(ctx, prov.LLM(), hostURL, ramGB, configuredModel, exec.LookPath, doctorResolveWindow), nil
 }
 
 // doctorExitCode is 1 when the server could not be reached, the condition RunE turns into
@@ -93,6 +100,7 @@ func handleDoctor(asst *assistant.Assistant) {
 	ramGB, _ := models.HostRAMGB()
 	rep := models.Diagnose(
 		context.Background(), asst.GetProvider().LLM(), liveHost, ramGB, asst.GetCurrentModel(), exec.LookPath,
+		doctorResolveWindow,
 	)
 	fmt.Print(rep.Render())
 	fmt.Println()
