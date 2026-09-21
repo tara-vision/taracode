@@ -199,8 +199,10 @@ context:
   compaction_keep_recent: 4
 
   # Context window to request from the model (default: auto)
-  # "auto" fits the model's native maximum (falling back to 32768 tokens when the server
-  # doesn't report one); a number requests that many tokens, clamped to the model's maximum
+  # "auto" requests 32768 tokens, or the model's native maximum when that is smaller (never more,
+  # to keep the KV cache affordable on 16 GB and 32 GB machines); a non-numeric value falls back to
+  # auto. Set a number instead to request an explicit window, clamped to the model's native maximum,
+  # on a model that supports going higher
   window: auto
 
 # Request options (v3.0.0-alpha.1)
