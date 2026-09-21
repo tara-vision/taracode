@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.1.x   | :white_check_mark: |
+| 2.1.x   | :white_check_mark: |
+| < 2.1   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -44,8 +45,22 @@ This security policy covers:
 ### Out of Scope
 
 - Vulnerabilities in third-party dependencies (please report to the upstream project)
-- Issues with self-hosted vLLM servers (not maintained by this project)
+- Issues with self-hosted LLM servers (Ollama, vLLM, llama.cpp)
 - Social engineering attacks
+
+## Verifying Downloads
+
+Every release ships `checksums.txt`, a keyless cosign signature of it, and SLSA provenance.
+
+```bash
+VERSION=v2.1.0
+BASE=https://github.com/tara-vision/taracode/releases/download/${VERSION}
+curl -fsSLO ${BASE}/checksums.txt -O ${BASE}/checksums.txt.sig -O ${BASE}/checksums.txt.pem
+cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
+  --certificate-identity-regexp 'https://github.com/tara-vision/taracode/.github/workflows/release.yml@refs/tags/v.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+sha256sum --ignore-missing -c checksums.txt   # shasum -a 256 -c on macOS
+```
 
 ## Security Best Practices
 
@@ -54,4 +69,4 @@ When using Tara Code:
 - Keep your installation updated to the latest version
 - Review commands before execution when using the `execute_command` tool
 - Be cautious with file operations in sensitive directories
-- Ensure your vLLM server is properly secured if exposed to a network
+- Ensure your self-hosted LLM servers (Ollama, vLLM, llama.cpp) are properly secured if exposed to a network
