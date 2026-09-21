@@ -6,14 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -39,48 +36,6 @@ const (
 	defaultMaxToolIterations = 10               // Default max tool call iterations before stopping
 )
 
-// newHTTPClient creates an HTTP client for streaming LLM responses.
-// Client-level timeout is disabled (0) to allow long-running streaming responses.
-// Timeout is controlled via context (apiResponseTimeout) instead.
-func newHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: 0, // Disabled - use context timeout for streaming
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   defaultConnectTimeout,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			MaxIdleConns:        10,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
-	}
-}
-
-// isRetryable checks if an error is transient and worth retrying
-func isRetryable(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Network timeouts
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-	// Connection errors
-	if errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.ETIMEDOUT) {
-		return true
-	}
-	// Check error message for common transient patterns
-	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, "connection refused") ||
-		strings.Contains(errMsg, "connection reset") ||
-		strings.Contains(errMsg, "no such host") ||
-		strings.Contains(errMsg, "temporary failure")
-}
-
 // isHostRetryableError checks if an error indicates a host connection failure
 // that should trigger a fallback to another host (v2.0 multi-host support)
 func isHostRetryableError(err error) bool {
@@ -95,37 +50,6 @@ func isHostRetryableError(err error) bool {
 		strings.Contains(errMsg, "dial tcp") ||
 		strings.Contains(errMsg, "network is unreachable") ||
 		strings.Contains(errMsg, "connection reset")
-}
-
-// withRetry executes fn with exponential backoff retry for transient errors
-func withRetry[T any](ctx gocontext.Context, operation string, fn func() (T, error)) (T, error) {
-	var result T
-	var lastErr error
-	backoff := initialBackoff
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		result, lastErr = fn()
-		if lastErr == nil {
-			return result, nil
-		}
-		if !isRetryable(lastErr) {
-			return result, lastErr
-		}
-		if attempt < maxRetries {
-			fmt.Printf("  ↻ %s failed, retrying in %v (%d/%d)...\n",
-				operation, backoff, attempt, maxRetries)
-			select {
-			case <-ctx.Done():
-				return result, ctx.Err()
-			case <-time.After(backoff):
-			}
-			backoff = backoff * 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
-		}
-	}
-	return result, fmt.Errorf("after %d attempts: %w", maxRetries, lastErr)
 }
 
 type Assistant struct {
@@ -750,62 +674,6 @@ For vulnerability scanning workflow:
 
 NEVER output actual secret values - always redact them!`
 
-// detectModel queries the /v1/models endpoint to get the served model
-func detectModel(ctx gocontext.Context, httpClient *http.Client, host, apiKey string) (string, error) {
-	return withRetry(ctx, "model detection", func() (string, error) {
-		host = strings.TrimSuffix(host, "/")
-		url := host + "/v1/models"
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return "", fmt.Errorf("failed to create request: %w", err)
-		}
-
-		if apiKey != "" {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
-		}
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return "", err // Let isRetryable check this
-		}
-		defer resp.Body.Close()
-
-		// 5xx errors are retryable (server overloaded)
-		if resp.StatusCode >= 500 {
-			body, _ := io.ReadAll(resp.Body)
-			return "", fmt.Errorf("server error (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return "", fmt.Errorf("failed to query /v1/models (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", fmt.Errorf("failed to read response: %w", err)
-		}
-
-		var modelsResp struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-		}
-
-		if err := json.Unmarshal(body, &modelsResp); err != nil {
-			return "", fmt.Errorf("failed to parse /v1/models response: %w", err)
-		}
-
-		if len(modelsResp.Data) == 0 {
-			return "", fmt.Errorf("no models returned from /v1/models")
-		}
-
-		// Return the first (typically only) model
-		return modelsResp.Data[0].ID, nil
-	})
-}
-
 func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner bool) (*Assistant, error) {
 	renderer := ui.NewRenderer()
 
@@ -1153,11 +1021,6 @@ func (a *Assistant) ClearAuditLog() error {
 		return fmt.Errorf("no active session")
 	}
 	return a.storage.ClearAuditLog(a.session.ID)
-}
-
-// GetUsage returns the current session token usage
-func (a *Assistant) GetUsage() *storage.TokenUsage {
-	return a.sessionUsage
 }
 
 // GetLastResponse returns the last AI response text (for suggestion detection)
@@ -1851,13 +1714,6 @@ func printInitSummary(ctx *context.ProjectContext) {
 	fmt.Println("Edit TARACODE.md to add custom instructions.")
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // ToolCall represents a parsed tool call from the model's response
 type ToolCall struct {
 	ID     string                 `json:"id,omitempty"` // Tool call ID for native function calling
@@ -2217,138 +2073,6 @@ func parseToolCalls(response string) ([]*ToolCall, string) {
 	}
 
 	return toolCalls, textBefore
-}
-
-// formatToolStatus returns a concise, human-friendly status for tool execution
-func formatToolStatus(tool string, params map[string]interface{}, result string, isError bool) string {
-	gray := "\033[90m"
-	green := "\033[32m"
-	red := "\033[31m"
-	reset := "\033[0m"
-
-	if isError {
-		return fmt.Sprintf("%s✗ %s failed%s", red, tool, reset)
-	}
-
-	switch tool {
-	case "read_file":
-		filePath, _ := params["file_path"].(string)
-		lines := strings.Count(result, "\n") + 1
-		return fmt.Sprintf("%s→ Read %s (%d lines)%s", gray, filepath.Base(filePath), lines, reset)
-
-	case "search_files":
-		pattern, _ := params["pattern"].(string)
-		matches := strings.Count(result, "\n")
-		if strings.Contains(result, "No matches") {
-			return fmt.Sprintf("%s→ Searched for \"%s\" (no matches)%s", gray, pattern, reset)
-		}
-		return fmt.Sprintf("%s→ Searched for \"%s\" (%d matches)%s", gray, pattern, matches, reset)
-
-	case "list_files":
-		dir, _ := params["directory"].(string)
-		if dir == "" || dir == "." {
-			dir = "current directory"
-		}
-		items := strings.Count(result, "\n")
-		return fmt.Sprintf("%s→ Listed %s (%d items)%s", gray, dir, items, reset)
-
-	case "execute_command":
-		cmd, _ := params["command"].(string)
-		if len(cmd) > ui.MaxCommandDisplay {
-			cmd = cmd[:ui.MaxCommandDisplay-3] + "..."
-		}
-		return fmt.Sprintf("%s→ Executed: %s%s", gray, cmd, reset)
-
-	case "write_file":
-		filePath, _ := params["file_path"].(string)
-		return fmt.Sprintf("%s✓ Wrote %s%s", green, filepath.Base(filePath), reset)
-
-	case "append_file":
-		filePath, _ := params["file_path"].(string)
-		return fmt.Sprintf("%s✓ Appended to %s%s", green, filepath.Base(filePath), reset)
-
-	case "edit_file":
-		filePath, _ := params["file_path"].(string)
-		return fmt.Sprintf("%s✓ Edited %s%s", green, filepath.Base(filePath), reset)
-
-	case "insert_lines":
-		filePath, _ := params["file_path"].(string)
-		lineNum, _ := params["line_number"].(float64)
-		return fmt.Sprintf("%s✓ Inserted at line %d in %s%s", green, int(lineNum), filepath.Base(filePath), reset)
-
-	case "replace_lines":
-		filePath, _ := params["file_path"].(string)
-		startLine, _ := params["start_line"].(float64)
-		endLine, _ := params["end_line"].(float64)
-		return fmt.Sprintf("%s✓ Replaced lines %d-%d in %s%s", green, int(startLine), int(endLine), filepath.Base(filePath), reset)
-
-	case "delete_lines":
-		filePath, _ := params["file_path"].(string)
-		startLine, _ := params["start_line"].(float64)
-		endLine, _ := params["end_line"].(float64)
-		return fmt.Sprintf("%s✓ Deleted lines %d-%d from %s%s", green, int(startLine), int(endLine), filepath.Base(filePath), reset)
-
-	case "copy_file":
-		src, _ := params["source_path"].(string)
-		dst, _ := params["dest_path"].(string)
-		return fmt.Sprintf("%s✓ Copied %s to %s%s", green, filepath.Base(src), filepath.Base(dst), reset)
-
-	case "move_file":
-		src, _ := params["source_path"].(string)
-		dst, _ := params["dest_path"].(string)
-		return fmt.Sprintf("%s✓ Moved %s to %s%s", green, filepath.Base(src), filepath.Base(dst), reset)
-
-	case "delete_file":
-		filePath, _ := params["file_path"].(string)
-		recursive, _ := params["recursive"].(bool)
-		if recursive {
-			return fmt.Sprintf("%s✓ Deleted %s (recursive)%s", green, filepath.Base(filePath), reset)
-		}
-		return fmt.Sprintf("%s✓ Deleted %s%s", green, filepath.Base(filePath), reset)
-
-	case "create_directory":
-		dirPath, _ := params["path"].(string)
-		return fmt.Sprintf("%s✓ Created directory %s%s", green, filepath.Base(dirPath), reset)
-
-	case "find_files":
-		pattern, _ := params["pattern"].(string)
-		matches := strings.Count(result, "\n")
-		if strings.Contains(result, "No files found") {
-			return fmt.Sprintf("%s→ Find \"%s\" (no matches)%s", gray, pattern, reset)
-		}
-		return fmt.Sprintf("%s→ Find \"%s\" (%d files)%s", gray, pattern, matches, reset)
-
-	case "git_status":
-		if strings.Contains(result, "clean") {
-			return fmt.Sprintf("%s→ Git status: clean%s", gray, reset)
-		}
-		changes := strings.Count(result, "\n")
-		return fmt.Sprintf("%s→ Git status: %d changes%s", gray, changes, reset)
-
-	case "git_diff":
-		if strings.Contains(result, "No changes") {
-			return fmt.Sprintf("%s→ Git diff: no changes%s", gray, reset)
-		}
-		lines := strings.Count(result, "\n")
-		return fmt.Sprintf("%s→ Git diff: %d lines%s", gray, lines, reset)
-
-	case "git_log":
-		commits := strings.Count(result, "\n") + 1
-		return fmt.Sprintf("%s→ Git log: %d commits%s", gray, commits, reset)
-
-	case "git_add":
-		return fmt.Sprintf("%s✓ Git: staged files%s", green, reset)
-
-	case "git_commit":
-		return fmt.Sprintf("%s✓ Git: commit created%s", green, reset)
-
-	case "git_branch":
-		branches := strings.Count(result, "\n") + 1
-		return fmt.Sprintf("%s→ Git branches: %d%s", gray, branches, reset)
-
-	default:
-		return fmt.Sprintf("%s→ %s completed%s", gray, tool, reset)
-	}
 }
 
 func (a *Assistant) ProcessMessage(userMessage string) error {
