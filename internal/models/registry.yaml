@@ -1,0 +1,110 @@
+# taracode model registry. Tiers are host RAM classes: small (any), 16, 32, 48 (48 GB and up).
+# default: true marks the recommendation for that tier. min_ollama is the first Ollama release
+# that ships the model's tool-call parser.
+entries:
+  - name: gemma4:e4b
+    family: gemma4
+    params: 4B
+    download_gb: 9.6
+    context: 131072
+    capabilities: [tools, thinking, vision]
+    tier: small
+    notes: Small fast model for helper roles and quick checks.
+  - name: gemma4:12b
+    family: gemma4
+    params: 12B
+    download_gb: 7.6
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "16"
+    default: true
+    min_ollama: 0.20.0
+    notes: The laptop default; tools, thinking and images.
+  - name: qwen3.5:9b
+    family: qwen3.5
+    params: 9B
+    download_gb: 6.6
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "16"
+    min_ollama: 0.17.4
+    notes: Best small tool caller on the BFCL v4 listings.
+  - name: ministral-3:14b
+    family: ministral-3
+    params: 14B
+    download_gb: 9.1
+    context: 262144
+    capabilities: [tools, vision]
+    tier: "16"
+    notes: No thinking mode; quick and predictable.
+  - name: qwen3.8:27b
+    family: qwen3.8
+    params: 27B
+    download_gb: 18
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    default: true
+    min_ollama: 0.32.12
+    notes: Strongest agentic results in its class (Terminal-Bench 2.1, SWE-bench Pro).
+  - name: qwen3.6:27b
+    family: qwen3.6
+    params: 27B
+    download_gb: 18
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    min_ollama: 0.24.0
+  - name: gemma4:26b
+    family: gemma4
+    params: 26B-A4B
+    download_gb: 19
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    min_ollama: 0.20.0
+    notes: Mixture of experts; fast per token.
+  - name: muse-glimmer:30b
+    family: muse-glimmer
+    params: 30B
+    download_gb: 18
+    context: 131072
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    min_ollama: 0.32.7
+    notes: Trained for tool-failure recovery; reasoning levels low to xhigh.
+  - name: glm-4.7-flash
+    family: glm-4.7-flash
+    params: 30B-A3B
+    download_gb: 19
+    context: 198000
+    capabilities: [tools, thinking]
+    tier: "32"
+    min_ollama: 0.14.3
+  - name: qwen3.6:35b
+    family: qwen3.6
+    params: 35B-A3B
+    download_gb: 23
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "48"
+    default: true
+    min_ollama: 0.24.0
+    notes: Mixture of experts with the best SWE-bench and TAU2 numbers in class.
+  - name: gemma4:31b
+    family: gemma4
+    params: 31B
+    download_gb: 20
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "48"
+    min_ollama: 0.20.0
+  - name: nemotron-3.5-lightning:30b
+    family: nemotron-3.5-lightning
+    params: 30B-A3B
+    download_gb: 25
+    context: 1048576
+    capabilities: [tools, thinking]
+    tier: "48"
+    min_ollama: 0.32.9
+    notes: Throughput oriented; one-million-token context.
