@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/orchestrator"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -224,7 +225,7 @@ func handleHostsHelp() {
 	fmt.Println("    hosts:")
 	fmt.Println("      primary:")
 	fmt.Println("        url: http://gpu-server:11434")
-	fmt.Println("        models: [qwen3.8:27b, qwen3.6:35b]")
+	fmt.Printf("        models: [%s, %s]\n", models.DefaultName(models.Tier32), models.DefaultName(models.Tier48))
 	fmt.Println("        priority: 1")
 	fmt.Println("      local:")
 	fmt.Println("        url: http://localhost:11434")
@@ -237,10 +238,10 @@ func handleHostsHelp() {
 	fmt.Println("    agents:")
 	fmt.Println("      coder:")
 	fmt.Println("        host: primary")
-	fmt.Println("        model: qwen3.8:27b")
+	fmt.Printf("        model: %s\n", models.DefaultName(models.Tier32))
 	fmt.Println("      reviewer:")
 	fmt.Println("        host: local")
-	fmt.Println("        model: gemma4:e4b")
+	fmt.Printf("        model: %s\n", models.DefaultName(models.TierSmall))
 	fmt.Println()
 }
 

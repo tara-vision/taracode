@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
+
+	"github.com/tara-vision/taracode/internal/models"
 )
 
 // AgentsConfig represents the full agents configuration section
@@ -47,7 +50,7 @@ func DefaultAgentsConfig() AgentsConfig {
 	return AgentsConfig{
 		Enabled:           true,
 		DefaultRouting:    "auto",
-		FallbackModel:     "qwen3.8:27b",
+		FallbackModel:     models.DefaultName(models.Tier32),
 		TimeoutMultiplier: 1.0,
 		Planner:           defaultAgentConfigYAML(TypePlanner),
 		Coder:             defaultAgentConfigYAML(TypeCoder),
@@ -281,15 +284,20 @@ func SaveProjectAgentsConfig(projectDir string, cfg AgentsConfig) error {
 	return os.WriteFile(agentsFile, data, 0644)
 }
 
-// GenerateExampleConfig generates an example agents.yaml content
+// GenerateExampleConfig generates an example agents.yaml content. Model names are filled in from
+// the registry's per-tier defaults so the example never drifts from the recommendations in
+// `taracode doctor` and the registry itself.
 func GenerateExampleConfig() string {
-	return `# Agent Configuration Example
+	tier32 := models.DefaultName(models.Tier32)
+	tier16 := models.DefaultName(models.Tier16)
+	tierSmall := models.DefaultName(models.TierSmall)
+	return fmt.Sprintf(`# Agent Configuration Example
 # Place in .taracode/agents.yaml to override global settings
 
 # Global agent settings
 enabled: true
 default_routing: auto  # auto, manual, or task-based
-fallback_model: qwen3.8:27b
+fallback_model: %s
 timeout_multiplier: 1.0
 
 # Individual agent configurations
@@ -298,14 +306,14 @@ timeout_multiplier: 1.0
 #   - host: Named host from hosts config (optional, uses default if not set)
 #   - temperature, max_context_tokens, timeout, etc.
 planner:
-  model: gemma4:12b
+  model: %s
   # host: primary        # Uncomment to use specific host
   temperature: 0.3
   max_context_tokens: 4096
   timeout: 60
 
 coder:
-  model: qwen3.8:27b
+  model: %s
   # host: primary        # Use powerful GPU host for coding
   temperature: 0.4
   max_context_tokens: 16384
@@ -316,7 +324,7 @@ coder:
   timeout: 300
 
 tester:
-  model: qwen3.8:27b
+  model: %s
   temperature: 0.2
   max_context_tokens: 8192
   tool_categories:
@@ -325,7 +333,7 @@ tester:
   timeout: 180
 
 reviewer:
-  model: gemma4:e4b
+  model: %s
   # host: local          # Use lightweight local model for reviews
   temperature: 0.5
   max_context_tokens: 12288
@@ -336,7 +344,7 @@ reviewer:
   timeout: 180
 
 devops:
-  model: qwen3.8:27b
+  model: %s
   temperature: 0.3
   max_context_tokens: 12288
   tool_categories:
@@ -347,7 +355,7 @@ devops:
   timeout: 300
 
 security:
-  model: qwen3.8:27b
+  model: %s
   temperature: 0.2
   max_context_tokens: 12288
   tool_categories:
@@ -356,7 +364,7 @@ security:
   timeout: 300
 
 diagnostics:
-  model: gemma4:12b
+  model: %s
   # host: local          # Quick diagnostics on local
   temperature: 0.2
   max_context_tokens: 4096
@@ -365,5 +373,5 @@ diagnostics:
     - command
   auto_invoke: true
   timeout: 60
-`
+`, tier32, tier16, tier32, tier32, tierSmall, tier32, tier32, tier16)
 }

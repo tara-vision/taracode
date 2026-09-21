@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/tara-vision/taracode/internal/models"
 )
 
 // ErrorSuggestion represents an actionable suggestion for an error
@@ -41,7 +43,7 @@ var errorSuggestions = []ErrorSuggestion{
 		Suggestions: []string{
 			"The server closed the connection unexpectedly",
 			"Check if Ollama has enough memory for the model",
-			"Try a smaller model: taracode --model gemma4:12b",
+			fmt.Sprintf("Try a smaller model: taracode --model %s", models.DefaultName(models.Tier16)),
 		},
 	},
 	{
@@ -79,7 +81,8 @@ var errorSuggestions = []ErrorSuggestion{
 		Title:   "No Models Available",
 		Suggestions: []string{
 			"No models are loaded on the server",
-			"Pull a model: ollama pull gemma4:12b (16 GB) or qwen3.8:27b (32 GB)",
+			fmt.Sprintf("Pull a model: ollama pull %s (16 GB) or %s (32 GB)",
+				models.DefaultName(models.Tier16), models.DefaultName(models.Tier32)),
 			"Check Ollama status: ollama list",
 		},
 	},

@@ -94,6 +94,15 @@ func (r *Registry) DefaultForTier(t Tier) Entry {
 	return Entry{}
 }
 
+// DefaultName is the registry default for a tier, or "" when the registry cannot be loaded.
+func DefaultName(t Tier) string {
+	r, err := Load()
+	if err != nil {
+		return ""
+	}
+	return r.DefaultForTier(t).Name
+}
+
 // TierFor maps host RAM in GB to a tier.
 func TierFor(ramGB int) Tier {
 	switch {

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/models"
 )
 
 func TestDefaultAgentsConfig(t *testing.T) {
@@ -17,8 +19,8 @@ func TestDefaultAgentsConfig(t *testing.T) {
 		t.Errorf("expected DefaultRouting to be 'auto', got %s", cfg.DefaultRouting)
 	}
 
-	if cfg.FallbackModel != "qwen3.8:27b" {
-		t.Errorf("expected FallbackModel to be 'qwen3.8:27b', got %s", cfg.FallbackModel)
+	if want := models.DefaultName(models.Tier32); cfg.FallbackModel != want {
+		t.Errorf("expected FallbackModel to be %q, got %s", want, cfg.FallbackModel)
 	}
 
 	if cfg.TimeoutMultiplier != 1.0 {
