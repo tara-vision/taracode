@@ -496,6 +496,14 @@ func (r *Renderer) PromptStringWithMode(mode storage.OperatingMode) string {
 	return PromptStyle.Render("❯") + " "
 }
 
+// Dim renders text in the muted style used for model reasoning, which is shown but never stored.
+func (r *Renderer) Dim(s string) string {
+	if r.config != nil && !r.config.EnableColor {
+		return s
+	}
+	return Subtle.Render(s)
+}
+
 // ErrorMessage formats an error message
 func (r *Renderer) ErrorMessage(err error) string {
 	return ToolError.Render(fmt.Sprintf("%s Error: %v", IconError, err))

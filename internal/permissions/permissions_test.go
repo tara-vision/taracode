@@ -435,3 +435,28 @@ func TestIsValidTool(t *testing.T) {
 		}
 	}
 }
+
+func TestNewManagerAllowAllAllowsEverything(t *testing.T) {
+	m := NewManagerAllowAll()
+
+	for _, tool := range []string{"delete_file", "execute_command", "write_file", "git_commit", "github.list_repos"} {
+		if perm := m.CheckPermission(tool); perm != PermissionAllow {
+			t.Errorf("CheckPermission(%q) = %q, want %q", tool, perm, PermissionAllow)
+		}
+	}
+}
+
+func TestNewManagerAllowAllDoesNotPersist(t *testing.T) {
+	m := NewManagerAllowAll()
+
+	if err := m.SetToolPermission("write_file", PermissionDeny); err != nil {
+		t.Fatalf("SetToolPermission on an in-memory manager: %v", err)
+	}
+	if err := m.Save(); err != nil {
+		t.Fatalf("Save on an in-memory manager: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(".taracode", "permissions.json")); !os.IsNotExist(err) {
+		t.Fatalf("in-memory manager wrote a permissions file: %v", err)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/context"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
@@ -27,7 +28,7 @@ const (
 
 type Assistant struct {
 	provider      provider.Provider
-	client        *openai.Client
+	llm           llm.Client
 	model         string
 	conversation  []openai.ChatCompletionMessage
 	toolRegistry  *tools.Registry
@@ -63,6 +64,11 @@ type Assistant struct {
 	serverContextChecked bool // true once /api/ps has answered for the current model
 	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
 
+	// Request options sent with every turn (Task 8 wires these to config)
+	think         llm.Think // reasoning mode
+	keepAlive     string    // how long the server keeps the model loaded
+	contextWindow int       // num_ctx for the request, 0 = server default
+
 	// Context management (v2.0.2)
 	truncationCfg   TruncationConfig
 	compactionCfg   CompactionConfig
@@ -86,9 +92,6 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
-
-	// Get OpenAI-compatible client from provider
-	client := prov.CreateClient()
 
 	workingDir, err := os.Getwd()
 	if err != nil {
@@ -220,7 +223,7 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 
 	return &Assistant{
 		provider:       prov,
-		client:         client,
+		llm:            prov.LLM(),
 		model:          model,
 		conversation:   []openai.ChatCompletionMessage{systemMessage},
 		toolRegistry:   tools.NewRegistry(),
@@ -250,6 +253,47 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		modelOptions:     modelOpts,
 		truncationEvents: make([]TruncationResult, 0),
 	}, nil
+}
+
+// newForTest builds an Assistant on a fake server without storage, spinner or interactive
+// prompts. Test-only: New is the constructor the binary uses.
+func newForTest(workingDir, model, host string, streaming bool) *Assistant {
+	prov := provider.NewOllamaProvider(host, "")
+	prov.SetModel(model)
+	a := &Assistant{
+		provider:       prov,
+		llm:            prov.LLM(),
+		model:          model,
+		workingDir:     workingDir,
+		streaming:      streaming,
+		enableSpinner:  false,
+		renderer:       ui.NewRenderer(),
+		toolRegistry:   tools.NewRegistry(),
+		toolDefs:       tools.GetToolDefinitions(),
+		sessionUsage:   &storage.TokenUsage{},
+		mode:           storage.ModeDevOps,
+		useNativeTools: true,
+		contextWindow:  32768,
+		truncationCfg: TruncationConfig{
+			MaxLines: DefaultMaxToolOutputLines,
+			MaxChars: DefaultMaxToolOutputChars,
+		},
+		compactionCfg: CompactionConfig{
+			Enabled:    false,
+			Threshold:  0.75,
+			KeepRecent: 4,
+			MaxTokens:  32768,
+		},
+		compactionState:  NewCompactionState(),
+		maxIterations:    defaultMaxToolIterations,
+		truncationEvents: make([]TruncationResult, 0),
+	}
+	a.systemPrompt = buildSystemPromptWithModeAndTools(workingDir, nil, a.mode, true)
+	a.conversation = []openai.ChatCompletionMessage{{
+		Role:    openai.ChatMessageRoleSystem,
+		Content: a.systemPrompt,
+	}}
+	return a
 }
 
 // GetToolRegistry returns the tool registry

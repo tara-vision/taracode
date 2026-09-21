@@ -2,10 +2,12 @@ package assistant
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/provider"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -53,19 +55,19 @@ func (a *Assistant) resetServerContextCheck() {
 // current model with and prints one warning per session when it is too small.
 // It runs after a message has been processed, so the model is loaded by then.
 func (a *Assistant) checkServerContextOnce() {
-	if a.serverContextChecked || a.provider == nil {
-		return
-	}
-	reporter, ok := a.provider.(provider.ContextReporter)
-	if !ok {
-		a.serverContextChecked = true
+	if a.serverContextChecked || a.llm == nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	serverCtx, err := reporter.LoadedContextLength(ctx, a.model)
+	loaded, err := a.llm.Loaded(ctx)
+	if errors.Is(err, llm.ErrNotSupported) {
+		a.serverContextChecked = true // this backend cannot report it; never ask again
+		return
+	}
+	serverCtx := loadedContextLength(loaded, a.model)
 	if err != nil || serverCtx <= 0 {
 		return // not loaded yet or server unreachable: try again after the next message
 	}
@@ -78,4 +80,19 @@ func (a *Assistant) checkServerContextOnce() {
 	if warn {
 		fmt.Printf("\n%s %s\n", ui.IconWarning, msg)
 	}
+}
+
+// loadedContextLength returns the context window the server loaded model with, or 0 when it is not
+// loaded. Ollama reports an untagged model ("foo") as "foo:latest".
+func loadedContextLength(loaded []llm.LoadedModel, model string) int {
+	want := model
+	if !strings.Contains(model, ":") {
+		want = model + ":latest"
+	}
+	for _, m := range loaded {
+		if m.Name == model || m.Name == want {
+			return m.ContextLength
+		}
+	}
+	return 0
 }

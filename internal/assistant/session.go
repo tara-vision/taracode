@@ -8,6 +8,8 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -176,7 +178,7 @@ func (a *Assistant) GenerateSummary() (string, error) {
 	defer cancel()
 
 	// Build the summarization request
-	summaryRequest := openai.ChatCompletionRequest{
+	summaryRequest := llm.Request{
 		Model: a.model,
 		Messages: []openai.ChatCompletionMessage{
 			{
@@ -189,39 +191,18 @@ func (a *Assistant) GenerateSummary() (string, error) {
 				Content: conversationText.String(),
 			},
 		},
-		//nolint:staticcheck // MaxTokens (not MaxCompletionTokens) is what non-reasoning
-		// OpenAI-compatible local servers (Ollama/vLLM/llama.cpp) honor; see go-openai's
-		// reasoning_validator.go, which only requires MaxCompletionTokens for o1-series models.
-		MaxTokens: 100,
+		Options: llm.Options{NumPredict: 100},
 	}
 
-	resp, err := a.client.CreateChatCompletion(ctx, summaryRequest)
+	res, err := a.llm.Chat(ctx, summaryRequest, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no summary generated")
-	}
+	// Track usage from summary generation - use the server numbers if it sent any, otherwise estimate
+	a.addUsage(res.Usage, (150+conversationText.Len())/4, len(res.Content)/4)
 
-	// Track usage from summary generation - use API response if available, otherwise estimate
-	if resp.Usage.TotalTokens > 0 {
-		a.sessionUsage.PromptTokens += resp.Usage.PromptTokens
-		a.sessionUsage.CompletionTokens += resp.Usage.CompletionTokens
-		a.sessionUsage.TotalTokens += resp.Usage.TotalTokens
-	} else {
-		// Estimate tokens when API doesn't return usage (common with Ollama)
-		// System prompt + conversation text, ~4 chars per token
-		promptTokens := (150 + conversationText.Len()) / 4 // 150 chars for system prompt
-		completionTokens := len(resp.Choices[0].Message.Content) / 4
-		totalTokens := promptTokens + completionTokens
-
-		a.sessionUsage.PromptTokens += promptTokens
-		a.sessionUsage.CompletionTokens += completionTokens
-		a.sessionUsage.TotalTokens += totalTokens
-	}
-
-	summary := strings.TrimSpace(resp.Choices[0].Message.Content)
+	summary := strings.TrimSpace(res.Content)
 
 	// Save the summary to storage
 	if a.storage != nil && a.session != nil {
@@ -230,4 +211,16 @@ func (a *Assistant) GenerateSummary() (string, error) {
 	}
 
 	return summary, nil
+}
+
+// addUsage folds one reply's token usage into the session total. Local servers do not always
+// report usage, so estimates take over when the reply came back without numbers.
+func (a *Assistant) addUsage(usage llm.Usage, estimatedPrompt, estimatedCompletion int) {
+	prompt, completion := usage.PromptTokens, usage.CompletionTokens
+	if prompt+completion == 0 {
+		prompt, completion = estimatedPrompt, estimatedCompletion
+	}
+	a.sessionUsage.PromptTokens += prompt
+	a.sessionUsage.CompletionTokens += completion
+	a.sessionUsage.TotalTokens += prompt + completion
 }

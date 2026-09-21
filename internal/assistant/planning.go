@@ -2,13 +2,12 @@ package assistant
 
 import (
 	gocontext "context"
-	"errors"
 	"fmt"
-	"io"
-	"strings"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // SendMessageForPlanning sends a prompt to the LLM for planning without tool execution.
@@ -31,49 +30,23 @@ func (a *Assistant) SendMessageForPlanning(prompt string) (string, error) {
 		},
 	}
 
-	// Create request without tools - pure text generation for planning
-	req := openai.ChatCompletionRequest{
+	// Request without tools - pure text generation for planning. Streaming keeps the transport
+	// the same as a normal turn; the plan is returned to the caller rather than printed, so the
+	// callback has nothing to do.
+	req := llm.Request{
 		Model:    a.model,
 		Messages: messages,
-		StreamOptions: &openai.StreamOptions{
-			IncludeUsage: true,
-		},
+		Options:  llm.Options{NumCtx: a.contextWindow, KeepAlive: a.keepAlive},
 	}
 
-	// Use streaming to accumulate the response
-	stream, err := a.client.CreateChatCompletionStream(ctx, req)
+	res, err := a.llm.Chat(ctx, req, func(llm.Event) error { return nil })
 	if err != nil {
-		return "", fmt.Errorf("failed to create planning stream: %w", err)
-	}
-	defer func() { _ = stream.Close() }()
-
-	var response strings.Builder
-
-	for {
-		chunk, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("planning stream error: %w", err)
-		}
-
-		if len(chunk.Choices) > 0 {
-			delta := chunk.Choices[0].Delta
-			if delta.Content != "" {
-				response.WriteString(delta.Content)
-			}
-		}
-
-		// Track usage
-		if chunk.Usage != nil {
-			a.sessionUsage.PromptTokens += chunk.Usage.PromptTokens
-			a.sessionUsage.CompletionTokens += chunk.Usage.CompletionTokens
-			a.sessionUsage.TotalTokens += chunk.Usage.TotalTokens
-		}
+		return "", fmt.Errorf("planning request failed: %w", err)
 	}
 
-	return response.String(), nil
+	a.addUsage(res.Usage, 0, 0)
+
+	return res.Content, nil
 }
 
 // AnalyzeImages sends images to the LLM for analysis without affecting the conversation
@@ -116,36 +89,20 @@ func (a *Assistant) AnalyzeImages(prompt string, images []*ImageData) (string, e
 	defer cancel()
 
 	// Make request without tools (simple analysis)
-	req := openai.ChatCompletionRequest{
+	req := llm.Request{
 		Model:    a.model,
 		Messages: messages,
+		Options:  llm.Options{NumCtx: a.contextWindow, KeepAlive: a.keepAlive},
 	}
 
-	resp, err := a.client.CreateChatCompletion(ctx, req)
+	res, err := a.llm.Chat(ctx, req, nil)
 	if err != nil {
 		return "", fmt.Errorf("analysis request failed: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from model")
-	}
+	// Track usage - estimates take over when the server sends none (common with Ollama vision):
+	// ~4 chars per token for text, ~1000 tokens per image.
+	a.addUsage(res.Usage, len(prompt)/4+len(images)*1000, len(res.Content)/4)
 
-	// Track usage - use API response if available, otherwise estimate
-	if resp.Usage.TotalTokens > 0 {
-		a.sessionUsage.PromptTokens += resp.Usage.PromptTokens
-		a.sessionUsage.CompletionTokens += resp.Usage.CompletionTokens
-		a.sessionUsage.TotalTokens += resp.Usage.TotalTokens
-	} else {
-		// Estimate tokens when API doesn't return usage (common with Ollama vision)
-		// Rough estimation: ~4 chars per token for text, ~1000 tokens per image
-		promptTokens := len(prompt)/4 + len(images)*1000
-		completionTokens := len(resp.Choices[0].Message.Content) / 4
-		totalTokens := promptTokens + completionTokens
-
-		a.sessionUsage.PromptTokens += promptTokens
-		a.sessionUsage.CompletionTokens += completionTokens
-		a.sessionUsage.TotalTokens += totalTokens
-	}
-
-	return resp.Choices[0].Message.Content, nil
+	return res.Content, nil
 }

@@ -31,3 +31,20 @@ func (opts ModelOptions) ApplyTo(req openai.ChatCompletionRequest) openai.ChatCo
 	}
 	return req
 }
+
+// LLMValues returns the options in the shape llm.Options wants: nil pointers for temperature and
+// top_p when they are unset, so the request leaves them out and the server keeps its own default.
+func (opts ModelOptions) LLMValues() (temperature, topP *float32, numPredict int) {
+	if opts.Temperature != 0 {
+		value := opts.Temperature
+		temperature = &value
+	}
+	if opts.TopP != 0 {
+		value := opts.TopP
+		topP = &value
+	}
+	if opts.NumPredict > 0 {
+		numPredict = opts.NumPredict
+	}
+	return temperature, topP, numPredict
+}

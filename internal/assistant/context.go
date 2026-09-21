@@ -72,7 +72,7 @@ func (a *Assistant) ForceCompact() error {
 	forceCfg.Enabled = true
 	forceCfg.Threshold = 0.0 // Always trigger
 
-	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, forceCfg, a.client, a.model)
+	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, forceCfg, a.llm, a.model)
 	if err != nil {
 		return fmt.Errorf("compaction failed: %w", err)
 	}

@@ -3,6 +3,9 @@ package assistant
 import (
 	"strings"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/llm"
+	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 )
 
 func TestResetServerContextCheck(t *testing.T) {
@@ -51,5 +54,59 @@ func TestServerContextAdvice(t *testing.T) {
 				t.Fatalf("expected empty message, got %q", msg)
 			}
 		})
+	}
+}
+
+func TestLoadedContextLength(t *testing.T) {
+	loaded := []llm.LoadedModel{
+		{Name: "qwen3.8:27b", ContextLength: 32768},
+		{Name: "gemma4:latest", ContextLength: 16384},
+	}
+
+	tests := []struct {
+		name  string
+		model string
+		want  int
+	}{
+		{name: "exact tag", model: "qwen3.8:27b", want: 32768},
+		{name: "untagged model matches :latest", model: "gemma4", want: 16384},
+		{name: "model not loaded", model: "llama9:70b", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := loadedContextLength(loaded, tt.model); got != tt.want {
+				t.Fatalf("loadedContextLength(%q) = %d, want %d", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckServerContextOnceWarnsAboutASmallWindow(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 4096}}
+	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+
+	if err := a.ProcessMessage("hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !a.serverContextChecked || a.serverContextTokens != 4096 {
+		t.Fatalf("checked = %v, tokens = %d", a.serverContextChecked, a.serverContextTokens)
+	}
+	if info := a.GetContextInfo(); info.ServerContextTokens != 4096 {
+		t.Fatalf("context info = %+v", info)
+	}
+}
+
+func TestCheckServerContextOnceKeepsTryingWhileTheModelIsNotLoaded(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+
+	if err := a.ProcessMessage("hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	if a.serverContextChecked {
+		t.Fatal("the check should stay open until the server reports the model")
 	}
 }

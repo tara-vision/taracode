@@ -7,6 +7,8 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // truncateRuneSafe truncates a string at a rune boundary, avoiding mid-rune slicing
@@ -117,7 +119,7 @@ func CompactConversation(
 	conversation []openai.ChatCompletionMessage,
 	toolDefs []openai.Tool,
 	cfg CompactionConfig,
-	client *openai.Client,
+	client llm.Client,
 	model string,
 ) ([]openai.ChatCompletionMessage, *CompactionEvent, error) {
 	if len(conversation) < cfg.KeepRecent*2+3 {
@@ -176,9 +178,13 @@ func CompactConversation(
 func generateSummary(
 	ctx gocontext.Context,
 	messages []openai.ChatCompletionMessage,
-	client *openai.Client,
+	client llm.Client,
 	model string,
 ) (string, error) {
+	if client == nil {
+		return "", fmt.Errorf("no model client available for summarization")
+	}
+
 	// Build a condensed representation of the messages to summarize
 	var sb strings.Builder
 	for _, msg := range messages {
@@ -209,7 +215,7 @@ Write ONLY the summary, nothing else.`, sb.String())
 	summaryCtx, cancel := gocontext.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	resp, err := client.CreateChatCompletion(summaryCtx, openai.ChatCompletionRequest{
+	res, err := client.Chat(summaryCtx, llm.Request{
 		Model: model,
 		Messages: []openai.ChatCompletionMessage{
 			{
@@ -217,18 +223,19 @@ Write ONLY the summary, nothing else.`, sb.String())
 				Content: summaryPrompt,
 			},
 		},
-		MaxTokens: 200,
-	})
+		Options: llm.Options{NumPredict: 200},
+	}, nil)
 
 	if err != nil {
 		return "", fmt.Errorf("summary generation failed: %w", err)
 	}
 
-	if len(resp.Choices) == 0 || resp.Choices[0].Message.Content == "" {
+	summary := strings.TrimSpace(res.Content)
+	if summary == "" {
 		return "", fmt.Errorf("empty summary response")
 	}
 
-	return fmt.Sprintf("[Session context (compacted): %s]", resp.Choices[0].Message.Content), nil
+	return fmt.Sprintf("[Session context (compacted): %s]", summary), nil
 }
 
 // buildFallbackSummary creates a simple summary when LLM summarization fails
