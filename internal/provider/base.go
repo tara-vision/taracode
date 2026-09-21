@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
+	openaiclient "github.com/tara-vision/taracode/internal/llm/openai"
 )
 
 const (
@@ -55,6 +58,11 @@ func (p *BaseProvider) CreateClient() *openai.Client {
 	config.BaseURL = p.info.Host + p.info.APIPath
 	config.HTTPClient = p.httpClient
 	return openai.NewClientWithConfig(config)
+}
+
+// LLM returns the go-openai adapter; Ollama overrides this with its native client.
+func (p *BaseProvider) LLM() llm.Client {
+	return openaiclient.New(p.CreateClient())
 }
 
 // DetectModelsOpenAI queries the /v1/models endpoint (OpenAI-compatible)

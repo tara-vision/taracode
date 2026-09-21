@@ -8,6 +8,9 @@ import (
 	"net/http"
 
 	"github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
+	ollamaclient "github.com/tara-vision/taracode/internal/llm/ollama"
 )
 
 // OllamaProvider implements Provider for Ollama servers
@@ -15,12 +18,19 @@ type OllamaProvider struct {
 	*BaseProvider
 }
 
+var _ Provider = (*OllamaProvider)(nil)
+
 // NewOllamaProvider creates a new Ollama provider
 func NewOllamaProvider(host, apiKey string) *OllamaProvider {
 	base := NewBaseProvider(TypeOllama, host, apiKey)
 	// Ollama has limited tool calling support (depends on model)
 	base.info.SupportsTools = false
 	return &OllamaProvider{BaseProvider: base}
+}
+
+// LLM returns the native Ollama client bound to this provider's host.
+func (p *OllamaProvider) LLM() llm.Client {
+	return ollamaclient.New(p.info.Host, p.httpClient)
 }
 
 // Info returns provider metadata

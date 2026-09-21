@@ -11,6 +11,8 @@ type LlamaCppProvider struct {
 	*BaseProvider
 }
 
+var _ Provider = (*LlamaCppProvider)(nil)
+
 // NewLlamaCppProvider creates a new llama.cpp provider
 func NewLlamaCppProvider(host, apiKey string) *LlamaCppProvider {
 	base := NewBaseProvider(TypeLlamaCpp, host, apiKey)

@@ -11,6 +11,8 @@ type VLLMProvider struct {
 	*BaseProvider
 }
 
+var _ Provider = (*VLLMProvider)(nil)
+
 // NewVLLMProvider creates a new vLLM provider
 func NewVLLMProvider(host, apiKey string) *VLLMProvider {
 	base := NewBaseProvider(TypeVLLM, host, apiKey)
