@@ -50,13 +50,14 @@ This security policy covers:
 
 ## Verifying Downloads
 
-Every release ships `checksums.txt`, a keyless cosign signature of it, and SLSA provenance.
+Every release ships `checksums.txt`, a keyless cosign signature of it as a Sigstore bundle
+(`checksums.txt.sigstore.json`), and SLSA provenance.
 
 ```bash
 VERSION=v2.1.0
 BASE=https://github.com/tara-vision/taracode/releases/download/${VERSION}
-curl -fsSLO ${BASE}/checksums.txt -O ${BASE}/checksums.txt.sig -O ${BASE}/checksums.txt.pem
-cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
+curl -fsSLO ${BASE}/checksums.txt -O ${BASE}/checksums.txt.sigstore.json
+cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp 'https://github.com/tara-vision/taracode/.github/workflows/release.yml@refs/tags/v.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
 sha256sum --ignore-missing -c checksums.txt   # shasum -a 256 -c on macOS
