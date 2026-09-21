@@ -82,12 +82,15 @@ homebrew_casks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/taracode"]
+            Dir["#{staged_path}/taracode-darwin-*"].each do |bin|
+              system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", bin]
+            end
           end
     commit_author:
       name: github-actions[bot]
       email: github-actions[bot]@users.noreply.github.com
     commit_msg_template: "Update taracode cask to {{ .Tag }}"
+    skip_upload: auto
 
 release:
   github:
@@ -98,10 +101,4 @@ release:
   mode: replace
 
 changelog:
-  use: github
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore\\(deps\\)"
+  disable: true
