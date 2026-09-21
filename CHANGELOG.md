@@ -18,8 +18,10 @@ API instead of an OpenAI-compatible shim, and gets a model registry to recommend
   thinking, native tool calls and context-window control. vLLM and llama.cpp keep working through a
   `go-openai` adapter behind the same `llm.Client` interface; both implementations sit behind provider
   host failover.
-- **Context window control** - `context.window` (`auto`, or a token count) resolves the model's native
-  maximum context from the server and warns when the result is too small for tool-heavy sessions.
+- **Context window control** - `context.window` (`auto`, or a token count) requests 32,768 tokens by
+  default, or the model's native maximum when that is smaller (never more, to keep the KV cache affordable
+  on 16 GB and 32 GB machines); set a token count instead to go higher on a model that supports it. Warns
+  when the result is too small for tool-heavy sessions.
 - **Thinking mode** - `think` (`auto`, `off`, `on`, `low`, `medium`, `high`) is sent with every request;
   change it mid-session with the new `/think` command.
 - **`taracode doctor`** (and the REPL's `/doctor`) - diagnoses the LLM server, the installed models and
@@ -291,6 +293,12 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.8** - Native OpenAI function calling, security tools
 
 [Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.3...HEAD
+
+[3.0.0-alpha.1]: https://github.com/tara-vision/taracode/compare/v2.1.0...v3.0.0-alpha.1
+
+[2.1.0]: https://github.com/tara-vision/taracode/compare/v2.0.4...v2.1.0
+
+[2.0.4]: https://github.com/tara-vision/taracode/compare/v2.0.3...v2.0.4
 
 [2.0.3]: https://github.com/tara-vision/taracode/compare/v2.0.2...v2.0.3
 

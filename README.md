@@ -103,15 +103,17 @@ Three `config.yaml` keys control how taracode talks to the model:
 
 ```yaml
 context:
-  window: auto    # "auto" fits the model's native context, or set a token count
+  window: auto    # "auto" requests 32768 tokens, or less on a smaller model; set a token count to go higher
 think: auto        # auto, off, on, low, medium, or high
 keep_alive: ""     # how long Ollama keeps the model loaded; "" = server default, "-1" = keep loaded
 ```
 
-`context.window: auto` (the default) asks the server for the model's native maximum context and requests
-that; if the server does not report one it falls back to 32,768 tokens. A session warns once if the
-resulting window is below 16,384 tokens, since tool-heavy sessions compact early at that size. Setting a
-number instead requests that many tokens, clamped to the model's native maximum.
+`context.window: auto` (the default) requests 32,768 tokens, or the model's native maximum when that is
+smaller; it never asks for more than 32,768 tokens on its own, which keeps the KV cache affordable on 16 GB
+and 32 GB machines. Set a number instead to request an explicit window, clamped to the model's native
+maximum, on a model that supports going higher. A non-numeric value falls back to auto with a warning. A
+session warns when the resulting window is below 16,384 tokens, since tool-heavy sessions compact early at
+that size.
 
 `think` sets the reasoning mode sent with requests. Change it without restarting taracode with `/think`
 (`/think` alone shows the current mode, `/think low` changes it).
