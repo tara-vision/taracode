@@ -97,6 +97,32 @@ taracode
 
 That's it! Start asking questions about your infrastructure.
 
+## Context window and thinking
+
+Three `config.yaml` keys control how taracode talks to the model:
+
+```yaml
+context:
+  window: auto    # "auto" fits the model's native context, or set a token count
+think: auto        # auto, off, on, low, medium, or high
+keep_alive: ""     # how long Ollama keeps the model loaded; "" = server default, "-1" = keep loaded
+```
+
+`context.window: auto` (the default) asks the server for the model's native maximum context and requests
+that; if the server does not report one it falls back to 32,768 tokens. A session warns once if the
+resulting window is below 16,384 tokens, since tool-heavy sessions compact early at that size. Setting a
+number instead requests that many tokens, clamped to the model's native maximum.
+
+`think` sets the reasoning mode sent with requests. Change it without restarting taracode with `/think`
+(`/think` alone shows the current mode, `/think low` changes it).
+
+Run `taracode doctor` (or `/doctor` inside a session) to check the server, the installed models and their
+capabilities, your machine's RAM tier and the registry's recommended model for it, and the external CLIs
+taracode's tools shell out to.
+
+`context.window` and `keep_alive` are controlled on the native Ollama client; vLLM and llama.cpp keep the
+OpenAI-compatible path, where only `think low|medium|high` reaches the server (as `reasoning_effort`).
+
 ## Features
 
 ### Screen Monitoring (`/watch`)
@@ -193,6 +219,8 @@ Full DevSecOps capabilities with audit logging:
 | `/upgrade`     | Check for and install updates   |
 | `/context`     | Context window budget breakdown |
 | `/compact`     | Force conversation compaction   |
+| `/think`       | Show or set the reasoning mode  |
+| `/doctor`      | Diagnose LLM server and tools   |
 | `/stats`       | Session statistics              |
 | `/hosts`       | Multi-host status (v2.0)        |
 | `/help`        | Show help                       |

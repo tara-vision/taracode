@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0-alpha.1] - 2026-09-22
+
+Phase 1 of the v3 native core (see [ROADMAP.md](ROADMAP.md)): taracode talks to Ollama over its native
+API instead of an OpenAI-compatible shim, and gets a model registry to recommend and diagnose against.
+
+### Added
+
+- **Native Ollama client** - `internal/llm` talks to Ollama's `/api/chat` directly, with streaming,
+  thinking, native tool calls and context-window control. vLLM and llama.cpp keep working through a
+  `go-openai` adapter behind the same `llm.Client` interface; both implementations sit behind provider
+  host failover.
+- **Context window control** - `context.window` (`auto`, or a token count) resolves the model's native
+  maximum context from the server and warns when the result is too small for tool-heavy sessions.
+- **Thinking mode** - `think` (`auto`, `off`, `on`, `low`, `medium`, `high`) is sent with every request;
+  change it mid-session with the new `/think` command.
+- **`taracode doctor`** (and the REPL's `/doctor`) - diagnoses the LLM server, the installed models and
+  their capabilities, the host's RAM tier, the registry's recommended model for it, and the external
+  CLIs taracode's tools shell out to. A first run with no model configured prints the same
+  recommendation.
+- **Model registry** (`internal/models`) - an embedded, curated list of recommended Ollama models by RAM
+  tier (16 GB, 32 GB, 48 GB and up), with download size, context length, capabilities and the first
+  Ollama release that ships each model's tool-call parser.
+- Scripted fake Ollama server (`internal/llm/ollamatest`) covering `/api/chat`, `/api/tags`, `/api/show`,
+  `/api/ps`, `/api/version` and `/api/generate`, used across the new native-client test suite.
+- Host RAM detection (`internal/models.HostRAMGB`) backing the registry's tier recommendation.
+
+### Changed
+
+- The assistant package was split from one large file into focused files by responsibility (loop,
+  prompt, planning, tool calls, compaction, context, session, security, project init, context window).
+- Agent and orchestrator model defaults (`internal/agent`, `internal/orchestrator`, `cmd/hosts_cmd.go`,
+  `cmd/repl.go`, `internal/ui`) now come from the model registry instead of hard-coded literals; a
+  repo-wide test guards against new model-name literals outside the registry and tests.
+- `CompactConversation` takes an `llm.Client` instead of a raw `*openai.Client`.
+
+### Removed
+
+- Dead retry, detection, status and duplicate getter code from the assistant package.
+- `Assistant.GetUsage()`.
+- `ModelOptions.ApplyTo()`.
+
 ## [2.1.0] - 2026-09-21
 
 ### Added
@@ -86,8 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removing dependency on LLM tool-calling behavior for reliable answers
 - System prompt (both compact and full variants) now includes a dedicated CRITICAL RULE section for
   date/time handling
-- Removed private host references (`ollama.tara.lab`) from all public documentation and examples, replaced
-  with generic `gpu-server:11434` or `localhost:11434`
+- Removed private lab host references from all public documentation and examples, replaced with generic
+  `gpu-server:11434` or `localhost:11434`
 
 ## [2.0.2] - 2026-02-06
 
