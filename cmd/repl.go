@@ -2231,7 +2231,7 @@ func handleModelSwitch(asst **assistant.Assistant, taskBridge *orchestrator.Task
 
 	if len(allModels) == 0 {
 		fmt.Println("No models available.")
-		fmt.Println("Pull a model with: ollama pull gemma3:27b")
+		fmt.Println("Pull a model with: ollama pull gemma4:12b (16 GB) or qwen3.8:27b (32 GB)")
 		fmt.Println()
 		return
 	}

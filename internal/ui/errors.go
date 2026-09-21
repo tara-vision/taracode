@@ -41,7 +41,7 @@ var errorSuggestions = []ErrorSuggestion{
 		Suggestions: []string{
 			"The server closed the connection unexpectedly",
 			"Check if Ollama has enough memory for the model",
-			"Try a smaller model: taracode --model gemma3:12b",
+			"Try a smaller model: taracode --model gemma4:12b",
 		},
 	},
 	{
@@ -79,7 +79,7 @@ var errorSuggestions = []ErrorSuggestion{
 		Title:   "No Models Available",
 		Suggestions: []string{
 			"No models are loaded on the server",
-			"Pull a model: ollama pull gemma3:27b",
+			"Pull a model: ollama pull gemma4:12b (16 GB) or qwen3.8:27b (32 GB)",
 			"Check Ollama status: ollama list",
 		},
 	},
