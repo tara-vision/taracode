@@ -521,7 +521,7 @@ func startREPL() {
 
 		// Update prompt with context budget and mode after each message
 		if viper.GetBool("show_context_budget") {
-			usage := asst.GetUsage()
+			usage := asst.GetSessionUsage()
 			if usage != nil {
 				maxTokens := viper.GetInt("max_context_tokens")
 				securityMode := asst.GetMode() == storage.ModeSecurity
@@ -748,7 +748,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		}
 
 	case "/usage":
-		usage := (*asst).GetUsage()
+		usage := (*asst).GetSessionUsage()
 
 		// Session usage
 		fmt.Println("Session Usage:")
@@ -1356,7 +1356,7 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 	}
 
 	// Token usage from LLM
-	usage := asst.GetUsage()
+	usage := asst.GetSessionUsage()
 	if usage != nil && usage.TotalTokens > 0 {
 		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 		fmt.Println(formatBoxLine(fmt.Sprintf("LLM Tokens: %d (prompt: %d, completion: %d)",
@@ -1510,7 +1510,7 @@ func handleStats(asst *assistant.Assistant, hm *history.Manager) {
 	fmt.Println(formatBoxLine(fmt.Sprintf("Messages: %d", ctxInfo.MessageCount)))
 
 	// LLM token usage
-	usage := asst.GetUsage()
+	usage := asst.GetSessionUsage()
 	if usage != nil && usage.TotalTokens > 0 {
 		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
 		fmt.Println(formatBoxLine(fmt.Sprintf("LLM Tokens: %d total", usage.TotalTokens)))
