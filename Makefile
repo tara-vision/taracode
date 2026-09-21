@@ -1,4 +1,4 @@
-.PHONY: build install test clean run deps build-all lint vuln snapshot
+.PHONY: build install test clean run deps build-all lint vuln snapshot lab-smoke
 
 # Binary name
 BINARY=taracode
@@ -11,6 +11,9 @@ GORELEASER ?= $(shell command -v goreleaser 2>/dev/null || echo $(GOBIN)/gorelea
 
 # Default version (used for local builds)
 VERSION ?= $(shell git describe --tags --always --dirty)
+
+# Model used by lab-smoke; any installed model with tool support works.
+LAB_MODEL ?= gemma4:12b
 
 # Linker flags to inject version and strip debug info
 LDFLAGS=-s -w -X $(PKG).Version=$(VERSION)
@@ -52,3 +55,10 @@ build-all:
 # Local dry run of the release pipeline (no publishing, no signing)
 snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish,sign
+
+# Three real prompts against a lab Ollama. Needs LAB_HOST=http://<host>:<port> in the environment.
+lab-smoke: build
+	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
+	./$(BINARY) doctor --host $(LAB_HOST)
+	cd $$(mktemp -d) && printf '/init\nWhat is 2+2? Answer with one word.\n/context\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
+	cd $$(mktemp -d) && printf '/init\n/think high\nList the files in this directory using a tool, then say done.\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
