@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // Type represents the LLM provider type
@@ -71,6 +73,9 @@ type Provider interface {
 
 	// CreateClient returns an OpenAI-compatible client
 	CreateClient() *openai.Client
+
+	// LLM returns the transport the agent loop talks to (native Ollama, or the go-openai adapter).
+	LLM() llm.Client
 
 	// SetModel sets the active model
 	SetModel(model string)
