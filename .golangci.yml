@@ -1,0 +1,44 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+    - revive
+    - gocyclo
+    - lll
+    - misspell
+  settings:
+    gocyclo:
+      min-complexity: 20
+    lll:
+      line-length: 120
+    gosec:
+      excludes:
+        - G204 # tools run user-approved commands by design
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - lll
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
+
+issues:
+  # Legacy debt is cleared file by file as Phase 1 and 2 rewrite them.
+  new-from-rev: v2.0.4
