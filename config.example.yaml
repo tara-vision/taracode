@@ -15,7 +15,7 @@ key: ""
 # Model name (optional)
 # The model is auto-detected from your Ollama server via /v1/models endpoint.
 # Only specify this if auto-detection fails or you want a specific model.
-# model: gemma3:27b
+# model: qwen3.8:27b
 
 # =============================================================================
 # MULTI-HOST CONFIGURATION (v2.0)
@@ -29,7 +29,7 @@ key: ""
 #     url: http://gpu-server:11434
 #     vendor: ollama           # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
 #     # api_key: ""            # optional: API key if required
-#     models: [gemma3:27b, qwen2.5-coder:32b]  # optional: available models
+#     models: [qwen3.8:27b, qwen3.6:35b]  # optional: available models
 #     timeout: 30s             # connection timeout
 #     priority: 1              # lower = higher priority
 #
@@ -49,15 +49,15 @@ key: ""
 #
 # agents:
 #   planner:
-#     model: gemma3:12b
+#     model: gemma4:12b
 #     host: local            # Use local for quick planning
 #
 #   coder:
-#     model: qwen2.5-coder:32b
+#     model: qwen3.6:35b
 #     host: primary          # Use powerful GPU for code generation
 #
 #   reviewer:
-#     model: llama3.2:3b
+#     model: gemma4:e4b
 #     host: local            # Use lightweight model for reviews
 #
 # Run /hosts in the REPL to see host status and health.

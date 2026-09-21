@@ -10,7 +10,7 @@
   <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=for-the-badge&logo=github&color=blue" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://goreportcard.com/report/github.com/tara-vision/taracode"><img src="https://goreportcard.com/badge/github.com/tara-vision/taracode?style=for-the-badge" alt="Go Report Card"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.23-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
 </p>
 
 <p align="center">
@@ -51,9 +51,15 @@ brew install ollama
 ### 2. Pull a Model
 
 ```bash
-ollama pull gemma3:27b    # Recommended (16GB+ RAM)
-ollama pull gemma3:12b    # For limited hardware
+ollama pull gemma4:12b     # 16 GB machines
+ollama pull qwen3.8:27b    # 32 GB machines (needs Ollama 0.32.12 or newer)
+ollama pull qwen3.6:35b    # 48 GB and up
 ```
+
+Any model that Ollama tags with the `tools` capability works. Ollama's default context window is 4,096 tokens
+on machines with less than 24 GB of GPU memory, which is too small for the tool schemas; start Ollama with
+`OLLAMA_CONTEXT_LENGTH=32768` (or raise Context length in the Ollama app settings). taracode warns you when the
+server's window is too small.
 
 ### 3. Install taracode
 
@@ -66,8 +72,10 @@ curl -fsSL https://code.tara.vision/install.sh | bash
 **Homebrew (macOS / Linux):**
 
 ```bash
-brew install tara-vision/tap/taracode
+brew install --cask tara-vision/taracode/taracode
 ```
+
+Upgrading from a version installed as a formula? Run brew uninstall taracode once, then the command above.
 
 **Go install:**
 
@@ -201,7 +209,7 @@ host: http://localhost:11434
 hosts:
   primary:
     url: http://gpu-server:11434
-    models: [ gemma3:27b, qwen2.5-coder:32b ]
+    models: [ qwen3.8:27b, gemma4:12b ]
     priority: 1
   local:
     url: http://localhost:11434
@@ -230,10 +238,10 @@ memory:
 agents:
   coder:
     host: primary
-    model: qwen2.5-coder:32b
+    model: qwen3.8:27b
   reviewer:
     host: local
-    model: llama3.2:3b
+    model: gemma4:e4b
 ```
 
 See [config.example.yaml](config.example.yaml) for all options.
@@ -245,6 +253,12 @@ See [config.example.yaml](config.example.yaml) for all options.
 | **Ollama**    | `brew install ollama` | Recommended, easiest setup |
 | **vLLM**      | Self-hosted           | For production deployments |
 | **llama.cpp** | Self-hosted           | Lightweight option         |
+
+## Roadmap
+
+v3 turns taracode into the local-first DevOps operator: read-only investigation by default, policy-gated
+operations, a smaller tool set that fits small context windows, a native Ollama client, a published eval
+scoreboard of local models, and an MCP server plus skills pack. See [ROADMAP.md](ROADMAP.md).
 
 ## Development
 

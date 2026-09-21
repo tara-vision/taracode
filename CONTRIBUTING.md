@@ -42,7 +42,7 @@ taracode requires a local LLM backend. Ollama is recommended:
 brew install ollama
 
 # Pull recommended model
-ollama pull gemma3:27b
+ollama pull qwen3.8:27b     # gemma4:12b on 16 GB machines
 
 # Run taracode
 ./taracode
@@ -52,7 +52,7 @@ ollama pull gemma3:27b
 
 - Follow standard Go conventions and formatting
 - Run `gofmt -s -w .` before committing (the `-s` flag simplifies code)
-- Run `go vet ./...` to catch common issues
+- Run `go vet ./...`, `make lint` (golangci-lint) and `make vuln` (govulncheck) before opening a PR
 - Keep functions focused and well-documented
 - Write tests for new functionality
 

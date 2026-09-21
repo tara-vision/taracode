@@ -17,8 +17,8 @@ func TestDefaultAgentsConfig(t *testing.T) {
 		t.Errorf("expected DefaultRouting to be 'auto', got %s", cfg.DefaultRouting)
 	}
 
-	if cfg.FallbackModel != "gemma3:27b" {
-		t.Errorf("expected FallbackModel to be 'gemma3:27b', got %s", cfg.FallbackModel)
+	if cfg.FallbackModel != "qwen3.8:27b" {
+		t.Errorf("expected FallbackModel to be 'qwen3.8:27b', got %s", cfg.FallbackModel)
 	}
 
 	if cfg.TimeoutMultiplier != 1.0 {

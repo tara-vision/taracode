@@ -22,7 +22,7 @@ func DefaultOrchestratorConfig() OrchestratorConfig {
 	return OrchestratorConfig{
 		Enabled:           true,
 		DefaultRouting:    "auto",
-		FallbackModel:     "gemma3:27b",
+		FallbackModel:     "qwen3.8:27b",
 		TimeoutMultiplier: 1.0,
 		MaxReplans:        3,
 		AutoDiagnostics:   true,
