@@ -5,6 +5,19 @@ import (
 	"testing"
 )
 
+func TestResetServerContextCheck(t *testing.T) {
+	a := &Assistant{serverContextChecked: true, serverContextTokens: 32000}
+
+	a.resetServerContextCheck()
+
+	if a.serverContextChecked {
+		t.Fatal("serverContextChecked = true, want false after reset")
+	}
+	if a.serverContextTokens != 0 {
+		t.Fatalf("serverContextTokens = %d, want 0 after reset", a.serverContextTokens)
+	}
+}
+
 func TestServerContextAdvice(t *testing.T) {
 	tests := []struct {
 		name          string

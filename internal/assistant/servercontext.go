@@ -42,6 +42,13 @@ func ServerContextAdvice(serverCtx, systemTokens, toolTokens, configuredMax int,
 	return "", false
 }
 
+// resetServerContextCheck clears the cached server context window so the next message
+// re-checks it against the newly selected model. Called whenever the active model changes.
+func (a *Assistant) resetServerContextCheck() {
+	a.serverContextChecked = false
+	a.serverContextTokens = 0
+}
+
 // checkServerContextOnce asks an Ollama server for the context window it loaded the
 // current model with and prints one warning per session when it is too small.
 // It runs after a message has been processed, so the model is loaded by then.

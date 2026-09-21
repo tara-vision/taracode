@@ -1276,6 +1276,7 @@ func (a *Assistant) SwitchModel(newModel string) error {
 
 	// Set the new model
 	a.model = newModel
+	a.resetServerContextCheck()
 	a.provider.SetModel(newModel)
 
 	// Persist the model selection
