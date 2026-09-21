@@ -73,11 +73,15 @@ sha256_of() {
 # Exits with an error unless the file's SHA-256 matches the asset's line in checksums.txt.
 verify_checksum() {
     local file="$1" asset="$2" sums="$3" expected actual
-    expected=$(grep -E "^[0-9a-f]{64}  ${asset}\$" "$sums" | awk '{print $1}' | head -1)
+    expected=$(grep -E "^[0-9a-f]{64}  ${asset}\$" "$sums" || true)
+    expected=${expected%%[[:space:]]*}
     if [ -z "$expected" ]; then
         error "No checksum for ${asset} in checksums.txt; refusing to install an unverified binary"
     fi
-    actual=$(sha256_of "$file")
+    actual=$(sha256_of "$file" || true)
+    if [ -z "$actual" ]; then
+        error "Could not compute the SHA-256 of ${file}"
+    fi
     if [ "$expected" != "$actual" ]; then
         error "Checksum mismatch for ${asset}: expected ${expected}, got ${actual}"
     fi
@@ -108,7 +112,7 @@ main() {
     version="${TARACODE_VERSION:-}"
     if [ -z "$version" ]; then
         info "Fetching latest version..."
-        version=$(get_latest_version)
+        version=$(get_latest_version || true)
     fi
     if [ -z "$version" ]; then
         error "Could not determine the version to install"
@@ -119,7 +123,8 @@ main() {
     base="https://github.com/${REPO}/releases/download/${version}"
 
     tmp_dir=$(mktemp -d)
-    trap 'rm -rf "${tmp_dir}"' EXIT
+    # Bake the path into the trap now: main's locals are gone by the time EXIT fires.
+    trap "rm -rf '${tmp_dir}'" EXIT
 
     info "Downloading ${asset}..."
     if ! curl -fsSL "${base}/${asset}" -o "${tmp_dir}/${BINARY_NAME}"; then
