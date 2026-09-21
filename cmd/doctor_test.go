@@ -36,6 +36,25 @@ func TestRunDoctorAgainstAClosedPortIsUnreachable(t *testing.T) {
 	}
 }
 
+// TestRunDoctorUsesTheModelFlagVariable proves the configuredModel RunE threads into Diagnose
+// comes from the --model flag variable (model, from root.go's StringVar), not
+// viper.GetString("model") - "model" is a config section (model.temperature, model.top_p, ...)
+// in config.yaml, so as a plain viper string key it is always "". Render prints the Model line
+// unconditionally whenever ConfiguredModel != "", so this holds even against the closed-port
+// server RunE would otherwise consider unreachable.
+func TestRunDoctorUsesTheModelFlagVariable(t *testing.T) {
+	model = "x:1b"
+	defer func() { model = "" }()
+
+	rep, err := runDoctor(context.Background(), "http://127.0.0.1:1", "", "", model)
+	if err != nil {
+		t.Fatalf("runDoctor() error = %v", err)
+	}
+	if !strings.Contains(rep.Render(), "Model     x:1b") {
+		t.Fatalf("render lacks the configured model from the --model flag:\n%s", rep.Render())
+	}
+}
+
 // TestDoctorExitCode covers both sides of the RunE -> os.Exit condition.
 func TestDoctorExitCode(t *testing.T) {
 	if got := doctorExitCode(models.Report{ServerOK: true}); got != 0 {

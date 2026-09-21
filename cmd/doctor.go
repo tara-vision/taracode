@@ -26,7 +26,10 @@ var doctorCmd = &cobra.Command{
 		if targetHost == "" {
 			return fmt.Errorf("LLM server host not found; set --host, TARACODE_HOST, or hosts: in config.yaml")
 		}
-		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, viper.GetString("model"))
+		// model (not viper.GetString("model")) is the --model flag: "model" is a config section
+		// (model.temperature, model.top_p, ...) in config.yaml, not a plain viper string key - see
+		// the note on the flag's StringVar in root.go's init.
+		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, model)
 		if err != nil {
 			return err
 		}
