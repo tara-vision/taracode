@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-21
+
+### Added
+
+- **Ollama context window check** - After the first reply of a session taracode reads the context window
+  Ollama loaded the model with and warns once when it is smaller than the system prompt plus tool schemas
+  (the Ollama default of 4,096 tokens on machines under 24 GB of GPU memory cuts the tool definitions off)
+  or smaller than `max_context_tokens`. `/context` shows the server window.
+- **Linux arm64** binaries, plus deb and rpm packages.
+- **Signed releases** - `checksums.txt` with a keyless cosign signature and SLSA provenance on every release.
+- **Homebrew cask** - `brew install --cask tara-vision/taracode/taracode` (goreleaser stopped generating formulas).
+- `ROADMAP.md` describing v3.
+
+### Changed
+
+- Recommended models are now `gemma4:12b` (16 GB), `qwen3.8:27b` (32 GB) and `qwen3.6:35b` (48 GB and up);
+  agent defaults follow. gemma3 is no longer referenced.
+- Go toolchain 1.27.1 (language floor 1.26); CI runs golangci-lint and govulncheck; dependabot enabled.
+- The installer verifies the downloaded binary against `checksums.txt` and refuses releases without one.
+- Release pipeline moved to goreleaser.
+
+### Fixed
+
+- README pointed Homebrew users at a tap that does not exist (`tara-vision/tap`).
+
+### Security
+
+- Updated `golang.org/x/net`, `golang.org/x/text`, `goldmark` and the Go standard library; `govulncheck` reports
+  no reachable vulnerabilities.
+
 ## [2.0.4] - 2026-02-07
 
 ### Added
