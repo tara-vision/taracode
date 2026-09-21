@@ -1,7 +1,9 @@
 package assistant
 
 import (
+	"bytes"
 	gocontext "context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,6 +220,7 @@ func TestJSONFallbackWhenTheModelHasNoNativeTools(t *testing.T) {
 // TestDeclinedEditPreviewIsSentBackToTheModel guards the v2 dead store: the cancellation message
 // now reaches the model as the tool result instead of being dropped.
 func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
+	skipWhenStdinIsATerminal(t)
 	viper.Set("preview_edits", true)
 	viper.Set("preview_threshold", 0)
 	t.Cleanup(func() {
@@ -278,6 +281,95 @@ func TestHostFailoverRetriesOnTheFallbackHost(t *testing.T) {
 	}
 	if n := countPath(backup, "/api/chat"); n != 1 {
 		t.Fatalf("fallback host saw %d chat requests, want 1", n)
+	}
+}
+
+// TestStreamedAnswerIsRenderedNotStreamedRaw guards the v2 presentation: the answer is assembled
+// behind the spinner and rendered with glamour once, so markdown reaches the screen formatted and
+// not as raw deltas. Reasoning is the one thing printed live, before the answer.
+func TestStreamedAnswerIsRenderedNotStreamedRaw(t *testing.T) {
+	a, srv := newTestAssistant(t, true)
+	srv.Turns = []ollamatest.Turn{{Content: "- one\n- two", Thinking: "counting"}}
+
+	out := captureStdout(t, func() {
+		if err := a.ProcessMessage("list two things"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if strings.Contains(out, "- one") {
+		t.Fatalf("raw markdown reached the screen instead of the rendered answer: %q", out)
+	}
+	if !strings.Contains(out, "one") || !strings.Contains(out, "two") {
+		t.Fatalf("answer missing from the output: %q", out)
+	}
+	if !strings.Contains(out, "counting") {
+		t.Fatalf("reasoning was not printed: %q", out)
+	}
+	if strings.Index(out, "counting") > strings.Index(out, "one") {
+		t.Fatalf("reasoning must arrive before the answer: %q", out)
+	}
+}
+
+// TestSpinnersRunThroughATurn exercises the status line and the per-tool spinner, which the rest
+// of the suite switches off. Spinner.Stop waits for its goroutine, so the captured pipe is safe.
+func TestSpinnersRunThroughATurn(t *testing.T) {
+	a, srv := newTestAssistant(t, true)
+	a.enableSpinner = true
+	srv.Turns = []ollamatest.Turn{
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{Content: "It greets you.", PromptTokens: 5, CompletionTokens: 3},
+	}
+
+	out := captureStdout(t, func() {
+		if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if a.GetLastResponse() != "It greets you." {
+		t.Fatalf("last response = %q", a.GetLastResponse())
+	}
+	if !strings.Contains(out, "It greets you.") {
+		t.Fatalf("answer missing from the output: %q", out)
+	}
+	if a.sessionUsage.TotalTokens != 8 {
+		t.Fatalf("usage = %+v", a.sessionUsage)
+	}
+}
+
+// captureStdout runs fn with os.Stdout replaced by a pipe and returns everything it wrote.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = writer
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, reader)
+		done <- buf.String()
+	}()
+
+	fn()
+
+	os.Stdout = original
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return <-done
+}
+
+// skipWhenStdinIsATerminal keeps the edit-preview test off a real terminal: the preview prompt
+// only resolves to "cancel" on its own when promptui has no TTY to read from.
+func skipWhenStdinIsATerminal(t *testing.T) {
+	t.Helper()
+	info, err := os.Stdin.Stat()
+	if err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		t.Skip("stdin is a terminal: the edit preview would wait for a keypress")
 	}
 }
 

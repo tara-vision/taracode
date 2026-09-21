@@ -251,9 +251,9 @@ func (a *Assistant) retryOnFallbackHost(
 	return a.chat(ctx, req)
 }
 
-// chat performs one request. With streaming on, answer text is printed as it arrives (through the
-// think-tag filter) and reasoning text is printed dimmed; with streaming off the reply is returned
-// whole and printed by the caller.
+// chat performs one request. Streaming assembles the answer behind the spinner and leaves the
+// rendering to the caller, the way v2 did; the only thing shown live is the model's reasoning,
+// dimmed, and that is also the only thing that makes the spinner step aside early.
 func (a *Assistant) chat(ctx gocontext.Context, req llm.Request) (*llm.Result, error) {
 	spinner := a.startTurnSpinner()
 	stopSpinner := func() {
@@ -269,31 +269,40 @@ func (a *Assistant) chat(ctx gocontext.Context, req llm.Request) (*llm.Result, e
 	}
 
 	filter := NewStreamFilter()
-	printed := false
-	emit := func(text string) {
-		if text == "" {
-			return
-		}
-		fmt.Print(text)
-		printed = true
-	}
+	var answer strings.Builder
+	reasoned := false
 	res, err := a.llm.Chat(ctx, req, func(event llm.Event) error {
 		switch event.Kind {
 		case llm.EventThinking:
+			// Reasoning is printed as it arrives, so the status line has to go first or the two
+			// overwrite each other on the same line.
 			stopSpinner()
-			emit(a.renderer.Dim(event.Text))
+			fmt.Print(a.renderer.Dim(event.Text))
+			reasoned = true
 		case llm.EventText:
-			stopSpinner()
-			emit(filter.Process(event.Text))
-		case llm.EventToolCall, llm.EventUsage:
+			// Buffer the answer while the spinner runs (Claude Code style, as in v2); the filter
+			// keeps <think> blocks from OpenAI-compatible servers out of what gets rendered.
+			answer.WriteString(filter.Process(event.Text))
+		case llm.EventUsage:
+			if spinner != nil && event.Usage != nil {
+				spinner.UpdateTokens(
+					a.sessionUsage.TotalTokens + event.Usage.PromptTokens + event.Usage.CompletionTokens)
+			}
+		case llm.EventToolCall:
 		}
 		return nil
 	})
-	emit(filter.Flush())
-	if printed {
+	answer.WriteString(filter.Flush())
+	stopSpinner()
+	if reasoned {
 		fmt.Println()
 	}
-	return res, err
+	if res == nil {
+		return nil, err
+	}
+	assembled := *res
+	assembled.Content = answer.String()
+	return &assembled, err
 }
 
 // startTurnSpinner shows the Claude Code style status line while the model thinks.
@@ -347,9 +356,10 @@ func (a *Assistant) appendAssistantTurn(res *llm.Result, calls []*ToolCall, disp
 	a.recordMessage(record)
 }
 
-// printAnswer renders the model's text when streaming did not already print it live.
+// printAnswer renders the assembled answer with glamour once the reply is complete, which is what
+// both of v2's loops did: nothing of the answer reaches the screen before this point.
 func (a *Assistant) printAnswer(display string) {
-	if a.streaming || display == "" {
+	if display == "" {
 		return
 	}
 	fmt.Println(ui.RenderMarkdown(display))
