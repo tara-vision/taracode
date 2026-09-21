@@ -138,3 +138,33 @@ func TestModelOptions_Defaults(t *testing.T) {
 		t.Errorf("DefaultNumPredict = %d, want 0", DefaultNumPredict)
 	}
 }
+
+func TestModelOptions_LLMValues_AllValues(t *testing.T) {
+	opts := ModelOptions{Temperature: 0.5, TopP: 0.8, NumPredict: 512}
+
+	temperature, topP, numPredict := opts.LLMValues()
+
+	if temperature == nil || *temperature != 0.5 {
+		t.Errorf("temperature = %v, want 0.5", temperature)
+	}
+	if topP == nil || *topP != 0.8 {
+		t.Errorf("topP = %v, want 0.8", topP)
+	}
+	if numPredict != 512 {
+		t.Errorf("numPredict = %d, want 512", numPredict)
+	}
+}
+
+func TestModelOptions_LLMValues_UnsetStayNil(t *testing.T) {
+	temperature, topP, numPredict := ModelOptions{}.LLMValues()
+
+	if temperature != nil {
+		t.Errorf("temperature = %v, want nil", *temperature)
+	}
+	if topP != nil {
+		t.Errorf("topP = %v, want nil", *topP)
+	}
+	if numPredict != 0 {
+		t.Errorf("numPredict = %d, want 0", numPredict)
+	}
+}

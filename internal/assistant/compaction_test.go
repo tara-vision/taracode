@@ -1,10 +1,14 @@
 package assistant
 
 import (
+	gocontext "context"
 	"strings"
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/llm/ollama"
+	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 )
 
 func TestEstimateTokens(t *testing.T) {
@@ -207,5 +211,78 @@ func TestNewCompactionState(t *testing.T) {
 	}
 	if state.TotalCompacted != 0 {
 		t.Error("expected zero total compacted")
+	}
+}
+
+// buildConversation returns a system prompt followed by count user/assistant pairs.
+func buildConversation(count int) []openai.ChatCompletionMessage {
+	conversation := []openai.ChatCompletionMessage{{
+		Role:    openai.ChatMessageRoleSystem,
+		Content: "You are taracode.",
+	}}
+	for i := 0; i < count; i++ {
+		conversation = append(conversation,
+			openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: "question"},
+			openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: "answer"},
+		)
+	}
+	return conversation
+}
+
+func TestCompactConversationSummarizesThroughTheClient(t *testing.T) {
+	srv := ollamatest.New(t)
+	srv.Turns = []ollamatest.Turn{{Content: "The user asked twice and the assistant answered."}}
+	client := ollama.New(srv.URL, nil)
+	conversation := buildConversation(5)
+	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
+
+	compacted, event, err := CompactConversation(
+		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if event == nil {
+		t.Fatal("no compaction event")
+	}
+	if event.MessagesBefore != len(conversation) || event.MessagesAfter != len(compacted) {
+		t.Fatalf("event = %+v, compacted %d messages", event, len(compacted))
+	}
+	summary := compacted[1]
+	if summary.Role != openai.ChatMessageRoleSystem ||
+		!strings.Contains(summary.Content, "the assistant answered") {
+		t.Fatalf("summary message = %+v", summary)
+	}
+	if body := srv.Requests[0].Body; body["stream"] != false {
+		t.Fatalf("summary request should not stream: %v", body["stream"])
+	}
+}
+
+func TestCompactConversationFallsBackWhenTheServerFails(t *testing.T) {
+	srv := ollamatest.New(t)
+	srv.Turns = []ollamatest.Turn{{Status: 500, Error: "summary model unloaded"}}
+	client := ollama.New(srv.URL, nil)
+	conversation := buildConversation(5)
+	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
+
+	compacted, event, err := CompactConversation(
+		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b")
+	if err != nil {
+		t.Fatalf("a failed summary must not fail compaction: %v", err)
+	}
+
+	if event == nil {
+		t.Fatal("no compaction event")
+	}
+	if !strings.Contains(compacted[1].Content, "messages summarized") {
+		t.Fatalf("fallback summary missing: %q", compacted[1].Content)
+	}
+}
+
+func TestGenerateSummaryWithoutAClient(t *testing.T) {
+	_, err := generateSummary(gocontext.Background(), buildConversation(1), nil, "gemma4:12b")
+
+	if err == nil {
+		t.Fatal("expected an error when no client is configured")
 	}
 }

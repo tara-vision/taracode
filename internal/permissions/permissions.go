@@ -147,6 +147,22 @@ func NewManager(projectRoot string) (*Manager, error) {
 	return m, nil
 }
 
+// NewManagerAllowAll returns an in-memory manager that allows every category. It has no config
+// path, so it never reads or writes permissions.json. For tests and non-interactive runs only.
+func NewManagerAllowAll() *Manager {
+	categories := make(map[PermissionCategory]Permission, len(defaultCategoryPermissions))
+	for cat := range defaultCategoryPermissions {
+		categories[cat] = PermissionAllow
+	}
+	return &Manager{
+		config: &PermissionConfig{
+			Version:    1,
+			Categories: categories,
+			Tools:      make(map[string]Permission),
+		},
+	}
+}
+
 // load reads the permission config from disk
 func (m *Manager) load() error {
 	data, err := os.ReadFile(m.configPath)
@@ -176,6 +192,11 @@ func (m *Manager) load() error {
 
 // Save writes the permission config to disk
 func (m *Manager) Save() error {
+	// An in-memory manager (NewManagerAllowAll) has no path and nothing to persist.
+	if m.configPath == "" {
+		return nil
+	}
+
 	m.mu.RLock()
 	data, err := json.MarshalIndent(m.config, "", "  ")
 	m.mu.RUnlock()
