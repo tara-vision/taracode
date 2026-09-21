@@ -11,6 +11,10 @@ import (
 	"github.com/tara-vision/taracode/internal/llm"
 )
 
+// compactionSummaryTokens caps how much the summary request itself may generate, regardless of
+// the session's own num_predict.
+const compactionSummaryTokens = 200
+
 // truncateRuneSafe truncates a string at a rune boundary, avoiding mid-rune slicing
 func truncateRuneSafe(s string, maxRunes int) string {
 	runes := []rune(s)
@@ -121,6 +125,7 @@ func CompactConversation(
 	cfg CompactionConfig,
 	client llm.Client,
 	model string,
+	options llm.Options,
 ) ([]openai.ChatCompletionMessage, *CompactionEvent, error) {
 	if len(conversation) < cfg.KeepRecent*2+3 {
 		return conversation, nil, nil
@@ -142,7 +147,7 @@ func CompactConversation(
 	toKeep := conversation[keepEnd:]
 
 	// Build a summary of the old messages
-	summary, err := generateSummary(ctx, toSummarize, client, model)
+	summary, err := generateSummary(ctx, toSummarize, client, model, options)
 	if err != nil {
 		// Fallback: simple message count summary
 		summary = buildFallbackSummary(toSummarize)
@@ -180,6 +185,7 @@ func generateSummary(
 	messages []openai.ChatCompletionMessage,
 	client llm.Client,
 	model string,
+	options llm.Options,
 ) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("no model client available for summarization")
@@ -223,7 +229,7 @@ Write ONLY the summary, nothing else.`, sb.String())
 				Content: summaryPrompt,
 			},
 		},
-		Options: llm.Options{NumPredict: 200},
+		Options: options,
 	}, nil)
 
 	if err != nil {

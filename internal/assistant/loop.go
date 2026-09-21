@@ -585,12 +585,18 @@ func (a *Assistant) recordMessage(msg storage.ConversationMessage) {
 	}
 }
 
-// compactIfNeeded summarises older messages when the context budget is reached (v2.0.2).
+// compactIfNeeded summarises older messages when the context budget is reached (v2.0.2). The
+// summary request carries the session's own options (num_ctx, keep_alive) so it does not force
+// Ollama to reload the runner with a different context window, with thinking off and a small
+// token budget so a thinking model spends it on the summary instead of reasoning.
 func (a *Assistant) compactIfNeeded(ctx gocontext.Context) {
 	if !ShouldCompact(a.conversation, a.toolDefs, a.compactionCfg) {
 		return
 	}
-	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, a.compactionCfg, a.llm, a.model)
+	options := a.requestOptions()
+	options.NumPredict = compactionSummaryTokens
+	options.Think = llm.ThinkOff
+	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, a.compactionCfg, a.llm, a.model, options)
 	if err != nil || event == nil {
 		return
 	}

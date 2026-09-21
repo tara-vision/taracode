@@ -7,6 +7,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/ollama"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 )
@@ -236,8 +237,9 @@ func TestCompactConversationSummarizesThroughTheClient(t *testing.T) {
 	conversation := buildConversation(5)
 	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
 
+	options := llm.Options{NumPredict: compactionSummaryTokens, Think: llm.ThinkOff}
 	compacted, event, err := CompactConversation(
-		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b")
+		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b", options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,15 +260,51 @@ func TestCompactConversationSummarizesThroughTheClient(t *testing.T) {
 	}
 }
 
+// TestCompactConversationSummaryCarriesTheGivenOptions covers the fix for the summary request
+// bypassing the session options: CompactConversation must send exactly the llm.Options it is
+// given (num_ctx, keep_alive, think) instead of the old bare NumPredict-only request, or Ollama
+// reloads the runner for a different context window and a thinking model spends the summary's
+// small token budget on reasoning instead of the answer.
+func TestCompactConversationSummaryCarriesTheGivenOptions(t *testing.T) {
+	srv := ollamatest.New(t)
+	srv.Turns = []ollamatest.Turn{{Content: "summary text"}}
+	client := ollama.New(srv.URL, nil)
+	conversation := buildConversation(5)
+	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
+	options := llm.Options{NumCtx: 32768, KeepAlive: "-1", Think: llm.ThinkOff, NumPredict: compactionSummaryTokens}
+
+	_, event, err := CompactConversation(
+		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b", options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event == nil {
+		t.Fatal("no compaction event")
+	}
+
+	body := srv.Requests[0].Body
+	opts, ok := body["options"].(map[string]any)
+	if !ok || opts["num_ctx"] != float64(32768) || opts["num_predict"] != float64(compactionSummaryTokens) {
+		t.Fatalf("summary request options: %v", body["options"])
+	}
+	if body["keep_alive"] != "-1" {
+		t.Fatalf("summary request keep_alive = %v, want -1", body["keep_alive"])
+	}
+	if body["think"] != false {
+		t.Fatalf("summary request think = %v, want false", body["think"])
+	}
+}
+
 func TestCompactConversationFallsBackWhenTheServerFails(t *testing.T) {
 	srv := ollamatest.New(t)
 	srv.Turns = []ollamatest.Turn{{Status: 500, Error: "summary model unloaded"}}
 	client := ollama.New(srv.URL, nil)
 	conversation := buildConversation(5)
 	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
+	options := llm.Options{NumPredict: compactionSummaryTokens, Think: llm.ThinkOff}
 
 	compacted, event, err := CompactConversation(
-		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b")
+		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b", options)
 	if err != nil {
 		t.Fatalf("a failed summary must not fail compaction: %v", err)
 	}
@@ -280,7 +318,7 @@ func TestCompactConversationFallsBackWhenTheServerFails(t *testing.T) {
 }
 
 func TestGenerateSummaryWithoutAClient(t *testing.T) {
-	_, err := generateSummary(gocontext.Background(), buildConversation(1), nil, "gemma4:12b")
+	_, err := generateSummary(gocontext.Background(), buildConversation(1), nil, "gemma4:12b", llm.Options{})
 
 	if err == nil {
 		t.Fatal("expected an error when no client is configured")
