@@ -670,6 +670,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /compact             - Force conversation compaction")
 		fmt.Println("    /think               - Show the current reasoning mode")
 		fmt.Println("    /think <mode>        - Set reasoning mode: auto|off|on|low|medium|high")
+		fmt.Println("    /doctor              - Diagnose the LLM server, models and external tools")
 		fmt.Println("    /stats               - Show session statistics")
 		fmt.Println("    /tools               - List available AI tools")
 		fmt.Println("    /usage               - Show token usage statistics")
@@ -929,6 +930,10 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/think":
 		// Show or set the reasoning mode (native core, Task 8)
 		handleThink(*asst, args)
+
+	case "/doctor":
+		// Diagnose the LLM server, installed models and external tools (native core, Task 11)
+		handleDoctor(*asst)
 
 	case "/stats":
 		// Session statistics (v2.0.2)

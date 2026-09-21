@@ -182,6 +182,9 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		} else if configModel != "" {
 			model = configModel
 		} else {
+			// No model persisted or configured, and the server lists none either: point at the
+			// registry's recommendation for this host before failing (native core, Task 11).
+			printFirstRunAdvice()
 			return nil, fmt.Errorf("no models available and no fallback configured")
 		}
 	}
