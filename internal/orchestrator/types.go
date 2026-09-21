@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -22,7 +23,7 @@ func DefaultOrchestratorConfig() OrchestratorConfig {
 	return OrchestratorConfig{
 		Enabled:           true,
 		DefaultRouting:    "auto",
-		FallbackModel:     "qwen3.8:27b",
+		FallbackModel:     models.DefaultName(models.Tier32),
 		TimeoutMultiplier: 1.0,
 		MaxReplans:        3,
 		AutoDiagnostics:   true,

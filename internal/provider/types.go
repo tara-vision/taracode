@@ -51,9 +51,9 @@ type Info struct {
 
 // ModelInfo holds detailed information about a model
 type ModelInfo struct {
-	Name   string // Model name (e.g., "qwen3.8:27b")
+	Name   string // Model name as the server lists it
 	Size   int64  // Model size in bytes
-	Family string // Model family (e.g., "qwen3.8")
+	Family string // Model family, the part of the name before the colon
 	Params string // Parameter size (e.g., "27B")
 }
 

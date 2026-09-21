@@ -1,6 +1,11 @@
 package models
 
-import "testing"
+import (
+	"errors"
+	"os/exec"
+	"strings"
+	"testing"
+)
 
 func TestRegistryLoadsAndRecommends(t *testing.T) {
 	r, err := Load()
@@ -74,5 +79,44 @@ func TestDefaultForTierUnknownTierReturnsZeroValue(t *testing.T) {
 	e := r.DefaultForTier(Tier("unknown"))
 	if e.Name != "" || e.Tier != "" || e.Capabilities != nil {
 		t.Fatalf("unknown tier default = %+v, want zero value", e)
+	}
+}
+
+func TestDefaultNameResolvesViaFind(t *testing.T) {
+	r, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := DefaultName(Tier32)
+	if name == "" {
+		t.Fatal("DefaultName(Tier32) is empty")
+	}
+	if _, ok := r.Find(name); !ok {
+		t.Fatalf("Find cannot resolve DefaultName(Tier32) = %q", name)
+	}
+	if got := DefaultName(Tier16); got == name {
+		t.Fatalf("Tier16 and Tier32 defaults must differ, both = %q", got)
+	}
+}
+
+// TestNoModelLiteralsOutsideTheRegistry is the repo-wide guard: every Ollama model name in Go code
+// must come from this registry (embedded in registry.yaml), not from a string literal. It excludes
+// tests (which pin exact names on purpose) and this package (the registry itself).
+func TestNoModelLiteralsOutsideTheRegistry(t *testing.T) {
+	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Skipf("not inside a git checkout: %v", err)
+	}
+	cmd := exec.Command("git", "grep", "-n", "-E",
+		`(gemma4|qwen3\.[568]|glm-4\.7|muse-glimmer|nemotron|ministral)`,
+		"--", "*.go", ":!*_test.go", ":!internal/models/")
+	cmd.Dir = strings.TrimSpace(string(root))
+	out, err := cmd.Output()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() != 1 {
+		t.Fatalf("git grep failed: %v", err) // exit 1 is "no match", the pass case
+	}
+	if len(strings.TrimSpace(string(out))) > 0 {
+		t.Fatalf("model names must live in the registry only:\n%s", out)
 	}
 }

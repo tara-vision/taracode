@@ -18,6 +18,7 @@ import (
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
+	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/orchestrator"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
@@ -2246,7 +2247,8 @@ func handleModelSwitch(asst **assistant.Assistant, taskBridge *orchestrator.Task
 
 	if len(allModels) == 0 {
 		fmt.Println("No models available.")
-		fmt.Println("Pull a model with: ollama pull gemma4:12b (16 GB) or qwen3.8:27b (32 GB)")
+		fmt.Printf("Pull a model with: ollama pull %s (16 GB) or %s (32 GB)\n",
+			models.DefaultName(models.Tier16), models.DefaultName(models.Tier32))
 		fmt.Println()
 		return
 	}
