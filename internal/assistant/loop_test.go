@@ -15,6 +15,7 @@ import (
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
+	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // newTestAssistant wires an Assistant to a fake Ollama in a temp project with all tool prompts
@@ -187,8 +188,8 @@ func TestEmptyReplyIsNudgedOnce(t *testing.T) {
 }
 
 // TestJSONFallbackWhenTheModelHasNoNativeTools covers the path taken after a "does not support
-// tools" error: tools leave the request, tool calls are parsed out of the content and the results
-// go back as one user message.
+// tools" error: tools leave the request, tool calls are parsed out of the content, the stored reply
+// keeps the call the model wrote and the results go back as one user message.
 func TestJSONFallbackWhenTheModelHasNoNativeTools(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	srv.Turns = []ollamatest.Turn{
@@ -215,29 +216,70 @@ func TestJSONFallbackWhenTheModelHasNoNativeTools(t *testing.T) {
 	if result["role"] != "user" || !strings.Contains(result["content"].(string), "hello from disk") {
 		t.Fatalf("fallback tool result not sent back as a user message: %v", result)
 	}
+	asst := findMessage(t, a.conversation, openai.ChatMessageRoleAssistant)
+	if !strings.Contains(asst.Content, "read_file") {
+		t.Fatalf("the stored reply dropped the tool call the model wrote: %q", asst.Content)
+	}
 }
 
-// TestDeclinedEditPreviewIsSentBackToTheModel guards the v2 dead store: the cancellation message
-// now reaches the model as the tool result instead of being dropped.
-func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
-	skipWhenStdinIsATerminal(t)
+// withEditPreview turns previews on and makes the decision deterministic, so these tests never
+// depend on a terminal.
+func withEditPreview(t *testing.T, a *Assistant, choice ui.EditPreviewChoice) {
+	t.Helper()
 	viper.Set("preview_edits", true)
 	viper.Set("preview_threshold", 0)
 	t.Cleanup(func() {
 		viper.Set("preview_edits", false)
 		viper.Set("preview_threshold", 0)
 	})
+	a.confirmEditPreview = func(*ui.EditPreview) ui.EditPreviewChoice { return choice }
+}
 
-	a, srv := newTestAssistant(t, false)
+// editTurns scripts a model that edits hello.txt and then acknowledges the outcome.
+func editTurns() []ollamatest.Turn {
 	args := map[string]any{"file_path": "hello.txt", "old_string": "hello from disk", "new_string": "goodbye"}
-	srv.Turns = []ollamatest.Turn{
+	return []ollamatest.Turn{
 		{ToolCalls: []ollamatest.ToolCall{{Name: "edit_file", Args: args}}},
-		{Content: "Understood, I left the file alone."},
+		{Content: "Done."},
 	}
+}
 
-	if err := a.ProcessMessage("replace the greeting"); err != nil {
-		t.Fatal(err)
+// TestFallbackCallWithAnIDStillGoesBackAsAUserMessage pins the routing rule: only a reply that
+// came through the native path may answer with tool-role messages, whatever id the parsed JSON
+// happens to carry.
+func TestFallbackCallWithAnIDStillGoesBackAsAUserMessage(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
+	a.useNativeTools = false
+	before := len(a.conversation)
+
+	a.runToolCalls([]*ToolCall{{
+		ID:     "call_7",
+		Tool:   "read_file",
+		Params: map[string]interface{}{"file_path": "hello.txt"},
+	}}, "reply", false)
+
+	if len(a.conversation) != before+1 {
+		t.Fatalf("expected one aggregated message, got %d new ones", len(a.conversation)-before)
 	}
+	added := a.conversation[len(a.conversation)-1]
+	if added.Role != openai.ChatMessageRoleUser || !strings.Contains(added.Content, "hello from disk") {
+		t.Fatalf("fallback result was misrouted: %+v", added)
+	}
+}
+
+// TestDeclinedEditPreviewIsSentBackToTheModel guards the v2 dead store: the cancellation message
+// now reaches the model as the tool result. It also guards the status line, which must not claim
+// an edit that never happened.
+func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	withEditPreview(t, a, ui.EditPreviewCancel)
+	srv.Turns = editTurns()
+
+	out := captureStdout(t, func() {
+		if err := a.ProcessMessage("replace the greeting"); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	body, err := os.ReadFile(filepath.Join(a.workingDir, "hello.txt"))
 	if err != nil {
@@ -246,9 +288,41 @@ func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
 	if string(body) != "hello from disk" {
 		t.Fatalf("file was edited although the preview was declined: %q", body)
 	}
+	if strings.Contains(out, "Edited") {
+		t.Fatalf("a refused tool call printed a success status line: %q", out)
+	}
 	result := lastMessage(t, lastChatBody(t, srv), 0)
 	if result["role"] != "tool" || !strings.Contains(result["content"].(string), "cancelled") {
 		t.Fatalf("cancellation not sent back to the model: %v", result)
+	}
+}
+
+// TestAcceptedEditPreviewAppliesTheEdit is the other half: an approved preview edits the file and
+// the status line reports it.
+func TestAcceptedEditPreviewAppliesTheEdit(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	withEditPreview(t, a, ui.EditPreviewApply)
+	srv.Turns = editTurns()
+
+	out := captureStdout(t, func() {
+		if err := a.ProcessMessage("replace the greeting"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	body, err := os.ReadFile(filepath.Join(a.workingDir, "hello.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "goodbye" {
+		t.Fatalf("approved edit was not applied: %q", body)
+	}
+	if !strings.Contains(out, "Edited") {
+		t.Fatalf("an applied edit printed no status line: %q", out)
+	}
+	result := lastMessage(t, lastChatBody(t, srv), 0)
+	if result["role"] != "tool" || strings.Contains(result["content"].(string), "cancelled") {
+		t.Fatalf("edit result not sent back to the model: %v", result)
 	}
 }
 
@@ -361,16 +435,6 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatal(err)
 	}
 	return <-done
-}
-
-// skipWhenStdinIsATerminal keeps the edit-preview test off a real terminal: the preview prompt
-// only resolves to "cancel" on its own when promptui has no TTY to read from.
-func skipWhenStdinIsATerminal(t *testing.T) {
-	t.Helper()
-	info, err := os.Stdin.Stat()
-	if err == nil && info.Mode()&os.ModeCharDevice != 0 {
-		t.Skip("stdin is a terminal: the edit preview would wait for a keypress")
-	}
 }
 
 // deadHost is a loopback port nothing listens on, so requests fail with "connection refused".

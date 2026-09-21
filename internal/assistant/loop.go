@@ -70,6 +70,7 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), apiResponseTimeout)
 	defer cancel()
 
+	a.lastResponse = ""
 	nudged := false
 	for i := 0; i < a.maxIterations; i++ {
 		a.compactIfNeeded(ctx)
@@ -79,7 +80,7 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 			return err
 		}
 
-		calls, display := a.toolCallsOf(res)
+		calls, display, native := a.toolCallsOf(res)
 		if len(calls) == 0 && display == "" && !nudged {
 			// An empty reply gets one nudge instead of ending the turn in silence (v2.0.4).
 			nudged = true
@@ -90,13 +91,20 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 			continue
 		}
 
-		a.appendAssistantTurn(res, calls, display)
+		// The JSON fallback keeps the tool call the model wrote in the stored reply, the way v2
+		// stored the raw response; only the prose before it is displayed.
+		reply := display
+		if !native {
+			reply = cleanResponse(res.Content)
+		}
+
+		a.appendAssistantTurn(res, calls, reply)
 		a.printAnswer(display)
 		if len(calls) == 0 {
 			a.lastResponse = display
 			return nil
 		}
-		a.runToolCalls(calls, display)
+		a.runToolCalls(calls, reply, native)
 	}
 
 	fmt.Printf("\n%s Stopped after %d tool iterations (context.max_tool_iterations)\n",
@@ -316,11 +324,13 @@ func (a *Assistant) startTurnSpinner() *ui.Spinner {
 	return spinner
 }
 
-// toolCallsOf returns the tool calls of a reply plus the text to display. Native tool calls win;
-// the JSON-in-content fallback only runs for models that have no native tool support.
-func (a *Assistant) toolCallsOf(res *llm.Result) ([]*ToolCall, string) {
+// toolCallsOf returns the tool calls of a reply, the text to display and whether the reply came
+// through the native path. Native tool calls win; the JSON-in-content fallback only runs for models
+// that have no native tool support, and an "id" a model writes into that JSON never turns its call
+// into a native one.
+func (a *Assistant) toolCallsOf(res *llm.Result) (calls []*ToolCall, display string, native bool) {
 	if len(res.ToolCalls) > 0 {
-		calls := make([]*ToolCall, 0, len(res.ToolCalls))
+		calls = make([]*ToolCall, 0, len(res.ToolCalls))
 		for _, tc := range res.ToolCalls {
 			params := make(map[string]interface{})
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &params); err != nil {
@@ -328,24 +338,25 @@ func (a *Assistant) toolCallsOf(res *llm.Result) ([]*ToolCall, string) {
 			}
 			calls = append(calls, &ToolCall{ID: tc.ID, Tool: tc.Function.Name, Params: params})
 		}
-		return calls, cleanResponse(res.Content)
+		return calls, cleanResponse(res.Content), true
 	}
 	if a.useNativeTools {
-		return nil, cleanResponse(res.Content)
+		return nil, cleanResponse(res.Content), true
 	}
-	return parseToolCalls(res.Content)
+	calls, display = parseToolCalls(res.Content)
+	return calls, display, false
 }
 
-// appendAssistantTurn stores the assistant reply in the conversation and in the session. Only the
+// appendAssistantTurn stores the assistant reply in the conversation and in the session. Only
 // cleaned text is stored, so reasoning never survives the turn that produced it.
-func (a *Assistant) appendAssistantTurn(res *llm.Result, calls []*ToolCall, display string) {
-	message := openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: display}
+func (a *Assistant) appendAssistantTurn(res *llm.Result, calls []*ToolCall, reply string) {
+	message := openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: reply}
 	if len(res.ToolCalls) > 0 {
 		message.ToolCalls = res.ToolCalls
 	}
 	a.conversation = append(a.conversation, message)
 
-	record := storage.ConversationMessage{Role: "assistant", Content: display, Timestamp: time.Now()}
+	record := storage.ConversationMessage{Role: "assistant", Content: reply, Timestamp: time.Now()}
 	for _, call := range calls {
 		record.ToolCalls = append(record.ToolCalls, storage.ToolCallRecord{
 			ID:     call.ID,
@@ -387,16 +398,20 @@ type toolRun struct {
 // runToolCalls executes every call of one reply and appends the results in the shape the transport
 // expects: one tool message per native call, or a single user message for the JSON fallback.
 // Every call gets a result, including the ones a gate refused, so the model is never left waiting.
-func (a *Assistant) runToolCalls(calls []*ToolCall, rawReply string) {
+func (a *Assistant) runToolCalls(calls []*ToolCall, rawReply string, native bool) {
 	batch := a.newAuditBatch(calls)
 	var fallback strings.Builder
 
 	for idx, call := range calls {
 		outcome := a.executeOne(toolRun{call: call, index: idx, total: len(calls), batch: batch})
-		fmt.Println(a.renderer.FormatToolStatusWithDuration(
-			call.Tool, call.Params, outcome.result, outcome.isError, outcome.durationMs))
+		if !outcome.denied {
+			// A gate that refused already said so on its own; a status line here would claim the
+			// operation happened.
+			fmt.Println(a.renderer.FormatToolStatusWithDuration(
+				call.Tool, call.Params, outcome.result, outcome.isError, outcome.durationMs))
+		}
 
-		if call.ID != "" {
+		if native && call.ID != "" {
 			a.conversation = append(a.conversation, openai.ChatCompletionMessage{
 				Role:       openai.ChatMessageRoleTool,
 				Content:    outcome.result,
