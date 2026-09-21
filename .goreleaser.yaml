@@ -1,0 +1,107 @@
+version: 2
+
+project_name: taracode
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: taracode
+    main: .
+    binary: taracode
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/tara-vision/taracode/cmd.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: binaries
+    ids: [taracode]
+    formats: [binary]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+nfpms:
+  - id: packages
+    package_name: taracode
+    ids: [taracode]
+    vendor: Tara Vision, LLC
+    homepage: https://github.com/tara-vision/taracode
+    maintainer: "Tara Vision, LLC <contact@tara.vision>"
+    description: DevOps and Cloud AI assistant for Kubernetes, Terraform, Docker and multi-cloud, running locally with Ollama
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    section: utils
+    bindir: /usr/local/bin
+
+homebrew_casks:
+  - name: taracode
+    repository:
+      owner: tara-vision
+      name: homebrew-taracode
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/tara-vision/taracode
+    description: DevOps and Cloud AI assistant that runs locally with Ollama
+    license: MIT
+    binaries:
+      - taracode
+    caveats: |
+      taracode needs Ollama and a tool-capable model:
+
+        brew install ollama
+        ollama pull gemma4:12b      # 16 GB machines
+        ollama pull qwen3.8:27b     # 32 GB machines (Ollama 0.32.12 or newer)
+
+      Then run `taracode` inside a project directory.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/taracode"]
+          end
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "Update taracode cask to {{ .Tag }}"
+
+release:
+  github:
+    owner: tara-vision
+    name: taracode
+  draft: false
+  prerelease: auto
+  mode: replace
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore\\(deps\\)"
