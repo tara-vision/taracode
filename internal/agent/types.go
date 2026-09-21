@@ -104,7 +104,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypePlanner:
 		return Config{
 			Type:             TypePlanner,
-			Model:            "gemma3:12b",
+			Model:            "gemma4:12b",
 			Temperature:      0.3,
 			MaxContextTokens: 4096,
 			ToolCategories:   []string{"file"},
@@ -114,7 +114,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeCoder:
 		return Config{
 			Type:             TypeCoder,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.4,
 			MaxContextTokens: 16384,
 			ToolCategories:   []string{"file", "git", "command"},
@@ -124,7 +124,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeTester:
 		return Config{
 			Type:             TypeTester,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.2,
 			MaxContextTokens: 8192,
 			ToolCategories:   []string{"file", "command"},
@@ -134,7 +134,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeReviewer:
 		return Config{
 			Type:             TypeReviewer,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.5,
 			MaxContextTokens: 12288,
 			ToolCategories:   []string{"file", "search"},
@@ -145,7 +145,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeDevOps:
 		return Config{
 			Type:             TypeDevOps,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.3,
 			MaxContextTokens: 12288,
 			ToolCategories:   []string{"kubernetes", "terraform", "docker", "cloud"},
@@ -155,7 +155,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeSecurity:
 		return Config{
 			Type:             TypeSecurity,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.2,
 			MaxContextTokens: 12288,
 			ToolCategories:   []string{"security", "file"},
@@ -165,7 +165,7 @@ func DefaultConfig(agentType Type) Config {
 	case TypeDiagnostics:
 		return Config{
 			Type:             TypeDiagnostics,
-			Model:            "gemma3:12b",
+			Model:            "gemma4:12b",
 			Temperature:      0.2,
 			MaxContextTokens: 4096,
 			ToolCategories:   []string{"file", "command"},
@@ -176,7 +176,7 @@ func DefaultConfig(agentType Type) Config {
 	default:
 		return Config{
 			Type:             agentType,
-			Model:            "gemma3:27b",
+			Model:            "qwen3.8:27b",
 			Temperature:      0.4,
 			MaxContextTokens: 8192,
 			MaxToolIter:      5,

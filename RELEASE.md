@@ -1,56 +1,38 @@
 ## Release Process
 
-Follow these steps to release a new version of **taracode**. The CI/CD pipeline handles binary compilation, GitHub
-Release creation, and the Homebrew formula updates automatically.
+Releases are built by goreleaser in GitHub Actions. Pushing a `v*` tag produces binaries for macOS and Linux
+(amd64 and arm64), `checksums.txt` with a keyless cosign signature, deb and rpm packages, SLSA provenance, and
+a Homebrew cask commit in `tara-vision/homebrew-taracode`.
 
-### Phase 1: Tag and Release
+### 1. Prepare
 
-1. **Prepare and Push Code**
-   Ensure your code is tested and ready on the `main` branch.
+1. Merge everything for the release into `main`.
+2. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new `[X.Y.Z] - YYYY-MM-DD` heading and commit.
+3. Run the local dry run: `make snapshot` (builds everything into `dist/` without publishing).
 
-2. **Create and Push Tag**
-   Pushing a tag starting with `v` triggers the automated release workflow.
-    ```bash
-    git tag -a vX.Y.Z -m "Release vX.Y.Z"
-    git push origin vX.Y.Z
-    ```
-
-3. **Monitor Automation**
-   Go to [GitHub Actions](https://github.com/tara-vision/taracode/actions) to watch the
-   progress:
-
-* **Build & Release:** Compiles Go binaries for macOS (Intel/Silicon) and Linux, then creates a GitHub Release.
-* **Update Brew:** Calculates the new SHA-256 and automatically commits the updated formula to
-  `tara-vision/homebrew-taracode`.
----
-
-### Phase 2: Verify Installation
-
-Once the GitHub Actions turn green, verify the new version is available to the world:
+### 2. Tag
 
 ```bash
-# Update Homebrew's local index
-brew update
-
-# Upgrade to the latest version
-brew upgrade taracode
-
-# Verify the injected version string matches your tag
-taracode --version
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
 ```
----
 
-### Environment Setup
+### 3. Verify
 
-For new machines, install the recommended model and configure the server:
+Watch [GitHub Actions](https://github.com/tara-vision/taracode/actions) until `Release` and `SLSA provenance`
+are green, then:
 
 ```bash
-# Install the recommended model (action-oriented, tools + vision)
-ollama pull gemma3:27b
+brew update && brew upgrade --cask taracode && taracode --version
+curl -fsSL https://code.tara.vision/install.sh | INSTALL_DIR=$(mktemp -d) bash
+```
 
-# Alternative: for limited hardware (~12GB RAM)
-ollama pull gemma3:12b
+The installer must print `Verifying checksum...` before installing.
 
-# Add this to your .zshrc or .bashrc
+### Environment for manual testing
+
+```bash
+ollama pull qwen3.8:27b     # 32 GB machines
+ollama pull gemma4:12b      # 16 GB machines
 export TARACODE_HOST=http://localhost:11434
 ```

@@ -47,7 +47,7 @@ func DefaultAgentsConfig() AgentsConfig {
 	return AgentsConfig{
 		Enabled:           true,
 		DefaultRouting:    "auto",
-		FallbackModel:     "gemma3:27b",
+		FallbackModel:     "qwen3.8:27b",
 		TimeoutMultiplier: 1.0,
 		Planner:           defaultAgentConfigYAML(TypePlanner),
 		Coder:             defaultAgentConfigYAML(TypeCoder),
@@ -289,7 +289,7 @@ func GenerateExampleConfig() string {
 # Global agent settings
 enabled: true
 default_routing: auto  # auto, manual, or task-based
-fallback_model: gemma3:27b
+fallback_model: qwen3.8:27b
 timeout_multiplier: 1.0
 
 # Individual agent configurations
@@ -298,14 +298,14 @@ timeout_multiplier: 1.0
 #   - host: Named host from hosts config (optional, uses default if not set)
 #   - temperature, max_context_tokens, timeout, etc.
 planner:
-  model: gemma3:12b
+  model: gemma4:12b
   # host: primary        # Uncomment to use specific host
   temperature: 0.3
   max_context_tokens: 4096
   timeout: 60
 
 coder:
-  model: gemma3:27b
+  model: qwen3.8:27b
   # host: primary        # Use powerful GPU host for coding
   temperature: 0.4
   max_context_tokens: 16384
@@ -316,7 +316,7 @@ coder:
   timeout: 300
 
 tester:
-  model: gemma3:27b
+  model: qwen3.8:27b
   temperature: 0.2
   max_context_tokens: 8192
   tool_categories:
@@ -325,7 +325,7 @@ tester:
   timeout: 180
 
 reviewer:
-  model: llama3.2:3b
+  model: gemma4:e4b
   # host: local          # Use lightweight local model for reviews
   temperature: 0.5
   max_context_tokens: 12288
@@ -336,7 +336,7 @@ reviewer:
   timeout: 180
 
 devops:
-  model: gemma3:27b
+  model: qwen3.8:27b
   temperature: 0.3
   max_context_tokens: 12288
   tool_categories:
@@ -347,7 +347,7 @@ devops:
   timeout: 300
 
 security:
-  model: gemma3:27b
+  model: qwen3.8:27b
   temperature: 0.2
   max_context_tokens: 12288
   tool_categories:
@@ -356,7 +356,7 @@ security:
   timeout: 300
 
 diagnostics:
-  model: gemma3:12b
+  model: gemma4:12b
   # host: local          # Quick diagnostics on local
   temperature: 0.2
   max_context_tokens: 4096
