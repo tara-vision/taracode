@@ -1288,6 +1288,10 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 	fmt.Println(formatBoxLine(""))
 	fmt.Println(formatBoxLine(fmt.Sprintf("  System prompt:    %.1fk tokens", float64(ctxInfo.SystemPromptTokens)/1000.0)))
 	fmt.Println(formatBoxLine(fmt.Sprintf("  Tool definitions: %.1fk tokens", float64(ctxInfo.ToolDefsTokens)/1000.0)))
+	if ctxInfo.ServerContextTokens > 0 {
+		fmt.Println(formatBoxLine(fmt.Sprintf(
+			"  Server context:   %.1fk tokens (Ollama num_ctx)", float64(ctxInfo.ServerContextTokens)/1000.0)))
+	}
 	compactionNote := ""
 	if len(ctxInfo.CompactionEvents) > 0 {
 		compactionNote = fmt.Sprintf(", %d compactions", len(ctxInfo.CompactionEvents))
