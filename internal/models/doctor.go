@@ -24,6 +24,7 @@ type InstalledModel struct {
 	Thinking   bool
 	Vision     bool
 	InRegistry bool
+	MinOllama  string // from the registry entry, when InRegistry; "" otherwise.
 }
 
 // Report is the result of Diagnose.
@@ -37,12 +38,18 @@ type Report struct {
 	Models                  []InstalledModel
 	ConfiguredModel         string
 	LoadedContext           int
+	ContextWindow           int    // num_ctx that will be requested for ConfiguredModel; 0 = not resolved.
+	ContextNote             string // a warning from resolving ContextWindow, if any.
 	Tools                   map[string]string
+	RegistryError           string // set when the embedded registry failed to load; "" otherwise.
 	registry                *Registry
 	RecommendationInstalled bool
 }
 
 // Diagnose collects everything the doctor prints. lookPath is exec.LookPath in production.
+// resolveWindow resolves the context window that will be requested for the configured model, once
+// it is known to be installed; nil skips that section (the OpenAI-compatible path has no way to
+// set num_ctx, so callers there pass nil).
 func Diagnose(
 	ctx context.Context,
 	client llm.Client,
@@ -50,11 +57,16 @@ func Diagnose(
 	ramGB int,
 	configuredModel string,
 	lookPath func(string) (string, error),
+	resolveWindow func(modelMax int) (window int, note string),
 ) Report {
 	rep := Report{
 		Host: host, RAMGB: ramGB, Tier: TierFor(ramGB), ConfiguredModel: configuredModel, Tools: map[string]string{},
 	}
-	rep.registry, _ = Load()
+	if registry, err := Load(); err != nil {
+		rep.RegistryError = err.Error()
+	} else {
+		rep.registry = registry
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -80,6 +92,7 @@ func Diagnose(
 			}
 		}
 	}
+	rep.resolveConfiguredWindow(resolveWindow)
 	return rep
 }
 
@@ -103,7 +116,10 @@ func (r *Report) collectModels(ctx context.Context, client llm.Client) {
 			m.Vision = details.Has("vision")
 		}
 		if r.registry != nil {
-			_, m.InRegistry = r.registry.Find(info.Name)
+			if entry, ok := r.registry.Find(info.Name); ok {
+				m.InRegistry = true
+				m.MinOllama = entry.MinOllama
+			}
 		}
 		r.Models = append(r.Models, m)
 	}
@@ -113,6 +129,22 @@ func (r *Report) collectModels(ctx context.Context, client llm.Client) {
 			if l.Name == r.ConfiguredModel || l.Name == r.ConfiguredModel+":latest" {
 				r.LoadedContext = l.ContextLength
 			}
+		}
+	}
+}
+
+// resolveConfiguredWindow sets ContextWindow and ContextNote from resolveWindow, once the
+// configured model is found among the installed models (its native context is what resolveWindow
+// needs). A nil resolveWindow, an empty ConfiguredModel, or no matching installed model leaves
+// both fields at their zero value.
+func (r *Report) resolveConfiguredWindow(resolveWindow func(modelMax int) (int, string)) {
+	if resolveWindow == nil || r.ConfiguredModel == "" {
+		return
+	}
+	for _, m := range r.Models {
+		if m.Name == r.ConfiguredModel || m.Name == r.ConfiguredModel+":latest" {
+			r.ContextWindow, r.ContextNote = resolveWindow(m.Context)
+			return
 		}
 	}
 }
@@ -135,45 +167,86 @@ func (r *Report) Render() string {
 	} else {
 		fmt.Fprintf(&b, "          unreachable: %s\n", r.ServerError)
 	}
+	if r.RegistryError != "" {
+		fmt.Fprintf(&b, "Registry  unavailable: %s\n", r.RegistryError)
+	}
 	fmt.Fprintf(&b, "Machine   %d GB RAM, tier %s GB\n", r.RAMGB, r.Tier)
 	r.renderModels(&b)
-	if r.ConfiguredModel != "" {
-		fmt.Fprintf(&b, "Model     %s", r.ConfiguredModel)
-		if r.LoadedContext > 0 {
-			fmt.Fprintf(&b, " (loaded with a %d-token context)", r.LoadedContext)
-		}
-		b.WriteString("\n")
-	}
-	if rec, ok := r.Recommendation(); ok {
-		if r.RecommendationInstalled {
-			fmt.Fprintf(&b, "Advice    %s is installed and is the recommended model for this machine\n", rec.Name)
-		} else {
-			fmt.Fprintf(&b, "Advice    recommended for %d GB: %s (%.0f GB download)\n          ollama pull %s\n",
-				r.RAMGB, rec.Name, rec.DownloadGB, rec.Name)
-		}
-	}
+	r.renderModelAndContext(&b)
+	r.renderAdvice(&b)
 	r.renderTools(&b)
 	return b.String()
 }
 
-// renderModels writes the installed-models section, one row per model with its capability list.
+// renderModels writes the installed-models section, one row per model.
 func (r *Report) renderModels(b *strings.Builder) {
 	if len(r.Models) == 0 {
 		return
 	}
 	b.WriteString("Models\n")
 	for _, m := range r.Models {
-		caps := []string{}
-		if m.Tools {
-			caps = append(caps, "tools")
+		r.renderModel(b, m)
+	}
+}
+
+// renderModel writes one model's row: name, size, native context, capabilities, registry
+// membership, and (when the server is older than the model needs) an Ollama-version warning.
+func (r *Report) renderModel(b *strings.Builder, m InstalledModel) {
+	caps := []string{}
+	if m.Tools {
+		caps = append(caps, "tools")
+	}
+	if m.Thinking {
+		caps = append(caps, "thinking")
+	}
+	if m.Vision {
+		caps = append(caps, "vision")
+	}
+	registryMark := "not in registry"
+	if m.InRegistry {
+		registryMark = "registry"
+	}
+	fmt.Fprintf(b, "          %-28s %5.1f GB  ctx %-7d %-22s %s",
+		m.Name, m.SizeGB, m.Context, strings.Join(caps, " "), registryMark)
+	if r.ServerVersion != "" && m.MinOllama != "" && versionBefore(r.ServerVersion, m.MinOllama) {
+		fmt.Fprintf(b, " needs Ollama >= %s", m.MinOllama)
+	}
+	b.WriteString("\n")
+}
+
+// renderModelAndContext writes the Model line (the configured model and its loaded context, when
+// known) and, right after it, the context window that will be requested for that model.
+func (r *Report) renderModelAndContext(b *strings.Builder) {
+	if r.ConfiguredModel != "" {
+		fmt.Fprintf(b, "Model     %s", r.ConfiguredModel)
+		if r.LoadedContext > 0 {
+			fmt.Fprintf(b, " (loaded with a %d-token context)", r.LoadedContext)
 		}
-		if m.Thinking {
-			caps = append(caps, "thinking")
+		b.WriteString("\n")
+	}
+	if r.ContextWindow > 0 {
+		fmt.Fprintf(b, "Context   %d tokens will be requested per turn\n", r.ContextWindow)
+		if r.ContextNote != "" {
+			fmt.Fprintf(b, "          %s\n", r.ContextNote)
 		}
-		if m.Vision {
-			caps = append(caps, "vision")
-		}
-		fmt.Fprintf(b, "          %-28s %5.1f GB  ctx %-7d %s\n", m.Name, m.SizeGB, m.Context, strings.Join(caps, " "))
+	}
+}
+
+// renderAdvice writes the Advice line: whether the recommended model for this tier is already
+// installed, and (when the server is older than the recommendation needs) an Ollama-version note.
+func (r *Report) renderAdvice(b *strings.Builder) {
+	rec, ok := r.Recommendation()
+	if !ok {
+		return
+	}
+	if r.RecommendationInstalled {
+		fmt.Fprintf(b, "Advice    %s is installed and is the recommended model for this machine\n", rec.Name)
+	} else {
+		fmt.Fprintf(b, "Advice    recommended for %d GB: %s (%.0f GB download)\n          ollama pull %s\n",
+			r.RAMGB, rec.Name, rec.DownloadGB, rec.Name)
+	}
+	if rec.MinOllama != "" && r.ServerVersion != "" && versionBefore(r.ServerVersion, rec.MinOllama) {
+		fmt.Fprintf(b, "          needs Ollama >= %s (server has %s)\n", rec.MinOllama, r.ServerVersion)
 	}
 }
 
