@@ -4,6 +4,8 @@ import (
 	gocontext "context"
 	"fmt"
 	"time"
+
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // GetContextInfo returns detailed context budget information (v2.0.2)
@@ -74,7 +76,12 @@ func (a *Assistant) ForceCompact() error {
 	forceCfg.Enabled = true
 	forceCfg.Threshold = 0.0 // Always trigger
 
-	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, forceCfg, a.llm, a.model)
+	// The summary request carries the session's own options (num_ctx, keep_alive) with thinking
+	// off and a small token budget, the same as the automatic path in loop.go.
+	options := a.requestOptions()
+	options.NumPredict = compactionSummaryTokens
+	options.Think = llm.ThinkOff
+	compacted, event, err := CompactConversation(ctx, a.conversation, a.toolDefs, forceCfg, a.llm, a.model, options)
 	if err != nil {
 		return fmt.Errorf("compaction failed: %w", err)
 	}
