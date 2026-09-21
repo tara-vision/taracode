@@ -668,6 +668,8 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /context             - Show what's in the LLM context window")
 		fmt.Println("    /context --agents    - Show per-agent context usage")
 		fmt.Println("    /compact             - Force conversation compaction")
+		fmt.Println("    /think               - Show the current reasoning mode")
+		fmt.Println("    /think <mode>        - Set reasoning mode: auto|off|on|low|medium|high")
 		fmt.Println("    /stats               - Show session statistics")
 		fmt.Println("    /tools               - List available AI tools")
 		fmt.Println("    /usage               - Show token usage statistics")
@@ -923,6 +925,10 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/compact":
 		// Force conversation compaction (v2.0.2)
 		handleCompact(*asst)
+
+	case "/think":
+		// Show or set the reasoning mode (native core, Task 8)
+		handleThink(*asst, args)
 
 	case "/stats":
 		// Session statistics (v2.0.2)
@@ -1291,6 +1297,10 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string,
 	if ctxInfo.ServerContextTokens > 0 {
 		fmt.Println(formatBoxLine(fmt.Sprintf(
 			"  Server context:   %.1fk tokens (Ollama num_ctx)", float64(ctxInfo.ServerContextTokens)/1000.0)))
+	}
+	if ctxInfo.ContextWindow > 0 {
+		fmt.Println(formatBoxLine(fmt.Sprintf(
+			"  Context window (requested): %.1fk tokens", float64(ctxInfo.ContextWindow)/1000.0)))
 	}
 	compactionNote := ""
 	if len(ctxInfo.CompactionEvents) > 0 {

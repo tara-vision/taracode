@@ -38,6 +38,7 @@ func (a *Assistant) GetContextInfo() ContextInfo {
 		CompactionThreshold: a.compactionCfg.Threshold,
 		MaxIterations:       a.maxIterations,
 		ServerContextTokens: a.serverContextTokens,
+		ContextWindow:       a.contextWindow,
 	}
 }
 
@@ -55,6 +56,7 @@ type ContextInfo struct {
 	CompactionThreshold float64
 	MaxIterations       int
 	ServerContextTokens int // context window reported by the Ollama server (0 = unknown)
+	ContextWindow       int // num_ctx requested for the current model (0 = unresolved)
 }
 
 // ForceCompact triggers immediate conversation compaction regardless of threshold
