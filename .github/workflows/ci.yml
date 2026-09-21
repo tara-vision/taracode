@@ -44,7 +44,7 @@ jobs:
 
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           govulncheck ./...
 
       - name: Tests
@@ -65,16 +65,21 @@ jobs:
 
       - name: No lab hostnames in the public repository
         run: |
-          if git grep -n -E 'tara\.lab' -- . ':!.github/workflows/ci.yml' ':!CHANGELOG.md'; then
+          if git grep -n -E 'tara\.lab|aramis|porthos|192\.168\.' -- . ':!.github/workflows/ci.yml' ':!CHANGELOG.md'; then
             echo "Lab hostnames must not appear in the public repository."
             exit 1
           fi
+          if [ "$(git grep -c -E 'tara\.lab' -- CHANGELOG.md | cut -d: -f2)" != "1" ]; then
+            echo "CHANGELOG.md may contain exactly one historical lab hostname line (the 2.0.3 entry)."
+            exit 1
+          fi
 
-      - name: go.mod is tidy
+      - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: |
+      - name: go.mod is tidy
+        run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
 
