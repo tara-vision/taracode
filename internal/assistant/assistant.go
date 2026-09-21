@@ -69,9 +69,10 @@ type Assistant struct {
 	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
 
 	// Request options sent with every turn (Task 8 wires these to config)
-	think         llm.Think // reasoning mode
-	keepAlive     string    // how long the server keeps the model loaded
-	contextWindow int       // num_ctx for the request, 0 = server default
+	think            llm.Think // reasoning mode
+	keepAlive        string    // how long the server keeps the model loaded
+	contextWindow    int       // num_ctx for the request, 0 = server default
+	configuredWindow string    // context.window config value ("auto" or a number); re-read on model switch
 
 	// Context management (v2.0.2)
 	truncationCfg   TruncationConfig
@@ -188,15 +189,6 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 	// Update provider with selected model
 	prov.SetModel(model)
 
-	// Build system prompt - use compact version since we'll try native function calling first
-	// If model doesn't support native tools, we'll rebuild with full prompt on fallback
-	systemPrompt := buildSystemPromptWithModeAndTools(workingDir, storageMgr, storage.ModeDevOps, true)
-
-	systemMessage := openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
-		Content: systemPrompt,
-	}
-
 	// Load context management configuration (v2.0.2)
 	maxToolOutputLines := viper.GetInt("context.max_tool_output_lines")
 	maxToolOutputChars := viper.GetInt("context.max_tool_output_chars")
@@ -225,12 +217,19 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		compactionKeepRecent = 4
 	}
 
-	return &Assistant{
+	// Request options read from config (Task 8): reasoning mode, context window, keep-alive.
+	// An unrecognized think value falls back to auto rather than failing the whole assistant.
+	think, thinkOK := llm.ParseThink(viper.GetString("think"))
+	if !thinkOK {
+		fmt.Println(renderer.WarningMessage(
+			fmt.Sprintf("think %q not recognized; using auto", viper.GetString("think"))))
+	}
+
+	a := &Assistant{
 		provider:           prov,
 		llm:                prov.LLM(),
 		model:              model,
 		confirmEditPreview: ui.DisplayEditPreview,
-		conversation:       []openai.ChatCompletionMessage{systemMessage},
 		toolRegistry:       tools.NewRegistry(),
 		toolDefs:           tools.GetToolDefinitions(), // Initialize OpenAI function calling tools
 		workingDir:         workingDir,
@@ -243,6 +242,9 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		sessionUsage:       &storage.TokenUsage{},
 		useNativeTools:     true, // Start with native tools enabled
 		permMgr:            permMgr,
+		think:              think,
+		keepAlive:          viper.GetString("keep_alive"),
+		configuredWindow:   viper.GetString("context.window"),
 		truncationCfg: TruncationConfig{
 			MaxLines: maxToolOutputLines,
 			MaxChars: maxToolOutputChars,
@@ -257,7 +259,26 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		maxIterations:    maxIter,
 		modelOptions:     modelOpts,
 		truncationEvents: make([]TruncationResult, 0),
-	}, nil
+	}
+
+	// Resolve the context window and gate on tool support once the model is chosen, before the
+	// system prompt is built: an OpenAI-compatible server without Show just leaves the window
+	// unresolved (v3 native core, Task 8).
+	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
+	defer showCancel()
+	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
+		return nil, err
+	}
+
+	// Build system prompt - use compact version since we'll try native function calling first
+	// If model doesn't support native tools, we'll rebuild with full prompt on fallback
+	systemPrompt := buildSystemPromptWithModeAndTools(workingDir, storageMgr, storage.ModeDevOps, true)
+	a.conversation = []openai.ChatCompletionMessage{{
+		Role:    openai.ChatMessageRoleSystem,
+		Content: systemPrompt,
+	}}
+
+	return a, nil
 }
 
 // newForTest builds an Assistant on a fake server without storage, spinner or interactive
@@ -423,6 +444,16 @@ func (a *Assistant) SwitchModel(newModel string) error {
 	a.model = newModel
 	a.resetServerContextCheck()
 	a.provider.SetModel(newModel)
+
+	// Resolve the new model's context window and gate on tool support (Task 8); a refused
+	// switch restores the model the assistant already had loaded.
+	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
+	defer showCancel()
+	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
+		a.model = oldModel
+		a.provider.SetModel(oldModel)
+		return err
+	}
 
 	// Persist the model selection
 	if a.storage != nil {

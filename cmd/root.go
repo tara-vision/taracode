@@ -372,6 +372,14 @@ func initConfig() {
 	viper.SetDefault("model.top_p", 0.9)
 	viper.SetDefault("model.num_predict", 0)
 
+	// Request options (native core, Task 8)
+	// context.window: "auto" resolves from the model's native max via /api/show, or a number of tokens
+	// think: reasoning mode sent with every request - auto|off|on|low|medium|high (default: auto)
+	// keep_alive: how long Ollama keeps the model loaded, "" = server default
+	viper.SetDefault("context.window", "auto")
+	viper.SetDefault("think", "auto")
+	viper.SetDefault("keep_alive", "")
+
 	// Upgrade (Auto-update) configuration defaults
 	// auto_check: Check for updates on startup (default: true)
 	// auto_upgrade: Automatically install updates without prompting (default: false)
