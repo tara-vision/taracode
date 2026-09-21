@@ -14,7 +14,6 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	var chunks []chatChunk
-	seq := 0
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
@@ -39,8 +38,7 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 			}
 		}
 		for _, tc := range chunk.Message.ToolCalls {
-			call := fromWireToolCall(tc, seq)
-			seq++
+			call := fromWireToolCall(tc)
 			if err := onEvent(llm.Event{Kind: llm.EventToolCall, ToolCall: &call}); err != nil {
 				return nil, err
 			}
@@ -61,13 +59,11 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 // assemble folds chunks into a Result (works for the single non-stream chunk too).
 func assemble(chunks []chatChunk) *llm.Result {
 	res := &llm.Result{}
-	seq := 0
 	for _, c := range chunks {
 		res.Content += c.Message.Content
 		res.Thinking += c.Message.Thinking
 		for _, tc := range c.Message.ToolCalls {
-			res.ToolCalls = append(res.ToolCalls, fromWireToolCall(tc, seq))
-			seq++
+			res.ToolCalls = append(res.ToolCalls, fromWireToolCall(tc))
 		}
 		if c.Done {
 			res.DoneReason = c.DoneReason

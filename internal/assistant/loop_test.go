@@ -91,6 +91,33 @@ func TestToolCallRoundTrip(t *testing.T) {
 	}
 }
 
+// TestToolCallIDsStayUniqueAcrossIterations covers the fix for ids restarting at call_0 on every
+// reply: two tool calls made across two iterations of the same turn must not share an id, or
+// toolNamesByID (last writer wins on a duplicate id) mislabels one of the replayed tool results
+// once the third request replays both.
+func TestToolCallIDsStayUniqueAcrossIterations(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{"directory": "."}}}},
+		{Content: "done"},
+	}
+
+	if err := a.ProcessMessage("do two things"); err != nil {
+		t.Fatal(err)
+	}
+
+	third := lastChatBody(t, srv)
+	readResult := lastMessage(t, third, 2)
+	listResult := lastMessage(t, third, 0)
+	if readResult["role"] != "tool" || readResult["tool_name"] != "read_file" {
+		t.Fatalf("read_file result mislabeled: %v", readResult)
+	}
+	if listResult["role"] != "tool" || listResult["tool_name"] != "list_files" {
+		t.Fatalf("list_files result mislabeled: %v", listResult)
+	}
+}
+
 func TestToolOutputIsTruncated(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.truncationCfg = TruncationConfig{MaxLines: 3, MaxChars: 0}
@@ -253,7 +280,7 @@ func TestFallbackCallWithAnIDStillGoesBackAsAUserMessage(t *testing.T) {
 	before := len(a.conversation)
 
 	a.runToolCalls([]*ToolCall{{
-		ID:     "call_7",
+		ID:     "fallback-arbitrary-id",
 		Tool:   "read_file",
 		Params: map[string]interface{}{"file_path": "hello.txt"},
 	}}, "reply", false)

@@ -129,6 +129,46 @@ func TestThinkMapping(t *testing.T) {
 	}
 }
 
+// TestToolCallIDsAreUniqueAcrossChatCalls covers the fix for ids restarting at call_0 on every
+// reply: two consecutive Chat calls against the same client must not hand out the same id, or a
+// restored session's replayed tool results get routed to the wrong tool_name.
+func TestToolCallIDsAreUniqueAcrossChatCalls(t *testing.T) {
+	srv, c := newClient(t)
+	srv.Turns = []ollamatest.Turn{
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "a"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "b"}}}},
+	}
+	res1, err := c.Chat(context.Background(), llm.Request{Model: "m"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res2, err := c.Chat(context.Background(), llm.Request{Model: "m"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res1.ToolCalls) != 1 || len(res2.ToolCalls) != 1 {
+		t.Fatalf("tool calls: %+v %+v", res1.ToolCalls, res2.ToolCalls)
+	}
+	if res1.ToolCalls[0].ID == "" || res1.ToolCalls[0].ID == res2.ToolCalls[0].ID {
+		t.Fatalf("tool call ids collided across two Chat calls: %q vs %q", res1.ToolCalls[0].ID, res2.ToolCalls[0].ID)
+	}
+}
+
+// TestToolCallWithNoArgumentsDefaultsToAnEmptyObject covers fromWireToolCall's empty-arguments
+// branch: Ollama sends a null "arguments" value for a tool call with no parameters, which must
+// still decode as valid JSON downstream rather than being left empty.
+func TestToolCallWithNoArgumentsDefaultsToAnEmptyObject(t *testing.T) {
+	srv, c := newClient(t)
+	srv.Turns = []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{{Name: "get_datetime", Args: nil}}}}
+	res, err := c.Chat(context.Background(), llm.Request{Model: "m"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.ToolCalls) != 1 || res.ToolCalls[0].Function.Arguments != "{}" {
+		t.Fatalf("tool calls: %+v", res.ToolCalls)
+	}
+}
+
 func TestServerErrorIsReturned(t *testing.T) {
 	srv, c := newClient(t)
 	srv.Turns = []ollamatest.Turn{{Status: 400, Error: "model does not support tools"}}

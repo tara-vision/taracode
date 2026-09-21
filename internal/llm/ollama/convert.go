@@ -4,11 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/llm"
 )
+
+// callSeq generates tool-call ids that are unique for the life of the process. Ollama's wire
+// format carries no id of its own (fromWireToolCall invents one), so a counter that reset per call
+// let two tool calls in one turn, across turns, or in a restored session share an id; toolNamesByID
+// then resolved the shared id to whichever assistant message came last, mislabeling the other
+// call's replayed tool result.
+var callSeq atomic.Uint64
 
 // wire types for Ollama's /api/chat.
 type message struct {
@@ -137,14 +145,15 @@ func stripDataURL(url string) string {
 	return url
 }
 
-// fromWireToolCall converts one Ollama tool call into the go-openai shape with a client-side id.
-func fromWireToolCall(tc toolCall, seq int) openai.ToolCall {
+// fromWireToolCall converts one Ollama tool call into the go-openai shape with a client-side id
+// that is unique for the life of the process.
+func fromWireToolCall(tc toolCall) openai.ToolCall {
 	args := string(tc.Function.Arguments)
 	if args == "" || args == "null" {
 		args = "{}"
 	}
 	return openai.ToolCall{
-		ID:       fmt.Sprintf("call_%d", seq),
+		ID:       fmt.Sprintf("call_%d", callSeq.Add(1)),
 		Type:     openai.ToolTypeFunction,
 		Function: openai.FunctionCall{Name: tc.Function.Name, Arguments: args},
 	}
