@@ -162,6 +162,10 @@ type Assistant struct {
 	// Multi-host fallback support (v2.0)
 	hostPool *provider.HostPool
 
+	// Ollama context window check (v2.1.0)
+	serverContextChecked bool // true once /api/ps has answered for the current model
+	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
+
 	// Context management (v2.0.2)
 	truncationCfg   TruncationConfig
 	compactionCfg   CompactionConfig
@@ -1050,6 +1054,7 @@ func (a *Assistant) GetContextInfo() ContextInfo {
 		CompactionEnabled:   a.compactionCfg.Enabled,
 		CompactionThreshold: a.compactionCfg.Threshold,
 		MaxIterations:       a.maxIterations,
+		ServerContextTokens: a.serverContextTokens,
 	}
 }
 
@@ -1066,6 +1071,7 @@ type ContextInfo struct {
 	CompactionEnabled   bool
 	CompactionThreshold float64
 	MaxIterations       int
+	ServerContextTokens int // context window reported by the Ollama server (0 = unknown)
 }
 
 // ForceCompact triggers immediate conversation compaction regardless of threshold
@@ -2350,6 +2356,7 @@ func (a *Assistant) ProcessMessage(userMessage string) error {
 
 // ProcessMessageWithImages handles user messages that may include images
 func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*ImageData) error {
+	defer a.checkServerContextOnce()
 	// Auto-inject datetime for date/time questions so the LLM has the answer
 	userMessage = a.injectDatetimeIfNeeded(userMessage)
 
