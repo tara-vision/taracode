@@ -447,6 +447,8 @@ func TestNewManagerAllowAllAllowsEverything(t *testing.T) {
 }
 
 func TestNewManagerAllowAllDoesNotPersist(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
 	m := NewManagerAllowAll()
 
 	if err := m.SetToolPermission("write_file", PermissionDeny); err != nil {
@@ -456,7 +458,11 @@ func TestNewManagerAllowAllDoesNotPersist(t *testing.T) {
 		t.Fatalf("Save on an in-memory manager: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(".taracode", "permissions.json")); !os.IsNotExist(err) {
-		t.Fatalf("in-memory manager wrote a permissions file: %v", err)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("in-memory manager wrote %d entries into the working directory", len(entries))
 	}
 }

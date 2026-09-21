@@ -316,7 +316,7 @@ func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, stri
 	}
 
 	// Display preview and get user choice
-	choice := ui.DisplayEditPreview(preview)
+	choice := a.editPreviewChoice(preview)
 
 	switch choice {
 	case ui.EditPreviewApply:
@@ -341,4 +341,13 @@ func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, stri
 	}
 
 	return true, "", nil
+}
+
+// editPreviewChoice asks for the preview decision, through confirmEditPreview when something has
+// replaced it (tests, or any non-interactive caller) and through the terminal prompt otherwise.
+func (a *Assistant) editPreviewChoice(preview *ui.EditPreview) ui.EditPreviewChoice {
+	if a.confirmEditPreview != nil {
+		return a.confirmEditPreview(preview)
+	}
+	return ui.DisplayEditPreview(preview)
 }

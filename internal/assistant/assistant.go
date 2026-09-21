@@ -54,6 +54,10 @@ type Assistant struct {
 	// Permission management
 	permMgr *permissions.Manager
 
+	// confirmEditPreview decides an edit preview. It is the terminal prompt in the binary and is
+	// replaced in tests so the decision is deterministic without a TTY.
+	confirmEditPreview func(preview *ui.EditPreview) ui.EditPreviewChoice
+
 	// Last AI response (for suggestion detection)
 	lastResponse string
 
@@ -222,22 +226,23 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 	}
 
 	return &Assistant{
-		provider:       prov,
-		llm:            prov.LLM(),
-		model:          model,
-		conversation:   []openai.ChatCompletionMessage{systemMessage},
-		toolRegistry:   tools.NewRegistry(),
-		toolDefs:       tools.GetToolDefinitions(), // Initialize OpenAI function calling tools
-		workingDir:     workingDir,
-		streaming:      streaming,
-		enableSpinner:  enableSpinner,
-		renderer:       renderer,
-		storage:        storageMgr,
-		session:        session,
-		projectCtx:     projectCtx,
-		sessionUsage:   &storage.TokenUsage{},
-		useNativeTools: true, // Start with native tools enabled
-		permMgr:        permMgr,
+		provider:           prov,
+		llm:                prov.LLM(),
+		model:              model,
+		confirmEditPreview: ui.DisplayEditPreview,
+		conversation:       []openai.ChatCompletionMessage{systemMessage},
+		toolRegistry:       tools.NewRegistry(),
+		toolDefs:           tools.GetToolDefinitions(), // Initialize OpenAI function calling tools
+		workingDir:         workingDir,
+		streaming:          streaming,
+		enableSpinner:      enableSpinner,
+		renderer:           renderer,
+		storage:            storageMgr,
+		session:            session,
+		projectCtx:         projectCtx,
+		sessionUsage:       &storage.TokenUsage{},
+		useNativeTools:     true, // Start with native tools enabled
+		permMgr:            permMgr,
 		truncationCfg: TruncationConfig{
 			MaxLines: maxToolOutputLines,
 			MaxChars: maxToolOutputChars,
@@ -261,19 +266,20 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	prov := provider.NewOllamaProvider(host, "")
 	prov.SetModel(model)
 	a := &Assistant{
-		provider:       prov,
-		llm:            prov.LLM(),
-		model:          model,
-		workingDir:     workingDir,
-		streaming:      streaming,
-		enableSpinner:  false,
-		renderer:       ui.NewRenderer(),
-		toolRegistry:   tools.NewRegistry(),
-		toolDefs:       tools.GetToolDefinitions(),
-		sessionUsage:   &storage.TokenUsage{},
-		mode:           storage.ModeDevOps,
-		useNativeTools: true,
-		contextWindow:  32768,
+		provider:           prov,
+		llm:                prov.LLM(),
+		model:              model,
+		confirmEditPreview: ui.DisplayEditPreview,
+		workingDir:         workingDir,
+		streaming:          streaming,
+		enableSpinner:      false,
+		renderer:           ui.NewRenderer(),
+		toolRegistry:       tools.NewRegistry(),
+		toolDefs:           tools.GetToolDefinitions(),
+		sessionUsage:       &storage.TokenUsage{},
+		mode:               storage.ModeDevOps,
+		useNativeTools:     true,
+		contextWindow:      32768,
 		truncationCfg: TruncationConfig{
 			MaxLines: DefaultMaxToolOutputLines,
 			MaxChars: DefaultMaxToolOutputChars,

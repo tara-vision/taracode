@@ -67,9 +67,12 @@ func (a *Assistant) checkServerContextOnce() {
 		a.serverContextChecked = true // this backend cannot report it; never ask again
 		return
 	}
+	if err != nil {
+		return // server unreachable: try again after the next message
+	}
 	serverCtx := loadedContextLength(loaded, a.model)
-	if err != nil || serverCtx <= 0 {
-		return // not loaded yet or server unreachable: try again after the next message
+	if serverCtx <= 0 {
+		return // the model is not loaded yet: try again after the next message
 	}
 	a.serverContextChecked = true
 	a.serverContextTokens = serverCtx
