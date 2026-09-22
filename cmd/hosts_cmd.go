@@ -20,6 +20,11 @@ var (
 	hostInfoStyle   = lipgloss.NewStyle().Foreground(ui.Info)
 )
 
+// cmdHosts is the /hosts command: multi-host status and health.
+func (r *repl) cmdHosts(args []string) {
+	handleHostsCommand(args, r.hostPool)
+}
+
 // handleHostsCommand handles the /hosts command for multi-host management
 func handleHostsCommand(args []string, hostPool *provider.HostPool) {
 	if hostPool == nil {

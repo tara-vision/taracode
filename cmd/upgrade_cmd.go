@@ -40,6 +40,11 @@ var (
 				MarginBottom(1)
 )
 
+// cmdUpgrade is the /upgrade command: check for and install updates.
+func (r *repl) cmdUpgrade(args []string) {
+	handleUpgradeCommand(args)
+}
+
 // handleUpgradeCommand handles the /upgrade command and subcommands
 func handleUpgradeCommand(args []string) {
 	if len(args) == 0 {

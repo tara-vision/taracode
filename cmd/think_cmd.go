@@ -11,6 +11,11 @@ import (
 // thinkValues is what /think accepts, in the order shown to the user.
 var thinkValues = []string{"auto", "off", "on", "low", "medium", "high"}
 
+// cmdThink is the /think command: show or set the reasoning mode.
+func (r *repl) cmdThink(args []string) {
+	handleThink(r.asst, args)
+}
+
 // handleThink shows or changes the reasoning mode used for later requests.
 func handleThink(asst *assistant.Assistant, args []string) {
 	if len(args) == 0 {
