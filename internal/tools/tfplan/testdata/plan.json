@@ -1,0 +1,17 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {"address": "aws_instance.web", "mode": "managed", "type": "aws_instance", "name": "web", "change": {"actions": ["update"]}},
+    {"address": "aws_s3_bucket.logs", "mode": "managed", "type": "aws_s3_bucket", "name": "logs", "change": {"actions": ["create"]}},
+    {"address": "aws_db_instance.prod", "mode": "managed", "type": "aws_db_instance", "name": "prod", "change": {"actions": ["delete", "create"]}},
+    {"address": "aws_iam_role.deploy", "mode": "managed", "type": "aws_iam_role", "name": "deploy", "change": {"actions": ["update"]}},
+    {"address": "aws_security_group.edge", "mode": "managed", "type": "aws_security_group", "name": "edge", "change": {"actions": ["delete"]}},
+    {"address": "data.aws_ami.ubuntu", "mode": "data", "type": "aws_ami", "name": "ubuntu", "change": {"actions": ["read"]}},
+    {"address": "aws_vpc.main", "mode": "managed", "type": "aws_vpc", "name": "main", "change": {"actions": ["no-op"]}}
+  ],
+  "output_changes": {
+    "web_ip": {"actions": ["update"]},
+    "vpc_id": {"actions": ["no-op"]}
+  }
+}
