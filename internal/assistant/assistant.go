@@ -10,11 +10,11 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/context"
+	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
-	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -31,7 +31,7 @@ type Assistant struct {
 	llm           llm.Client
 	model         string
 	conversation  []openai.ChatCompletionMessage
-	toolRegistry  *tools.Registry
+	toolRegistry  *legacytools.Registry
 	toolDefs      []openai.Tool // OpenAI function calling tool definitions
 	workingDir    string
 	streaming     bool // Enable streaming output (default: true)
@@ -234,8 +234,8 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		llm:                prov.LLM(),
 		model:              model,
 		confirmEditPreview: ui.DisplayEditPreview,
-		toolRegistry:       tools.NewRegistry(),
-		toolDefs:           tools.GetToolDefinitions(), // Initialize OpenAI function calling tools
+		toolRegistry:       legacytools.NewRegistry(),
+		toolDefs:           legacytools.GetToolDefinitions(), // Initialize OpenAI function calling tools
 		workingDir:         workingDir,
 		streaming:          streaming,
 		enableSpinner:      enableSpinner,
@@ -299,8 +299,8 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 		streaming:          streaming,
 		enableSpinner:      false,
 		renderer:           ui.NewRenderer(),
-		toolRegistry:       tools.NewRegistry(),
-		toolDefs:           tools.GetToolDefinitions(),
+		toolRegistry:       legacytools.NewRegistry(),
+		toolDefs:           legacytools.GetToolDefinitions(),
 		sessionUsage:       &storage.TokenUsage{},
 		mode:               storage.ModeDevOps,
 		useNativeTools:     true,
@@ -329,7 +329,7 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 }
 
 // GetToolRegistry returns the tool registry
-func (a *Assistant) GetToolRegistry() *tools.Registry {
+func (a *Assistant) GetToolRegistry() *legacytools.Registry {
 	return a.toolRegistry
 }
 

@@ -1,4 +1,4 @@
-package tools
+package legacytools
 
 import (
 	openai "github.com/sashabaranov/go-openai"

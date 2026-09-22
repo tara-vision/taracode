@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/history"
+	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/storage"
-	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -288,7 +288,7 @@ func printContextModeSettings(asst *assistant.Assistant, ctxInfo assistant.Conte
 	if mode == storage.ModeSecurity {
 		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s security (audit-first)", ui.IconShield)))
 	} else {
-		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s (%d DevOps tools)", mode, tools.GetToolCount())))
+		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s (%d DevOps tools)", mode, legacytools.GetToolCount())))
 	}
 	compactionStatus := "disabled"
 	if ctxInfo.CompactionEnabled {

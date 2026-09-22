@@ -90,7 +90,7 @@ func doctorExitCode(rep models.Report) int {
 	return 1
 }
 
-// cmdDoctor is the /doctor command: diagnose the LLM server and tools.
+// cmdDoctor is the /doctor command: diagnose the LLM server and legacytools.
 func (r *repl) cmdDoctor(_ []string) {
 	handleDoctor(r.asst)
 }
