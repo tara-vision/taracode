@@ -56,3 +56,18 @@ func TestEnvironmentValuesAndExtraPatterns(t *testing.T) {
 		t.Error("an invalid extra pattern must be an error")
 	}
 }
+
+func TestCredentialPatternDoesNotReRedactAnAlreadyRedactedValue(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.Redact("secret=AKIAIOSFODNN7EXAMPLE")
+	want := "secret=[redacted:aws-access-key]"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if r.Count() != 1 {
+		t.Errorf("count = %d, want 1", r.Count())
+	}
+}
