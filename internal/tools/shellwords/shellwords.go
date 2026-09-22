@@ -159,10 +159,15 @@ func (p *parser) operator(c rune) {
 // follows unless the operator already named a descriptor (2>&1).
 func (p *parser) redirect() {
 	fd := ""
-	if p.hasWord && isDigits(p.word.String()) {
+	switch {
+	case p.hasWord && isDigits(p.word.String()):
 		fd = p.word.String()
 		p.word.Reset()
 		p.hasWord = false
+	case p.hasWord:
+		// A non-numeric word glued to the operator (prog>file) is not a descriptor: flush it as an
+		// ordinary word before scanning the operator, so it is never merged into the redirect target.
+		p.endWord()
 	}
 	start := p.pos
 	for p.pos < len(p.in) && strings.ContainsRune("<>&", p.in[p.pos]) {

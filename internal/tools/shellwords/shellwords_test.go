@@ -47,6 +47,36 @@ func TestSplitRedirectsBackgroundAndSubstitution(t *testing.T) {
 	}
 }
 
+// TestSplitGluedRedirects is a regression test for a bug where a redirect operator immediately
+// following a non-numeric word (no whitespace) left that word inside the builder instead of flushing
+// it, so it silently merged into the redirect's target word and vanished from Segment.Words.
+func TestSplitGluedRedirects(t *testing.T) {
+	cases := []struct {
+		in        string
+		redirects string
+	}{
+		{"prog>file", "> file"},
+		{"prog<file", "< file"},
+		{"prog>>file", ">> file"},
+	}
+	for _, c := range cases {
+		res, err := Split(c.in)
+		if err != nil {
+			t.Fatalf("%q: %v", c.in, err)
+		}
+		if len(res.Segments) != 1 {
+			t.Fatalf("%q: segments %d: %+v", c.in, len(res.Segments), res.Segments)
+		}
+		seg := res.Segments[0]
+		if got := strings.Join(seg.Words, "|"); got != "prog" {
+			t.Errorf("%q: words %q, want \"prog\"", c.in, got)
+		}
+		if got := strings.Join(seg.Redirects, ","); got != c.redirects {
+			t.Errorf("%q: redirects %q, want %q", c.in, got, c.redirects)
+		}
+	}
+}
+
 func TestWordsKeepsEmptyQuotedArgs(t *testing.T) {
 	w, err := Words(`commit -m "" --allow-empty`)
 	if err != nil || len(w) != 4 || w[2] != "" {

@@ -32,7 +32,7 @@ func CloudAccount(provider string, tokens []string) string {
 	case "aws":
 		return flagValue(tokens, "--profile")
 	case "az":
-		return flagValue(tokens, "--subscription")
+		return flagValue(tokens, "--subscription", "-s")
 	case "gcloud":
 		return flagValue(tokens, "--project")
 	}
