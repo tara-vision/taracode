@@ -53,23 +53,21 @@ var (
 
 // Icon constants
 const (
-	IconSuccess     = "✓"
-	IconError       = "✗"
-	IconArrow       = "→"
-	IconWarning     = "⚠"
-	IconInfo        = "ℹ"
-	IconFolder      = "📁"
-	IconSession     = "📝"
-	IconTip         = "💡"
-	IconStar        = "🌟"
-	IconThinking    = "⠋"
-	IconImage       = "📷"
-	IconCloud       = "☁️"
-	IconLock        = "🔒"
-	IconShield      = "🛡"
-	IconDanger      = "⛔"
-	IconDiagnostics = "🔬"
-	IconAgent       = "🤖"
+	IconSuccess  = "✓"
+	IconError    = "✗"
+	IconArrow    = "→"
+	IconWarning  = "⚠"
+	IconInfo     = "ℹ"
+	IconFolder   = "📁"
+	IconSession  = "📝"
+	IconTip      = "💡"
+	IconStar     = "🌟"
+	IconThinking = "⠋"
+	IconImage    = "📷"
+	IconCloud    = "☁️"
+	IconLock     = "🔒"
+	IconShield   = "🛡"
+	IconDanger   = "⛔"
 )
 
 // Security audit styles - category-specific colors (softer pastel variants)

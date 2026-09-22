@@ -72,16 +72,6 @@ func GetSlashCommands() []SlashCommand {
 		{"/session delete", "Delete a session by ID"},
 		{"/session rename", "Rename a session"},
 		{"/clear", "Clear conversation and start new session"},
-		// Tasks
-		{"/task", "Plan and execute a multi-step task"},
-		{"/task list", "List all tasks"},
-		{"/task status", "Show task status"},
-		{"/task resume", "Resume a paused task"},
-		{"/task pause", "Pause the active task"},
-		{"/task abort", "Abort the active task"},
-		{"/task rollback", "Rollback to last checkpoint"},
-		{"/task templates", "List available task templates"},
-		{"/task run", "Run a task from a template"},
 		// Plans
 		{"/plan", "Show active task plan"},
 		{"/diff", "Show file changes as unified diff"},
@@ -107,15 +97,6 @@ func GetSlashCommands() []SlashCommand {
 		{"/mcp connect", "Connect to an MCP server"},
 		{"/mcp disconnect", "Disconnect from an MCP server"},
 		{"/mcp tools", "List tools from connected servers"},
-		// Agents
-		{"/agent", "Show agent system overview"},
-		{"/agent list", "List all available agents"},
-		{"/agent status", "Show status of all agents"},
-		{"/agent config", "Show agent configuration"},
-		{"/agent config example", "Show example agents.yaml content"},
-		{"/agent config init", "Create .taracode/agents.yaml template"},
-		{"/agent use", "Route next prompt to specific agent"},
-		{"/agent help", "Show agent command help"},
 		// Memory
 		{"/remember", "Save a memory about this project"},
 		{"/memory", "List all project memories"},
@@ -126,15 +107,8 @@ func GetSlashCommands() []SlashCommand {
 		{"/memory stats", "Show memory statistics"},
 		{"/memory cleanup", "Remove old unused memories"},
 		{"/memory clear", "Clear all memories"},
-		// Watch (Screen Monitoring)
-		{"/watch", "Screen monitoring and analysis"},
-		{"/watch this", "Capture and analyze all screens now"},
-		{"/watch start", "Start continuous screen monitoring"},
-		{"/watch stop", "Stop screen monitoring"},
-		{"/watch status", "Show monitoring status"},
 		// Other
 		{"/context", "Show what's in the LLM context window"},
-		{"/context --agents", "Show per-agent context usage"},
 		{"/compact", "Force conversation compaction to free context space"},
 		{"/think", "Show the current reasoning mode"},
 		{"/think auto", "Use the model's default reasoning mode"},
