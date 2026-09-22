@@ -7,16 +7,16 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/tara-vision/taracode/internal/tools"
+	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// cmdTools is the /tools command: list available tools.
+// cmdTools is the /tools command: list available legacytools.
 func (r *repl) cmdTools(_ []string) {
-	toolInfoList := tools.GetToolInfoList()
+	toolInfoList := legacytools.GetToolInfoList()
 
 	// Group tools by category
-	categories := make(map[string][]tools.ToolInfo)
+	categories := make(map[string][]legacytools.ToolInfo)
 	categoryOrder := []string{
 		"file", "command", "git", "web", "utility", "kubernetes", "terraform", "docker", "cloud", "security",
 	}
@@ -90,7 +90,7 @@ func initSearchOrchestrator(renderer *ui.Renderer) {
 	}
 
 	// Set up provider switch callback for UI feedback
-	tools.SetProviderSwitchCallback(func(from, to string, reason error) {
+	legacytools.SetProviderSwitchCallback(func(from, to string, reason error) {
 		if renderer != nil {
 			fmt.Println()
 			fmt.Println(renderer.SearchFallbackMessage(from, to, reason))
@@ -98,7 +98,7 @@ func initSearchOrchestrator(renderer *ui.Renderer) {
 	})
 
 	// Initialize the orchestrator with config
-	tools.InitSearchOrchestrator(tools.SearchOrchestratorConfig{
+	legacytools.InitSearchOrchestrator(legacytools.SearchOrchestratorConfig{
 		Primary:         cfg.Primary,
 		Fallback:        cfg.Fallback,
 		Timeout:         timeout,
@@ -112,12 +112,12 @@ func initSearchOrchestrator(renderer *ui.Renderer) {
 func initCommandStreaming() {
 	// Check if streaming is disabled via config
 	if viper.GetBool("no_stream_commands") {
-		tools.DisableStreaming()
+		legacytools.DisableStreaming()
 		return
 	}
 
 	// Enable streaming to stdout with sensible defaults
-	tools.SetStreamingConfig(tools.StreamingConfig{
+	legacytools.SetStreamingConfig(legacytools.StreamingConfig{
 		Enabled:       true,
 		Writer:        os.Stdout,
 		FlushInterval: 100 * time.Millisecond,

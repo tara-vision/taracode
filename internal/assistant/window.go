@@ -13,7 +13,7 @@ const (
 	minContextWindow     = 16384
 )
 
-// ErrModelWithoutTools is returned when the selected model cannot call tools.
+// ErrModelWithoutTools is returned when the selected model cannot call legacytools.
 var ErrModelWithoutTools = errors.New("model does not support tools")
 
 // ResolveContextWindow turns the context.window setting ("auto" or a number) into the num_ctx to

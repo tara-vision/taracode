@@ -6,11 +6,11 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/sashabaranov/go-openai/jsonschema"
-	"github.com/tara-vision/taracode/internal/tools"
+	"github.com/tara-vision/taracode/internal/legacytools"
 )
 
 // CreateExecutor creates a ToolExecutor for an MCP tool
-func CreateExecutor(mgr *Manager, tool MCPTool) tools.ToolExecutor {
+func CreateExecutor(mgr *Manager, tool MCPTool) legacytools.ToolExecutor {
 	return func(params map[string]interface{}, workingDir string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()

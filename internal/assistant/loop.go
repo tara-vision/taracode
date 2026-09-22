@@ -9,10 +9,10 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
+	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/storage"
-	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -152,7 +152,7 @@ func (a *Assistant) injectDatetimeIfNeeded(userMessage string) string {
 	if !isDatetimeQuestion(userMessage) {
 		return userMessage
 	}
-	result, err := tools.GetDateTime(map[string]interface{}{}, "")
+	result, err := legacytools.GetDateTime(map[string]interface{}{}, "")
 	if err != nil {
 		return userMessage
 	}
@@ -241,7 +241,7 @@ func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
 func looksLikeNoToolSupport(err error) bool {
 	message := err.Error()
 	return strings.Contains(message, "does not support tools") ||
-		strings.Contains(message, "tools.function.parameters") ||
+		strings.Contains(message, "legacytools.function.parameters") ||
 		strings.Contains(message, "400 Bad Request")
 }
 
@@ -484,10 +484,10 @@ func (a *Assistant) runTool(run toolRun) toolOutcome {
 
 // execParams injects the configured default severity into security tool calls.
 func execParams(call *ToolCall) map[string]interface{} {
-	if !tools.IsSecurityTool(call.Tool) {
+	if !legacytools.IsSecurityTool(call.Tool) {
 		return call.Params
 	}
-	return tools.InjectSecurityDefaults(call.Tool, call.Params, viper.GetString("security.default_severity"))
+	return legacytools.InjectSecurityDefaults(call.Tool, call.Params, viper.GetString("security.default_severity"))
 }
 
 // startToolSpinner shows which tool is running, with its position in a multi-tool reply.
