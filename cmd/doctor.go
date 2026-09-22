@@ -90,6 +90,11 @@ func doctorExitCode(rep models.Report) int {
 	return 1
 }
 
+// cmdDoctor is the /doctor command: diagnose the LLM server and tools.
+func (r *repl) cmdDoctor(_ []string) {
+	handleDoctor(r.asst)
+}
+
 // handleDoctor runs the doctor's diagnosis against the assistant's live connection: the REPL's
 // /doctor, mirroring `taracode doctor` without leaving the session.
 func handleDoctor(asst *assistant.Assistant) {
