@@ -9,11 +9,15 @@ import (
 	"github.com/tara-vision/taracode/internal/llm"
 )
 
-// readStream consumes NDJSON chunks, forwards events and assembles the result.
+// readStream consumes NDJSON chunks, forwards events and builds the Result as it goes: each tool
+// call is converted through fromWireToolCall exactly once, so the id a streamed EventToolCall
+// carries is the same id that ends up in the returned Result.ToolCalls (assemble, used only by the
+// non-stream path, would otherwise convert the same wire call a second time and hand out a second,
+// different id from the shared counter).
 func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	var chunks []chatChunk
+	res := &llm.Result{}
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
@@ -26,7 +30,8 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 		if chunk.Error != "" {
 			return nil, fmt.Errorf("ollama: %s", chunk.Error)
 		}
-		chunks = append(chunks, chunk)
+		res.Content += chunk.Message.Content
+		res.Thinking += chunk.Message.Thinking
 		if chunk.Message.Thinking != "" {
 			if err := onEvent(llm.Event{Kind: llm.EventThinking, Text: chunk.Message.Thinking}); err != nil {
 				return nil, err
@@ -39,13 +44,15 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 		}
 		for _, tc := range chunk.Message.ToolCalls {
 			call := fromWireToolCall(tc)
+			res.ToolCalls = append(res.ToolCalls, call)
 			if err := onEvent(llm.Event{Kind: llm.EventToolCall, ToolCall: &call}); err != nil {
 				return nil, err
 			}
 		}
 		if chunk.Done {
-			u := llm.Usage{PromptTokens: chunk.PromptEvalCount, CompletionTokens: chunk.EvalCount}
-			if err := onEvent(llm.Event{Kind: llm.EventUsage, Usage: &u}); err != nil {
+			res.DoneReason = chunk.DoneReason
+			res.Usage = llm.Usage{PromptTokens: chunk.PromptEvalCount, CompletionTokens: chunk.EvalCount}
+			if err := onEvent(llm.Event{Kind: llm.EventUsage, Usage: &res.Usage}); err != nil {
 				return nil, err
 			}
 		}
@@ -53,7 +60,7 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("ollama: read stream: %w", err)
 	}
-	return assemble(chunks), nil
+	return res, nil
 }
 
 // assemble folds chunks into a Result (works for the single non-stream chunk too).

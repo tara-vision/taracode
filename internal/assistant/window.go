@@ -56,8 +56,15 @@ func withFloorWarning(window int, warning string) (int, string) {
 	return window, floor
 }
 
-// SetThink changes the reasoning mode for later requests.
-func (a *Assistant) SetThink(t llm.Think) { a.think = t }
+// SetThink changes the reasoning mode for later requests, downgrading it to auto when the current
+// model has no thinking capability (the same gate applyModelDetails runs on every model switch), so
+// a runtime /think cannot put a level on the wire that Ollama will reject with a 400. Returns the
+// mode that will actually be sent, which the caller should report instead of the one requested.
+func (a *Assistant) SetThink(t llm.Think) llm.Think {
+	a.think = t
+	a.downgradeThinkIfUnsupported()
+	return a.think
+}
 
 // Think returns the current reasoning mode.
 func (a *Assistant) Think() llm.Think { return a.think }
@@ -68,11 +75,13 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 		if errors.Is(err, llm.ErrNotSupported) {
 			// OpenAI-compatible servers: no capability data, keep the JSON fallback path.
 			a.contextWindow = 0
+			a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 			return nil
 		}
 		// A transient Show failure still requests a window instead of silently disabling num_ctx
 		// for the whole session; the tools gate is skipped since capabilities are unknown.
 		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("Could not read model capabilities: %v", err)))
+		a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 		a.resolveAndApplyWindow(0)
 		return nil
 	}
@@ -80,7 +89,8 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 		return fmt.Errorf("%w: %s (pick one from `taracode doctor`)", ErrModelWithoutTools, a.model)
 	}
 	a.resolveAndApplyWindow(details.ContextLength)
-	a.downgradeThinkIfUnsupported(details)
+	a.thinkingSupported = details.Has("thinking")
+	a.downgradeThinkIfUnsupported()
 	return nil
 }
 
@@ -97,11 +107,13 @@ func (a *Assistant) resolveAndApplyWindow(modelMax int) {
 	}
 }
 
-// downgradeThinkIfUnsupported resets a configured think level to auto when the model has no
-// thinking capability: sending think on such a model makes Ollama reject every turn with a 400.
-// Re-evaluated on every model switch through applyModelDetails.
-func (a *Assistant) downgradeThinkIfUnsupported(details *llm.ModelDetails) {
-	if details.Has("thinking") || a.think == llm.ThinkAuto || a.think == llm.ThinkOff {
+// downgradeThinkIfUnsupported resets a configured think level to auto when the current model has no
+// thinking capability: sending think on such a model makes Ollama reject every turn with a 400. It
+// is a no-op when capabilities are unknown (thinkingSupported defaults to true then) or the level is
+// already auto/off, and warns once when it actually changes something. Shared by applyModelDetails
+// (every model switch) and SetThink (the runtime /think command), so neither path can bypass it.
+func (a *Assistant) downgradeThinkIfUnsupported() {
+	if a.thinkingSupported || a.think == llm.ThinkAuto || a.think == llm.ThinkOff {
 		return
 	}
 	fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("%s does not support thinking; using auto", a.model)))

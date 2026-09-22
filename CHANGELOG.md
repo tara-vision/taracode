@@ -48,8 +48,8 @@ API instead of an OpenAI-compatible shim, and gets a model registry to recommend
   repo-wide test guards against new model-name literals outside the registry and tests.
 - `CompactConversation` takes an `llm.Client` instead of a raw `*openai.Client`.
 - The `/api/ps` server-context check moved into the `llm` client layer; `ollama_ps.go` is removed.
-- Streamed answers are buffered behind the spinner and rendered once with glamour markdown when the
-  reply completes, instead of printed as raw deltas; reasoning is still shown live, dimmed.
+- Streamed answers are still buffered behind the spinner and rendered once with glamour markdown when
+  the reply completes, as in v2; the model's reasoning is now shown live, dimmed, before the answer.
 - The Go Report Card badge in README.md is replaced by a CI status badge; goreportcard.com was sunset.
 
 ### Fixed

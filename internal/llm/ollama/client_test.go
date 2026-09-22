@@ -48,6 +48,9 @@ func TestChatStreamsTextThinkingToolCallsAndUsage(t *testing.T) {
 	if len(calls) != 1 || calls[0].Function.Name != "read_file" || calls[0].ID == "" || !strings.Contains(calls[0].Function.Arguments, `"file_path":"main.go"`) {
 		t.Fatalf("tool calls: %+v", calls)
 	}
+	if len(res.ToolCalls) != 1 || calls[0].ID != res.ToolCalls[0].ID {
+		t.Fatalf("streamed event id %q != assembled result id %q", calls[0].ID, res.ToolCalls[0].ID)
+	}
 	if usage == nil || usage.PromptTokens != 20 || res.Usage.CompletionTokens != 7 || res.DoneReason != "stop" {
 		t.Fatalf("usage=%v res=%+v", usage, res)
 	}

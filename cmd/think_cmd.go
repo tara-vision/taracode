@@ -26,8 +26,8 @@ func handleThink(asst *assistant.Assistant, args []string) {
 		return
 	}
 
-	asst.SetThink(think)
-	fmt.Printf("Reasoning mode set to %s.\n", displayThink(think))
+	effective := asst.SetThink(think)
+	fmt.Printf("Reasoning mode set to %s.\n", displayThink(effective))
 	fmt.Println()
 }
 
