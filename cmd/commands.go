@@ -93,6 +93,7 @@ func helpText() string {
 	b.WriteString("    pwd                                      Show the current directory\n")
 	b.WriteString("    @file                                    Reference a file in a prompt (Tab completes)\n")
 	b.WriteString("    exit / quit                              Exit with a session summary\n")
+	b.WriteString("\n  taracode is free and open source. Sponsor: https://github.com/sponsors/tara-vision\n")
 	return b.String()
 }
 
