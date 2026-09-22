@@ -125,15 +125,24 @@ func TestDiagnoseWarnsWhenOllamaIsOlderThanAModelNeeds(t *testing.T) {
 
 // TestRenderSkipsVersionGateWithoutAServerVersion covers the other half of the version gate: the
 // OpenAI-compatible path has no version (Version() is a stub returning ""), so a model with a
-// registry minimum must not be flagged.
+// registry minimum must not be flagged. It also covers the fix for the empty-version Server line:
+// without a version, Render must print "server reachable" rather than "Ollama  reachable" with an
+// empty version left in the middle.
 func TestRenderSkipsVersionGateWithoutAServerVersion(t *testing.T) {
 	rep := Report{
 		Host:     "http://example",
 		ServerOK: true,
 		Models:   []InstalledModel{{Name: "gemma4:12b", MinOllama: "0.20.0", InRegistry: true}},
 	}
-	if strings.Contains(rep.Render(), "needs Ollama") {
-		t.Fatalf("render should not gate on version without a server version:\n%s", rep.Render())
+	text := rep.Render()
+	if strings.Contains(text, "needs Ollama") {
+		t.Fatalf("render should not gate on version without a server version:\n%s", text)
+	}
+	if !strings.Contains(text, "server reachable") {
+		t.Fatalf("render should name a versionless server reachable:\n%s", text)
+	}
+	if strings.Contains(text, "Ollama  reachable") {
+		t.Fatalf("render should not print an empty version:\n%s", text)
 	}
 }
 
