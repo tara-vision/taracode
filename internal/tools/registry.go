@@ -175,7 +175,10 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]any
 	if !ok {
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
-	target, backup := r.backupBefore(name, args, workingDir)
+	r.mu.RLock()
+	h := r.history
+	r.mu.RUnlock()
+	target, backup := r.backupBefore(h, name, args, workingDir)
 	start := time.Now()
 	out, err := t.Run(ctx, args, workingDir)
 	out = r.redact(out)
@@ -183,7 +186,7 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]any
 		err = errors.New(r.redact(err.Error()))
 		return out, err
 	}
-	r.recordAfter(name, args, target, backup, err, start)
+	r.recordAfter(h, name, args, target, backup, err, start)
 	return out, err
 }
 
@@ -208,28 +211,35 @@ func (r *Registry) redact(s string) string {
 }
 
 // backupBefore backs the target of write_file and edit_file up when the history is on and the file
-// exists; it returns the target path and the backup path.
-func (r *Registry) backupBefore(name string, args map[string]any, workingDir string) (target, backup string) {
-	if r.history == nil || (name != "write_file" && name != "edit_file") || argBool(args, "preview") {
+// exists; it returns the target path and the backup path. h is the registry's history as of the
+// start of Execute, snapshotted under a read lock so it cannot race with a concurrent SetHistory.
+func (r *Registry) backupBefore(h *history.Manager, name string, args map[string]any, workingDir string) (
+	target, backup string,
+) {
+	if h == nil || (name != "write_file" && name != "edit_file") || argBool(args, "preview") {
 		return "", ""
 	}
 	target = resolvePath(argString(args, "path"), workingDir)
 	if _, err := os.Stat(target); err != nil {
 		return target, ""
 	}
-	backup, _ = r.history.CreateBackup(target)
+	backup, _ = h.CreateBackup(target)
 	return target, backup
 }
 
-func (r *Registry) recordAfter(name string, args map[string]any, target, backup string, err error, start time.Time) {
-	if r.history == nil || target == "" {
+// recordAfter records the operation in h, the history snapshotted at the start of Execute (see
+// backupBefore).
+func (r *Registry) recordAfter(
+	h *history.Manager, name string, args map[string]any, target, backup string, err error, start time.Time,
+) {
+	if h == nil || target == "" {
 		return
 	}
 	result := "success"
 	if err != nil {
 		result = err.Error()
 	}
-	_ = r.history.Record(history.Operation{
+	_ = h.Record(history.Operation{
 		Timestamp:  start,
 		Tool:       name,
 		Type:       history.ToolToOperationType(name),

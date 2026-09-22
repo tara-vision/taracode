@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/redact"
 )
@@ -111,4 +113,31 @@ func TestRegisterPanicsOnDuplicateNames(t *testing.T) {
 	r := NewRegistry(Options{})
 	r.Register(newTestTool("a", true, policy.Read))
 	r.Register(newTestTool("a", true, policy.Read))
+}
+
+func TestExecuteAndSetHistoryDoNotRace(t *testing.T) {
+	r := NewRegistry(Options{})
+	r.Register(newTestTool("reader", true, policy.Read))
+	hm, err := history.NewManager(t.TempDir(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			if _, err := r.Execute(context.Background(), "reader", map[string]any{"x": "1"}, dir); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			r.SetHistory(hm)
+		}
+	}()
+	wg.Wait()
 }

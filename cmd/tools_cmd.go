@@ -11,7 +11,7 @@ import (
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// cmdTools is the /tools command: list available legacytools.
+// cmdTools is the /tools command: list available tools.
 func (r *repl) cmdTools(_ []string) {
 	toolInfoList := legacytools.GetToolInfoList()
 

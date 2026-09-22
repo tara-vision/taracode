@@ -241,7 +241,7 @@ func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
 func looksLikeNoToolSupport(err error) bool {
 	message := err.Error()
 	return strings.Contains(message, "does not support tools") ||
-		strings.Contains(message, "legacytools.function.parameters") ||
+		strings.Contains(message, "tools.function.parameters") ||
 		strings.Contains(message, "400 Bad Request")
 }
 
