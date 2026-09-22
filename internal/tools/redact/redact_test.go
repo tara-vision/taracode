@@ -13,6 +13,7 @@ func TestBuiltInPatterns(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"key AKIAIOSFODNN7EXAMPLE here", "key [redacted:aws-access-key] here"},
 		{"k: AIzaSyA-1234567890abcdefghijklmnopqrstuvw", "k: [redacted:gcp-api-key]"},
+		{"AIza" + strings.Repeat("Q", 300), "AIza" + strings.Repeat("Q", 300)},
 		{"token ghp_abcdefghijklmnopqrstuvwxyz0123456789 ok", "token [redacted:github-token] ok"},
 		{"github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz", "[redacted:github-token]"},
 		{"xoxb-123456789012-abcdefghijkl", "[redacted:slack-token]"},
