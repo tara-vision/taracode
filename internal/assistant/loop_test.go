@@ -15,6 +15,7 @@ import (
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
+	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -350,6 +351,47 @@ func TestAcceptedEditPreviewAppliesTheEdit(t *testing.T) {
 	result := lastMessage(t, lastChatBody(t, srv), 0)
 	if result["role"] != "tool" || strings.Contains(result["content"].(string), "cancelled") {
 		t.Fatalf("edit result not sent back to the model: %v", result)
+	}
+}
+
+// TestBackupThenApplyFailureWarnsOnScreen covers a third edit-preview outcome: an approved
+// "backup then apply" whose CreateBackup fails must not fail silently. The refusal already reaches
+// the model as the tool result (executeOne denies it); this pins the on-screen warning.
+func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	viper.Set("preview_edits", true)
+	viper.Set("preview_threshold", 0)
+	t.Cleanup(func() {
+		viper.Set("preview_edits", false)
+		viper.Set("preview_threshold", 0)
+	})
+	storageMgr, err := storage.NewManager(a.workingDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.storage = storageMgr
+	// Remove the file between the preview decision and the backup step, so CreateBackup fails
+	// deterministically instead of relying on filesystem permissions.
+	a.confirmEditPreview = func(*ui.EditPreview) ui.EditPreviewChoice {
+		if err := os.Remove(filepath.Join(a.workingDir, "hello.txt")); err != nil {
+			t.Fatal(err)
+		}
+		return ui.EditPreviewBackupThenApply
+	}
+	srv.Turns = editTurns()
+
+	out := captureStdout(t, func() {
+		if err := a.ProcessMessage("replace the greeting"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(out, "Failed to create backup") {
+		t.Fatalf("no backup-failure warning printed: %q", out)
+	}
+	result := lastMessage(t, lastChatBody(t, srv), 0)
+	if result["role"] != "tool" || !strings.Contains(result["content"].(string), "Failed to create backup") {
+		t.Fatalf("backup failure not sent back to the model: %v", result)
 	}
 }
 

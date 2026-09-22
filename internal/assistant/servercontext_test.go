@@ -33,7 +33,7 @@ func TestServerContextAdvice(t *testing.T) {
 		wantContains  string
 	}{
 		{name: "unknown server context", serverCtx: 0, systemTokens: 300, toolTokens: 5800, configuredMax: 32768, threshold: 0.75, wantWarn: false},
-		{name: "default 4096 overflows the tool budget", serverCtx: 4096, systemTokens: 300, toolTokens: 5800, configuredMax: 32768, threshold: 0.75, wantWarn: true, wantContains: "OLLAMA_CONTEXT_LENGTH"},
+		{name: "default 4096 overflows the tool budget", serverCtx: 4096, systemTokens: 300, toolTokens: 5800, configuredMax: 32768, threshold: 0.75, wantWarn: true, wantContains: "context.window"},
 		{name: "server below the compaction point", serverCtx: 16384, systemTokens: 300, toolTokens: 5800, configuredMax: 32768, threshold: 0.75, wantWarn: true, wantContains: "max_context_tokens"},
 		{name: "server slightly below config but above the compaction point", serverCtx: 32000, systemTokens: 300, toolTokens: 5800, configuredMax: 32768, threshold: 0.75, wantWarn: false},
 		{name: "server matches config", serverCtx: 32000, systemTokens: 300, toolTokens: 5800, configuredMax: 32000, threshold: 0.75, wantWarn: false},

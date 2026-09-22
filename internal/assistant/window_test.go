@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ func TestResolveContextWindow(t *testing.T) {
 		{"auto with unknown model max", "auto", 0, 32768, ""},
 		{"explicit number wins", "65536", 262144, 65536, ""},
 		{"explicit above the model max is clamped", "65536", 32768, 32768, "clamped"},
+		{"explicit below the floor warns", "8192", 262144, 8192, "below 16384"},
 		{"garbage falls back to auto", "lots", 262144, 32768, "not a number"},
 	}
 	for _, tc := range cases {
@@ -48,6 +50,66 @@ func TestNewRefusesAModelWithoutToolSupport(t *testing.T) {
 	_, err := New(srv.URL, "", "old:7b", "ollama", false, false)
 	if err == nil || !strings.Contains(err.Error(), "does not support tools") {
 		t.Fatalf("expected the capability gate, got %v", err)
+	}
+}
+
+// TestApplyModelDetailsHandlesShowErrors covers the fix for every Show error being treated as the
+// OpenAI-compatible case: only llm.ErrNotSupported keeps num_ctx unresolved (the JSON fallback
+// path); any other error (a transient Show failure, for example) still resolves and requests a
+// window instead of silently disabling num_ctx for the whole session, and warns once through the
+// renderer.
+func TestApplyModelDetailsHandlesShowErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantWindow int
+		wantWarn   bool
+	}{
+		{"not supported keeps num_ctx unresolved", llm.ErrNotSupported, 0, false},
+		{"a transient error still resolves a window", errors.New("dial tcp: connection refused"), defaultContextWindow, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := newTestAssistant(t, false)
+			a.contextWindow = -1 // sentinel: applyModelDetails must set this itself, not leave it stale
+
+			var applyErr error
+			out := captureStdout(t, func() {
+				applyErr = a.applyModelDetails(nil, tc.err)
+			})
+
+			if applyErr != nil {
+				t.Fatalf("applyModelDetails: %v", applyErr)
+			}
+			if a.contextWindow != tc.wantWindow {
+				t.Fatalf("contextWindow = %d, want %d", a.contextWindow, tc.wantWindow)
+			}
+			if tc.wantWarn != strings.Contains(out, "Could not read model capabilities") {
+				t.Fatalf("output = %q, wantWarn = %v", out, tc.wantWarn)
+			}
+		})
+	}
+}
+
+// TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability covers the fix for a
+// configured think level making every turn fail with Ollama's 400 on a model whose /api/show lacks
+// the thinking capability: applyModelDetails resets think to auto and warns once.
+func TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
+	a.think = llm.ThinkHigh
+	details := &llm.ModelDetails{Capabilities: []string{"completion", "tools"}, ContextLength: 32768}
+
+	out := captureStdout(t, func() {
+		if err := a.applyModelDetails(details, nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if a.think != llm.ThinkAuto {
+		t.Fatalf("think = %q, want auto", a.think)
+	}
+	if !strings.Contains(out, "does not support thinking") {
+		t.Fatalf("no downgrade warning printed: %q", out)
 	}
 }
 

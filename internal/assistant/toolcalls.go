@@ -160,7 +160,7 @@ func normalizeJSON(jsonStr string) string {
 // tryConvertToToolCall attempts to convert alternative JSON formats to standard tool call format.
 // This handles models that output {"file_name": "X", "content": "Y"} instead of proper tool format,
 // or {"tool_code": "web_search", "query": "..."} with flat params instead of nested "params" object.
-// It tries each recognized pattern in turn (legacy JSON fallback parser, retired in Phase 2).
+// It tries each recognized pattern in turn (legacy JSON fallback parser, removed in 3.0).
 func tryConvertToToolCall(jsonStr string) *ToolCall {
 	var raw map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -346,7 +346,7 @@ func extractJSONObjectsWithPattern(text string, pattern string) []string {
 }
 
 // parseToolCalls extracts ALL tool calls from the model's response (supports multiple tools).
-// It runs each extraction phase in turn (legacy JSON fallback parser, retired in Phase 2),
+// It runs each extraction phase in turn (legacy JSON fallback parser, removed in 3.0),
 // sharing a dedup set, the accumulated tool calls, and the position of the first match.
 func parseToolCalls(response string) ([]*ToolCall, string) {
 	cleaned := cleanResponse(response)

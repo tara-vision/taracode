@@ -333,7 +333,9 @@ func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, stri
 		if a.storage != nil {
 			backupPath, err := a.storage.CreateBackup(absPath)
 			if err != nil {
-				return false, fmt.Sprintf("Failed to create backup: %v", err), err
+				message := fmt.Sprintf("Failed to create backup: %v", err)
+				fmt.Println(a.renderer.WarningMessage(message))
+				return false, message, err
 			}
 			ui.DisplayBackupCreated(backupPath)
 		}

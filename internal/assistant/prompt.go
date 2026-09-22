@@ -592,8 +592,8 @@ func buildSystemPromptWithModeAndTools(
 
 	// Check for TARACODE.md in current directory
 	taracodeFile := filepath.Join(workingDir, "TARACODE.md")
-	//nolint:gosec // reads TARACODE.md from the project's own working directory
-	if content, err := os.ReadFile(taracodeFile); err == nil {
+	content, err := os.ReadFile(taracodeFile) //nolint:gosec // reads TARACODE.md from the project's own working directory
+	if err == nil {
 		prompt += fmt.Sprintf("\n\n## PROJECT CONTEXT\nThe following is project-specific guidance from TARACODE.md:\n\n%s",
 			string(content))
 	}
