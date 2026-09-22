@@ -31,16 +31,19 @@ func Shell(command string) ShellResult {
 	out := ShellResult{Result: read("")}
 	for _, seg := range parsed.Segments {
 		words := stripAssignments(seg.Words)
+		// Redirects are checked before the empty-words skip below: a segment that is only a
+		// redirect (e.g. a bare "> out.txt", or a word merged into its target by a parser bug) must
+		// never pass just because it has no words to classify by program name.
+		for _, r := range seg.Redirects {
+			if writesFile(r) {
+				return ShellResult{Result: mutate(first(words), "the redirect "+r+" writes a file")}
+			}
+		}
 		if len(words) == 0 {
 			continue
 		}
 		if seg.Background {
 			return ShellResult{Result: mutate(words[0], "background jobs (&) outlive the command timeout")}
-		}
-		for _, r := range seg.Redirects {
-			if writesFile(r) {
-				return ShellResult{Result: mutate(words[0], "the redirect "+r+" writes a file")}
-			}
 		}
 		res := shellProgram(words)
 		if res.Classification != policy.Read {

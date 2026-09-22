@@ -17,6 +17,7 @@ func TestShell(t *testing.T) {
 		"systemctl status nginx", "journalctl -u nginx --since '1 hour ago'", "gh pr list --state open",
 		"jq '.items[].metadata.name' out.json", "FOO=bar env | grep FOO", "helm list -A", "echo hello 2>&1",
 		"cat big.log > /dev/null", "python3 --version", "go version", "brew list", "npm ls --depth=0",
+		"cat<x",
 	}
 	for _, c := range read {
 		if got := Shell(c); got.Classification != policy.Read {
@@ -28,6 +29,8 @@ func TestShell(t *testing.T) {
 		"make build":                               "make",
 		"echo x > out.txt":                         "redirect",
 		"cat a >> b":                               "redirect",
+		"ls>out.txt":                               "redirect",
+		"cat a>>b":                                 "redirect",
 		"sudo systemctl restart nginx":             "sudo",
 		"echo $(whoami)":                           "substitution",
 		"sleep 30 &":                               "background",

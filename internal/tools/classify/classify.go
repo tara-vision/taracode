@@ -47,14 +47,17 @@ func hasFlag(tokens []string, names ...string) bool {
 	return false
 }
 
-// flagValue returns the value of the first flag in names, written --name=value or --name value.
+// flagValue returns the value of the first flag in names, written --name=value or --name value. A
+// token that starts with "-" is never taken as a bare flag's value (it is the next flag, not this
+// flag's argument), so a bare flag followed by another flag with no value in between reports no
+// value instead of swallowing that next flag.
 func flagValue(tokens []string, names ...string) string {
 	for i, t := range tokens {
 		for _, n := range names {
 			if strings.HasPrefix(t, n+"=") {
 				return strings.TrimPrefix(t, n+"=")
 			}
-			if t == n && i+1 < len(tokens) {
+			if t == n && i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "-") {
 				return tokens[i+1]
 			}
 		}
