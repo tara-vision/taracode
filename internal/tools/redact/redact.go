@@ -44,7 +44,7 @@ var builtin = []pattern{
 		re:   regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`),
 	},
 	{kind: "aws-access-key", re: regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`)},
-	{kind: "gcp-api-key", re: regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35,}\b`)},
+	{kind: "gcp-api-key", re: regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35,45}\b`)},
 	{kind: "github-token", re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`)},
 	{kind: "slack-token", re: regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`)},
 	{kind: "jwt", re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)},
