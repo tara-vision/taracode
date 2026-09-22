@@ -1,0 +1,74 @@
+package policy
+
+import (
+	"strings"
+	"testing"
+)
+
+func mutate(tool, verb, command string, targets Targets) Invocation {
+	return Invocation{Tool: tool, Verb: verb, Classification: Mutate, Reason: "test", Command: command, WorkingDir: "/w", Targets: targets}
+}
+
+func TestEvaluateOrder(t *testing.T) {
+	p := Default()
+	cases := []struct {
+		name  string
+		mode  Mode
+		inv   Invocation
+		allow bool
+		rule  string
+		dry   string
+	}{
+		{"read never asks", ModeInvestigate, Invocation{Tool: "kubectl", Classification: Read}, true, "read", ""},
+		{"investigate denies mutate", ModeInvestigate, mutate("shell", "", "rm -rf build", Targets{}), false, "mode", ""},
+		{"protected context", ModeOperate, mutate("kubectl", "delete", "kubectl delete pod x", Targets{KubeContext: "gke-prod-eu"}), false, "protected.kube_contexts", ""},
+		{"protected namespace", ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeNamespace: "kube-system"}), false, "protected.kube_namespaces", ""},
+		{"protected path", ModeOperate, mutate("write_file", "", "", Targets{Paths: []string{"/w/infra/terraform.tfstate"}}), false, "protected.paths", ""},
+		{"policy file is protected", ModeOperate, mutate("edit_file", "", "", Targets{Paths: []string{"/w/.taracode/policy.yaml"}}), false, "protected.paths", ""},
+		{"deny pattern", ModeOperate, mutate("terraform", "destroy", "terraform destroy -auto-approve", Targets{}), false, "deny.commands", ""},
+		{"deny pattern is case-insensitive and whitespace-tolerant", ModeOperate, mutate("shell", "", "kubectl  delete   namespace  Foo", Targets{}), false, "deny.commands", ""},
+		{"kubectl apply needs a dry run", ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeContext: "dev", KubeNamespace: "apps"}), true, "policy", "kubectl_apply"},
+		{"terraform apply needs a plan", ModeOperate, mutate("terraform", "apply", "terraform apply", Targets{Paths: []string{"/w/infra"}}), true, "policy", "terraform_apply"},
+		{"helm install dry-runs", ModeOperate, mutate("helm", "install", "helm install x y", Targets{}), true, "policy", "helm_upgrade"},
+		{"plain mutation passes to permissions", ModeOperate, mutate("shell", "", "make deploy", Targets{}), true, "policy", ""},
+	}
+	pol := p
+	pol.Protected.Paths = append(pol.Protected.Paths, "/w/.taracode/policy.yaml")
+	for _, c := range cases {
+		v := pol.Evaluate(c.mode, c.inv)
+		if v.Allow != c.allow || v.Rule != c.rule || v.DryRun != c.dry {
+			t.Errorf("%s: got %+v", c.name, v)
+		}
+		if !v.Allow && v.Reason == "" {
+			t.Errorf("%s: a denial needs a reason", c.name)
+		}
+	}
+}
+
+func TestEvaluateCloudAccountsAndHostsMatchCommandTokens(t *testing.T) {
+	p := Default()
+	p.Protected.CloudAccounts = []string{"*123456789012*", "prod-project"}
+	p.Protected.Hosts = []string{"*.bank.internal"}
+	if v := p.Evaluate(ModeOperate, mutate("cloud", "put", "aws s3api put-object --bucket arn:aws:s3::123456789012:x", Targets{})); v.Allow || v.Rule != "protected.cloud_accounts" {
+		t.Errorf("account in command: %+v", v)
+	}
+	if v := p.Evaluate(ModeOperate, mutate("cloud", "delete", "gcloud compute instances delete vm", Targets{CloudAccount: "prod-project"})); v.Allow {
+		t.Errorf("account target: %+v", v)
+	}
+	if v := p.Evaluate(ModeOperate, mutate("shell", "", "ssh core.bank.internal reboot", Targets{Hosts: []string{"core.bank.internal"}})); v.Allow || v.Rule != "protected.hosts" {
+		t.Errorf("host: %+v", v)
+	}
+}
+
+func TestDryRunCanBeSwitchedOffPerKind(t *testing.T) {
+	p := Default()
+	f := false
+	p.RequireDryRun.KubectlApply = &f
+	v := p.Evaluate(ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeContext: "dev"}))
+	if !v.Allow || v.DryRun != "" {
+		t.Fatalf("%+v", v)
+	}
+	if !strings.Contains(Default().Evaluate(ModeInvestigate, mutate("git", "push", "git push", Targets{})).Reason, "/mode operate") {
+		t.Fatal("the investigate denial must tell the model how the user switches modes")
+	}
+}
