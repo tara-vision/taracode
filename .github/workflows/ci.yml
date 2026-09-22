@@ -65,12 +65,8 @@ jobs:
 
       - name: No lab hostnames in the public repository
         run: |
-          if git grep -n -E 'tara\.lab|aramis|porthos|192\.168\.' -- . ':!.github/workflows/ci.yml' ':!CHANGELOG.md'; then
+          if git grep -n -E 'tara\.lab|aramis|porthos|192\.168\.' -- . ':!.github/workflows/ci.yml'; then
             echo "Lab hostnames must not appear in the public repository."
-            exit 1
-          fi
-          if [ "$(git grep -c -E 'tara\.lab' -- CHANGELOG.md | cut -d: -f2)" != "1" ]; then
-            echo "CHANGELOG.md may contain exactly one historical lab hostname line (the 2.0.3 entry)."
             exit 1
           fi
 
