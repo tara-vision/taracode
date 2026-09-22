@@ -163,7 +163,11 @@ func (r *Report) Render() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Server    %s\n", r.Host)
 	if r.ServerOK {
-		fmt.Fprintf(&b, "          Ollama %s reachable\n", r.ServerVersion)
+		if r.ServerVersion != "" {
+			fmt.Fprintf(&b, "          Ollama %s reachable\n", r.ServerVersion)
+		} else {
+			b.WriteString("          server reachable\n")
+		}
 	} else {
 		fmt.Fprintf(&b, "          unreachable: %s\n", r.ServerError)
 	}

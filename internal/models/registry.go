@@ -20,7 +20,8 @@ type Tier string
 const (
 	// TierSmall fits any host; its entries are helper-sized models, not tier defaults.
 	TierSmall Tier = "small"
-	// Tier16 is the class for hosts with at least 16 GB of RAM.
+	// Tier16 is the floor tier: it covers any host under 32 GB of RAM, not just hosts with at
+	// least 16 GB.
 	Tier16 Tier = "16"
 	// Tier32 is the class for hosts with at least 32 GB of RAM.
 	Tier32 Tier = "32"
@@ -30,7 +31,7 @@ const (
 
 // Entry is one recommended model.
 type Entry struct {
-	Name         string   `yaml:"name"`         // Ollama pull name, in "family:tag" form.
+	Name         string   `yaml:"name"`         // Ollama pull name; the tag is optional (glm-4.7-flash has none).
 	Family       string   `yaml:"family"`       // model family; used to find an entry when the tag is omitted.
 	Params       string   `yaml:"params"`       // parameter count as published upstream.
 	DownloadGB   float64  `yaml:"download_gb"`  // approximate download size, in gigabytes, for a Q4-class quantization.
