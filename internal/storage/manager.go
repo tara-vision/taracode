@@ -1,3 +1,5 @@
+// Package storage persists a project's .taracode state: sessions, plans, preferences, project
+// config, file backups and the append-only security audit log.
 package storage
 
 import (
@@ -102,8 +104,6 @@ func (m *Manager) loadAll() error {
 
 	return nil
 }
-
-// ============= Session Management =============
 
 // CreateSession creates a new conversation session
 func (m *Manager) CreateSession(name string) (*Session, error) {
@@ -410,8 +410,6 @@ func (m *Manager) saveSessionIndex() error {
 	return os.WriteFile(indexPath, data, 0644)
 }
 
-// ============= Audit Log Management (Security Mode) =============
-
 // InitAuditLog initializes the audit log for a session (security mode only)
 func (m *Manager) InitAuditLog(sessionID string, mode string) error {
 	m.mu.Lock()
@@ -511,152 +509,6 @@ func (m *Manager) ClearAuditLog(sessionID string) error {
 	return m.saveSession(session)
 }
 
-// ============= Plan Management =============
-
-// CreatePlan creates a new task plan
-func (m *Manager) CreatePlan(title string, taskContents []string) (*Plan, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	now := time.Now()
-	plan := &Plan{
-		ID:        uuid.New().String(),
-		Title:     title,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Status:    PlanStatusActive,
-		Tasks:     make([]Task, len(taskContents)),
-	}
-
-	for i, content := range taskContents {
-		plan.Tasks[i] = Task{
-			ID:        uuid.New().String(),
-			Content:   content,
-			Status:    TaskStatusPending,
-			CreatedAt: now,
-		}
-	}
-
-	if err := m.savePlan(plan); err != nil {
-		return nil, err
-	}
-
-	// Update current state
-	m.currentState.ActivePlanID = plan.ID
-	if len(plan.Tasks) > 0 {
-		m.currentState.ActiveTaskID = plan.Tasks[0].ID
-	}
-	m.saveCurrentState()
-
-	return plan, nil
-}
-
-// GetActivePlan returns the currently active plan, or nil if none
-func (m *Manager) GetActivePlan() (*Plan, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if m.currentState.ActivePlanID == "" {
-		return nil, nil
-	}
-
-	planPath := filepath.Join(m.rootDir, "plans", "active.json")
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		return nil, nil
-	}
-
-	var plan Plan
-	if err := json.Unmarshal(data, &plan); err != nil {
-		return nil, fmt.Errorf("failed to parse plan: %w", err)
-	}
-
-	return &plan, nil
-}
-
-// UpdateTaskStatus updates the status of a task in a plan
-func (m *Manager) UpdateTaskStatus(planID, taskID string, status TaskStatus) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	plan, err := m.getActivePlanUnsafe()
-	if err != nil || plan == nil || plan.ID != planID {
-		return fmt.Errorf("plan not found")
-	}
-
-	now := time.Now()
-	for i := range plan.Tasks {
-		if plan.Tasks[i].ID == taskID {
-			plan.Tasks[i].Status = status
-			if status == TaskStatusCompleted {
-				plan.Tasks[i].CompletedAt = &now
-			}
-			break
-		}
-	}
-
-	plan.UpdatedAt = now
-	return m.savePlan(plan)
-}
-
-// ArchivePlan moves the active plan to archive
-func (m *Manager) ArchivePlan(planID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	plan, err := m.getActivePlanUnsafe()
-	if err != nil || plan == nil || plan.ID != planID {
-		return fmt.Errorf("plan not found")
-	}
-
-	plan.Status = PlanStatusArchived
-	plan.UpdatedAt = time.Now()
-
-	// Move to archive
-	archivePath := filepath.Join(m.rootDir, "plans", "archive", fmt.Sprintf("plan_%s.json", plan.ID))
-	data, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(archivePath, data, 0644); err != nil {
-		return err
-	}
-
-	// Remove active plan
-	os.Remove(filepath.Join(m.rootDir, "plans", "active.json"))
-
-	// Update state
-	m.currentState.ActivePlanID = ""
-	m.currentState.ActiveTaskID = ""
-	return m.saveCurrentState()
-}
-
-func (m *Manager) getActivePlanUnsafe() (*Plan, error) {
-	planPath := filepath.Join(m.rootDir, "plans", "active.json")
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		return nil, nil
-	}
-
-	var plan Plan
-	if err := json.Unmarshal(data, &plan); err != nil {
-		return nil, fmt.Errorf("failed to parse plan: %w", err)
-	}
-
-	return &plan, nil
-}
-
-func (m *Manager) savePlan(plan *Plan) error {
-	planPath := filepath.Join(m.rootDir, "plans", "active.json")
-	data, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal plan: %w", err)
-	}
-	return os.WriteFile(planPath, data, 0644)
-}
-
-// ============= Context Management =============
-
 // SaveProjectContext saves the project context to disk
 func (m *Manager) SaveProjectContext(ctx *context.ProjectContext) error {
 	m.mu.Lock()
@@ -704,8 +556,6 @@ func (m *Manager) SaveFileSummary(path string, analysis *context.FileAnalysis) e
 	}
 	return os.WriteFile(summaryPath, data, 0644)
 }
-
-// ============= State Management =============
 
 // GetCurrentState returns the current runtime state
 func (m *Manager) GetCurrentState() *CurrentState {
@@ -788,8 +638,6 @@ func (m *Manager) SetPreferredModel(model string) error {
 	return os.WriteFile(prefsPath, data, 0644)
 }
 
-// ============= Project Config Management =============
-
 // SaveProjectConfig saves the project configuration to .taracode/project.json
 func (m *Manager) SaveProjectConfig(config *ProjectConfig) error {
 	m.mu.Lock()
@@ -855,60 +703,4 @@ func replaceChars(s, old, new string) string {
 		}
 	}
 	return result
-}
-
-// CreateBackup creates a backup of a file before editing
-// Returns the backup file path or an error
-func (m *Manager) CreateBackup(originalPath string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Read original file content
-	content, err := os.ReadFile(originalPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file for backup: %w", err)
-	}
-
-	// Create backup filename: original_name.timestamp
-	baseName := filepath.Base(originalPath)
-	timestamp := time.Now().Unix()
-	backupName := fmt.Sprintf("%s.%d", baseName, timestamp)
-	backupPath := filepath.Join(m.rootDir, "backups", backupName)
-
-	// Write backup
-	if err := os.WriteFile(backupPath, content, 0644); err != nil {
-		return "", fmt.Errorf("failed to write backup: %w", err)
-	}
-
-	return backupPath, nil
-}
-
-// GetBackupDir returns the path to the backups directory
-func (m *Manager) GetBackupDir() string {
-	return filepath.Join(m.rootDir, "backups")
-}
-
-// ListBackups returns a list of backup files for a given original filename
-func (m *Manager) ListBackups(originalFilename string) ([]string, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	backupDir := filepath.Join(m.rootDir, "backups")
-	entries, err := os.ReadDir(backupDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to read backup directory: %w", err)
-	}
-
-	var backups []string
-	prefix := originalFilename + "."
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
-			backups = append(backups, filepath.Join(backupDir, entry.Name()))
-		}
-	}
-
-	return backups, nil
 }
