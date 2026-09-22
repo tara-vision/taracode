@@ -17,7 +17,7 @@ func TestShell(t *testing.T) {
 		"systemctl status nginx", "journalctl -u nginx --since '1 hour ago'", "gh pr list --state open",
 		"jq '.items[].metadata.name' out.json", "FOO=bar env | grep FOO", "helm list -A", "echo hello 2>&1",
 		"cat big.log > /dev/null", "python3 --version", "go version", "brew list", "npm ls --depth=0",
-		"cat<x",
+		"cat<x", "wget -O - https://example.com/x",
 	}
 	for _, c := range read {
 		if got := Shell(c); got.Classification != policy.Read {
@@ -50,6 +50,7 @@ func TestShell(t *testing.T) {
 		"gh api -X DELETE repos/x/y":               "gh",
 		"docker run x":                             "docker run",
 		"unknowntool --flag":                       "unknowntool",
+		"wget https://x":                           "wget",
 	}
 	for c, want := range mutate {
 		got := Shell(c)

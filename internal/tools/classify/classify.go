@@ -48,21 +48,29 @@ func hasFlag(tokens []string, names ...string) bool {
 }
 
 // flagValue returns the value of the first flag in names, written --name=value or --name value. A
-// token that starts with "-" is never taken as a bare flag's value (it is the next flag, not this
+// token that looks like a flag is never taken as a bare flag's value (it is the next flag, not this
 // flag's argument), so a bare flag followed by another flag with no value in between reports no
-// value instead of swallowing that next flag.
+// value instead of swallowing that next flag; a lone "-" is not flag-shaped, so the conventional
+// stdin/stdout placeholder still counts as a value.
 func flagValue(tokens []string, names ...string) string {
 	for i, t := range tokens {
 		for _, n := range names {
 			if strings.HasPrefix(t, n+"=") {
 				return strings.TrimPrefix(t, n+"=")
 			}
-			if t == n && i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "-") {
+			if t == n && i+1 < len(tokens) && !looksLikeFlag(tokens[i+1]) {
 				return tokens[i+1]
 			}
 		}
 	}
 	return ""
+}
+
+// looksLikeFlag reports whether s is shaped like a flag rather than a value: more than one character
+// and starting with "-". A lone "-" is excluded, since by convention it means "stdin" or "stdout",
+// not an option (e.g. wget -O -).
+func looksLikeFlag(s string) bool {
+	return len(s) > 1 && strings.HasPrefix(s, "-")
 }
 
 // positionals returns the tokens that are not flags, skipping the value that follows any of the
