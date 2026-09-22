@@ -113,6 +113,39 @@ func TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability(t *
 	}
 }
 
+// TestSetThinkDowngradesOnAModelWithoutThinkingSupport covers the runtime /think command bypassing
+// the capability downgrade applyModelDetails already applies at startup and on model switch: on a
+// tools-only model, SetThink must apply the same downgrade, warn the same way, and report the mode
+// that will actually reach the wire, so a turn never puts a think level Ollama will 400 on.
+func TestSetThinkDowngradesOnAModelWithoutThinkingSupport(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	a.thinkingSupported = false // as applyModelDetails leaves it for a tools-only model
+	srv.Turns = []ollamatest.Turn{{Content: "ok"}}
+
+	var effective llm.Think
+	out := captureStdout(t, func() {
+		effective = a.SetThink(llm.ThinkHigh)
+	})
+
+	if effective != llm.ThinkAuto {
+		t.Fatalf("SetThink returned %q, want auto", effective)
+	}
+	if a.Think() != llm.ThinkAuto {
+		t.Fatalf("Think() = %q, want auto", a.Think())
+	}
+	if !strings.Contains(out, "does not support thinking") {
+		t.Fatalf("no downgrade warning printed: %q", out)
+	}
+
+	if err := a.ProcessMessage("hi"); err != nil {
+		t.Fatal(err)
+	}
+	body := lastChatBody(t, srv)
+	if think, present := body["think"]; present {
+		t.Fatalf("think should be omitted on the wire (auto semantics), got %v", think)
+	}
+}
+
 func TestThinkAndWindowReachTheRequest(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.SetThink(llm.ThinkHigh)

@@ -69,10 +69,11 @@ type Assistant struct {
 	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
 
 	// Request options sent with every turn (Task 8 wires these to config)
-	think            llm.Think // reasoning mode
-	keepAlive        string    // how long the server keeps the model loaded
-	contextWindow    int       // num_ctx for the request, 0 = server default
-	configuredWindow string    // context.window config value ("auto" or a number); re-read on model switch
+	think             llm.Think // reasoning mode
+	thinkingSupported bool      // whether the current model has the "thinking" capability; true when unknown
+	keepAlive         string    // how long the server keeps the model loaded
+	contextWindow     int       // num_ctx for the request, 0 = server default
+	configuredWindow  string    // context.window config value ("auto" or a number); re-read on model switch
 
 	// Context management (v2.0.2)
 	truncationCfg   TruncationConfig
@@ -304,6 +305,7 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 		mode:               storage.ModeDevOps,
 		useNativeTools:     true,
 		contextWindow:      32768,
+		thinkingSupported:  true, // no applyModelDetails call in tests; capabilities are unknown
 		truncationCfg: TruncationConfig{
 			MaxLines: DefaultMaxToolOutputLines,
 			MaxChars: DefaultMaxToolOutputChars,
