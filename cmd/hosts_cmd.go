@@ -8,7 +8,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/tara-vision/taracode/internal/models"
-	"github.com/tara-vision/taracode/internal/orchestrator"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -22,35 +21,26 @@ var (
 )
 
 // handleHostsCommand handles the /hosts command for multi-host management
-func handleHostsCommand(args []string, taskBridge *orchestrator.TaskBridge) {
-	if taskBridge == nil || !taskBridge.HasHostPool() {
-		// Check if multi-host is configured
-		hostsCfg := GetHostsConfig()
-		if hostsCfg.IsEmpty() || len(hostsCfg.Hosts) <= 1 {
-			fmt.Println("Multi-host not configured.")
-			fmt.Println()
-			fmt.Println("To use multiple hosts, add to ~/.taracode/config.yaml:")
-			fmt.Println()
-			fmt.Println("  hosts:")
-			fmt.Println("    primary:")
-			fmt.Println("      url: http://gpu-server:11434")
-			fmt.Println("      priority: 1")
-			fmt.Println("    local:")
-			fmt.Println("      url: http://localhost:11434")
-			fmt.Println("      fallback: primary")
-			fmt.Println("      priority: 2")
-			fmt.Println("  default_host: primary")
-			fmt.Println()
-			fmt.Println("Currently using single host mode.")
-			fmt.Println()
-			return
-		}
-		fmt.Println("Host pool not initialized. Run /init first.")
+func handleHostsCommand(args []string, hostPool *provider.HostPool) {
+	if hostPool == nil {
+		fmt.Println("Multi-host not configured.")
+		fmt.Println()
+		fmt.Println("To use multiple hosts, add to ~/.taracode/config.yaml:")
+		fmt.Println()
+		fmt.Println("  hosts:")
+		fmt.Println("    primary:")
+		fmt.Println("      url: http://gpu-server:11434")
+		fmt.Println("      priority: 1")
+		fmt.Println("    local:")
+		fmt.Println("      url: http://localhost:11434")
+		fmt.Println("      fallback: primary")
+		fmt.Println("      priority: 2")
+		fmt.Println("  default_host: primary")
+		fmt.Println()
+		fmt.Println("Currently using single host mode.")
 		fmt.Println()
 		return
 	}
-
-	hostPool := taskBridge.GetHostPool()
 
 	// Handle subcommands
 	if len(args) > 0 {

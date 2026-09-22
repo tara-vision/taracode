@@ -1,3 +1,4 @@
+// Package cmd implements taracode's CLI commands and interactive REPL.
 package cmd
 
 import (
@@ -13,20 +14,17 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/viper"
-	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/models"
-	"github.com/tara-vision/taracode/internal/orchestrator"
 	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 	"github.com/tara-vision/taracode/internal/upgrade"
-	"github.com/tara-vision/taracode/internal/watch"
 )
 
 func startREPL() {
@@ -218,9 +216,6 @@ func startREPL() {
 		}
 	}
 
-	// Initialize watch monitor for screen monitoring (nil until /watch start)
-	var watchMonitor *watch.WatchMonitor
-
 	// Initialize HostPool for multi-host support (v2.0)
 	var hostPool *provider.HostPool
 	if useMultiHost {
@@ -242,45 +237,6 @@ func startREPL() {
 
 		// Wire HostPool to Assistant for automatic fallback (v2.0)
 		asst.SetHostPool(hostPool)
-	}
-
-	// Initialize TaskBridge for multi-agent orchestration
-	var taskBridge *orchestrator.TaskBridge
-	if isProjectInitialized {
-		taracodeDir := filepath.Join(projectRoot, ".taracode")
-		taskMgr, err := storage.NewTaskManager(taracodeDir)
-		if err == nil {
-			// Create TaskBridge with appropriate provider source
-			if hostPool != nil {
-				// Use multi-host pool for per-agent host assignment
-				taskBridge = orchestrator.NewTaskBridgeFromHostPool(
-					hostPool,
-					asst.GetToolRegistry(),
-					taskMgr,
-					currentAbsDir,
-				)
-			} else {
-				// Use single provider (legacy mode)
-				taskBridge = orchestrator.NewTaskBridgeFromProvider(
-					asst.GetProvider(),
-					asst.GetToolRegistry(),
-					taskMgr,
-					currentAbsDir,
-					host,
-					apiKey,
-				)
-			}
-			// Load agent configuration from global config and project overrides
-			agentsCfg := agent.LoadAgentsConfig(projectRoot)
-			agentsCfg.ApplyGlobalModelOptions(
-				float32(viper.GetFloat64("model.top_p")),
-				viper.GetInt("model.num_predict"),
-			)
-			if err := taskBridge.InitializeWithConfig(agentsCfg); err != nil {
-				// Log but don't fail - agents will use default config
-				fmt.Fprintf(os.Stderr, "Warning: failed to initialize agents with config: %v\n", err)
-			}
-		}
 	}
 
 	// Setup readline for interactive input with slash command and @ file completion
@@ -310,10 +266,6 @@ func startREPL() {
 	for {
 		line, err := rl.Readline()
 		if err != nil { // io.EOF or Ctrl+C
-			// Stop watch monitor if running
-			if watchMonitor != nil && watchMonitor.IsRunning() {
-				watchMonitor.Stop()
-			}
 			// Stop host health checks if running
 			if hostPool != nil {
 				hostPool.Close()
@@ -333,10 +285,6 @@ func startREPL() {
 
 		// Handle exit commands (always allowed)
 		if line == "exit" || line == "quit" {
-			// Stop watch monitor if running
-			if watchMonitor != nil && watchMonitor.IsRunning() {
-				watchMonitor.Stop()
-			}
 			// Stop host health checks if running
 			if hostPool != nil {
 				hostPool.Close()
@@ -365,9 +313,6 @@ func startREPL() {
 			currentRelDir = newRel
 			currentAbsDir = newAbs
 			slashCompleter.UpdateWorkingDir(currentAbsDir)
-			if taskBridge != nil {
-				taskBridge.SetWorkingDir(currentAbsDir)
-			}
 			rl.SetPrompt(FormatPrompt(currentRelDir))
 			if currentRelDir == "" {
 				fmt.Println("Changed to project root")
@@ -429,7 +374,8 @@ func startREPL() {
 		if strings.HasPrefix(line, "/") {
 			// Special handling for /init - update state after success
 			if strings.HasPrefix(line, "/init") {
-				handleCommand(line, currentAbsDir, &asst, host, apiKey, model, vendor, streaming, enableSpinner, historyManager, mcpManager, memoryManager, taskBridge, &watchMonitor)
+				handleCommand(line, currentAbsDir, &asst, host, apiKey, model, vendor, streaming, enableSpinner,
+					historyManager, mcpManager, memoryManager, hostPool)
 				// Check if init succeeded
 				if isInitializedProject(projectRoot) {
 					isProjectInitialized = true
@@ -461,42 +407,11 @@ func startREPL() {
 					if mcpManager != nil {
 						mcpManager.AutoConnect(context.Background())
 					}
-					// Initialize TaskBridge if not already done
-					if taskBridge == nil {
-						taskMgr, err := storage.NewTaskManager(taracodeDir)
-						if err == nil {
-							if hostPool != nil {
-								// Use multi-host pool for per-agent host assignment
-								taskBridge = orchestrator.NewTaskBridgeFromHostPool(
-									hostPool,
-									asst.GetToolRegistry(),
-									taskMgr,
-									currentAbsDir,
-								)
-							} else {
-								// Use single provider (legacy mode)
-								taskBridge = orchestrator.NewTaskBridgeFromProvider(
-									asst.GetProvider(),
-									asst.GetToolRegistry(),
-									taskMgr,
-									currentAbsDir,
-									host,
-									apiKey,
-								)
-							}
-							// Load agent configuration
-							agentsCfg := agent.LoadAgentsConfig(projectRoot)
-							agentsCfg.ApplyGlobalModelOptions(
-								float32(viper.GetFloat64("model.top_p")),
-								viper.GetInt("model.num_predict"),
-							)
-							_ = taskBridge.InitializeWithConfig(agentsCfg)
-						}
-					}
 				}
 				continue
 			}
-			handleCommand(line, currentAbsDir, &asst, host, apiKey, model, vendor, streaming, enableSpinner, historyManager, mcpManager, memoryManager, taskBridge, &watchMonitor)
+			handleCommand(line, currentAbsDir, &asst, host, apiKey, model, vendor, streaming, enableSpinner,
+				historyManager, mcpManager, memoryManager, hostPool)
 			continue
 		}
 
@@ -532,7 +447,7 @@ func startREPL() {
 	}
 }
 
-func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, host, apiKey, model, vendor string, streaming bool, enableSpinner bool, historyManager *history.Manager, mcpManager *mcp.Manager, memoryManager *memory.Manager, taskBridge *orchestrator.TaskBridge, watchMonitor **watch.WatchMonitor) {
+func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, host, apiKey, model, vendor string, streaming bool, enableSpinner bool, historyManager *history.Manager, mcpManager *mcp.Manager, memoryManager *memory.Manager, hostPool *provider.HostPool) {
 	// Handle commands with arguments
 	parts := strings.Fields(cmd)
 	baseCmd := parts[0]
@@ -591,17 +506,6 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /session rename <id> <name> - Rename a session")
 		fmt.Println("    /clear                - Clear current conversation (start new session)")
 		fmt.Println()
-		fmt.Println("  Tasks:")
-		fmt.Println("    /task \"<description>\" - Plan and execute a multi-step task")
-		fmt.Println("    /task list            - List all tasks")
-		fmt.Println("    /task status [id]     - Show task status")
-		fmt.Println("    /task resume [id]     - Resume a paused task")
-		fmt.Println("    /task pause           - Pause the active task")
-		fmt.Println("    /task abort           - Abort the active task")
-		fmt.Println("    /task rollback [id]   - Rollback to last checkpoint")
-		fmt.Println("    /task templates       - List available task templates")
-		fmt.Println("    /task run <template>  - Run a task from a template")
-		fmt.Println()
 		fmt.Println("  Plans:")
 		fmt.Println("    /plan         - Show active task plan")
 		fmt.Println()
@@ -634,14 +538,6 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /mcp disconnect <name>    - Disconnect from an MCP server")
 		fmt.Println("    /mcp tools                - List tools from connected servers")
 		fmt.Println()
-		fmt.Println("  Agents (Multi-Agent System):")
-		fmt.Println("    /agent                    - Show agent system overview")
-		fmt.Println("    /agent list               - List all available agents")
-		fmt.Println("    /agent status             - Show status of all agents")
-		fmt.Println("    /agent status <type>      - Show detailed status for an agent")
-		fmt.Println("    /agent config <type>      - Show agent configuration")
-		fmt.Println("    /agent use <type>         - Route next prompt to specific agent")
-		fmt.Println()
 		fmt.Println("  Memory (Project Knowledge):")
 		fmt.Println("    /remember <text>          - Save a memory about this project")
 		fmt.Println("    /memory                   - List all project memories")
@@ -653,13 +549,6 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println("    /memory cleanup [days]    - Remove old unused memories")
 		fmt.Println("    /memory clear             - Clear all memories")
 		fmt.Println()
-		fmt.Println("  Watch (Screen Monitoring - macOS):")
-		fmt.Println("    /watch                    - Show watch command help")
-		fmt.Println("    /watch this               - Capture and analyze screens now")
-		fmt.Println("    /watch start              - Start continuous monitoring")
-		fmt.Println("    /watch stop               - Stop monitoring")
-		fmt.Println("    /watch status             - Show monitoring state")
-		fmt.Println()
 		fmt.Println("  Multi-Host (v2.0):")
 		fmt.Println("    /hosts               - Show status of all configured hosts")
 		fmt.Println("    /hosts check         - Force health check on all hosts")
@@ -667,7 +556,6 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		fmt.Println()
 		fmt.Println("  Other:")
 		fmt.Println("    /context             - Show what's in the LLM context window")
-		fmt.Println("    /context --agents    - Show per-agent context usage")
 		fmt.Println("    /compact             - Force conversation compaction")
 		fmt.Println("    /think               - Show the current reasoning mode")
 		fmt.Println("    /think <mode>        - Set reasoning mode: auto|off|on|low|medium|high")
@@ -846,7 +734,7 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		handleShowPlan(*asst)
 
 	case "/model":
-		handleModelSwitch(asst, taskBridge, streaming, enableSpinner)
+		handleModelSwitch(asst, hostPool, streaming, enableSpinner)
 
 	case "/permissions":
 		handlePermissions(*asst, args)
@@ -891,13 +779,10 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 		handleUndo(historyManager, args)
 
 	case "/context":
-		handleContext(*asst, memoryManager, args, taskBridge)
+		handleContext(*asst, memoryManager)
 
 	case "/mcp":
 		handleMCP(mcpManager, args, *asst)
-
-	case "/task":
-		handleTask(*asst, args, workingDir)
 
 	case "/diff":
 		handleDiff(historyManager, args, workingDir)
@@ -908,21 +793,13 @@ func handleCommand(cmd string, workingDir string, asst **assistant.Assistant, ho
 	case "/memory":
 		handleMemory(memoryManager, args)
 
-	case "/agent":
-		// Agent system commands
-		handleAgentCommand(args, taskBridge)
-
-	case "/watch":
-		// Screen monitoring and analysis
-		handleWatchCommand(args, *asst, watchMonitor, os.TempDir())
-
 	case "/upgrade":
 		// Check for and install updates
 		handleUpgradeCommand(args)
 
 	case "/hosts":
 		// Multi-host status and management (v2.0)
-		handleHostsCommand(args, taskBridge)
+		handleHostsCommand(args, hostPool)
 
 	case "/compact":
 		// Force conversation compaction (v2.0.2)
@@ -1260,21 +1137,7 @@ func formatBoxLine(content string) string {
 	return fmt.Sprintf("│  %-*s│", boxWidth, content)
 }
 
-func handleContext(asst *assistant.Assistant, mm *memory.Manager, args []string, taskBridge *orchestrator.TaskBridge) {
-	// Check for --agents flag
-	showAgents := false
-	for _, arg := range args {
-		if arg == "--agents" || arg == "-a" {
-			showAgents = true
-			break
-		}
-	}
-
-	if showAgents {
-		handleContextAgents(taskBridge)
-		return
-	}
-
+func handleContext(asst *assistant.Assistant, mm *memory.Manager) {
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
 	fmt.Println("│  Context Window                                                     │")
@@ -1589,87 +1452,6 @@ func handleStats(asst *assistant.Assistant, hm *history.Manager) {
 		numPredictStr = fmt.Sprintf("%d", numPredict)
 	}
 	fmt.Println(formatBoxLine(fmt.Sprintf("Model options: temp=%.1f top_p=%.1f num_predict=%s", temp, topP, numPredictStr)))
-
-	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
-	fmt.Println()
-}
-
-// handleContextAgents displays per-agent context usage
-func handleContextAgents(taskBridge *orchestrator.TaskBridge) {
-	fmt.Println()
-	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
-	fmt.Println("│  Agent Context Budget                                              │")
-	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
-
-	if taskBridge == nil || !taskBridge.IsInitialized() {
-		fmt.Println(formatBoxLine("Agent system not initialized"))
-		fmt.Println(formatBoxLine("Run a /task command to initialize agents"))
-		fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
-		fmt.Println()
-		return
-	}
-
-	orch := taskBridge.GetOrchestrator()
-	if orch == nil {
-		fmt.Println(formatBoxLine("Orchestrator not available"))
-		fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
-		fmt.Println()
-		return
-	}
-
-	// Get agent context usage
-	usages := orch.GetAgentContextUsage()
-
-	// Calculate total
-	totalUsed := 0
-	totalBudget := 0
-	for _, u := range usages {
-		totalUsed += u.TokensUsed
-		totalBudget += u.TokensBudget
-	}
-
-	// Show total
-	totalPct := 0.0
-	if totalBudget > 0 {
-		totalPct = float64(totalUsed) / float64(totalBudget) * 100
-	}
-	fmt.Println(formatBoxLine(fmt.Sprintf("Total: %d / %d tokens (%.1f%%)", totalUsed, totalBudget, totalPct)))
-	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
-	fmt.Println(formatBoxLine("Agent Allocations:"))
-
-	// Show per-agent usage
-	for _, u := range usages {
-		pct := 0.0
-		if u.TokensBudget > 0 {
-			pct = float64(u.TokensUsed) / float64(u.TokensBudget) * 100
-		}
-
-		// Create a progress bar
-		barWidth := 16
-		filledWidth := int(pct / 100 * float64(barWidth))
-		if filledWidth > barWidth {
-			filledWidth = barWidth
-		}
-		bar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
-
-		line := fmt.Sprintf("  %-12s %5d / %5d (%5.1f%%) %s",
-			u.AgentType.DisplayName()+":",
-			u.TokensUsed,
-			u.TokensBudget,
-			pct,
-			bar,
-		)
-		fmt.Println(formatBoxLine(line))
-	}
-
-	// Show shared context info
-	state := orch.GetCurrentTaskState()
-	if state != nil && state.Context != nil {
-		fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
-		fmt.Println(formatBoxLine("Shared Context:"))
-		fmt.Println(formatBoxLine(fmt.Sprintf("  Items: %d", len(state.Context.Items))))
-		fmt.Println(formatBoxLine(fmt.Sprintf("  Tokens: %d / %d", state.Context.TokensUsed, state.Context.TokenBudget)))
-	}
 
 	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
 	fmt.Println()
@@ -2162,7 +1944,7 @@ type modelWithHost struct {
 }
 
 // handleModelSwitch lists available models and allows switching
-func handleModelSwitch(asst **assistant.Assistant, taskBridge *orchestrator.TaskBridge, streaming, enableSpinner bool) {
+func handleModelSwitch(asst **assistant.Assistant, hostPool *provider.HostPool, streaming, enableSpinner bool) {
 	// Get current model
 	currentModel := (*asst).GetCurrentModel()
 	currentHost := ""
@@ -2174,8 +1956,7 @@ func handleModelSwitch(asst **assistant.Assistant, taskBridge *orchestrator.Task
 	var allModels []modelWithHost
 
 	// Check for multi-host mode
-	if taskBridge != nil && taskBridge.HasHostPool() {
-		hostPool := taskBridge.GetHostPool()
+	if hostPool != nil {
 		hostInfos := hostPool.GetHostInfo()
 
 		// Collect models from all healthy hosts
@@ -2651,394 +2432,6 @@ func handleMCP(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
 		fmt.Printf("Unknown subcommand: %s\n", subCmd)
 		fmt.Println("Usage: /mcp [connect|disconnect|tools]")
 		fmt.Println()
-	}
-}
-
-// handleTask handles the /task command for autonomous task execution
-func handleTask(asst *assistant.Assistant, args []string, workingDir string) {
-	// Get or create task manager
-	taracodeDir := filepath.Join(workingDir, ".taracode")
-	taskManager, err := storage.NewTaskManager(taracodeDir)
-	if err != nil {
-		fmt.Printf("Error initializing task manager: %v\n", err)
-		fmt.Println()
-		return
-	}
-
-	// If no arguments, show usage
-	if len(args) == 0 {
-		fmt.Println("Usage:")
-		fmt.Println("  /task \"<description>\" - Plan and execute a multi-step task")
-		fmt.Println("  /task list            - List all tasks")
-		fmt.Println("  /task status [id]     - Show task status")
-		fmt.Println("  /task resume [id]     - Resume a paused task")
-		fmt.Println("  /task pause           - Pause the active task")
-		fmt.Println("  /task abort           - Abort the active task")
-		fmt.Println("  /task rollback [id]   - Rollback to last checkpoint")
-		fmt.Println("  /task templates       - List available task templates")
-		fmt.Println("  /task run <template>  - Run a task from template")
-		fmt.Println()
-		return
-	}
-
-	subCmd := args[0]
-
-	switch subCmd {
-	case "list":
-		tasks := taskManager.ListTasks()
-		ui.DisplayTaskList(tasks)
-
-	case "templates":
-		templateLoader := assistant.NewTemplateLoader(taracodeDir)
-		templates, err := templateLoader.ListTemplates()
-		if err != nil {
-			fmt.Printf("Error listing templates: %v\n", err)
-			fmt.Println()
-			return
-		}
-
-		fmt.Println()
-		fmt.Println("Available Task Templates:")
-		fmt.Println()
-
-		if len(templates) == 0 {
-			fmt.Println("  No templates found")
-		} else {
-			for _, t := range templates {
-				source := "built-in"
-				if !t.BuiltIn {
-					source = "custom"
-				}
-				fmt.Printf("  %-20s [%s]\n", t.Name, source)
-			}
-		}
-		fmt.Println()
-		fmt.Println("Run a template with: /task run <template-name>")
-		fmt.Println()
-
-	case "run":
-		if len(args) < 2 {
-			fmt.Println("Usage: /task run <template-name> [var=value ...]")
-			fmt.Println()
-			fmt.Println("Examples:")
-			fmt.Println("  /task run docker-build image_name=myapp tag=v1.0")
-			fmt.Println("  /task run k8s-deploy namespace=production")
-			fmt.Println("  /task run terraform-apply working_dir=./infra")
-			fmt.Println()
-			return
-		}
-
-		templateName := args[1]
-
-		// Parse variable arguments
-		variables := make(map[string]string)
-		for _, arg := range args[2:] {
-			if parts := strings.SplitN(arg, "=", 2); len(parts) == 2 {
-				variables[parts[0]] = parts[1]
-			}
-		}
-
-		templateLoader := assistant.NewTemplateLoader(taracodeDir)
-		template, err := templateLoader.LoadTemplate(templateName)
-		if err != nil {
-			fmt.Printf("Error loading template: %v\n", err)
-			fmt.Println()
-			return
-		}
-
-		// Show template variables
-		fmt.Println()
-		fmt.Printf("Template: %s\n", template.Name)
-		if template.Description != "" {
-			fmt.Printf("Description: %s\n", template.Description)
-		}
-
-		// Show variables with defaults and overrides
-		if len(template.Variables) > 0 {
-			fmt.Println("\nVariables:")
-			for k, defaultVal := range template.Variables {
-				if override, ok := variables[k]; ok {
-					fmt.Printf("  %s = %s (overridden from: %s)\n", k, override, defaultVal)
-				} else {
-					fmt.Printf("  %s = %s (default)\n", k, defaultVal)
-				}
-			}
-		}
-
-		// Create task from template
-		task, err := templateLoader.CreateTaskFromTemplate(template, variables)
-		if err != nil {
-			fmt.Printf("Error creating task: %v\n", err)
-			fmt.Println()
-			return
-		}
-
-		// Save and set as active
-		if err := taskManager.SaveTask(task); err != nil {
-			fmt.Printf("Error saving task: %v\n", err)
-			fmt.Println()
-			return
-		}
-		taskManager.SetActiveTask(task.ID)
-
-		// Display the plan
-		ui.DisplayTaskPlan(task)
-
-		// Ask for approval
-		choice := ui.DisplayTaskApprovalPrompt()
-
-		switch choice {
-		case "r", "run":
-			executor := assistant.NewTaskExecutor(asst, taskManager)
-			fmt.Println()
-			fmt.Println("Executing task...")
-			fmt.Println()
-
-			if err := executor.RunTask(task); err != nil {
-				fmt.Printf("Error: %v\n", err)
-				fmt.Println()
-				return
-			}
-
-			if task.Status == storage.TaskExecStatusCompleted {
-				ui.DisplayTaskComplete(task)
-			} else if task.Status == storage.TaskExecStatusFailed {
-				ui.DisplayTaskFailed(task)
-			} else {
-				ui.DisplayTaskStatus(task)
-			}
-
-		case "c", "cancel":
-			taskManager.DeleteTask(task.ID)
-			fmt.Println("Task cancelled.")
-			fmt.Println()
-
-		default:
-			fmt.Println("Task saved but not executed.")
-			fmt.Println("Resume with: /task resume")
-			fmt.Println()
-		}
-
-	case "status":
-		var task *storage.TaskExecution
-		if len(args) > 1 {
-			// Load specific task
-			task, err = taskManager.LoadTask(args[1])
-		} else {
-			// Show active task
-			task, err = taskManager.GetActiveTask()
-		}
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		if task == nil {
-			fmt.Println("No active task. Start one with: /task \"<description>\"")
-			fmt.Println()
-			return
-		}
-		ui.DisplayTaskStatus(task)
-
-	case "resume":
-		var task *storage.TaskExecution
-		if len(args) > 1 {
-			task, err = taskManager.LoadTask(args[1])
-		} else {
-			task, err = taskManager.GetActiveTask()
-		}
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		if task == nil {
-			fmt.Println("No task to resume.")
-			fmt.Println()
-			return
-		}
-		if task.Status != storage.TaskExecStatusPaused && task.Status != storage.TaskExecStatusPending {
-			fmt.Printf("Cannot resume task: status is %s\n", task.Status)
-			fmt.Println()
-			return
-		}
-
-		// Run the task
-		executor := assistant.NewTaskExecutor(asst, taskManager)
-		if err := executor.RunTask(task); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-
-		if task.Status == storage.TaskExecStatusCompleted {
-			ui.DisplayTaskComplete(task)
-		} else if task.Status == storage.TaskExecStatusFailed {
-			ui.DisplayTaskFailed(task)
-		} else {
-			ui.DisplayTaskStatus(task)
-		}
-
-	case "pause":
-		task, err := taskManager.GetActiveTask()
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		if task == nil {
-			fmt.Println("No active task to pause.")
-			fmt.Println()
-			return
-		}
-
-		executor := assistant.NewTaskExecutor(asst, taskManager)
-		if err := executor.PauseTask(task); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		fmt.Println("Task paused. Resume with: /task resume")
-		fmt.Println()
-
-	case "abort":
-		task, err := taskManager.GetActiveTask()
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		if task == nil {
-			fmt.Println("No active task to abort.")
-			fmt.Println()
-			return
-		}
-
-		executor := assistant.NewTaskExecutor(asst, taskManager)
-		if err := executor.AbortTask(task); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		fmt.Println("Task aborted.")
-		fmt.Println()
-
-	case "rollback":
-		var task *storage.TaskExecution
-		if len(args) > 1 {
-			task, err = taskManager.LoadTask(args[1])
-		} else {
-			task, err = taskManager.GetActiveTask()
-		}
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		if task == nil {
-			fmt.Println("No task to rollback.")
-			fmt.Println()
-			return
-		}
-
-		checkpoint := taskManager.GetLatestCheckpoint(task)
-		if checkpoint == nil {
-			fmt.Println("No checkpoints available for rollback.")
-			fmt.Println()
-			return
-		}
-
-		if err := taskManager.RollbackToCheckpoint(task, checkpoint.ID); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Println()
-			return
-		}
-		fmt.Printf("Rolled back to checkpoint at step %d.\n", checkpoint.StepIndex)
-		fmt.Println()
-
-	default:
-		// Treat as task description - plan and execute
-		taskDescription := strings.Join(args, " ")
-		// Remove quotes if present
-		taskDescription = strings.Trim(taskDescription, "\"'")
-
-		if taskDescription == "" {
-			fmt.Println("Please provide a task description.")
-			fmt.Println("Example: /task \"Add authentication to the API\"")
-			fmt.Println()
-			return
-		}
-
-		// Create task planner and generate plan
-		planner := assistant.NewTaskPlanner(asst)
-		fmt.Println()
-		fmt.Printf("Planning task: %s\n", taskDescription)
-
-		spinner := ui.NewThinkingSpinner()
-		spinner.Start("Generating execution plan...")
-
-		task, err := planner.PlanTask(taskDescription)
-		spinner.Stop()
-
-		if err != nil {
-			fmt.Printf("Error creating plan: %v\n", err)
-			fmt.Println()
-			return
-		}
-
-		// Save task
-		if err := taskManager.SaveTask(task); err != nil {
-			fmt.Printf("Error saving task: %v\n", err)
-			fmt.Println()
-			return
-		}
-		taskManager.SetActiveTask(task.ID)
-
-		// Display the plan
-		ui.DisplayTaskPlan(task)
-
-		// Ask for approval
-		choice := ui.DisplayTaskApprovalPrompt()
-
-		switch choice {
-		case "r", "run":
-			// Run the task
-			executor := assistant.NewTaskExecutor(asst, taskManager)
-			fmt.Println()
-			fmt.Println("Executing task...")
-			fmt.Println()
-
-			if err := executor.RunTask(task); err != nil {
-				fmt.Printf("Error: %v\n", err)
-				fmt.Println()
-				return
-			}
-
-			if task.Status == storage.TaskExecStatusCompleted {
-				ui.DisplayTaskComplete(task)
-			} else if task.Status == storage.TaskExecStatusFailed {
-				ui.DisplayTaskFailed(task)
-			} else {
-				ui.DisplayTaskStatus(task)
-			}
-
-		case "e", "edit":
-			fmt.Println("Edit mode not yet implemented.")
-			fmt.Println("You can modify the task by running /task again with a more specific description.")
-			fmt.Println()
-
-		case "c", "cancel":
-			if err := taskManager.DeleteTask(task.ID); err != nil {
-				fmt.Printf("Error: %v\n", err)
-			}
-			fmt.Println("Task cancelled.")
-			fmt.Println()
-
-		default:
-			fmt.Println("Unknown choice. Task saved but not executed.")
-			fmt.Println("Resume with: /task resume")
-			fmt.Println()
-		}
 	}
 }
 
