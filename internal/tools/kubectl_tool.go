@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -57,8 +58,18 @@ func kubeTargetsFor(ctx context.Context, workingDir, explicitCtx, explicitNS str
 	return t
 }
 
+// kubectlArgv builds the argv from the structured params plus the tokenized args. A structured
+// namespace, context or output that is also spelled out in args (in any of its flag spellings) is
+// refused rather than silently picking one: classify.KubeTargets and kubectl itself do not agree on
+// which of two conflicting flags wins (KubeTargets reports the first match, kubectl applies the
+// last), so target resolution could report a different namespace or context than the one kubectl
+// actually mutates.
 func kubectlArgv(args map[string]any) ([]string, error) {
 	verb, err := required(args, "verb")
+	if err != nil {
+		return nil, err
+	}
+	extra, err := shellwords.Words(argString(args, "args"))
 	if err != nil {
 		return nil, err
 	}
@@ -70,19 +81,40 @@ func kubectlArgv(args map[string]any) ([]string, error) {
 		argv = append(argv, n)
 	}
 	if ns := argString(args, "namespace"); ns != "" {
+		if hasWord(extra, "-n") || hasWord(extra, "--namespace") {
+			return nil, fmt.Errorf("namespace is given both as a parameter and in args; use one")
+		}
 		argv = append(argv, "-n", ns)
 	}
 	if c := argString(args, "context"); c != "" {
+		if hasWord(extra, "--context") {
+			return nil, fmt.Errorf("context is given both as a parameter and in args; use one")
+		}
 		argv = append(argv, "--context", c)
 	}
 	if o := argString(args, "output"); o != "" {
+		if hasWord(extra, "-o") || hasWord(extra, "--output") {
+			return nil, fmt.Errorf("output is given both as a parameter and in args; use one")
+		}
 		argv = append(argv, "-o", o)
 	}
-	extra, err := shellwords.Words(argString(args, "args"))
-	if err != nil {
-		return nil, err
-	}
 	return append(argv, extra...), nil
+}
+
+// dropOutputFlag removes a "-o value" pair. kubectl diff, unlike apply, has no output-format flag;
+// passing one through risks kubectl itself exiting 1 for an unrelated reason (an unrecognized flag),
+// which the dry run's exit-status-1-means-differences check below cannot tell apart from real
+// differences, so it must never reach the diff invocation.
+func dropOutputFlag(argv []string) []string {
+	out := make([]string, 0, len(argv))
+	for i := 0; i < len(argv); i++ {
+		if argv[i] == "-o" {
+			i++ // also skip its value
+			continue
+		}
+		out = append(out, argv[i])
+	}
+	return out
 }
 
 // KubectlTool runs kubectl from structured arguments.
@@ -133,9 +165,10 @@ func KubectlTool() *Tool {
 			}
 			ctx, cancel := withTimeout(ctx, kubectlTimeout)
 			defer cancel()
-			out, err := runCommand(ctx, workingDir, "kubectl", append([]string{"diff"}, argv[1:]...)...)
-			if err != nil && strings.Contains(err.Error(), "exited with status 1") {
-				// kubectl diff exits 1 when there are differences
+			diffArgv := append([]string{"diff"}, dropOutputFlag(argv[1:])...)
+			out, err := runCommand(ctx, workingDir, "kubectl", diffArgv...)
+			if err != nil && strings.HasPrefix(err.Error(), "kubectl exited with status 1\n") {
+				// kubectl diff exits 1 when there are differences; any other status is a real failure
 				return strings.TrimSpace(strings.SplitN(err.Error(), "\n", 2)[1]), nil
 			}
 			if err != nil {
