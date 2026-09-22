@@ -26,9 +26,9 @@ func ServerContextAdvice(serverCtx, systemTokens, toolTokens, configuredMax int,
 	need := systemTokens + toolTokens + serverContextHeadroom
 	if serverCtx < need {
 		return fmt.Sprintf(
-			"Ollama runs this model with a %d-token context, but the system prompt and tool schemas need about %d. "+
-				"Tool definitions will be cut off. Fix: start Ollama with OLLAMA_CONTEXT_LENGTH=32768 "+
-				"(or raise Context length in the Ollama app settings) and restart it.",
+			"Ollama loaded this model with a %d-token context, but the system prompt and tool schemas need about "+
+				"%d. Tool definitions will be cut off. Raise context.window in config.yaml so taracode requests a "+
+				"bigger window (OLLAMA_CONTEXT_LENGTH only matters for servers taracode does not control).",
 			serverCtx, need), true
 	}
 	if threshold <= 0 || threshold > 1 {
