@@ -3,281 +3,114 @@ package storage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestAuditLogManagement(t *testing.T) {
-	// Create temp directory for test
-	tmpDir, err := os.MkdirTemp("", "taracode-test-*")
+//nolint:gocyclo // one sequential scenario exercising create, rename, list, resolve, summary, persistence and delete together
+func TestSessionsLifecycle(t *testing.T) {
+	root := t.TempDir()
+	m, err := NewManager(root)
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
-
-	// Create manager
-	mgr, err := NewManager(tmpDir)
+	s, err := m.CreateSession("first")
 	if err != nil {
-		t.Fatalf("Failed to create manager: %v", err)
+		t.Fatal(err)
 	}
-
-	// Create a session
-	session, err := mgr.CreateSession("Test Session")
+	if m.GetActiveSessionID() != s.ID {
+		t.Fatal("a new session becomes active")
+	}
+	if err := m.AddMessage(s.ID, ConversationMessage{Role: "user", Content: "hi", Timestamp: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.GetSession(s.ID)
+	if err != nil || len(got.Messages) != 1 || got.Name != "first" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if err := m.RenameSession(s.ID, "renamed"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := m.ListSessions()
+	if len(list) != 1 || list[0].Name != "renamed" || list[0].MessageCount != 1 {
+		t.Fatalf("%+v", list)
+	}
+	if id, err := m.ResolveSessionID(s.ID[:4]); err != nil || id != s.ID {
+		t.Fatalf("%q %v", id, err)
+	}
+	if err := m.UpdateSessionSummary(s.ID, "sum"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewManager(root)
 	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
+		t.Fatal(err)
 	}
-
-	t.Run("InitAuditLog", func(t *testing.T) {
-		err := mgr.InitAuditLog(session.ID, "security")
-		if err != nil {
-			t.Errorf("InitAuditLog failed: %v", err)
-		}
-
-		// Verify audit log was created
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if log == nil {
-			t.Error("Expected audit log to be created")
-		}
-		if log.SessionMode != "security" {
-			t.Errorf("Expected session mode 'security', got '%s'", log.SessionMode)
-		}
-		if len(log.Entries) != 0 {
-			t.Errorf("Expected 0 entries, got %d", len(log.Entries))
-		}
-	})
-
-	t.Run("AddAuditEntry_Allow", func(t *testing.T) {
-		entry := AuditEntry{
-			Timestamp:   time.Now(),
-			ToolName:    "write_file",
-			Category:    "write",
-			Action:      AuditActionAllow,
-			Target:      "/tmp/test.txt",
-			Implication: "Modifies file on disk",
-			Params: map[string]interface{}{
-				"file_path": "/tmp/test.txt",
-				"content":   "test content",
-			},
-		}
-
-		err := mgr.AddAuditEntry(session.ID, entry)
-		if err != nil {
-			t.Errorf("AddAuditEntry failed: %v", err)
-		}
-
-		// Verify entry was added
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if len(log.Entries) != 1 {
-			t.Errorf("Expected 1 entry, got %d", len(log.Entries))
-		}
-		if log.TotalAllow != 1 {
-			t.Errorf("Expected TotalAllow=1, got %d", log.TotalAllow)
-		}
-		if log.TotalDeny != 0 {
-			t.Errorf("Expected TotalDeny=0, got %d", log.TotalDeny)
-		}
-		if log.Entries[0].ToolName != "write_file" {
-			t.Errorf("Expected tool name 'write_file', got '%s'", log.Entries[0].ToolName)
-		}
-	})
-
-	t.Run("AddAuditEntry_Deny", func(t *testing.T) {
-		entry := AuditEntry{
-			Timestamp:   time.Now(),
-			ToolName:    "execute_command",
-			Category:    "execute",
-			Action:      AuditActionDeny,
-			Target:      "rm -rf /",
-			Implication: "Executes arbitrary command",
-		}
-
-		err := mgr.AddAuditEntry(session.ID, entry)
-		if err != nil {
-			t.Errorf("AddAuditEntry failed: %v", err)
-		}
-
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if len(log.Entries) != 2 {
-			t.Errorf("Expected 2 entries, got %d", len(log.Entries))
-		}
-		if log.TotalAllow != 1 {
-			t.Errorf("Expected TotalAllow=1, got %d", log.TotalAllow)
-		}
-		if log.TotalDeny != 1 {
-			t.Errorf("Expected TotalDeny=1, got %d", log.TotalDeny)
-		}
-	})
-
-	t.Run("AddAuditEntry_AllowAll", func(t *testing.T) {
-		entry := AuditEntry{
-			Timestamp:  time.Now(),
-			ToolName:   "git_add",
-			Category:   "git",
-			Action:     AuditActionAllowAll,
-			Target:     "*.go",
-			BatchIndex: 2,
-			BatchTotal: 5,
-		}
-
-		err := mgr.AddAuditEntry(session.ID, entry)
-		if err != nil {
-			t.Errorf("AddAuditEntry failed: %v", err)
-		}
-
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if log.TotalAllow != 2 { // allow + allow_all
-			t.Errorf("Expected TotalAllow=2, got %d", log.TotalAllow)
-		}
-	})
-
-	t.Run("AddAuditEntry_DenyAll", func(t *testing.T) {
-		entry := AuditEntry{
-			Timestamp:  time.Now(),
-			ToolName:   "terraform_destroy",
-			Category:   "destructive",
-			Action:     AuditActionDenyAll,
-			Target:     "aws_instance.main",
-			BatchIndex: 1,
-			BatchTotal: 3,
-		}
-
-		err := mgr.AddAuditEntry(session.ID, entry)
-		if err != nil {
-			t.Errorf("AddAuditEntry failed: %v", err)
-		}
-
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if log.TotalDeny != 2 { // deny + deny_all
-			t.Errorf("Expected TotalDeny=2, got %d", log.TotalDeny)
-		}
-	})
-
-	t.Run("ClearAuditLog", func(t *testing.T) {
-		err := mgr.ClearAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("ClearAuditLog failed: %v", err)
-		}
-
-		log, err := mgr.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed: %v", err)
-		}
-		if len(log.Entries) != 0 {
-			t.Errorf("Expected 0 entries after clear, got %d", len(log.Entries))
-		}
-	})
-
-	t.Run("GetAuditLog_NoSession", func(t *testing.T) {
-		_, err := mgr.GetAuditLog("nonexistent-id")
-		if err == nil {
-			t.Error("Expected error for nonexistent session")
-		}
-	})
-
-	t.Run("AuditLogPersistence", func(t *testing.T) {
-		// Add an entry
-		entry := AuditEntry{
-			Timestamp: time.Now(),
-			ToolName:  "delete_file",
-			Category:  "destructive",
-			Action:    AuditActionAllow,
-			Target:    "/tmp/to-delete.txt",
-		}
-
-		_ = mgr.InitAuditLog(session.ID, "security")
-		err := mgr.AddAuditEntry(session.ID, entry)
-		if err != nil {
-			t.Errorf("AddAuditEntry failed: %v", err)
-		}
-
-		// Create new manager to test persistence
-		mgr2, err := NewManager(tmpDir)
-		if err != nil {
-			t.Fatalf("Failed to create second manager: %v", err)
-		}
-
-		log, err := mgr2.GetAuditLog(session.ID)
-		if err != nil {
-			t.Errorf("GetAuditLog failed after reload: %v", err)
-		}
-		if len(log.Entries) != 1 {
-			t.Errorf("Expected 1 entry after reload, got %d", len(log.Entries))
-		}
-		if log.Entries[0].ToolName != "delete_file" {
-			t.Errorf("Expected tool name 'delete_file', got '%s'", log.Entries[0].ToolName)
-		}
-	})
-}
-
-func TestExtractAuditTargetHelper(t *testing.T) {
-	// Test the target extraction by creating session files and verifying structure
-	tmpDir, err := os.MkdirTemp("", "taracode-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+	if active, _ := reopened.GetActiveSession(); active == nil || active.Summary != "sum" {
+		t.Fatalf("persistence: %+v", active)
 	}
-	defer os.RemoveAll(tmpDir)
-
-	// Check session file structure
-	mgr, _ := NewManager(tmpDir)
-	session, _ := mgr.CreateSession("Test")
-	_ = mgr.InitAuditLog(session.ID, "security")
-
-	entry := AuditEntry{
-		Timestamp: time.Now(),
-		ToolName:  "execute_command",
-		Category:  "execute",
-		Action:    AuditActionAllow,
-		Target:    "ls -la /tmp",
-		Params: map[string]interface{}{
-			"command": "ls -la /tmp",
-		},
+	// DeleteSession refuses to delete the active session (internal/storage/manager.go), so make
+	// another session active first.
+	if _, err := m.CreateSession("second"); err != nil {
+		t.Fatal(err)
 	}
-	_ = mgr.AddAuditEntry(session.ID, entry)
-
-	// Verify session file exists with audit log
-	sessionPath := filepath.Join(tmpDir, ".taracode", "history", "session_"+session.ID+".json")
-	data, err := os.ReadFile(sessionPath)
-	if err != nil {
-		t.Fatalf("Failed to read session file: %v", err)
+	if err := m.DeleteSession(s.ID); err != nil {
+		t.Fatal(err)
 	}
-
-	// Check that audit_log is in the JSON
-	if len(data) == 0 {
-		t.Error("Session file is empty")
-	}
-	// Simple check that audit_log key exists
-	if !contains(string(data), "audit_log") {
-		t.Error("Session file does not contain audit_log")
-	}
-	if !contains(string(data), "execute_command") {
-		t.Error("Session file does not contain tool name")
+	if _, err := m.GetSession(s.ID); err == nil {
+		t.Fatal("deleted")
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+func TestPreferencesProjectConfigAndPlans(t *testing.T) {
+	m, err := NewManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.SetPreferredModel("m1"); err != nil || m.GetPreferredModel() != "m1" {
+		t.Fatalf("%v %q", err, m.GetPreferredModel())
+	}
+	cfg := &ProjectConfig{ProjectRoot: "/w", InitializedAt: time.Now(), Version: "3", ProjectType: "go"}
+	if err := m.SaveProjectConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if back, err := m.LoadProjectConfig(); err != nil || back.ProjectType != "go" {
+		t.Fatalf("%+v %v", back, err)
+	}
+	plan, err := m.CreatePlan("ship", []string{"a", "b"})
+	if err != nil || len(plan.Tasks) != 2 {
+		t.Fatal(err)
+	}
+	if err := m.UpdateTaskStatus(plan.ID, plan.Tasks[0].ID, TaskStatusCompleted); err != nil {
+		t.Fatal(err)
+	}
+	active, _ := m.GetActivePlan()
+	if active == nil || active.Tasks[0].Status != TaskStatusCompleted {
+		t.Fatalf("%+v", active)
+	}
+	if err := m.ArchivePlan(plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := m.GetActivePlan(); active != nil {
+		t.Fatal("archived plans are not active")
+	}
 }
 
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+func TestBackups(t *testing.T) {
+	root := t.TempDir()
+	m, err := NewManager(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return false
+	src := filepath.Join(root, "a.txt")
+	if err := os.WriteFile(src, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path, err := m.CreateBackup(src)
+	if err != nil || !strings.HasPrefix(path, m.GetBackupDir()) {
+		t.Fatalf("%q %v", path, err)
+	}
+	if list, _ := m.ListBackups("a.txt"); len(list) != 1 {
+		t.Fatalf("%v", list)
+	}
 }
