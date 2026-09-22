@@ -91,11 +91,15 @@ func (r *Redactor) Redact(s string) string {
 	}
 	for _, p := range r.patterns {
 		s = p.re.ReplaceAllStringFunc(s, func(match string) string {
-			r.count.Add(1)
 			if !p.keep {
+				r.count.Add(1)
 				return "[redacted:" + p.kind + "]"
 			}
 			groups := p.re.FindStringSubmatch(match)
+			if strings.HasPrefix(groups[2], "[redacted:") {
+				return match // already redacted by an earlier, more specific pattern
+			}
+			r.count.Add(1)
 			suffix := ""
 			if len(groups) > 3 {
 				suffix = groups[3]
