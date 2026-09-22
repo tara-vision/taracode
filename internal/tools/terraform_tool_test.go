@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,10 @@ import (
 
 const fakeTerraform = `#!/bin/sh
 if [ "$1" = "show" ]; then
+  if [ "$TARACODE_TEST_SHOW_FAIL" = "1" ]; then
+    echo "terraform show failed" >&2
+    exit 1
+  fi
   echo '{"format_version":"1.2","terraform_version":"1.9.5","resource_changes":[{"address":"aws_instance.web","type":"aws_instance","change":{"actions":["create"]}}]}'
   exit 0
 fi
@@ -52,5 +58,32 @@ func TestTerraformPlanThenApplyUsesTheSessionPlanFile(t *testing.T) {
 	out, err = tool.Run(context.Background(), map[string]any{"command": "state", "args": "list"}, dir)
 	if err != nil || !strings.Contains(out, "terraform state list") {
 		t.Fatalf("%q %v", out, err)
+	}
+}
+
+func TestTerraformPlanRemovesTheFileWhenShowFails(t *testing.T) {
+	fakeBin(t, "terraform", fakeTerraform)
+	t.Setenv("TARACODE_TEST_SHOW_FAIL", "1")
+	pattern := filepath.Join(os.TempDir(), "taracode-*.tfplan")
+	before, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existed := map[string]bool{}
+	for _, p := range before {
+		existed[p] = true
+	}
+	tool := TerraformTool()
+	if _, err := tool.Run(context.Background(), map[string]any{"command": "plan"}, t.TempDir()); err == nil {
+		t.Fatal("plan must error when terraform show fails")
+	}
+	after, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range after {
+		if !existed[p] {
+			t.Fatalf("plan file leaked: %s (before %v, after %v)", p, before, after)
+		}
 	}
 }

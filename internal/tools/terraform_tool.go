@@ -113,9 +113,14 @@ func (st *terraformState) plan(ctx context.Context, dir string, words []string) 
 	}
 	planFile := f.Name()
 	_ = f.Close()
+	stored := false
+	defer func() {
+		if !stored {
+			_ = os.Remove(planFile)
+		}
+	}()
 	argv := append([]string{"plan", "-input=false", "-no-color", "-out=" + planFile}, words...)
 	if out, err := runCommand(ctx, dir, "terraform", argv...); err != nil {
-		_ = os.Remove(planFile)
 		return out, err
 	}
 	raw, err := runCommand(ctx, dir, "terraform", "show", "-json", planFile)
@@ -132,6 +137,7 @@ func (st *terraformState) plan(ctx context.Context, dir string, words []string) 
 		_ = os.Remove(old.file)
 	}
 	st.plans[dir] = planRecord{file: planFile, summary: text, at: time.Now()}
+	stored = true
 	st.mu.Unlock()
 	return text + "\nThe plan is saved for terraform apply in this session.", nil
 }
