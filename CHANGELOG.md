@@ -37,12 +37,27 @@ API instead of an OpenAI-compatible shim, and gets a model registry to recommend
 
 ### Changed
 
+- **Breaking: the tools-capability gate** - on Ollama, `assistant.New` and `SwitchModel` now refuse a
+  model whose `/api/show` capabilities do not include `tools`, instead of falling back to
+  JSON-in-content tool calls as v2 did; run `taracode doctor` to see which installed models qualify.
+  The JSON-in-content fallback now only serves vLLM and llama.cpp.
 - The assistant package was split from one large file into focused files by responsibility (loop,
   prompt, planning, tool calls, compaction, context, session, security, project init, context window).
 - Agent and orchestrator model defaults (`internal/agent`, `internal/orchestrator`, `cmd/hosts_cmd.go`,
   `cmd/repl.go`, `internal/ui`) now come from the model registry instead of hard-coded literals; a
   repo-wide test guards against new model-name literals outside the registry and tests.
 - `CompactConversation` takes an `llm.Client` instead of a raw `*openai.Client`.
+- The `/api/ps` server-context check moved into the `llm` client layer; `ollama_ps.go` is removed.
+- Streamed answers are buffered behind the spinner and rendered once with glamour markdown when the
+  reply completes, instead of printed as raw deltas; reasoning is still shown live, dimmed.
+- The Go Report Card badge in README.md is replaced by a CI status badge; goreportcard.com was sunset.
+
+### Fixed
+
+- A tool call blocked by a permission, security-audit or edit-preview gate no longer prints a success
+  status line underneath the refusal.
+- Declining an edit preview now sends the cancellation back to the model as the tool result, instead of
+  the v2 dead store that dropped it.
 
 ### Removed
 
@@ -292,7 +307,7 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v2.0.3...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.1...HEAD
 
 [3.0.0-alpha.1]: https://github.com/tara-vision/taracode/compare/v2.1.0...v3.0.0-alpha.1
 

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=for-the-badge&logo=github&color=blue" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://goreportcard.com/report/github.com/tara-vision/taracode"><img src="https://goreportcard.com/badge/github.com/tara-vision/taracode?style=for-the-badge" alt="Go Report Card"></a>
+  <a href="https://github.com/tara-vision/taracode/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/tara-vision/taracode/ci.yml?branch=main&style=for-the-badge&logo=github&label=CI" alt="CI"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
 </p>
 
@@ -56,10 +56,12 @@ ollama pull qwen3.8:27b    # 32 GB machines (needs Ollama 0.32.12 or newer)
 ollama pull qwen3.6:35b    # 48 GB and up
 ```
 
-Any model that Ollama tags with the `tools` capability works. Ollama's default context window is 4,096 tokens
-on machines with less than 24 GB of GPU memory, which is too small for the tool schemas; start Ollama with
-`OLLAMA_CONTEXT_LENGTH=32768` (or raise Context length in the Ollama app settings). taracode warns you when the
-server's window is too small.
+Any model that Ollama tags with the `tools` capability works. On Ollama, taracode refuses a model without that
+capability at startup or on `/model` instead of falling back to JSON-in-content tool calls (run `taracode doctor`
+to see which installed models qualify). taracode requests its context window itself on every turn (`context.window`,
+default auto = 32,768 tokens, or the model's native maximum when that is smaller) instead of relying on the
+server's default; `OLLAMA_CONTEXT_LENGTH` only matters for servers taracode does not control, such as vLLM and
+llama.cpp.
 
 ### 3. Install taracode
 
