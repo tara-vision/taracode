@@ -9,7 +9,7 @@ import (
 	"github.com/tara-vision/taracode/internal/mcp"
 )
 
-// cmdMCP is the /mcp command: MCP servers and their legacytools.
+// cmdMCP is the /mcp command: MCP servers and their tools.
 func (r *repl) cmdMCP(args []string) {
 	handleMCP(r.mcp, args, r.asst)
 }
@@ -131,7 +131,7 @@ func mcpConnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
 
 	// Get tool count
 	mcpTools := mgr.GetToolsByServer(serverName)
-	fmt.Printf("Connected to %s. Discovered %d legacytools.\n", serverName, len(mcpTools))
+	fmt.Printf("Connected to %s. Discovered %d tools.\n", serverName, len(mcpTools))
 
 	// Register tools with the assistant's tool registry and add tool definitions
 	if registry := asst.GetToolRegistry(); registry != nil {
