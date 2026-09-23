@@ -186,12 +186,17 @@ func TestInvestigateModeRefusesTheC1Holes(t *testing.T) {
 }
 
 // TestAClassifierPanicIsARefusalNotACrash: a classifier that panics must never take the session
-// down; the loop refuses the call, with the panic in the reason, and audits the refusal.
+// down; the loop refuses the call, with the panic in the reason, and audits the refusal with the
+// call's command (pre-tag round H): the command string a shell-like tool was given, or the tool
+// name and its arguments.
 func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
-	a, srv, _ := gateAssistant(t, policy.ModeOperate, toolCall("broken_probe", map[string]any{}),
+	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("broken_probe", map[string]any{"command": "rm -rf build"}),
+		toolCall("broken_probe", map[string]any{"path": "a.txt", "count": 2}),
 		ollamatest.Turn{Content: "ok"})
 	ran := false
 	a.toolRegistry.Register(&tools.Tool{Name: "broken_probe", Description: "probe", ReadForm: true,
+		Params:   []tools.Param{{Name: "command", Type: "string"}, {Name: "path", Type: "string"}, {Name: "count", Type: "integer"}},
 		Classify: func(map[string]any, string) policy.Invocation { panic("index out of range [1] with length 0") },
 		Run:      func(context.Context, map[string]any, string) (string, error) { ran = true; return "ran", nil }})
 	a.refreshTools()
@@ -207,8 +212,14 @@ func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
 		t.Fatalf("the refusal is shown:\n%s", out)
 	}
 	recs, _ := a.storage.ReadAudit("")
-	if len(recs) != 1 || recs[0].Decision != "deny" || recs[0].Rule != "classifier" || recs[0].Classification != "mutate" {
+	if len(recs) != 2 {
 		t.Fatalf("audit %+v", recs)
+	}
+	for i, want := range []string{"rm -rf build", `broken_probe {"count":2,"path":"a.txt"}`} {
+		r := recs[i]
+		if r.Decision != "deny" || r.Rule != "classifier" || r.Classification != "mutate" || r.Command != want {
+			t.Errorf("audit %+v, want the command %q", r, want)
+		}
 	}
 }
 

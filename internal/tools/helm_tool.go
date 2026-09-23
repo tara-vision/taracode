@@ -74,7 +74,9 @@ func HelmTool() *Tool {
 
 // errPostRendererDryRun refuses the dry run of a release with a post-renderer: helm runs the
 // --post-renderer program while rendering, so the dry run itself would run it before the user
-// approves the call. No other helm option runs a program.
+// approves the call. It is the only option in the call's arguments that names a program; a dry run
+// can still run programs the user's own configuration names, such as an exec credential plugin in
+// the kubeconfig or a downloader plugin for a chart URL.
 var errPostRendererDryRun = errors.New("the dry run would run the --post-renderer program before you approve " +
 	"the call; run the upgrade or install without --post-renderer")
 

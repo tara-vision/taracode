@@ -12,7 +12,8 @@ func sedResult(prog string, rest []string) Result {
 	if sedInPlace(rest) {
 		return mutate(prog, "sed -i edits files in place")
 	}
-	if hasGNUFlag(rest, nil, "--file") || shortFlag(rest, "f", "el") {
+	// Only -e ends a cluster: BSD sed's -l takes no value, so the f of -lf is the script file there.
+	if hasGNUFlag(rest, nil, "--file") || shortFlag(rest, "f", "e") {
 		return mutate(prog, "sed -f runs a script file the classifier cannot read")
 	}
 	for _, script := range sedScripts(rest) {
