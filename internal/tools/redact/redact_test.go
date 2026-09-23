@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -69,5 +70,56 @@ func TestCredentialPatternDoesNotReRedactAnAlreadyRedactedValue(t *testing.T) {
 	}
 	if r.Count() != 1 {
 		t.Errorf("count = %d, want 1", r.Count())
+	}
+}
+
+// TestLineWriterRedactsEachLineBeforeItReachesTheScreen: the live shell stream goes through the
+// redactor a line at a time (final review I4), a line split across writes included, and Flush
+// writes the redacted tail. The stream does not count: the tool result the model gets is redacted
+// and counted once.
+func TestLineWriterRedactsEachLineBeforeItReachesTheScreen(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var screen strings.Builder
+	w := NewLineWriter(r, &screen)
+	for _, chunk := range []string{"ok\nkey=AKIAIOSF", "ODNN7EXAMPLE\n", "tail AKIAIOSFODNN7EXAMPLE"} {
+		if n, err := w.Write([]byte(chunk)); err != nil || n != len(chunk) {
+			t.Fatalf("write %q: %d %v", chunk, n, err)
+		}
+	}
+	if got := screen.String(); got != "ok\nkey=[redacted:aws-access-key]\n" {
+		t.Fatalf("complete lines are written redacted, the tail waits: %q", got)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got := screen.String(); got != "ok\nkey=[redacted:aws-access-key]\ntail [redacted:aws-access-key]" {
+		t.Fatalf("flush writes the redacted tail: %q", got)
+	}
+	if err := w.Flush(); err != nil || strings.Count(screen.String(), "tail") != 1 {
+		t.Fatalf("a second flush writes nothing: %q %v", screen.String(), err)
+	}
+	if r.Count() != 0 {
+		t.Fatalf("the live stream must not count redactions: %d", r.Count())
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("screen gone") }
+
+func TestLineWriterReportsTheScreensWriteError(t *testing.T) {
+	r, _ := New(Options{})
+	w := NewLineWriter(r, failingWriter{})
+	if _, err := w.Write([]byte("line\n")); err == nil {
+		t.Fatal("a failed write must be reported")
+	}
+	if _, err := w.Write([]byte("tail")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Flush(); err == nil {
+		t.Fatal("a failed flush must be reported")
 	}
 }

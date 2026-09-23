@@ -30,8 +30,9 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 }
 
 // ShellTool runs a command line with sh -c in the working directory. stream, when set, receives the
-// output live; the result carries the merged output and the exit status. The invocation's targets
-// are the hosts the line names and the files it writes or removes, for the protected targets.
+// output live (NewBuiltinRegistry hands it a redacting one, flushed when the command ends); the
+// result carries the merged output and the exit status. The invocation's targets are the hosts the
+// line names and the files it writes or removes, for the protected targets.
 func ShellTool(stream io.Writer) *Tool {
 	return &Tool{
 		Name: "shell", ReadForm: true,
@@ -71,6 +72,9 @@ func ShellTool(stream io.Writer) *Tool {
 			}
 			cmd.Stdout, cmd.Stderr = w, w
 			runErr := cmd.Run()
+			if f, ok := stream.(interface{ Flush() error }); ok {
+				_ = f.Flush() // the live copy is best effort; the result carries the output
+			}
 			out := strings.TrimRight(buf.String(), "\n")
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return out, fmt.Errorf("command timed out after %s", timeout)

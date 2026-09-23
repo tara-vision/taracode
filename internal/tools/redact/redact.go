@@ -1,5 +1,6 @@
 // Package redact replaces secrets in tool output with [redacted:<kind>] before the text reaches the
-// model, the session log, the history or the screen.
+// model, the session log, the history or the screen; LineWriter does it a line at a time for output
+// shown while a command runs.
 package redact
 
 import (
@@ -82,24 +83,33 @@ func New(opts Options) (*Redactor, error) {
 }
 
 // Redact returns s with every secret replaced and counts the spans it replaced.
-func (r *Redactor) Redact(s string) string {
+func (r *Redactor) Redact(s string) string { return r.redact(s, true) }
+
+// redact replaces every secret in s; count adds the replaced spans to the counter (the live copy of
+// an output a LineWriter shows is not counted, the tool result is).
+func (r *Redactor) redact(s string, count bool) string {
+	add := func(n int64) {
+		if count {
+			r.count.Add(n)
+		}
+	}
 	for _, ev := range r.env {
 		if n := strings.Count(s, ev.value); n > 0 {
 			s = strings.ReplaceAll(s, ev.value, "[redacted:env:"+ev.name+"]")
-			r.count.Add(int64(n))
+			add(int64(n))
 		}
 	}
 	for _, p := range r.patterns {
 		s = p.re.ReplaceAllStringFunc(s, func(match string) string {
 			if !p.keep {
-				r.count.Add(1)
+				add(1)
 				return "[redacted:" + p.kind + "]"
 			}
 			groups := p.re.FindStringSubmatch(match)
 			if strings.HasPrefix(groups[2], "[redacted:") {
 				return match // already redacted by an earlier, more specific pattern
 			}
-			r.count.Add(1)
+			add(1)
 			suffix := ""
 			if len(groups) > 3 {
 				suffix = groups[3]
