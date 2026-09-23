@@ -38,7 +38,9 @@ func DockerTool() *Tool {
 			if err != nil {
 				return "", err
 			}
-			if len(words) > 0 && words[0] == "stats" && !hasWord(words, "--no-stream") {
+			// The verb after any global flags: "docker --context x stats" streams too, so add
+			// --no-stream whenever the verb is stats, or it runs until the command timeout.
+			if classify.Docker(words).Verb == "stats" && !hasWord(words, "--no-stream") {
 				words = append(words, "--no-stream")
 			}
 			ctx, cancel := withTimeout(ctx, dockerTimeout)
