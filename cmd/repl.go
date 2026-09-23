@@ -69,12 +69,14 @@ func (r *repl) handleLine(line string) {
 	r.ask(line, images)
 }
 
-// expandReferences replaces @file references in the line and collects referenced images.
+// expandReferences replaces @file references in the line and collects referenced images. This
+// reads files off disk relative to r.absDir, so it needs no .taracode/ and works the same before
+// and after /init.
 func (r *repl) expandReferences(line *string) ([]*assistant.ImageData, bool) {
 	if !strings.Contains(*line, "@") {
 		return nil, true
 	}
-	expanded, err := expandFileReferencesWithImages(*line, r.projectRoot, r.absDir)
+	expanded, err := expandFileReferencesWithImages(*line, r.absDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return nil, false
