@@ -32,9 +32,12 @@
 
 ## Why taracode?
 
-- **DevOps Expertise** - Specialized in Kubernetes, Terraform, Docker, CI/CD, and cloud platforms
-- **58 Built-in Tools** - DevOps, security scanning, file operations, git, web search
-- **Multi-Agent System** - 7 specialized agents for complex tasks
+- **Investigate-first** - Read-only by default, and never prompts you in that mode
+- **Policy-gated operate mode** - Mutations pass through protected targets, deny patterns and required
+  dry runs before a remembered permission or a prompt decides
+- **Sixteen classified tools** - Every call is classified read or mutate from its arguments, not its name
+- **Redaction and an audit log** - Secrets are stripped from tool output before anything sees it; every
+  mutation is recorded
 - **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
 - **No Account Required** - Open source, just install and use
 
@@ -95,10 +98,11 @@ Download binaries from [GitHub Releases](https://github.com/tara-vision/taracode
 ```bash
 cd your-project
 taracode
-> /init    # Initialize project features
 ```
 
-That's it! Start asking questions about your infrastructure.
+taracode starts in investigate mode right away, no `/init` needed: read-only tools, nothing saved. Run
+`/init` when you want sessions, memory, history and operate mode (it also writes a starter
+`.taracode/policy.yaml`). Start asking questions about your infrastructure.
 
 ## Context window and thinking
 
@@ -130,44 +134,81 @@ OpenAI-compatible path, where only `think low|medium|high` reaches the server (a
 
 ## Features
 
-### Screen Monitoring (`/watch`)
+### Modes and policy
 
-Let the AI watch your screen and catch errors before you do:
+taracode starts in **investigate** mode: only tools with a read form are exposed, and nothing ever prompts
+you. **operate** mode exposes every tool; each mutation goes through the policy, in order:
 
-```bash
-> /watch this          # Capture and analyze all screens now
-> /watch start         # Start continuous monitoring
-> /watch stop          # Stop monitoring
-```
-
-### Multi-Agent System
-
-7 specialized agents work together on complex tasks:
-
-| Agent           | Specialty                                    |
-|-----------------|----------------------------------------------|
-| **Planner**     | Task decomposition and dependency analysis   |
-| **Coder**       | Code generation and editing                  |
-| **Tester**      | Test execution and output analysis           |
-| **Reviewer**    | Code review and quality checks               |
-| **DevOps**      | Infrastructure and deployment operations     |
-| **Security**    | Security scanning and vulnerability analysis |
-| **Diagnostics** | Failure analysis and root cause detection    |
+1. **Protected targets** - kube contexts, namespaces, cloud accounts, paths and hosts named in the policy
+   are a hard deny, with the reason printed.
+2. **Deny patterns** - command globs that are refused outright.
+3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
+   produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first.
+4. **Permission** - the remembered allow/ask/deny rule for the tool, or a prompt.
 
 ```bash
-> /agent list          # List all agents
-> /agent use security  # Route next prompt to specific agent
+> /mode investigate|operate   # show or switch mode (or --mode at startup)
 ```
 
-### Autonomous Task Execution (`/task`)
+The policy comes from `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml` (lists unioned, booleans
+take the stricter value); with neither file, a built-in policy identical to the one below applies. `/init`
+writes this starter:
 
-Plan and execute multi-step tasks with checkpoints:
-
-```bash
-> /task "Add authentication to the API"
-> /task "Deploy to production with blue-green strategy"
-> /task templates      # List built-in templates
+```yaml
+# taracode policy (see: taracode doctor, /policy show).
+# The model never sees this file. .taracode/policy.yaml merges over ~/.taracode/policy.yaml:
+# lists are unioned and booleans take the stricter value. With no policy file at all, taracode
+# uses a built-in policy identical to this one. Patterns are globs (* ? and ** in paths).
+version: 1
+mode: investigate               # the mode a session starts in: investigate or operate
+protected:                      # never mutated in operate mode (hard deny, printed reason)
+  kube_contexts: ["*prod*", "*production*"]
+  kube_namespaces: ["kube-system"]
+  cloud_accounts: []            # AWS account ids, Azure subscription ids, GCP project ids, or *globs*
+  paths: ["**/*.tfstate", ".git/**"]
+  hosts: []
+deny:
+  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*"]
+require_dry_run:                # shown before the permission prompt
+  kubectl_apply: true           # kubectl diff first
+  terraform_apply: true         # a plan from this session, its summary first
+  helm_upgrade: true            # helm --dry-run first (upgrade and install)
+redact:
+  enabled: true                 # secrets in tool output become [redacted:<kind>]
+  extra_patterns: []            # additional Go regular expressions
 ```
+
+`/policy show` prints the effective policy and where it came from. `/permissions` manages the remembered
+per-tool rules (`/permissions allow|deny|ask <tool|all>`, `/permissions reset`). Every mutation, allowed or
+denied, is appended to `.taracode/audit.jsonl` before it runs; `/audit`, `/audit all` and `/audit export json`
+read it.
+
+### Tools
+
+Sixteen tools replace the old 58; every call is classified read or mutate from its arguments, not from the
+tool's name. Investigate mode exposes the tools that have a read form (fourteen, twelve when `offline` is set).
+
+| Tool | Arguments (summary) | Read when | Mutate when |
+|---|---|---|---|
+| `read_file` | path, start_line, end_line | always | never |
+| `list_files` | path, glob, recursive, max | always | never |
+| `search_files` | pattern, path, glob, max | always | never |
+| `write_file` | path, content | never | always |
+| `edit_file` | path, old, new, preview | never | always |
+| `shell` | command, timeout | command matches the read-only allowlist (cat, ls, grep, find, ps, df, du, curl GET, dig, nslookup, jq, yq, git read verbs, kubectl read verbs, terraform read verbs, ...) | otherwise |
+| `git` | args | status, diff, log, show, branch (list), blame | add, commit, stash, checkout, reset, push, merge, rebase |
+| `kubectl` | verb, resource, name, namespace, context, args, output | get, describe, logs, events, top, explain, api-resources, version, diff, dry-run | apply, delete, patch, edit, scale, rollout, exec, cp, drain, cordon |
+| `helm` | args | list, status, get, history, show, template, lint, diff | install, upgrade, rollback, uninstall |
+| `terraform` | command, dir, args | init (with -backend=false), validate, fmt -check, plan (always -json, post-processed), show, state list, output, graph | apply, destroy, import, taint, state mv/rm/push, workspace delete |
+| `docker` | args | ps, images, logs, inspect, stats, compose ps/config/logs | build, run, rm, rmi, exec, compose up/down/restart, push |
+| `cloud` | provider (aws, az, gcloud), args | verbs describe, get, list, ls, show | otherwise |
+| `scan` | scanner (trivy, gitleaks, tfsec, kubesec, dependency), target, severity | always | never |
+| `web_search` | query, max | always (external, disabled by `offline`) | never |
+| `web_fetch` | url | always (external, disabled by `offline`) | never |
+| `get_datetime` | none | always | never |
+
+MCP tools join the same registry: a server that annotates a tool `readOnlyHint: true` gets a read form;
+every other MCP tool is a mutation and stays hidden in investigate mode.
 
 ### Project Memory
 
@@ -179,66 +220,48 @@ Remember project-specific knowledge across sessions:
 > /memory search database
 ```
 
-### DevOps Tools
-
-| Category       | Tools                                                          |
-|----------------|----------------------------------------------------------------|
-| **Kubernetes** | kubectl get/apply/delete/describe/logs/exec, helm list/install |
-| **Terraform**  | init, plan, apply, destroy, output, state                      |
-| **Docker**     | build, ps, logs, compose, exec                                 |
-| **AWS**        | aws cli, ecs, eks operations                                   |
-| **Azure**      | az cli, aks operations                                         |
-| **GCP**        | gcloud cli, gke operations                                     |
-| **Security**   | trivy, gitleaks, SAST, tfsec, kubesec, dependency audit        |
-
-### Security Mode
-
-Full DevSecOps capabilities with audit logging:
-
-```bash
-> /mode security       # Switch to security mode
-
-# Security scanning
-> Scan this image for vulnerabilities: nginx:latest
-> Check for secrets in the current directory
-> Run a SAST scan on the codebase
-```
-
 ## Commands
 
-| Command        | Description                     |
-|----------------|---------------------------------|
-| `/init`        | Initialize project              |
-| `/mode`        | Switch mode (devops, security)  |
-| `/model`       | Switch between models           |
-| `/task`        | Execute multi-step tasks        |
-| `/agent`       | Manage specialized agents       |
-| `/watch`       | Screen monitoring               |
-| `/memory`      | Project memory management       |
-| `/permissions` | Tool permission controls        |
-| `/audit`       | Security audit log              |
-| `/history`     | File operation history          |
-| `/undo`        | Undo file modifications         |
-| `/diff`        | Show session changes            |
-| `/tools`       | List available tools            |
-| `/upgrade`     | Check for and install updates   |
-| `/context`     | Context window budget breakdown |
-| `/compact`     | Force conversation compaction   |
-| `/think`       | Show or set the reasoning mode  |
-| `/doctor`      | Diagnose LLM server and tools   |
-| `/stats`       | Session statistics              |
-| `/hosts`       | Multi-host status (v2.0)        |
-| `/help`        | Show help                       |
+| Command | Description |
+|---|---|
+| `/init` | Initialize the project (creates TARACODE.md and .taracode/) |
+| `/reload` | Reload project context from TARACODE.md |
+| `/status` | Show project and session status |
+| `/session [new [name]\|load <id>\|delete <id>\|rename <id> <name>]` | Show or manage the current session |
+| `/sessions` | List all sessions |
+| `/clear` | Clear the conversation (new session) |
+| `/model` | Switch between available models |
+| `/hosts [check\|reconnect]` | Multi-host status and health |
+| `/think [auto\|off\|on\|low\|medium\|high]` | Show or set the reasoning mode |
+| `/mode [investigate\|operate]` | Show or switch the operating mode |
+| `/permissions [allow\|deny\|ask <tool\|all>\|reset]` | Remembered answers for mutations |
+| `/audit [all\|export json\|clear]` | Mutations recorded in this project |
+| `/policy show` | Effective policy and where it comes from |
+| `/plan` | Show the active plan |
+| `/context` | Context window budget breakdown |
+| `/compact` | Force conversation compaction |
+| `/stats` | Session statistics |
+| `/usage` | Token usage for this session |
+| `/history [n\|all]` | File operation history |
+| `/undo [n\|--dry-run]` | Undo file modifications |
+| `/diff [export]` | Show or export session changes |
+| `/remember <text> [#tag]` | Save a memory about this project |
+| `/memory [search <q>\|delete <id>\|export\|import <file>\|stats\|cleanup\|clear]` | Project memories |
+| `/mcp [connect\|disconnect <name>\|tools]` | MCP servers and their tools |
+| `/tools` | List available tools |
+| `/upgrade [check\|now\|skip\|changelog\|status]` | Check for and install updates |
+| `/doctor` | Diagnose the LLM server and tools |
+| `/help` | Show this help |
 
 ## Configuration
 
 Create `~/.taracode/config.yaml`:
 
 ```yaml
-# Single Host (simple setup)
+# Single host (simple setup)
 host: http://localhost:11434
 
-# Multi-Host Setup (v2.0) - for multiple Ollama servers
+# Multi-host setup - for multiple Ollama servers
 hosts:
   primary:
     url: http://gpu-server:11434
@@ -250,11 +273,18 @@ hosts:
     priority: 2
 default_host: primary
 
-# Model generation options (v2.0.4)
-model:
+# Generation options for the main chat
+generation:
   temperature: 0.7     # Sampling randomness (0.0-2.0)
   top_p: 0.9           # Nucleus sampling threshold (0.0-1.0)
   num_predict: 0       # Max tokens per response (0 = model default)
+
+# Starting mode: investigate or operate (unset starts in investigate, or the mode a policy file names)
+mode: investigate
+
+# Security scanning
+scan:
+  default_severity: ""   # e.g. "HIGH,CRITICAL"
 
 # Search
 search:
@@ -266,15 +296,6 @@ search:
 memory:
   enabled: true
   auto_capture: true
-
-# Per-agent host assignment
-agents:
-  coder:
-    host: primary
-    model: qwen3.8:27b
-  reviewer:
-    host: local
-    model: gemma4:e4b
 ```
 
 See [config.example.yaml](config.example.yaml) for all options.
@@ -289,17 +310,18 @@ See [config.example.yaml](config.example.yaml) for all options.
 
 ## Roadmap
 
-v3 turns taracode into the local-first DevOps operator: read-only investigation by default, policy-gated
-operations, a smaller tool set that fits small context windows, a native Ollama client, a published eval
-scoreboard of local models, and an MCP server plus skills pack. See [ROADMAP.md](ROADMAP.md).
+Phase 2 of the v3 plan (investigate and operate modes, the sixteen classified tools, the policy engine,
+redaction and the audit log) shipped in 3.0.0-alpha.2. Evals are next: a suite of offline DevOps tasks with
+recorded fixtures, `taracode eval`, and a published scoreboard by RAM tier. See [ROADMAP.md](ROADMAP.md).
 
 ## Development
 
 ```bash
-make deps      # Install dependencies
-make build     # Build binary
-make test      # Run tests
-make install   # Install to /usr/local/bin
+make deps           # Install dependencies
+make build          # Build binary
+make test           # Run tests
+make coverage-gate   # Check per-package coverage floors
+make install         # Install to /usr/local/bin
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.

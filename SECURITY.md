@@ -2,10 +2,11 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| 2.1.x   | :white_check_mark: |
-| < 2.1   | :x:                |
+| Version        | Supported                       |
+|----------------|----------------------------------|
+| 3.0.0-alpha.x  | pre-release, latest alpha only   |
+| 2.1.x          | :white_check_mark:               |
+| < 2.1          | :x:                              |
 
 ## Reporting a Vulnerability
 
@@ -68,6 +69,6 @@ sha256sum --ignore-missing -c checksums.txt   # shasum -a 256 -c on macOS
 When using Tara Code:
 
 - Keep your installation updated to the latest version
-- Review commands before execution when using the `execute_command` tool
+- Review commands before execution when using the `shell` tool, and review the policy before switching to operate mode
 - Be cautious with file operations in sensitive directories
 - Ensure your self-hosted LLM servers (Ollama, vLLM, llama.cpp) are properly secured if exposed to a network
