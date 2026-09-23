@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -140,4 +141,29 @@ func TestExecuteAndSetHistoryDoNotRace(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+func TestRegistryDryRunRedactsErrorsAndKeepsErrNoDryRun(t *testing.T) {
+	red, _ := redact.New(redact.Options{})
+	r := NewRegistry(Options{Redactor: red})
+	failing := newTestTool("failing", false, policy.Mutate)
+	failing.DryRun = func(context.Context, map[string]any, string) (string, error) {
+		return "out AKIAIOSFODNN7EXAMPLE", errors.New("failing exited with status 2\ntoken AKIAIOSFODNN7EXAMPLE rejected")
+	}
+	none := newTestTool("none", false, policy.Mutate)
+	none.DryRun = func(context.Context, map[string]any, string) (string, error) { return "", ErrNoDryRun }
+	r.Register(failing)
+	r.Register(none)
+
+	out, err := r.DryRun(context.Background(), "failing", nil, "")
+	if err == nil || strings.Contains(err.Error(), "AKIAIOSFODNN7EXAMPLE") ||
+		!strings.Contains(err.Error(), "exited with status 2\ntoken [redacted:aws-access-key] rejected") {
+		t.Fatalf("the dry run error must be redacted: %v", err)
+	}
+	if out != "out [redacted:aws-access-key]" {
+		t.Fatalf("the dry run output must be redacted: %q", out)
+	}
+	if _, err := r.DryRun(context.Background(), "none", nil, ""); !errors.Is(err, ErrNoDryRun) {
+		t.Fatalf("a tool's ErrNoDryRun must survive the redaction: %v", err)
+	}
 }

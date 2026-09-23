@@ -63,14 +63,8 @@ func (a *Assistant) gateMutation(inv policy.Invocation, call *ToolCall) (toolOut
 		return toolOutcome{result: message, denied: true}, false
 	case policy.Ask:
 		choice := a.confirmPermission(inv, call.Params)
-		if choice.Remember && a.permissions != nil {
-			perm := policy.Deny
-			if choice.Allowed {
-				perm = policy.Allow
-			}
-			if err := a.permissions.Set(call.Tool, perm); err == nil {
-				ui.DisplayPermissionSaved(call.Tool, string(perm))
-			}
+		if choice.Remember {
+			a.rememberPermission(call.Tool, choice.Allowed)
 		}
 		if !choice.Allowed {
 			a.audit(inv, "deny", "user", "denied at the prompt", verdict.DryRun != "")
@@ -88,10 +82,33 @@ func (a *Assistant) permissionFor(tool string) policy.Permission {
 	return a.permissions.For(tool)
 }
 
-// audit writes the record for a mutate-classified call before it runs; a write failure is shown,
-// never hidden, and does not stop the call.
+// rememberPermission saves an "always" answer for the tool. A missing store or a failed save is
+// reported, never silent: without a store nothing is remembered, and a store that cannot be
+// written keeps the rule for this session only.
+func (a *Assistant) rememberPermission(tool string, allowed bool) {
+	perm := policy.Deny
+	if allowed {
+		perm = policy.Allow
+	}
+	if a.permissions == nil {
+		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+			"The %s answer for %s is not remembered: no permission store (run /init)", perm, tool)))
+		return
+	}
+	if err := a.permissions.Set(tool, perm); err != nil {
+		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+			"Could not save the %s rule for %s (it applies until you exit): %v", perm, tool, err)))
+		return
+	}
+	ui.DisplayPermissionSaved(tool, string(perm))
+}
+
+// audit writes the record for a mutate-classified call before it runs; a missing log or a write
+// failure is shown, never hidden, and does not stop the call.
 func (a *Assistant) audit(inv policy.Invocation, decision, rule, reason string, dryRun bool) {
 	if a.storage == nil {
+		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+			"Audit log unavailable (no project storage): the %s decision for %s was not recorded", decision, inv.Tool)))
 		return
 	}
 	sessionID := ""

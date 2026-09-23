@@ -161,3 +161,101 @@ func TestToolOutputIsRedactedBeforeTheModelSeesIt(t *testing.T) {
 		t.Fatalf("redactions %d", a.Redactions())
 	}
 }
+
+func TestFailedDryRunIsRedactedBeforeTheModelAndTheAuditLog(t *testing.T) {
+	fakeKubectl := "#!/bin/sh\nif [ \"$1\" = diff ]; then echo 'error: token AKIAIOSFODNN7EXAMPLE rejected'; exit 2; fi\nif [ \"$1 $2\" = 'config current-context' ]; then echo dev; exit 0; fi\nif [ \"$1 $2\" = 'config view' ]; then echo apps; exit 0; fi\necho \"kubectl $@\"\n"
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "kubectl"), []byte(fakeKubectl), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("kubectl", map[string]any{"verb": "apply", "args": "-f x.yaml"}), ollamatest.Turn{Content: "ok"})
+	out := captureStdout(t, func() { _ = a.ProcessMessage("apply") })
+	msg := messageContent(t, lastChatBody(t, srv), 0)
+	if !strings.Contains(msg, "Dry run (kubectl_apply) failed") || strings.Contains(msg, "AKIAIOSFODNN7EXAMPLE") ||
+		!strings.Contains(msg, "[redacted:aws-access-key]") {
+		t.Fatalf("tool message %q", msg)
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 1 || recs[0].Rule != "dry_run" || recs[0].Decision != "deny" || !recs[0].DryRun {
+		t.Fatalf("audit %+v", recs)
+	}
+	raw, err := os.ReadFile(a.storage.AuditPath())
+	if err != nil || strings.Contains(string(raw), "AKIAIOSFODNN7EXAMPLE") || !strings.Contains(string(raw), "[redacted:aws-access-key]") {
+		t.Fatalf("the audit log on disk must hold the redacted reason: %s %v", raw, err)
+	}
+	if strings.Contains(out, "AKIAIOSFODNN7EXAMPLE") {
+		t.Fatalf("the secret reached the screen:\n%s", out)
+	}
+}
+
+func TestRememberedAnswerThatCannotBeSavedWarns(t *testing.T) {
+	a, _, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}),
+		toolCall("write_file", map[string]any{"path": "b.txt", "content": "2"}), ollamatest.Turn{Content: "ok"})
+	storeDir := t.TempDir()
+	perms, _, err := policy.LoadPermissions(filepath.Join(storeDir, "sub", "permissions.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A regular file where the store's directory must go makes every save fail.
+	if err := os.WriteFile(filepath.Join(storeDir, "sub"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.permissions = perms
+	asked := 0
+	a.confirmPermission = func(policy.Invocation, map[string]any) ui.PermissionChoice {
+		asked++
+		return ui.PermissionChoice{Allowed: true, Remember: true}
+	}
+	out := captureStdout(t, func() { _ = a.ProcessMessage("go") })
+	if !strings.Contains(out, "Could not save the allow rule for write_file") || strings.Contains(out, "Saved: write_file") {
+		t.Fatalf("a failed save must warn, not claim success:\n%s", out)
+	}
+	if asked != 1 || a.permissions.For("write_file") != policy.Allow {
+		t.Fatalf("the answer still applies for this session: asked %d, rule %q", asked, a.permissions.For("write_file"))
+	}
+}
+
+func TestRememberWithoutAPermissionStoreWarns(t *testing.T) {
+	a, _, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}), ollamatest.Turn{Content: "ok"})
+	a.permissions = nil
+	a.confirmPermission = func(policy.Invocation, map[string]any) ui.PermissionChoice {
+		return ui.PermissionChoice{Allowed: true, Remember: true}
+	}
+	out := captureStdout(t, func() { _ = a.ProcessMessage("go") })
+	if !strings.Contains(out, "not remembered") || !strings.Contains(out, "no permission store") {
+		t.Fatalf("remember without a store must warn:\n%s", out)
+	}
+}
+
+func TestPolicyModeGoesThroughSetMode(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
+	a.pol.Mode = policy.ModeOperate
+	out := captureStdout(t, a.applyPolicyMode)
+	if a.Mode() != policy.ModeInvestigate || !strings.Contains(out, "operate mode needs an initialised project") {
+		t.Fatalf("operate from the policy without storage must be refused with a warning: %q\n%s", a.Mode(), out)
+	}
+	st, err := storage.NewManager(a.workingDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.storage = st
+	a.applyPolicyMode()
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 {
+		t.Fatalf("operate from the policy with storage: %q, %d tools", a.Mode(), len(a.toolDefs))
+	}
+}
+
+func TestAuditWithoutStorageWarns(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{
+		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), {Content: "ok"},
+	}
+	out := captureStdout(t, func() { _ = a.ProcessMessage("write") })
+	if !strings.Contains(out, "Audit log unavailable") || !strings.Contains(out, "write_file") {
+		t.Fatalf("a mutation that cannot be audited must say so:\n%s", out)
+	}
+}

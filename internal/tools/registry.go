@@ -190,7 +190,8 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]any
 	return out, err
 }
 
-// DryRun runs the tool's dry run when it has one.
+// DryRun runs the tool's dry run when it has one. The output and the error are redacted like
+// Execute's (a failing command's error carries its output); ErrNoDryRun passes through unchanged.
 func (r *Registry) DryRun(ctx context.Context, name string, args map[string]any, workingDir string) (string, error) {
 	t, ok := r.Get(name)
 	if !ok {
@@ -200,6 +201,9 @@ func (r *Registry) DryRun(ctx context.Context, name string, args map[string]any,
 		return "", ErrNoDryRun
 	}
 	out, err := t.DryRun(ctx, args, workingDir)
+	if err != nil && !errors.Is(err, ErrNoDryRun) {
+		err = errors.New(r.redact(err.Error()))
+	}
 	return r.redact(out), err
 }
 
