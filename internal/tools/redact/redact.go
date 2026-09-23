@@ -37,17 +37,20 @@ type envValue struct {
 // (password, token, api key, and similar); only the value becomes [redacted:credential], the label
 // and separator are kept. A trailing quote, if the value was quoted, is consumed and dropped.
 var credentialValue = regexp.MustCompile(`(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|` +
-	`access[_-]?key|auth[_-]?token|client[_-]?secret)\s*[=:]\s*["']?)([^\s"',;]{4,})["']?`)
+	`access[_-]?key|auth[_-]?token|client[_-]?secret|(?:client-)?key-data)\s*[=:]\s*["']?)([^\s"',;]{4,})["']?`)
 
 var builtin = []pattern{
 	{
 		kind: "private-key",
 		re:   regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`),
 	},
+	// base64 PEM, as kubectl config view --raw prints client-key-data and the certificates
+	{kind: "pem-base64", re: regexp.MustCompile(`\bLS0tLS1CRUdJTi[A-Za-z0-9+/=]{40,}`)},
 	{kind: "aws-access-key", re: regexp.MustCompile(`\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`)},
 	{kind: "gcp-api-key", re: regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35,45}\b`)},
+	{kind: "gcp-oauth-token", re: regexp.MustCompile(`\bya29\.[A-Za-z0-9_-]{20,}`)},
 	{kind: "github-token", re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b`)},
-	{kind: "slack-token", re: regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`)},
+	{kind: "slack-token", re: regexp.MustCompile(`\b(?:xox[abprs]|xapp)-[A-Za-z0-9-]{10,}\b`)},
 	{kind: "jwt", re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)},
 	{kind: "azure-key", keep: true, re: regexp.MustCompile(`(AccountKey=)([A-Za-z0-9+/]{86,88}={0,2})`)},
 	{kind: "azure-sas", keep: true, re: regexp.MustCompile(`([?&]sig=)([A-Za-z0-9%+/=]{20,})`)},

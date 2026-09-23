@@ -73,6 +73,33 @@ func TestCredentialPatternDoesNotReRedactAnAlreadyRedactedValue(t *testing.T) {
 	}
 }
 
+// TestPatternsForKubeconfigGCPOAuthAndSlackAppTokens covers the final review's I6 gaps: base64 PEM
+// as kubectl config view --raw prints it, the *-key-data labels, GCP OAuth access tokens and Slack
+// app-level tokens.
+func TestPatternsForKubeconfigGCPOAuthAndSlackAppTokens(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem := "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBdGVzdA=="
+	cases := []struct{ in, want string }{
+		{"    client-key-data: " + pem, "    client-key-data: [redacted:pem-base64]"},
+		{"certificate-authority-data: " + pem, "certificate-authority-data: [redacted:pem-base64]"},
+		{"client-key-data: c2hvcnQtYnV0LXNlY3JldA", "client-key-data: [redacted:credential]"},
+		{"key-data=c2hvcnQtYnV0LXNlY3JldA", "key-data=[redacted:credential]"},
+		{"token ya29.a0AfH6SMBx-3kQ_Zp9example_token_value ok", "token [redacted:gcp-oauth-token] ok"},
+		{"Authorization: Bearer ya29.a0AfH6SMBx3kQZp9exampletoken", "Authorization: Bearer [redacted:gcp-oauth-token]"},
+		{"xapp-1-A0123456789-1234567890123-abcdef0123456789abcdef", "[redacted:slack-token]"},
+		{"ya29.short", "ya29.short"},
+		{"LS0tLS1CRUdJTi", "LS0tLS1CRUdJTi"},
+	}
+	for _, c := range cases {
+		if got := r.Redact(c.in); got != c.want {
+			t.Errorf("Redact(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+}
+
 // TestLineWriterRedactsEachLineBeforeItReachesTheScreen: the live shell stream goes through the
 // redactor a line at a time (final review I4), a line split across writes included, and Flush
 // writes the redacted tail. The stream does not count: the tool result the model gets is redacted
