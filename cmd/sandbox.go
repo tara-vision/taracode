@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // SandboxedPath validates that a target path stays within the project root.
@@ -150,13 +152,13 @@ func FormatPromptWithContext(relDir string, usedTokens, maxTokens int) string {
 }
 
 // FormatPromptWithMode creates the REPL prompt with directory, context budget, and mode indicator.
-// When in security mode, adds a shield icon to the prompt.
-func FormatPromptWithMode(relDir string, usedTokens, maxTokens int, securityMode bool) string {
+// In operate mode the prompt starts with [operate].
+func FormatPromptWithMode(relDir string, usedTokens, maxTokens int, operate bool) string {
 	var parts []string
 
-	// Add security mode indicator first
-	if securityMode {
-		parts = append(parts, "\033[38;5;208m🛡\033[0m") // Orange shield
+	// Add the operate mode indicator first
+	if operate {
+		parts = append(parts, ui.WarningStyle.Render("[operate]"))
 	}
 
 	// Add directory indicator if not at root

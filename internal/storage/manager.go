@@ -105,6 +105,8 @@ func (m *Manager) loadAll() error {
 	return nil
 }
 
+// ============= Session Management =============
+
 // CreateSession creates a new conversation session
 func (m *Manager) CreateSession(name string) (*Session, error) {
 	m.mu.Lock()
@@ -410,104 +412,7 @@ func (m *Manager) saveSessionIndex() error {
 	return os.WriteFile(indexPath, data, 0644)
 }
 
-// InitAuditLog initializes the audit log for a session (security mode only)
-func (m *Manager) InitAuditLog(sessionID string, mode string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	session, err := m.getSessionUnsafe(sessionID)
-	if err != nil {
-		return err
-	}
-
-	// Initialize audit log if not present
-	if session.AuditLog == nil {
-		session.AuditLog = &AuditLog{
-			Entries:     []AuditEntry{},
-			TotalAllow:  0,
-			TotalDeny:   0,
-			SessionMode: mode,
-		}
-		session.UpdatedAt = time.Now()
-		return m.saveSession(session)
-	}
-
-	return nil
-}
-
-// AddAuditEntry adds an audit entry to the session's audit log
-func (m *Manager) AddAuditEntry(sessionID string, entry AuditEntry) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	session, err := m.getSessionUnsafe(sessionID)
-	if err != nil {
-		return err
-	}
-
-	// Initialize audit log if not present
-	if session.AuditLog == nil {
-		session.AuditLog = &AuditLog{
-			Entries:     []AuditEntry{},
-			SessionMode: "security",
-		}
-	}
-
-	// Add entry
-	session.AuditLog.Entries = append(session.AuditLog.Entries, entry)
-
-	// Update counters
-	switch entry.Action {
-	case AuditActionAllow, AuditActionAllowAll:
-		session.AuditLog.TotalAllow++
-	case AuditActionDeny, AuditActionDenyAll:
-		session.AuditLog.TotalDeny++
-	}
-
-	session.UpdatedAt = time.Now()
-	return m.saveSession(session)
-}
-
-// GetAuditLog returns the audit log for a session
-func (m *Manager) GetAuditLog(sessionID string) (*AuditLog, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	session, err := m.getSessionUnsafe(sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	if session.AuditLog == nil {
-		return &AuditLog{
-			Entries:     []AuditEntry{},
-			SessionMode: "",
-		}, nil
-	}
-
-	// Return a copy
-	log := *session.AuditLog
-	entries := make([]AuditEntry, len(session.AuditLog.Entries))
-	copy(entries, session.AuditLog.Entries)
-	log.Entries = entries
-
-	return &log, nil
-}
-
-// ClearAuditLog clears the audit log for a session
-func (m *Manager) ClearAuditLog(sessionID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	session, err := m.getSessionUnsafe(sessionID)
-	if err != nil {
-		return err
-	}
-
-	session.AuditLog = nil
-	session.UpdatedAt = time.Now()
-	return m.saveSession(session)
-}
+// ============= Context Management =============
 
 // SaveProjectContext saves the project context to disk
 func (m *Manager) SaveProjectContext(ctx *context.ProjectContext) error {
@@ -556,6 +461,8 @@ func (m *Manager) SaveFileSummary(path string, analysis *context.FileAnalysis) e
 	}
 	return os.WriteFile(summaryPath, data, 0644)
 }
+
+// ============= State Management =============
 
 // GetCurrentState returns the current runtime state
 func (m *Manager) GetCurrentState() *CurrentState {
@@ -637,6 +544,8 @@ func (m *Manager) SetPreferredModel(model string) error {
 	}
 	return os.WriteFile(prefsPath, data, 0644)
 }
+
+// ============= Project Config Management =============
 
 // SaveProjectConfig saves the project configuration to .taracode/project.json
 func (m *Manager) SaveProjectConfig(config *ProjectConfig) error {

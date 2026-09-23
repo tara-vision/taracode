@@ -74,7 +74,7 @@ func TestLoadSessionRebuildsToolCallRoundTrip(t *testing.T) {
 	id := a.session.ID
 
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "The file says hello from disk."},
 	}
 	if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
@@ -113,7 +113,7 @@ func TestTurnRecordsUserAssistantAndToolMessages(t *testing.T) {
 	}
 	a.storage, a.session = store, session
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "It says hello from disk."},
 	}
 

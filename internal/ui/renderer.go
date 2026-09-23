@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/provider"
@@ -45,88 +47,13 @@ func NewRendererWithConfig(config *Config) *Renderer {
 }
 
 // WelcomeMessage returns the styled welcome banner
-func (r *Renderer) WelcomeMessage(mode storage.OperatingMode) string {
+func (r *Renderer) WelcomeMessage() string {
 	var sb strings.Builder
-
-	if mode == storage.ModeSecurity {
-		// Security mode gets a prominent banner
-		sb.WriteString(r.SecurityModeBanner())
-	} else {
-		// Standard DevOps mode
-		title := TitleStyle.Render(IconCloud + " Tara Code")
-		subtitle := Subtle.Render("DevOps & Cloud AI Assistant")
-		sb.WriteString(fmt.Sprintf("%s - %s\n", title, subtitle))
-		sb.WriteString(Subtle.Render("Type '/help' for commands, 'exit' to quit"))
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
-}
-
-// SecurityModeBanner returns a prominent security mode banner
-func (r *Renderer) SecurityModeBanner() string {
-	var sb strings.Builder
-
-	// Build banner content
-	var content strings.Builder
-
-	// Title line with shield icons
-	title := SecurityModeTitle.Render(IconShield + " SECURITY MODE " + IconShield)
-	content.WriteString(title + "\n")
-
-	// Subtitle
-	subtitle := SecurityModeSubtitle.Render("DevSecOps Assistant - Audit-First Protection")
-	content.WriteString(subtitle + "\n\n")
-
-	// Feature bullets
-	bullets := []string{
-		IconLock + " All write/execute operations require confirmation",
-		IconShield + " Audit log tracks all security decisions",
-		IconDanger + " Destructive operations highlighted with risk level",
-	}
-
-	for _, bullet := range bullets {
-		content.WriteString(SecurityModeBullet.Render(bullet) + "\n")
-	}
-
-	content.WriteString("\n")
-	content.WriteString(Subtle.Render("Type '/help' for commands, '/audit' to view audit log"))
-
-	// Wrap in banner box
-	sb.WriteString(SecurityModeBannerBox.Render(content.String()))
+	title := TitleStyle.Render(IconCloud + " Tara Code")
+	subtitle := Subtle.Render("DevOps & Cloud AI Assistant")
+	fmt.Fprintf(&sb, "%s - %s\n", title, subtitle)
+	sb.WriteString(Subtle.Render("Type '/help' for commands, 'exit' to quit"))
 	sb.WriteString("\n")
-
-	return sb.String()
-}
-
-// SecurityModeActivatedMessage returns a message shown when switching to security mode
-func (r *Renderer) SecurityModeActivatedMessage() string {
-	var sb strings.Builder
-
-	sb.WriteString("\n")
-	sb.WriteString(SecurityModeTitle.Render(IconShield + " Security Mode Activated"))
-	sb.WriteString("\n\n")
-
-	sb.WriteString(SecurityModeBullet.Render("  " + IconLock + " Audit-first enforcement is now active"))
-	sb.WriteString("\n")
-	sb.WriteString(SecurityModeBullet.Render("  " + IconShield + " All operations will be logged to audit trail"))
-	sb.WriteString("\n")
-	sb.WriteString(Subtle.Render("  Use '/audit' to view the security audit log"))
-	sb.WriteString("\n")
-
-	return sb.String()
-}
-
-// SecurityModeDeactivatedMessage returns a message shown when switching from security mode
-func (r *Renderer) SecurityModeDeactivatedMessage() string {
-	var sb strings.Builder
-
-	sb.WriteString("\n")
-	sb.WriteString(SessionStyle.Render(IconCloud + " DevOps Mode Activated"))
-	sb.WriteString("\n")
-	sb.WriteString(Subtle.Render("  Standard permission-based tool execution"))
-	sb.WriteString("\n")
-
 	return sb.String()
 }
 
@@ -168,331 +95,122 @@ func (r *Renderer) FormatToolStatus(tool string, params map[string]interface{}, 
 	return r.FormatToolStatusWithDuration(tool, params, result, isError, 0)
 }
 
-// FormatToolStatusWithDuration returns styled tool execution status with optional duration
-func (r *Renderer) FormatToolStatusWithDuration(tool string, params map[string]interface{}, result string, isError bool, durationMs int64) string {
+// FormatToolStatusWithDuration returns styled tool execution status with optional duration: one
+// line per built-in tool, "<tool> completed" for anything else (MCP tools).
+func (r *Renderer) FormatToolStatusWithDuration(
+	tool string, params map[string]interface{}, result string, isError bool, durationMs int64,
+) string {
 	dur := formatDuration(durationMs)
-
 	if isError {
 		return ToolError.Render(IconError + " " + tool + " failed" + dur)
 	}
+	switch tool {
+	case "write_file":
+		return ToolWrite.Render(fmt.Sprintf("%s Wrote %s%s", IconSuccess, filepath.Base(param(params, "path")), dur))
+	case "edit_file":
+		return ToolWrite.Render(fmt.Sprintf("%s Edited %s%s", IconSuccess, filepath.Base(param(params, "path")), dur))
+	}
+	return ToolRead.Render(fmt.Sprintf("%s %s%s", IconArrow, readStatus(tool, params, result), dur))
+}
 
+// readStatus describes a finished call of any tool but the two file writers.
+func readStatus(tool string, params map[string]interface{}, result string) string {
 	switch tool {
 	case "read_file":
-		filePath, _ := params["file_path"].(string)
-		lines := strings.Count(result, "\n") + 1
-		return ToolRead.Render(fmt.Sprintf("%s Read %s (%d lines)%s", IconArrow, filepath.Base(filePath), lines, dur))
-
+		return fmt.Sprintf("Read %s (%d lines)", filepath.Base(param(params, "path")), strings.Count(result, "\n")+1)
 	case "search_files":
-		pattern, _ := params["pattern"].(string)
-		matches := strings.Count(result, "\n")
-		if strings.Contains(result, "No matches") {
-			return ToolRead.Render(fmt.Sprintf("%s Searched for \"%s\" (no matches)%s", IconArrow, pattern, dur))
+		pattern := param(params, "pattern")
+		if strings.HasPrefix(result, "No matches") {
+			return fmt.Sprintf("Searched for \"%s\" (no matches)", pattern)
 		}
-		return ToolRead.Render(fmt.Sprintf("%s Searched for \"%s\" (%d matches)%s", IconArrow, pattern, matches, dur))
-
+		return fmt.Sprintf("Searched for \"%s\" (%d matches)", pattern, strings.Count(result, "\n")+1)
 	case "list_files":
-		dir, _ := params["directory"].(string)
+		dir := param(params, "path")
 		if dir == "" || dir == "." {
 			dir = "current directory"
 		}
-		items := strings.Count(result, "\n")
-		return ToolRead.Render(fmt.Sprintf("%s Listed %s (%d items)%s", IconArrow, dir, items, dur))
-
-	case "execute_command":
-		cmd, _ := params["command"].(string)
-		if len(cmd) > MaxCommandDisplay {
-			cmd = cmd[:MaxCommandDisplay-3] + "..."
+		if strings.HasPrefix(result, "No entries") {
+			return fmt.Sprintf("Listed %s (empty)", dir)
 		}
-		return ToolRead.Render(fmt.Sprintf("%s Executed: %s%s", IconArrow, cmd, dur))
-
-	case "write_file":
-		filePath, _ := params["file_path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Wrote %s%s", IconSuccess, filepath.Base(filePath), dur))
-
-	case "append_file":
-		filePath, _ := params["file_path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Appended to %s%s", IconSuccess, filepath.Base(filePath), dur))
-
-	case "edit_file":
-		filePath, _ := params["file_path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Edited %s%s", IconSuccess, filepath.Base(filePath), dur))
-
-	case "insert_lines":
-		filePath, _ := params["file_path"].(string)
-		lineNum, _ := params["line_number"].(float64)
-		return ToolWrite.Render(fmt.Sprintf("%s Inserted at line %d in %s%s", IconSuccess, int(lineNum), filepath.Base(filePath), dur))
-
-	case "replace_lines":
-		filePath, _ := params["file_path"].(string)
-		startLine, _ := params["start_line"].(float64)
-		endLine, _ := params["end_line"].(float64)
-		return ToolWrite.Render(fmt.Sprintf("%s Replaced lines %d-%d in %s%s", IconSuccess, int(startLine), int(endLine), filepath.Base(filePath), dur))
-
-	case "delete_lines":
-		filePath, _ := params["file_path"].(string)
-		startLine, _ := params["start_line"].(float64)
-		endLine, _ := params["end_line"].(float64)
-		return ToolWrite.Render(fmt.Sprintf("%s Deleted lines %d-%d from %s%s", IconSuccess, int(startLine), int(endLine), filepath.Base(filePath), dur))
-
-	case "copy_file":
-		src, _ := params["source_path"].(string)
-		dst, _ := params["dest_path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Copied %s to %s%s", IconSuccess, filepath.Base(src), filepath.Base(dst), dur))
-
-	case "move_file":
-		src, _ := params["source_path"].(string)
-		dst, _ := params["dest_path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Moved %s to %s%s", IconSuccess, filepath.Base(src), filepath.Base(dst), dur))
-
-	case "delete_file":
-		filePath, _ := params["file_path"].(string)
-		recursive, _ := params["recursive"].(bool)
-		if recursive {
-			return ToolWrite.Render(fmt.Sprintf("%s Deleted %s (recursive)%s", IconSuccess, filepath.Base(filePath), dur))
+		return fmt.Sprintf("Listed %s (%d items)", dir, strings.Count(result, "\n")+1)
+	case "shell":
+		return "Executed: " + TruncateString(param(params, "command"), MaxCommandDisplay)
+	case "git", "helm", "docker":
+		return strings.TrimSpace(tool + " " + firstWords(param(params, "args"), 1))
+	case "kubectl":
+		return strings.Join(nonEmpty(tool, param(params, "verb"), param(params, "resource"), param(params, "name")), " ")
+	case "terraform":
+		return strings.TrimSpace(tool + " " + param(params, "command"))
+	case "cloud":
+		return strings.Join(nonEmpty(param(params, "provider"), firstWords(param(params, "args"), 2)), " ")
+	case "scan":
+		target := param(params, "target")
+		if target == "" || target == "." {
+			target = "current directory"
 		}
-		return ToolWrite.Render(fmt.Sprintf("%s Deleted %s%s", IconSuccess, filepath.Base(filePath), dur))
-
-	case "create_directory":
-		dirPath, _ := params["path"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s Created directory %s%s", IconSuccess, filepath.Base(dirPath), dur))
-
-	case "find_files":
-		pattern, _ := params["pattern"].(string)
-		matches := strings.Count(result, "\n")
-		if strings.Contains(result, "No files found") {
-			return ToolRead.Render(fmt.Sprintf("%s Find \"%s\" (no matches)%s", IconArrow, pattern, dur))
-		}
-		return ToolRead.Render(fmt.Sprintf("%s Find \"%s\" (%d files)%s", IconArrow, pattern, matches, dur))
-
-	case "git_status":
-		if strings.Contains(result, "clean") {
-			return ToolRead.Render(fmt.Sprintf("%s Git status: clean%s", IconArrow, dur))
-		}
-		changes := strings.Count(result, "\n")
-		return ToolRead.Render(fmt.Sprintf("%s Git status: %d changes%s", IconArrow, changes, dur))
-
-	case "git_diff":
-		if strings.Contains(result, "No changes") {
-			return ToolRead.Render(fmt.Sprintf("%s Git diff: no changes%s", IconArrow, dur))
-		}
-		lines := strings.Count(result, "\n")
-		return ToolRead.Render(fmt.Sprintf("%s Git diff: %d lines%s", IconArrow, lines, dur))
-
-	case "git_log":
-		commits := strings.Count(result, "\n") + 1
-		return ToolRead.Render(fmt.Sprintf("%s Git log: %d commits%s", IconArrow, commits, dur))
-
-	case "git_add":
-		return ToolWrite.Render(fmt.Sprintf("%s Git: staged files%s", IconSuccess, dur))
-
-	case "git_commit":
-		return ToolWrite.Render(fmt.Sprintf("%s Git: commit created%s", IconSuccess, dur))
-
-	case "git_branch":
-		branches := strings.Count(result, "\n") + 1
-		return ToolRead.Render(fmt.Sprintf("%s Git branches: %d%s", IconArrow, branches, dur))
-
+		return strings.Join(nonEmpty(param(params, "scanner"), "scan", target), " ")
 	case "web_search":
-		query, _ := params["query"].(string)
-		if len(query) > 40 {
-			query = query[:40] + "..."
-		}
-		if strings.Contains(result, "No results found") {
-			return ToolRead.Render(fmt.Sprintf("%s Searched \"%s\" (no results)%s", IconArrow, query, dur))
-		}
-		// Count results by counting numbered items (1. 2. etc.)
-		resultCount := strings.Count(result, "\n1.") + strings.Count(result, "\n2.") + strings.Count(result, "\n3.") + strings.Count(result, "\n4.") + strings.Count(result, "\n5.")
-		if resultCount == 0 && strings.Contains(result, "Quick Answer") {
-			return ToolRead.Render(fmt.Sprintf("%s Searched \"%s\" (found answer)%s", IconArrow, query, dur))
-		}
-		return ToolRead.Render(fmt.Sprintf("%s Searched \"%s\" (%d results)%s", IconArrow, query, resultCount, dur))
-
+		return searchStatus(param(params, "query"), result)
 	case "web_fetch":
-		urlStr, _ := params["url"].(string)
-		if len(urlStr) > 50 {
-			urlStr = urlStr[:50] + "..."
-		}
-		return ToolRead.Render(fmt.Sprintf("%s Fetched %s%s", IconArrow, urlStr, dur))
-
-	// Kubernetes tools
-	case "kubectl_get":
-		resource, _ := params["resource"].(string)
-		namespace, _ := params["namespace"].(string)
-		if namespace != "" {
-			return ToolRead.Render(fmt.Sprintf("%s kubectl get %s -n %s%s", IconArrow, resource, namespace, dur))
-		}
-		return ToolRead.Render(fmt.Sprintf("%s kubectl get %s%s", IconArrow, resource, dur))
-
-	case "kubectl_apply":
-		file, _ := params["file"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s kubectl apply -f %s%s", IconSuccess, filepath.Base(file), dur))
-
-	case "kubectl_delete":
-		resource, _ := params["resource"].(string)
-		name, _ := params["name"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s kubectl delete %s %s%s", IconSuccess, resource, name, dur))
-
-	case "kubectl_describe":
-		resource, _ := params["resource"].(string)
-		name, _ := params["name"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s kubectl describe %s %s%s", IconArrow, resource, name, dur))
-
-	case "kubectl_logs":
-		pod, _ := params["pod"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s kubectl logs %s%s", IconArrow, pod, dur))
-
-	case "kubectl_exec":
-		pod, _ := params["pod"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s kubectl exec %s%s", IconArrow, pod, dur))
-
-	case "helm_list":
-		namespace, _ := params["namespace"].(string)
-		if namespace != "" {
-			return ToolRead.Render(fmt.Sprintf("%s helm list -n %s%s", IconArrow, namespace, dur))
-		}
-		return ToolRead.Render(fmt.Sprintf("%s helm list%s", IconArrow, dur))
-
-	case "helm_install":
-		release, _ := params["release"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s helm install %s%s", IconSuccess, release, dur))
-
-	// Terraform tools
-	case "terraform_init":
-		return ToolWrite.Render(fmt.Sprintf("%s terraform init%s", IconSuccess, dur))
-
-	case "terraform_plan":
-		return ToolRead.Render(fmt.Sprintf("%s terraform plan%s", IconArrow, dur))
-
-	case "terraform_apply":
-		return ToolWrite.Render(fmt.Sprintf("%s terraform apply%s", IconSuccess, dur))
-
-	case "terraform_destroy":
-		return ToolWrite.Render(fmt.Sprintf("%s terraform destroy%s", IconSuccess, dur))
-
-	case "terraform_output":
-		name, _ := params["name"].(string)
-		if name != "" {
-			return ToolRead.Render(fmt.Sprintf("%s terraform output %s%s", IconArrow, name, dur))
-		}
-		return ToolRead.Render(fmt.Sprintf("%s terraform output%s", IconArrow, dur))
-
-	case "terraform_state":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s terraform state %s%s", IconArrow, subcommand, dur))
-
-	// Docker tools
-	case "docker_build":
-		tag, _ := params["tag"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s docker build -t %s%s", IconSuccess, tag, dur))
-
-	case "docker_ps":
-		return ToolRead.Render(fmt.Sprintf("%s docker ps%s", IconArrow, dur))
-
-	case "docker_logs":
-		container, _ := params["container"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s docker logs %s%s", IconArrow, container, dur))
-
-	case "docker_compose":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolWrite.Render(fmt.Sprintf("%s docker compose %s%s", IconSuccess, subcommand, dur))
-
-	case "docker_exec":
-		container, _ := params["container"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s docker exec %s%s", IconArrow, container, dur))
-
-	// AWS tools
-	case "aws_cli":
-		service, _ := params["service"].(string)
-		command, _ := params["command"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s aws %s %s%s", IconArrow, service, command, dur))
-
-	case "aws_ecs":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s aws ecs %s%s", IconArrow, subcommand, dur))
-
-	case "aws_eks":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s aws eks %s%s", IconArrow, subcommand, dur))
-
-	// Azure tools
-	case "az_cli":
-		group, _ := params["group"].(string)
-		command, _ := params["command"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s az %s %s%s", IconArrow, group, command, dur))
-
-	case "az_aks":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s az aks %s%s", IconArrow, subcommand, dur))
-
-	// GCP tools
-	case "gcloud":
-		component, _ := params["component"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s gcloud %s%s", IconArrow, component, dur))
-
-	case "gke":
-		subcommand, _ := params["subcommand"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s gcloud container %s%s", IconArrow, subcommand, dur))
-
-	// Security tools
-	case "trivy_scan":
-		target, _ := params["target"].(string)
-		scanType, _ := params["type"].(string)
-		if scanType == "" {
-			scanType = "image"
-		}
-		return ToolRead.Render(fmt.Sprintf("%s trivy %s scan: %s%s", IconArrow, scanType, target, dur))
-
-	case "gitleaks_scan":
-		path, _ := params["path"].(string)
-		if path == "" || path == "." {
-			path = "current directory"
-		}
-		return ToolRead.Render(fmt.Sprintf("%s gitleaks scan: %s%s", IconArrow, path, dur))
-
-	case "secrets_scan":
-		path, _ := params["path"].(string)
-		if path == "" || path == "." {
-			path = "current directory"
-		}
-		return ToolRead.Render(fmt.Sprintf("%s secrets scan: %s%s", IconArrow, path, dur))
-
-	case "dependency_audit":
-		auditType, _ := params["type"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s %s dependency audit%s", IconArrow, auditType, dur))
-
-	case "sast_scan":
-		path, _ := params["path"].(string)
-		if path == "" || path == "." {
-			path = "current directory"
-		}
-		return ToolRead.Render(fmt.Sprintf("%s SAST scan: %s%s", IconArrow, path, dur))
-
-	case "tfsec_scan":
-		path, _ := params["path"].(string)
-		if path == "" || path == "." {
-			path = "current directory"
-		}
-		return ToolRead.Render(fmt.Sprintf("%s tfsec scan: %s%s", IconArrow, path, dur))
-
-	case "kubesec_scan":
-		file, _ := params["file"].(string)
-		return ToolRead.Render(fmt.Sprintf("%s kubesec scan: %s%s", IconArrow, filepath.Base(file), dur))
-
-	default:
-		return ToolRead.Render(fmt.Sprintf("%s %s completed%s", IconArrow, tool, dur))
+		return "Fetched " + urlHost(param(params, "url"))
+	case "get_datetime":
+		return "Checked the date and time"
 	}
+	return tool + " completed"
+}
+
+// numberedResult matches the "1. Title" line web_search writes for every result.
+var numberedResult = regexp.MustCompile(`(?m)^\d+\. `)
+
+// searchStatus summarises a web_search result: the result count, or that only an answer came back.
+func searchStatus(query, result string) string {
+	query = TruncateString(query, 40)
+	count := len(numberedResult.FindAllString(result, -1))
+	switch {
+	case count == 0 && strings.Contains(result, "\nAnswer: "):
+		return fmt.Sprintf("Searched \"%s\" (found answer)", query)
+	case count == 0:
+		return fmt.Sprintf("Searched \"%s\" (no results)", query)
+	}
+	return fmt.Sprintf("Searched \"%s\" (%d results)", query, count)
+}
+
+// param returns a string parameter, "" when absent or not a string.
+func param(params map[string]interface{}, name string) string {
+	s, _ := params[name].(string)
+	return strings.TrimSpace(s)
+}
+
+// firstWords returns the first n whitespace-separated words of s.
+func firstWords(s string, n int) string {
+	words := strings.Fields(s)
+	if len(words) > n {
+		words = words[:n]
+	}
+	return strings.Join(words, " ")
+}
+
+// nonEmpty drops the empty strings.
+func nonEmpty(parts ...string) []string {
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// urlHost is the host of a URL, or the URL itself (shortened) when it does not parse.
+func urlHost(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return TruncateString(raw, 50)
 }
 
 // PromptString returns the styled prompt
 func (r *Renderer) PromptString() string {
-	return PromptStyle.Render("❯") + " "
-}
-
-// PromptStringWithMode returns the styled prompt with mode indicator
-func (r *Renderer) PromptStringWithMode(mode storage.OperatingMode) string {
-	if mode == storage.ModeSecurity {
-		return SecurityModePrompt.Render(IconShield) + " " + PromptStyle.Render("❯") + " "
-	}
 	return PromptStyle.Render("❯") + " "
 }
 

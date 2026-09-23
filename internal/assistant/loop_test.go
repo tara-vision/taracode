@@ -13,14 +13,14 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
-	"github.com/tara-vision/taracode/internal/permissions"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// newTestAssistant wires an Assistant to a fake Ollama in a temp project with all tool prompts
-// pre-allowed.
+// newTestAssistant wires an Assistant to a fake Ollama in a temp project with all permission
+// prompts pre-allowed. It starts in investigate mode; enterOperate switches.
 func newTestAssistant(t *testing.T, streaming bool) (*Assistant, *ollamatest.Server) {
 	t.Helper()
 	srv := ollamatest.New(t)
@@ -32,8 +32,24 @@ func newTestAssistant(t *testing.T, streaming bool) (*Assistant, *ollamatest.Ser
 		t.Fatal(err)
 	}
 	a := newForTest(dir, "gemma4:12b", srv.URL, streaming)
-	a.permMgr = permissions.NewManagerAllowAll()
+	a.permissions = policy.AllowAll()
 	return a, srv
+}
+
+// enterOperate gives the assistant project storage and switches it to operate mode, which the edit
+// tests need: investigate mode refuses every mutation before it reaches the preview.
+func enterOperate(t *testing.T, a *Assistant) {
+	t.Helper()
+	if a.storage == nil {
+		st, err := storage.NewManager(a.workingDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.storage = st
+	}
+	if err := a.SetMode(policy.ModeOperate); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPlainAnswerIsRecordedAndUsageCounted(t *testing.T) {
@@ -69,7 +85,7 @@ func TestPlainAnswerIsRecordedAndUsageCounted(t *testing.T) {
 func TestToolCallRoundTrip(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "The file says hello from disk."},
 	}
 
@@ -99,8 +115,8 @@ func TestToolCallRoundTrip(t *testing.T) {
 func TestToolCallIDsStayUniqueAcrossIterations(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
-		{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{"directory": "."}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{"path": "."}}}},
 		{Content: "done"},
 	}
 
@@ -127,7 +143,7 @@ func TestToolOutputIsTruncated(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "big.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "big.txt"}}}},
 		{Content: "done"},
 	}
 
@@ -215,41 +231,6 @@ func TestEmptyReplyIsNudgedOnce(t *testing.T) {
 	}
 }
 
-// TestJSONFallbackWhenTheModelHasNoNativeTools covers the path taken after a "does not support
-// tools" error: tools leave the request, tool calls are parsed out of the content, the stored reply
-// keeps the call the model wrote and the results go back as one user message.
-func TestJSONFallbackWhenTheModelHasNoNativeTools(t *testing.T) {
-	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{
-		{Status: 400, Error: "model gemma4:12b does not support tools"},
-		{Content: `Reading it now. {"tool": "read_file", "params": {"file_path": "hello.txt"}}`},
-		{Content: "It says hello from disk."},
-	}
-
-	if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
-		t.Fatal(err)
-	}
-
-	if a.useNativeTools {
-		t.Fatal("useNativeTools still true after a no-tool-support error")
-	}
-	if a.GetLastResponse() != "It says hello from disk." {
-		t.Fatalf("last response = %q", a.GetLastResponse())
-	}
-	last := lastChatBody(t, srv)
-	if _, ok := last["tools"]; ok {
-		t.Fatalf("tools still sent after the fallback: %v", last["tools"])
-	}
-	result := lastMessage(t, last, 0)
-	if result["role"] != "user" || !strings.Contains(result["content"].(string), "hello from disk") {
-		t.Fatalf("fallback tool result not sent back as a user message: %v", result)
-	}
-	asst := findMessage(t, a.conversation, openai.ChatMessageRoleAssistant)
-	if !strings.Contains(asst.Content, "read_file") {
-		t.Fatalf("the stored reply dropped the tool call the model wrote: %q", asst.Content)
-	}
-}
-
 // withEditPreview turns previews on and makes the decision deterministic, so these tests never
 // depend on a terminal.
 func withEditPreview(t *testing.T, a *Assistant, choice ui.EditPreviewChoice) {
@@ -265,33 +246,10 @@ func withEditPreview(t *testing.T, a *Assistant, choice ui.EditPreviewChoice) {
 
 // editTurns scripts a model that edits hello.txt and then acknowledges the outcome.
 func editTurns() []ollamatest.Turn {
-	args := map[string]any{"file_path": "hello.txt", "old_string": "hello from disk", "new_string": "goodbye"}
+	args := map[string]any{"path": "hello.txt", "old": "hello from disk", "new": "goodbye"}
 	return []ollamatest.Turn{
 		{ToolCalls: []ollamatest.ToolCall{{Name: "edit_file", Args: args}}},
 		{Content: "Done."},
-	}
-}
-
-// TestFallbackCallWithAnIDStillGoesBackAsAUserMessage pins the routing rule: only a reply that
-// came through the native path may answer with tool-role messages, whatever id the parsed JSON
-// happens to carry.
-func TestFallbackCallWithAnIDStillGoesBackAsAUserMessage(t *testing.T) {
-	a, _ := newTestAssistant(t, false)
-	a.useNativeTools = false
-	before := len(a.conversation)
-
-	a.runToolCalls([]*ToolCall{{
-		ID:     "fallback-arbitrary-id",
-		Tool:   "read_file",
-		Params: map[string]interface{}{"file_path": "hello.txt"},
-	}}, "reply", false)
-
-	if len(a.conversation) != before+1 {
-		t.Fatalf("expected one aggregated message, got %d new ones", len(a.conversation)-before)
-	}
-	added := a.conversation[len(a.conversation)-1]
-	if added.Role != openai.ChatMessageRoleUser || !strings.Contains(added.Content, "hello from disk") {
-		t.Fatalf("fallback result was misrouted: %+v", added)
 	}
 }
 
@@ -300,6 +258,7 @@ func TestFallbackCallWithAnIDStillGoesBackAsAUserMessage(t *testing.T) {
 // an edit that never happened.
 func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
+	enterOperate(t, a)
 	withEditPreview(t, a, ui.EditPreviewCancel)
 	srv.Turns = editTurns()
 
@@ -329,6 +288,7 @@ func TestDeclinedEditPreviewIsSentBackToTheModel(t *testing.T) {
 // the status line reports it.
 func TestAcceptedEditPreviewAppliesTheEdit(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
+	enterOperate(t, a)
 	withEditPreview(t, a, ui.EditPreviewApply)
 	srv.Turns = editTurns()
 
@@ -370,6 +330,7 @@ func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.storage = storageMgr
+	enterOperate(t, a)
 	// Remove the file between the preview decision and the backup step, so CreateBackup fails
 	// deterministically instead of relying on filesystem permissions.
 	a.confirmEditPreview = func(*ui.EditPreview) ui.EditPreviewChoice {
@@ -412,7 +373,7 @@ func TestHostFailoverRetriesOnTheFallbackHost(t *testing.T) {
 	}
 
 	a := newForTest(t.TempDir(), "gemma4:12b", deadHost, false)
-	a.permMgr = permissions.NewManagerAllowAll()
+	a.permissions = policy.AllowAll()
 	a.SetHostPool(pool)
 
 	if err := a.ProcessMessage("anyone home?"); err != nil {
@@ -460,7 +421,7 @@ func TestSpinnersRunThroughATurn(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
 	a.enableSpinner = true
 	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"file_path": "hello.txt"}}}},
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "It greets you.", PromptTokens: 5, CompletionTokens: 3},
 	}
 

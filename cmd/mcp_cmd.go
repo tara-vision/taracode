@@ -133,15 +133,13 @@ func mcpConnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
 	mcpTools := mgr.GetToolsByServer(serverName)
 	fmt.Printf("Connected to %s. Discovered %d tools.\n", serverName, len(mcpTools))
 
-	// Register tools with the assistant's tool registry and add tool definitions
-	if registry := asst.GetToolRegistry(); registry != nil {
-		for _, tool := range mcpTools {
-			executor := mcp.CreateExecutor(mgr, tool)
-			registry.RegisterMCPTool(tool.Name, tool.ServerName, executor)
-			// Add tool definition for LLM function calling
-			asst.AddMCPToolDefinition(mcp.ToOpenAITool(tool))
-		}
+	// Register the tools with the assistant's registry (re-registering a name replaces it, so the
+	// discovery callback having done the same is harmless) and refresh the exposed schemas
+	registry := asst.ToolRegistry()
+	for _, tool := range mcpTools {
+		registry.RegisterMCP(mcp.ToTool(mgr, tool), tool.ServerName)
 	}
+	asst.RefreshTools()
 	fmt.Println()
 }
 
@@ -154,11 +152,9 @@ func mcpDisconnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
 	}
 	serverName := args[1]
 
-	// Unregister tools and remove tool definitions
-	if registry := asst.GetToolRegistry(); registry != nil {
-		registry.UnregisterMCPTools(serverName)
-	}
-	asst.RemoveMCPToolDefinitions(serverName)
+	// Unregister the server's tools and refresh the exposed schemas
+	asst.ToolRegistry().UnregisterMCP(serverName)
+	asst.RefreshTools()
 
 	if err := mgr.Disconnect(serverName); err != nil {
 		fmt.Printf("Error: %v\n", err)

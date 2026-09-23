@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestNewPrintsFirstRunAdviceWhenNoModelIsAvailable covers the first-run hint (native core, Task
@@ -21,7 +22,7 @@ func TestNewPrintsFirstRunAdviceWhenNoModelIsAvailable(t *testing.T) {
 
 	var err error
 	out := captureStdout(t, func() {
-		_, err = New(srv.URL, "", "", "ollama", false, false)
+		_, err = New(srv.URL, "", "", "ollama", false, false, tools.Config{})
 	})
 
 	if err == nil || !strings.Contains(err.Error(), "no models available") {
@@ -44,7 +45,7 @@ func TestNewPrintsNoAdviceWhenAModelIsConfigured(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if _, err := New(srv.URL, "", "gemma4:12b", "ollama", false, false); err != nil {
+		if _, err := New(srv.URL, "", "gemma4:12b", "ollama", false, false, tools.Config{}); err != nil {
 			t.Fatalf("New() = %v, want success with a configured model", err)
 		}
 	})

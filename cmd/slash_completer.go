@@ -62,8 +62,8 @@ func GetSlashCommands() []SlashCommand {
 		// Model & Mode
 		{"/model", "Switch between available Ollama models"},
 		{"/mode", "Show or switch operating mode"},
-		{"/mode devops", "Switch to DevOps mode"},
-		{"/mode security", "Switch to Security mode (Pro/Max only)"},
+		{"/mode investigate", "Read-only tools; mutations are refused"},
+		{"/mode operate", "Mutations allowed after the policy and permission checks"},
 		// Sessions
 		{"/session", "Show current session info"},
 		{"/sessions", "List all conversation sessions"},
@@ -77,15 +77,15 @@ func GetSlashCommands() []SlashCommand {
 		{"/diff", "Show file changes as unified diff"},
 		{"/diff export", "Export changes to .patch file"},
 		// Permissions
-		{"/permissions", "Show current permission settings"},
-		{"/permissions reset", "Reset permissions to default"},
-		{"/permissions allow", "Always allow tool or category"},
-		{"/permissions deny", "Always deny tool or category"},
-		{"/permissions ask", "Always ask for tool or category"},
-		// Security Audit
-		{"/audit", "View security audit log (security mode only)"},
-		{"/audit export json", "Export audit log to JSON file"},
-		{"/audit export html", "Export audit log to HTML report"},
+		{"/permissions", "Show the remembered answers for mutations"},
+		{"/permissions reset", "Forget every remembered answer"},
+		{"/permissions allow", "Always allow a tool's mutations (or all)"},
+		{"/permissions deny", "Always deny a tool's mutations (or all)"},
+		{"/permissions ask", "Always ask before a tool's mutations (or all)"},
+		// Audit log
+		{"/audit", "Mutations recorded in this session"},
+		{"/audit all", "Mutations recorded in every session"},
+		{"/audit export json", "Export the audit log to a JSON file"},
 		{"/audit clear", "Clear the audit log"},
 		// History & Undo
 		{"/history", "Show last 20 file operations"},

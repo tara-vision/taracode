@@ -31,7 +31,7 @@ func TestTruncateToolOutput_DisabledLimits(t *testing.T) {
 func TestTruncateToolOutput_UnderLimits(t *testing.T) {
 	cfg := TruncationConfig{MaxLines: 100, MaxChars: 10000}
 	input := "line1\nline2\nline3\n"
-	result := TruncateToolOutput(input, "execute_command", cfg)
+	result := TruncateToolOutput(input, "shell", cfg)
 	if result.WasTruncated {
 		t.Error("should not truncate when under limits")
 	}
@@ -86,7 +86,7 @@ func TestTruncateToolOutput_BothLimits(t *testing.T) {
 	}
 	input := strings.Join(lines, "\n")
 
-	result := TruncateToolOutput(input, "execute_command", cfg)
+	result := TruncateToolOutput(input, "shell", cfg)
 	if !result.WasTruncated {
 		t.Error("should be truncated")
 	}
@@ -100,12 +100,11 @@ func TestTruncateToolOutput_ToolSpecificHints(t *testing.T) {
 		tool string
 		hint string
 	}{
-		{"read_file", "start_line/end_line"},
-		{"search_files", "Narrow your search"},
-		{"execute_command", "head/tail or grep"},
-		{"kubectl_logs", "--tail or --since"},
-		{"git_log", "max_count"},
-		{"git_diff", "file paths"},
+		{"read_file", "start_line and end_line"},
+		{"search_files", "Narrow the pattern or the glob"},
+		{"shell", "head, tail or grep"},
+		{"kubectl", "--tail or --since in args"},
+		{"git", "-n to limit log output"},
 		{"unknown_tool", ""},
 	}
 

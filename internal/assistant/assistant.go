@@ -4,17 +4,18 @@ import (
 	gocontext "context"
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/context"
-	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/permissions"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
+	"github.com/tara-vision/taracode/internal/tools"
+	"github.com/tara-vision/taracode/internal/tools/redact"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -31,8 +32,8 @@ type Assistant struct {
 	llm           llm.Client
 	model         string
 	conversation  []openai.ChatCompletionMessage
-	toolRegistry  *legacytools.Registry
-	toolDefs      []openai.Tool // OpenAI function calling tool definitions
+	toolRegistry  *tools.Registry
+	toolDefs      []openai.Tool // the schemas the current mode exposes, refreshed from the registry
 	workingDir    string
 	streaming     bool // Enable streaming output (default: true)
 	enableSpinner bool // Enable spinner animations (default: true)
@@ -46,13 +47,18 @@ type Assistant struct {
 	// Token usage tracking
 	sessionUsage *storage.TokenUsage
 
-	// Operating mode (devops, security)
-	mode           storage.OperatingMode
-	systemPrompt   string
-	useNativeTools bool // true when model supports native function calling
+	// Operating mode (investigate, operate) and the policy gate
+	mode          policy.Mode
+	systemPrompt  string
+	pol           policy.Policy
+	policySources []string
+	policyErr     error // set when a policy file failed to load; the session is locked to investigate
+	permissions   *policy.Permissions
+	redactor      *redact.Redactor
 
-	// Permission management
-	permMgr *permissions.Manager
+	// confirmPermission asks whether one mutate invocation may run. It is the terminal prompt in the
+	// binary and is replaced in tests so the decision is deterministic without a TTY.
+	confirmPermission func(inv policy.Invocation, args map[string]any) ui.PermissionChoice
 
 	// confirmEditPreview decides an edit preview. It is the terminal prompt in the binary and is
 	// replaced in tests so the decision is deterministic without a TTY.
@@ -86,7 +92,11 @@ type Assistant struct {
 	truncationEvents []TruncationResult
 }
 
-func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner bool) (*Assistant, error) {
+// New connects to the LLM server, picks the model, loads the policy, the permission store and the
+// redactor, builds the tool registry and the system prompt.
+func New(
+	host, apiKey, configModel, vendor string, streaming, enableSpinner bool, toolCfg tools.Config,
+) (*Assistant, error) {
 	renderer := ui.NewRenderer()
 
 	// Create context with timeout for provider initialization
@@ -109,7 +119,6 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 	var session *storage.Session
 	var projectCtx *context.ProjectContext
 	var persistedModel string
-	var permMgr *permissions.Manager
 
 	storageMgr, err = storage.NewManager(workingDir)
 	if err != nil {
@@ -127,67 +136,17 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 
 		// Load project context if available
 		projectCtx, _ = storageMgr.LoadProjectContext()
-
-		// Initialize permission manager
-		permMgr, _ = permissions.NewManager(workingDir)
 	}
+
+	gate := loadGate(workingDir, storageMgr, renderer)
+	registry := tools.NewBuiltinRegistry(
+		tools.Options{Offline: viper.GetBool("offline"), Redactor: gate.redactor}, withDefaultSeverity(toolCfg))
 
 	// Determine which model to use (priority: persisted > config > auto-detect)
-	models, err := prov.DetectModels(ctx)
-	var model string
-
-	// Helper to check if model exists in available models
-	modelAvailable := func(name string) bool {
-		for _, m := range models {
-			if m == name {
-				return true
-			}
-		}
-		return false
-	}
-
+	models, detectErr := prov.DetectModels(ctx)
+	model, err := chooseModel(models, detectErr, persistedModel, configModel, renderer)
 	if err != nil {
-		// Can't detect models - use persisted or config
-		if persistedModel != "" {
-			model = persistedModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
-		} else if configModel != "" {
-			model = configModel
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Could not detect models (%v), using configured: %s", err, model)))
-		} else {
-			return nil, fmt.Errorf("failed to detect models and no fallback configured: %w", err)
-		}
-	} else if len(models) > 0 {
-		// Models available - check persisted, then config, then first available
-		if persistedModel != "" && modelAvailable(persistedModel) {
-			model = persistedModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
-		} else if persistedModel != "" && !modelAvailable(persistedModel) {
-			// Saved model no longer available - warn and use first available
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Saved model '%s' not available. Use /model to select.", persistedModel)))
-			model = models[0]
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using: %s", model)))
-		} else if configModel != "" && modelAvailable(configModel) {
-			model = configModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using configured model: %s", model)))
-		} else if configModel != "" {
-			model = models[0]
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Configured model '%s' not available. Using: %s", configModel, model)))
-		} else {
-			model = models[0]
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))
-		}
-	} else {
-		if persistedModel != "" {
-			model = persistedModel
-		} else if configModel != "" {
-			model = configModel
-		} else {
-			// No model persisted or configured, and the server lists none either: point at the
-			// registry's recommendation for this host before failing (native core, Task 11).
-			printFirstRunAdvice()
-			return nil, fmt.Errorf("no models available and no fallback configured")
-		}
+		return nil, err
 	}
 
 	// Update provider with selected model
@@ -234,8 +193,14 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		llm:                prov.LLM(),
 		model:              model,
 		confirmEditPreview: ui.DisplayEditPreview,
-		toolRegistry:       legacytools.NewRegistry(),
-		toolDefs:           legacytools.GetToolDefinitions(), // Initialize OpenAI function calling tools
+		confirmPermission:  ui.PromptPermission,
+		toolRegistry:       registry,
+		pol:                gate.pol,
+		policySources:      gate.sources,
+		policyErr:          gate.err,
+		permissions:        gate.permissions,
+		redactor:           gate.redactor,
+		mode:               policy.ModeInvestigate,
 		workingDir:         workingDir,
 		streaming:          streaming,
 		enableSpinner:      enableSpinner,
@@ -244,8 +209,6 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		session:            session,
 		projectCtx:         projectCtx,
 		sessionUsage:       &storage.TokenUsage{},
-		useNativeTools:     true, // Start with native tools enabled
-		permMgr:            permMgr,
 		think:              think,
 		keepAlive:          viper.GetString("keep_alive"),
 		configuredWindow:   viper.GetString("context.window"),
@@ -274,15 +237,140 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 		return nil, err
 	}
 
-	// Build system prompt - use compact version since we'll try native function calling first
-	// If model doesn't support native tools, we'll rebuild with full prompt on fallback
-	systemPrompt := buildSystemPromptWithModeAndTools(workingDir, storageMgr, storage.ModeDevOps, true)
+	// The policy file may name the startup mode; a policy that failed to load keeps investigate.
+	if gate.err == nil && gate.pol.Mode != "" {
+		a.mode = gate.pol.Mode
+	}
+	a.refreshTools()
+	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode)
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
-		Content: systemPrompt,
+		Content: a.systemPrompt,
 	}}
 
 	return a, nil
+}
+
+// chooseModel picks the model New uses: the persisted one while the server still lists it, then the
+// configured one, then the first the server lists. When the server cannot list its models the
+// persisted or configured name is trusted.
+func chooseModel(
+	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer,
+) (string, error) {
+	var model string
+
+	// Helper to check if model exists in available models
+	modelAvailable := func(name string) bool {
+		for _, m := range models {
+			if m == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	if detectErr != nil {
+		// Can't detect models - use persisted or config
+		if persistedModel != "" {
+			model = persistedModel
+			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
+		} else if configModel != "" {
+			model = configModel
+			fmt.Println(renderer.WarningMessage(
+				fmt.Sprintf("Could not detect models (%v), using configured: %s", detectErr, model)))
+		} else {
+			return "", fmt.Errorf("failed to detect models and no fallback configured: %w", detectErr)
+		}
+	} else if len(models) > 0 {
+		// Models available - check persisted, then config, then first available
+		if persistedModel != "" && modelAvailable(persistedModel) {
+			model = persistedModel
+			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
+		} else if persistedModel != "" && !modelAvailable(persistedModel) {
+			// Saved model no longer available - warn and use first available
+			fmt.Println(renderer.WarningMessage(
+				fmt.Sprintf("Saved model '%s' not available. Use /model to select.", persistedModel)))
+			model = models[0]
+			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using: %s", model)))
+		} else if configModel != "" && modelAvailable(configModel) {
+			model = configModel
+			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using configured model: %s", model)))
+		} else if configModel != "" {
+			model = models[0]
+			fmt.Println(renderer.WarningMessage(
+				fmt.Sprintf("Configured model '%s' not available. Using: %s", configModel, model)))
+		} else {
+			model = models[0]
+			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))
+		}
+	} else {
+		if persistedModel != "" {
+			model = persistedModel
+		} else if configModel != "" {
+			model = configModel
+		} else {
+			// No model persisted or configured, and the server lists none either: point at the
+			// registry's recommendation for this host before failing (native core, Task 11).
+			printFirstRunAdvice()
+			return "", fmt.Errorf("no models available and no fallback configured")
+		}
+	}
+
+	return model, nil
+}
+
+// gateConfig is what New loads for the policy gate.
+type gateConfig struct {
+	pol         policy.Policy // the built-in policy when a policy file failed to load
+	sources     []string
+	err         error // why a policy file failed to load; the session is then locked to investigate
+	permissions *policy.Permissions
+	redactor    *redact.Redactor
+}
+
+// loadGate loads the policy for workingDir, the permission store from the project storage and the
+// redactor the policy asks for. Every problem is reported and degrades to a safe default.
+func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Renderer) gateConfig {
+	var g gateConfig
+	var err error
+	home, _ := os.UserHomeDir()
+	g.pol, g.sources, g.err = policy.Load(workingDir, home)
+	if g.err != nil {
+		fmt.Println(renderer.WarningMessage(fmt.Sprintf("Policy error, session locked to investigate mode: %v", g.err)))
+		g.pol = policy.Default()
+	}
+	if storageMgr != nil {
+		var ignored bool
+		g.permissions, ignored, err = policy.LoadPermissions(filepath.Join(storageMgr.GetRootDir(), "permissions.json"))
+		if err != nil {
+			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Permissions file ignored: %v", err)))
+			g.permissions, _, _ = policy.LoadPermissions("")
+		} else if ignored {
+			fmt.Println(renderer.WarningMessage(
+				"permissions.json is from taracode 2.x and was ignored; rules are per tool now (/permissions)"))
+		}
+	}
+	if g.pol.RedactEnabled() {
+		g.redactor, err = redact.New(redact.Options{ExtraPatterns: g.pol.Redact.ExtraPatterns, Environ: os.Environ()})
+		if err != nil {
+			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Redaction extra pattern ignored: %v", err)))
+			g.redactor, _ = redact.New(redact.Options{Environ: os.Environ()})
+		}
+	}
+	return g
+}
+
+// withDefaultSeverity fills the scan severity default from the configuration when the caller set
+// none: scan.default_severity, else the 2.x security.default_severity.
+func withDefaultSeverity(cfg tools.Config) tools.Config {
+	if cfg.DefaultSeverity != "" {
+		return cfg
+	}
+	cfg.DefaultSeverity = viper.GetString("scan.default_severity")
+	if cfg.DefaultSeverity == "" {
+		cfg.DefaultSeverity = viper.GetString("security.default_severity")
+	}
+	return cfg
 }
 
 // newForTest builds an Assistant on a fake server without storage, spinner or interactive
@@ -290,22 +378,29 @@ func New(host, apiKey, configModel, vendor string, streaming bool, enableSpinner
 func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	prov := provider.NewOllamaProvider(host, "")
 	prov.SetModel(model)
+	// The built-in policy has redaction on; the test redactor leaves the environment out so what a
+	// test sees does not depend on the machine's variables.
+	red, _ := redact.New(redact.Options{})
 	a := &Assistant{
 		provider:           prov,
 		llm:                prov.LLM(),
 		model:              model,
 		confirmEditPreview: ui.DisplayEditPreview,
-		workingDir:         workingDir,
-		streaming:          streaming,
-		enableSpinner:      false,
-		renderer:           ui.NewRenderer(),
-		toolRegistry:       legacytools.NewRegistry(),
-		toolDefs:           legacytools.GetToolDefinitions(),
-		sessionUsage:       &storage.TokenUsage{},
-		mode:               storage.ModeDevOps,
-		useNativeTools:     true,
-		contextWindow:      32768,
-		thinkingSupported:  true, // no applyModelDetails call in tests; capabilities are unknown
+		confirmPermission: func(policy.Invocation, map[string]any) ui.PermissionChoice {
+			return ui.PermissionChoice{Allowed: true}
+		},
+		workingDir:        workingDir,
+		streaming:         streaming,
+		enableSpinner:     false,
+		renderer:          ui.NewRenderer(),
+		toolRegistry:      tools.NewBuiltinRegistry(tools.Options{Redactor: red}, tools.Config{}),
+		pol:               policy.Default(),
+		permissions:       policy.AllowAll(),
+		redactor:          red,
+		sessionUsage:      &storage.TokenUsage{},
+		mode:              policy.ModeInvestigate,
+		contextWindow:     32768,
+		thinkingSupported: true, // no applyModelDetails call in tests; capabilities are unknown
 		truncationCfg: TruncationConfig{
 			MaxLines: DefaultMaxToolOutputLines,
 			MaxChars: DefaultMaxToolOutputChars,
@@ -320,7 +415,8 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 		maxIterations:    defaultMaxToolIterations,
 		truncationEvents: make([]TruncationResult, 0),
 	}
-	a.systemPrompt = buildSystemPromptWithModeAndTools(workingDir, nil, a.mode, true)
+	a.refreshTools()
+	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode)
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
@@ -328,9 +424,40 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	return a
 }
 
-// GetToolRegistry returns the tool registry
-func (a *Assistant) GetToolRegistry() *legacytools.Registry {
-	return a.toolRegistry
+// refreshTools re-reads the tool schemas the current mode exposes.
+func (a *Assistant) refreshTools() { a.toolDefs = a.toolRegistry.Definitions(a.mode) }
+
+// RefreshTools is refreshTools for callers that changed the registry (MCP connect/disconnect).
+func (a *Assistant) RefreshTools() { a.refreshTools() }
+
+// ToolRegistry exposes the registry for MCP registration and /tools.
+func (a *Assistant) ToolRegistry() *tools.Registry { return a.toolRegistry }
+
+// Mode is the current operating mode.
+func (a *Assistant) Mode() policy.Mode { return a.mode }
+
+// Policy is the effective policy, PolicySources where it came from, PolicyError why it could not
+// be loaded (the session is then locked to investigate mode).
+func (a *Assistant) Policy() policy.Policy { return a.pol }
+
+// PolicySources lists where the effective policy came from.
+func (a *Assistant) PolicySources() []string { return a.policySources }
+
+// PolicyError is why the policy could not be loaded; nil when it loaded.
+func (a *Assistant) PolicyError() error { return a.policyErr }
+
+// Permissions is the remembered answers for mutations; nil without project storage.
+func (a *Assistant) Permissions() *policy.Permissions { return a.permissions }
+
+// Redactions is the number of secret spans redacted from tool output so far.
+func (a *Assistant) Redactions() int64 { return a.toolRegistry.Redactions() }
+
+// ClearAudit deletes the audit log.
+func (a *Assistant) ClearAudit() error {
+	if a.storage == nil {
+		return fmt.Errorf("no project storage (run /init)")
+	}
+	return a.storage.ClearAudit()
 }
 
 // GetProvider returns the LLM provider
@@ -353,23 +480,6 @@ func (a *Assistant) GetConversationLength() int {
 	return len(a.conversation)
 }
 
-// AddMCPToolDefinition adds an MCP tool definition for LLM function calling
-func (a *Assistant) AddMCPToolDefinition(tool openai.Tool) {
-	a.toolDefs = append(a.toolDefs, tool)
-}
-
-// RemoveMCPToolDefinitions removes all MCP tool definitions for a server
-func (a *Assistant) RemoveMCPToolDefinitions(serverName string) {
-	filtered := make([]openai.Tool, 0, len(a.toolDefs))
-	prefix := serverName + "."
-	for _, tool := range a.toolDefs {
-		if tool.Function != nil && !strings.HasPrefix(tool.Function.Name, prefix) {
-			filtered = append(filtered, tool)
-		}
-	}
-	a.toolDefs = filtered
-}
-
 // GetLastResponse returns the last AI response text (for suggestion detection)
 func (a *Assistant) GetLastResponse() string {
 	return a.lastResponse
@@ -386,14 +496,6 @@ func (a *Assistant) GetProviderInfo() *provider.Info {
 // GetCurrentModel returns the current model name
 func (a *Assistant) GetCurrentModel() string {
 	return a.model
-}
-
-// GetMode returns the current operating mode
-func (a *Assistant) GetMode() storage.OperatingMode {
-	if a.mode == "" {
-		return storage.ModeDevOps
-	}
-	return a.mode
 }
 
 // GetProjectContext returns the project context if loaded

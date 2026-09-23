@@ -31,12 +31,6 @@ linters:
         linters:
           - gosec
           - lll
-    paths:
-      # internal/legacytools is the untouched v2 tool package, moved aside in Phase 2 Task 6 so the
-      # new internal/tools package could take its place; it is deleted whole in Task 12. new-from-rev
-      # below cannot reliably pair the move as a rename when a new file lands at the old path (as
-      # file_tools.go and registry.go do here), so it is excluded by path instead.
-      - ^internal/legacytools/
 
 formatters:
   enable:

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne covers the capability gate SwitchModel
@@ -50,7 +51,7 @@ func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
-	a, err := New(srv.URL, "", "gemma4:12b", "vllm", false, false)
+	a, err := New(srv.URL, "", "gemma4:12b", "vllm", false, false, tools.Config{})
 	if err != nil {
 		t.Fatalf("New() against a Show-less backend should still construct: %v", err)
 	}

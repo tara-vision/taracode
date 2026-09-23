@@ -263,60 +263,60 @@ func TestFormatPromptWithContext(t *testing.T) {
 
 func TestFormatPromptWithMode(t *testing.T) {
 	tests := []struct {
-		name         string
-		relDir       string
-		usedTokens   int
-		maxTokens    int
-		securityMode bool
-		wantParts    []string
-		dontWant     []string
+		name       string
+		relDir     string
+		usedTokens int
+		maxTokens  int
+		operate    bool
+		wantParts  []string
+		dontWant   []string
 	}{
 		{
-			name:         "devops mode at root",
-			relDir:       "",
-			usedTokens:   0,
-			maxTokens:    0,
-			securityMode: false,
-			wantParts:    []string{"\033[34m❯\033[0m "},
-			dontWant:     []string{"🛡"},
+			name:       "investigate mode at root",
+			relDir:     "",
+			usedTokens: 0,
+			maxTokens:  0,
+			operate:    false,
+			wantParts:  []string{"\033[34m❯\033[0m "},
+			dontWant:   []string{"[operate]"},
 		},
 		{
-			name:         "security mode at root",
-			relDir:       "",
-			usedTokens:   0,
-			maxTokens:    0,
-			securityMode: true,
-			wantParts:    []string{"🛡", "\033[34m❯\033[0m "},
+			name:       "operate mode at root",
+			relDir:     "",
+			usedTokens: 0,
+			maxTokens:  0,
+			operate:    true,
+			wantParts:  []string{"[operate]", "\033[34m❯\033[0m "},
 		},
 		{
-			name:         "security mode with directory",
-			relDir:       "src",
-			usedTokens:   0,
-			maxTokens:    0,
-			securityMode: true,
-			wantParts:    []string{"🛡", "[src]"},
+			name:       "operate mode with directory",
+			relDir:     "src",
+			usedTokens: 0,
+			maxTokens:  0,
+			operate:    true,
+			wantParts:  []string{"[operate]", "[src]"},
 		},
 		{
-			name:         "security mode with context",
-			relDir:       "",
-			usedTokens:   5000,
-			maxTokens:    32000,
-			securityMode: true,
-			wantParts:    []string{"🛡", "5.0k/32k"},
+			name:       "operate mode with context",
+			relDir:     "",
+			usedTokens: 5000,
+			maxTokens:  32000,
+			operate:    true,
+			wantParts:  []string{"[operate]", "5.0k/32k"},
 		},
 		{
-			name:         "security mode with all elements",
-			relDir:       "internal/tools",
-			usedTokens:   10000,
-			maxTokens:    32000,
-			securityMode: true,
-			wantParts:    []string{"🛡", "tools]", "10k/32k"},
+			name:       "operate mode with all elements",
+			relDir:     "internal/tools",
+			usedTokens: 10000,
+			maxTokens:  32000,
+			operate:    true,
+			wantParts:  []string{"[operate]", "tools]", "10k/32k"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FormatPromptWithMode(tt.relDir, tt.usedTokens, tt.maxTokens, tt.securityMode)
+			got := FormatPromptWithMode(tt.relDir, tt.usedTokens, tt.maxTokens, tt.operate)
 			for _, part := range tt.wantParts {
 				if !contains(got, part) {
 					t.Errorf("FormatPromptWithMode() = %q, missing expected part %q", got, part)
