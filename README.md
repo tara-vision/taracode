@@ -148,7 +148,9 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    two values, `sudo` or `xargs` in front, a kubeconfig that is not a small regular file, and a context
    switched earlier on the line (`kubectl config use-context`, `kubectx`, `kubens`, a `KUBECONFIG` assignment,
    a sourced file that can set `KUBECONFIG`, a script). kubectl or helm run from another program's string or
-   file, such as `sh -c "kubectl ..."` or a script, is not seen. Protected paths cover the file `write_file`
+   file, such as `sh -c "kubectl ..."` or a script, is not seen; nor is one inside a double-quoted
+   substitution (`"$(kubectl ...)"` or backticks in double quotes), though the unquoted `$(kubectl ...)` is.
+   Protected paths cover the file `write_file`
    or `edit_file` changes, the directory the `terraform` tool runs in, and in a `shell` command the targets of
    its redirects and the files it hands to a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`,
    `chmod`, `ln`, `dd`, `sort -o`, `curl -o`, ...), also after a literal `cd`. A path a command builds at run
