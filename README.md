@@ -205,7 +205,7 @@ tool's name. Investigate mode exposes the tools that have a read form (fourteen,
 | `scan` | scanner (trivy, gitleaks, tfsec, kubesec, dependency), target, severity | always | never |
 | `web_search` | query, max | always (external, disabled by `offline`) | never |
 | `web_fetch` | url | always (external, disabled by `offline`) | never |
-| `get_datetime` | none | always | never |
+| `get_datetime` | format, timezone | always | never |
 
 MCP tools join the same registry: a server that annotates a tool `readOnlyHint: true` gets a read form;
 every other MCP tool is a mutation and stays hidden in investigate mode.
