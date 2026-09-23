@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -12,84 +11,12 @@ import (
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
-const (
-	kubectlTimeout     = 120 * time.Second
-	kubeResolveTimeout = 3 * time.Second
-)
-
-// currentKubeTarget asks kubectl for the current context and its default namespace, from the
-// kubeconfig the command names (kubeconfig, "" for the usual one); empty when kubectl is missing or
-// has no context, and "*" for both when the kubeconfig is known only at run time. Only mutate
-// invocations pay this cost. kubectl config current-context/view read the kubeconfig, not project
-// files, so a workingDir that does not exist (or is unset) must not fail the resolution the way it
-// would fail an ordinary command run there; runCommandEnv only sets cmd.Dir when dir is non-empty,
-// so passing "" falls back to the process's own, always-valid, working directory.
-func currentKubeTarget(ctx context.Context, workingDir, kubeconfig string) (kubeContext, namespace string) {
-	env, known := kubeconfigEnv(kubeconfig)
-	if !known {
-		return "*", "*"
-	}
-	ctx, cancel := withTimeout(ctx, kubeResolveTimeout)
-	defer cancel()
-	dir := workingDir
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		dir = ""
-	}
-	if out, err := runCommandEnv(ctx, dir, env, "kubectl", "config", "current-context"); err == nil {
-		kubeContext = strings.TrimSpace(out)
-	}
-	if out, err := runCommandEnv(ctx, dir, env, "kubectl", "config", "view",
-		"--minify", "-o", "jsonpath={..namespace}"); err == nil {
-		namespace = strings.TrimSpace(out)
-	}
-	if namespace == "" || strings.HasSuffix(namespace, "completed with no output") {
-		namespace = "default"
-	}
-	return kubeContext, namespace
-}
-
-// kubeconfigEnv is the environment that points kubectl at the kubeconfig a command names: a path or
-// a list, as KUBECONFIG takes it, with a leading ~, $HOME or ${HOME} expanded. known is false when
-// a path is computed at run time (another variable, a command substitution).
-func kubeconfigEnv(kubeconfig string) (env []string, known bool) {
-	if kubeconfig == "" {
-		return nil, true
-	}
-	home, _ := os.UserHomeDir()
-	parts := strings.Split(kubeconfig, string(os.PathListSeparator))
-	paths := make([]string, 0, len(parts))
-	for _, p := range parts {
-		expanded := expandHome(p, home)
-		if strings.ContainsAny(expanded, "$`") {
-			return nil, false
-		}
-		paths = append(paths, expanded)
-	}
-	return []string{"KUBECONFIG=" + strings.Join(paths, string(os.PathListSeparator))}, true
-}
-
-// kubeTargetsFor fills the targets from the explicit flags, falling back to the current context of
-// the kubeconfig the command names.
-func kubeTargetsFor(ctx context.Context, workingDir, explicitCtx, explicitNS, kubeconfig string) policy.Targets {
-	t := policy.Targets{KubeContext: explicitCtx, KubeNamespace: explicitNS}
-	if t.KubeContext == "" || t.KubeNamespace == "" {
-		cur, ns := currentKubeTarget(ctx, workingDir, kubeconfig)
-		if t.KubeContext == "" {
-			t.KubeContext = cur
-		}
-		if t.KubeNamespace == "" {
-			t.KubeNamespace = ns
-		}
-	}
-	return t
-}
+const kubectlTimeout = 120 * time.Second
 
 // kubectlArgv builds the argv from the structured params plus the tokenized args. A structured
-// namespace, context or output that is also spelled out in args (in any of its flag spellings) is
-// refused rather than silently picking one: classify.KubeTargets and kubectl itself do not agree on
-// which of two conflicting flags wins (KubeTargets reports the first match, kubectl applies the
-// last), so target resolution could report a different namespace or context than the one kubectl
-// actually mutates.
+// namespace, context or output that is also spelled out in args (-n, --namespace, --context, -o,
+// --output) is refused rather than silently picking one; a spelling this misses (-nkube-system)
+// still gives classify.KubeTargets two different values, which it reports as "*".
 func kubectlArgv(args map[string]any) ([]string, error) {
 	verb, err := required(args, "verb")
 	if err != nil {
@@ -167,8 +94,8 @@ func KubectlTool() *Tool {
 			inv := policy.Invocation{Tool: "kubectl", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
 				Command: "kubectl " + strings.Join(argv, " ")}
 			if res.Classification == policy.Mutate {
-				explicitCtx, explicitNS := classify.KubeTargets(argv[1:])
-				inv.Targets = kubeTargetsFor(context.Background(), workingDir, explicitCtx, explicitNS,
+				kubeContext, namespace := classify.KubeTargets(argv[1:])
+				inv.Targets = newKubeResolver(context.Background(), workingDir).targets(kubeContext, namespace,
 					classify.KubeconfigFlag(argv[1:]))
 			}
 			return inv

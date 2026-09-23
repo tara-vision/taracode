@@ -39,8 +39,9 @@ func HelmTool() *Tool {
 			inv := policy.Invocation{Tool: "helm", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
 				Command: "helm " + raw}
 			if res.Classification == policy.Mutate {
-				kubeContext, ns := classify.HelmTargets(words)
-				inv.Targets = kubeTargetsFor(context.Background(), workingDir, kubeContext, ns, classify.KubeconfigFlag(words))
+				kubeContext, ns := helmEnvTargets(classify.HelmTargets(words))
+				inv.Targets = newKubeResolver(context.Background(), workingDir).targets(kubeContext, ns,
+					classify.KubeconfigFlag(words))
 			}
 			return inv
 		},
