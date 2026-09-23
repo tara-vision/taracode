@@ -112,3 +112,33 @@ func TestKubectlToolClassifiesExecAsAMutation(t *testing.T) {
 		t.Fatalf("a namespace after -- is not kubectl's; the current one applies: %+v", inv)
 	}
 }
+
+// TestKubectlToolReadsAGlobalFlagPassedAsTheVerb (pre-tag round 2, item 3): a global flag given in
+// the verb parameter (verb "-n", args "kube-system delete pod x") is part of the target, exactly as
+// on the shell path, so the kubectl tool reads it instead of dropping it and resolving the current
+// context. The kubeconfig flag in the verb parameter is read too.
+func TestKubectlToolReadsAGlobalFlagPassedAsTheVerb(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubectl)
+	tool := KubectlTool()
+	cases := []struct {
+		args    map[string]any
+		context string
+		ns      string
+	}{
+		{map[string]any{"verb": "-n", "args": "kube-system delete pod x"}, "kind-dev", "kube-system"},
+		{map[string]any{"verb": "--context", "args": "prod-eu delete pod x"}, "prod-eu", "team-a"},
+		{map[string]any{"verb": "--namespace", "args": "kube-system delete pod x"}, "kind-dev", "kube-system"},
+	}
+	for _, c := range cases {
+		inv := tool.Classify(c.args, "/w")
+		if inv.Classification != policy.Mutate || inv.Targets.KubeContext != c.context || inv.Targets.KubeNamespace != c.ns {
+			t.Errorf("%v: targets %+v, want context %s namespace %s", c.args, inv.Targets, c.context, c.ns)
+		}
+	}
+	// A kubeconfig named in the verb parameter reaches the resolver: /dev/zero is not a small
+	// regular file, so the target is "*", not the process kubeconfig.
+	inv := tool.Classify(map[string]any{"verb": "--kubeconfig", "args": "/dev/zero delete pod x"}, "/w")
+	if inv.Targets.KubeContext != "*" {
+		t.Errorf("a --kubeconfig in the verb parameter must reach the resolver: %+v", inv.Targets)
+	}
+}

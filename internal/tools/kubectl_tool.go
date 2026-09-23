@@ -94,9 +94,11 @@ func KubectlTool() *Tool {
 			inv := policy.Invocation{Tool: "kubectl", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
 				Command: "kubectl " + strings.Join(argv, " ")}
 			if res.Classification == policy.Mutate {
-				kubeContext, namespace := classify.KubeTargets(argv[1:])
+				// The whole argv, not argv[1:]: a global flag passed as the verb (verb "-n", args
+				// "kube-system delete ...") is part of the target, exactly as on the shell path.
+				kubeContext, namespace := classify.KubeTargets(argv)
 				inv.Targets = newKubeResolver(context.Background(), workingDir).targets(kubeContext, namespace,
-					classify.KubeconfigFlag(argv[1:]))
+					classify.KubeconfigFlag(argv), "")
 			}
 			return inv
 		},
