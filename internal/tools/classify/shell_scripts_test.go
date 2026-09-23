@@ -20,6 +20,11 @@ func TestSedScriptWrites(t *testing.T) {
 		{"s/x/date/e", true}, {"e date", true}, {"1e", true}, {"b end; w out", true}, {"p;w out", true},
 		{"/unterminated", true}, {"s/a/b", true}, {"y/ab/", true}, {"k", true}, {"5", true}, {`\%x`, true},
 		{"/x/{\nw out\n}", true},
+		// a bracket expression protects the delimiter in a regular expression (BSD sed, macOS), not
+		// in the replacement; an unclosed one cannot be read
+		{"s/[/]/_/g", false}, {"s/[^/]*/x/", false}, {"s/[]/]/x/", false}, {"s/[[:alpha:]/]/x/", false},
+		{"s/a/[/", false}, {`\%[%]%p`, false}, {"/[/]/w out", true}, {"s/[[:alpha:]/]/x/w out", true},
+		{"s/[/]/x/e", true}, {"s/[/", true}, {"/[/", true},
 	}
 	for _, c := range cases {
 		if got := sedScriptWrites(c.script); got != c.writes {

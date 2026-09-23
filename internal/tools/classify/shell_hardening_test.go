@@ -292,3 +292,15 @@ func TestShellAssignmentOnlySegments(t *testing.T) {
 		t.Errorf("hostsIn of no words: %v", got)
 	}
 }
+
+// TestSedBracketsAndBSDInPlaceClusters: a delimiter inside a bracket expression does not end a sed
+// expression (a read stays a read), and BSD sed's boolean -l does not hide an -i in its cluster or
+// swallow the script that follows it (both fail closed on every platform).
+func TestSedBracketsAndBSDInPlaceClusters(t *testing.T) {
+	checkReads(t, []string{"sed 's/[/]/_/g' paths.txt", "sed -n 's|[|]|/|gp' x", "sed -l -n p f.txt"})
+	checkMutations(t, []hardeningCase{
+		{"sed -li '' s/a/b/ f.txt", "sed -i"}, {"sed -i '' s/a/b/ f.txt", "sed -i"},
+		{"sed -ni 's/a/b/p' f.txt", "sed -i"}, {"sed -l 'w out.txt' in.txt", "sed"},
+		{"sed '/[/]/w out.txt' in.txt", "sed"},
+	})
+}

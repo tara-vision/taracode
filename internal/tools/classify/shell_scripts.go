@@ -23,16 +23,23 @@ func sedResult(prog string, rest []string) Result {
 	return read(prog)
 }
 
+// sedInPlace reports -i, -I or --in-place. The cluster is read through -l, which takes a value in
+// GNU sed but none in BSD sed: -li with an empty suffix is an in-place edit on macOS.
 func sedInPlace(rest []string) bool {
-	return hasGNUFlag(rest, nil, "--in-place") || shortFlag(rest, "iI", "efl")
+	return hasGNUFlag(rest, nil, "--in-place") || shortFlag(rest, "iI", "ef")
 }
 
 // sedScripts returns the scripts of a sed command: every -e or --expression value, or else the first
-// operand.
+// operand. GNU sed's -l takes a value and BSD sed's does not, so the scripts of both readings are
+// returned, and a script either sed would run is checked.
 func sedScripts(rest []string) []string {
-	scripts, ops := splitScripts(rest, 'e', "--expression", "l", []string{"--line-length"})
-	if len(scripts) == 0 && len(ops) > 0 {
-		scripts = ops[:1]
+	var scripts []string
+	for _, valued := range []string{"l", ""} {
+		found, ops := splitScripts(rest, 'e', "--expression", valued, []string{"--line-length"})
+		if len(found) == 0 && len(ops) > 0 {
+			found = ops[:1]
+		}
+		scripts = append(scripts, found...)
 	}
 	return scripts
 }
@@ -109,35 +116,66 @@ func (p *sedScanner) skipUntil(stops string) {
 	}
 }
 
-// skipTo advances past the next unescaped delim; false when there is none.
-func (p *sedScanner) skipTo(delim byte) bool {
+// skipTo advances past the next unescaped delim; false when there is none. With brackets, as in a
+// regular expression, a bracket expression is skipped whole, so a delimiter inside it ([/], [^/])
+// does not end the expression (BSD sed, the sed of macOS, reads it so; GNU sed refuses it).
+func (p *sedScanner) skipTo(delim byte, brackets bool) bool {
 	for !p.done() {
 		c := p.s[p.pos]
-		p.pos++
-		if c == '\\' {
+		switch {
+		case c == '\\':
+			p.pos += 2
+		case brackets && c == '[' && c != delim:
+			if !p.skipBracket() {
+				return false
+			}
+		case c == delim:
 			p.pos++
-			continue
-		}
-		if c == delim {
 			return true
+		default:
+			p.pos++
 		}
 	}
 	return false
 }
 
-// skipParts skips n parts closed by the delimiter at pos: s/re/rep/ and y/src/dst/.
-func (p *sedScanner) skipParts(n int) bool {
+// skipBracket advances past the bracket expression that opens at pos: a ] right after [ or [^ is
+// literal, and [:class:], [.coll.] and [=equiv=] may hold a ]. false when it is not closed.
+func (p *sedScanner) skipBracket() bool {
+	i := p.pos + 1
+	if i < len(p.s) && p.s[i] == '^' {
+		i++
+	}
+	if i < len(p.s) && p.s[i] == ']' {
+		i++
+	}
+	for i < len(p.s) && p.s[i] != '\n' {
+		switch {
+		case p.s[i] == ']':
+			p.pos = i + 1
+			return true
+		case p.s[i] == '[' && i+1 < len(p.s) && strings.IndexByte(".:=", p.s[i+1]) >= 0:
+			end := strings.Index(p.s[i+2:], string(p.s[i+1])+"]")
+			if end < 0 {
+				return false
+			}
+			i += end + 4
+		default:
+			i++
+		}
+	}
+	return false
+}
+
+// skipParts skips the two parts closed by the delimiter at pos: s/re/rep/ (regex: a bracket
+// expression protects the delimiter in re) and y/src/dst/.
+func (p *sedScanner) skipParts(regex bool) bool {
 	if p.done() {
 		return false
 	}
 	delim := p.s[p.pos]
 	p.pos++
-	for ; n > 0; n-- {
-		if !p.skipTo(delim) {
-			return false
-		}
-	}
-	return true
+	return p.skipTo(delim, regex) && p.skipTo(delim, false)
 }
 
 // skipAddresses advances past line numbers, $, /re/ and \cREc addresses with their I and M flags,
@@ -151,12 +189,12 @@ func (p *sedScanner) skipAddresses() bool {
 		switch p.s[p.pos] {
 		case '/':
 			p.pos++
-			if !p.skipTo('/') {
+			if !p.skipTo('/', true) {
 				return false
 			}
 		case '\\':
 			p.pos += 2
-			if p.pos > len(p.s) || !p.skipTo(p.s[p.pos-1]) {
+			if p.pos > len(p.s) || !p.skipTo(p.s[p.pos-1], true) {
 				return false
 			}
 		default:
@@ -218,11 +256,11 @@ func sedScriptWrites(script string) bool {
 		case 'w', 'W', 'e':
 			return true
 		case 's':
-			if !p.skipParts(2) || p.substituteFlagsWrite() {
+			if !p.skipParts(true) || p.substituteFlagsWrite() {
 				return true
 			}
 		case 'y':
-			if !p.skipParts(2) {
+			if !p.skipParts(false) {
 				return true
 			}
 		case 'a', 'i', 'c':
