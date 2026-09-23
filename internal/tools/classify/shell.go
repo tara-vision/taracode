@@ -31,7 +31,7 @@ func Shell(command string) ShellResult {
 	if err != nil {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
 	}
-	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed.Segments)}
+	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed)}
 	if parsed.Substitution {
 		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) or a translated $\"...\" "+
 			"hides what runs")
