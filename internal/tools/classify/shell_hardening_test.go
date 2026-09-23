@@ -305,6 +305,16 @@ func TestSedBracketsAndBSDInPlaceClusters(t *testing.T) {
 	})
 }
 
+// TestSedScriptFileBehindBSDLineBuffering (pre-tag round H): BSD sed's -l takes no value, so in -lf
+// and -nlf the f is the script-file option and sed runs a script the classifier cannot read; GNU
+// sed would read f as -l's value, and the classifier fails closed for both.
+func TestSedScriptFileBehindBSDLineBuffering(t *testing.T) {
+	checkMutations(t, []hardeningCase{
+		{"sed -lf p in.txt", "sed -f"}, {"sed -nlf p in.txt", "sed -f"}, {"sed -l -f p in.txt", "sed -f"},
+	})
+	checkReads(t, []string{"sed -le 's/a/b/' f.txt", "sed -l -n p f.txt"})
+}
+
 // TestShellVariableExpansionsCannotAddOptions (pre-tag round B): once a loop is classified by its
 // body, a loop variable is a value the line itself sets, and unquoted it splits into words any of
 // which can be an option: for x in -delete; do find . $x; done deletes. A variable the line sets (a

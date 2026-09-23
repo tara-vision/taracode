@@ -2,6 +2,7 @@ package agent
 
 import (
 	gocontext "context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -50,17 +51,42 @@ func (a *Assistant) executeOne(run toolRun) toolOutcome {
 }
 
 // classify runs the tool's classifier. A classifier that panics must never take the session down:
-// the call then becomes a mutation whose reason carries the panic, and executeOne refuses it.
+// the call then becomes a mutation whose reason carries the panic and whose command is the call's
+// summary, and executeOne refuses and audits it.
 func (a *Assistant) classify(call *ToolCall) (inv policy.Invocation, panicked bool, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			inv = policy.Invocation{Tool: call.Tool, Classification: policy.Mutate, WorkingDir: a.workingDir,
-				Reason: fmt.Sprintf("the %s classifier failed (%v), so the call is refused", call.Tool, p)}
+				Command: callSummary(call),
+				Reason:  fmt.Sprintf("the %s classifier failed (%v), so the call is refused", call.Tool, p)}
 			panicked, err = true, nil
 		}
 	}()
 	inv, err = a.toolRegistry.Classify(call.Tool, call.Params, a.workingDir)
 	return inv, false, err
+}
+
+// maxCallSummary bounds the command an audit record carries for a call the classifier could not read.
+const maxCallSummary = 400
+
+// callSummary names a call for the audit log when its classifier could not: the command string of a
+// tool that takes one (shell), else the tool name and its arguments as JSON, cut to maxCallSummary.
+func callSummary(call *ToolCall) string {
+	if command, ok := call.Params["command"].(string); ok && command != "" {
+		return truncateSummary(command)
+	}
+	args, err := json.Marshal(call.Params)
+	if err != nil {
+		return call.Tool
+	}
+	return truncateSummary(call.Tool + " " + string(args))
+}
+
+func truncateSummary(s string) string {
+	if r := []rune(s); len(r) > maxCallSummary {
+		return string(r[:maxCallSummary]) + "..."
+	}
+	return s
 }
 
 // refuseUnavailable answers a call to a tool no mode offers in this session: offline hides the tools
