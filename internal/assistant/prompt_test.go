@@ -10,6 +10,7 @@ import (
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
+	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestBuildSystemPromptAppendsTaracodeMD covers the project-context injection: a TARACODE.md in
@@ -41,6 +42,55 @@ func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 	want := fmt.Sprintf("Current working directory: %s", dir)
 	if !strings.HasSuffix(prompt, want) {
 		t.Fatalf("prompt does not end with the working directory line:\n%s", prompt)
+	}
+}
+
+// TestPromptCarriesThePersonaTheModeAndAgentsMD covers the persona, both mode lines, the
+// TARACODE.md and AGENTS.md sections, and the truncation of an oversized context file.
+func TestPromptCarriesThePersonaTheModeAndAgentsMD(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents\nUse make test.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "TARACODE.md"), []byte("# TARACODE\nProd is eu-west-1.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := buildSystemPrompt(dir, nil, policy.ModeInvestigate, 0)
+	for _, want := range []string{"local-first DevOps operator", "Mode: investigate", "read-only", "## PROJECT CONTEXT", "Prod is eu-west-1", "## AGENTS.md", "Use make test", "Current working directory: " + dir} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(p, "security mode") || strings.Contains(p, "TOOL FORMAT") {
+		t.Error("the old prompts must be gone")
+	}
+	op := buildSystemPrompt(dir, nil, policy.ModeOperate, 0)
+	if !strings.Contains(op, "Mode: operate") || !strings.Contains(op, "dry run") {
+		t.Error("operate mode line")
+	}
+	big := strings.Repeat("x", maxContextFileBytes+100)
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p := buildSystemPrompt(dir, nil, policy.ModeInvestigate, 0); !strings.Contains(p, "truncated") || len(p) > maxContextFileBytes*2+4000 {
+		t.Errorf("large files are capped: %d bytes", len(p))
+	}
+}
+
+// TestPromptAndSchemasFitTheContextBudget covers spec 4's context budget: the system prompt plus
+// the exposed tool schemas must stay under 2,500 estimated tokens in investigate mode and 3,500 in
+// operate mode.
+func TestPromptAndSchemasFitTheContextBudget(t *testing.T) {
+	r := tools.NewBuiltinRegistry(tools.Options{}, tools.Config{})
+	for _, c := range []struct {
+		mode   policy.Mode
+		budget int
+	}{{policy.ModeInvestigate, 2500}, {policy.ModeOperate, 3500}} {
+		prompt := buildSystemPrompt(t.TempDir(), nil, c.mode, 0)
+		total := EstimateTokens(prompt) + EstimateToolDefsTokens(r.Definitions(c.mode))
+		if total > c.budget {
+			t.Errorf("%s mode: prompt plus schemas estimate %d tokens, budget %d (spec 4)", c.mode, total, c.budget)
+		}
 	}
 }
 

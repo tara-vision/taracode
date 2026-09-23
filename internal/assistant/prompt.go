@@ -11,34 +11,38 @@ import (
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
-// baseSystemPromptCompact is the persona; the tool schemas travel in the request's tools field.
-const baseSystemPromptCompact = `You are Tara Code, a DevOps & Cloud AI assistant specialized in infrastructure ` +
-	`automation, container orchestration, and cloud platforms.
+// personaPrompt is the one system prompt. The mode line, the project files, memories, the active
+// plan and the working directory are appended at build time. It is split into concatenated
+// literals (rather than one multi-line raw string) only to keep source lines under the repo's
+// line-length limit; the assembled value is the text spec 4 specifies, unchanged.
+const personaPrompt = "You are taracode, a local-first DevOps operator running on the user's machine. You " +
+	"investigate Kubernetes, Helm, Terraform, Docker and cloud (AWS, Azure, GCP) " +
+	"environments with the tools you are given and, only when the user has switched to " +
+	"operate mode, you change them through a policy the user controls.\n" +
+	"\n" +
+	"Working rules:\n" +
+	"- Look before you conclude: read files, describe resources, check logs, events and " +
+	"plans. Report what the evidence shows and say plainly when you could not verify " +
+	"something.\n" +
+	"- Prefer the dedicated tools (kubectl, helm, terraform, docker, cloud, git) for those " +
+	"CLIs and shell for everything else. One tool call per step; keep outputs small: name " +
+	"resources, use selectors and namespaces, limit lines.\n" +
+	"- Never invent resources, versions or command output. When a tool fails or is " +
+	"blocked, say what happened and try a different angle or ask the user.\n" +
+	"- Answer in short, structured Markdown: findings first, then the evidence, then next " +
+	"steps. State risks (data loss, downtime, cost) before any change.\n" +
+	"- Secrets in tool output appear as [redacted:kind]; never try to reconstruct them."
 
-## DEVOPS EXPERTISE
+const investigateLine = "Mode: investigate. Every tool call must be read-only; tools that could change " +
+	"anything are hidden or refused. Diagnose, explain and propose; do not ask the user to " +
+	"switch modes unless they ask for a change."
 
-You have deep expertise in:
-- Infrastructure as Code (Terraform, CloudFormation, Ansible, Pulumi)
-- Container Orchestration (Kubernetes, Docker, ECS/EKS/AKS/GKE)
-- CI/CD & GitOps (GitHub Actions, GitLab CI, ArgoCD, Flux)
-- Cloud Platforms (AWS, Azure, GCP)
-- Monitoring & Observability (Prometheus, Grafana, CloudWatch)
-- Security & Compliance (RBAC, Pod Security, Secrets management)
+const operateLine = "Mode: operate. Mutating calls go through the user's policy: they may be denied, need " +
+	"a dry run first, or need approval. Prefer a plan or a dry run before a change and " +
+	"explain what will change and why."
 
-## CRITICAL RULE - DATE AND TIME
-
-When the user asks about the current date, time, day of week, or anything like "what day is today":
-- You MUST call the get_datetime tool
-- You MUST then tell the user the result (e.g., "Today is Saturday, February 7, 2026.")
-- NEVER guess the date from your training data - it will be wrong
-- NEVER use web_search or execute_command for this - use get_datetime
-
-## BEHAVIOR
-
-1. Use tools to accomplish tasks - read files before editing, validate before applying
-2. For destructive operations (destroy, delete), always confirm with user first
-3. Be concise - after tool execution, confirm briefly what was done
-4. Consider security implications in all recommendations`
+// maxContextFileBytes caps TARACODE.md and AGENTS.md in the prompt.
+const maxContextFileBytes = 16 * 1024
 
 // RefreshSystemPrompt rebuilds the system prompt to include any new memories or context
 func (a *Assistant) RefreshSystemPrompt() {
@@ -103,18 +107,39 @@ func (a *Assistant) applyStartupMode(opts Options) {
 	}
 }
 
-// buildSystemPrompt assembles the prompt: the persona with the mode line, TARACODE.md, memories,
-// the active plan and the working directory. memoryMaxTokens is the token budget for the project
-// memories section; 0 leaves it out entirely.
-func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode policy.Mode, memoryMaxTokens int) string {
-	prompt := baseSystemPromptCompact + "\n\nMode: " + string(mode)
+// contextFile reads name from workingDir and reports whether it was found. Content past
+// maxContextFileBytes is cut with a trailing note, so one oversized file cannot blow the prompt's
+// token budget.
+func contextFile(workingDir, name string) (string, bool) {
+	content, err := os.ReadFile(filepath.Join(workingDir, name)) //nolint:gosec // project-relative path
+	if err != nil {
+		return "", false
+	}
+	if len(content) <= maxContextFileBytes {
+		return string(content), true
+	}
+	return string(content[:maxContextFileBytes]) +
+		fmt.Sprintf("\n[truncated: the first 16 KB of %s are shown]", name), true
+}
 
-	// Check for TARACODE.md in current directory
-	taracodeFile := filepath.Join(workingDir, "TARACODE.md")
-	content, err := os.ReadFile(taracodeFile) //nolint:gosec // reads TARACODE.md from the project's own working directory
-	if err == nil {
+// buildSystemPrompt assembles the prompt: the persona with the mode line, TARACODE.md, AGENTS.md,
+// memories, the active plan and the working directory. memoryMaxTokens is the token budget for the
+// project memories section; 0 leaves it out entirely.
+func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode policy.Mode, memoryMaxTokens int) string {
+	modeLine := investigateLine
+	if mode == policy.ModeOperate {
+		modeLine = operateLine
+	}
+	prompt := personaPrompt + "\n\n" + modeLine
+
+	if content, ok := contextFile(workingDir, "TARACODE.md"); ok {
 		prompt += fmt.Sprintf("\n\n## PROJECT CONTEXT\nThe following is project-specific guidance from TARACODE.md:\n\n%s",
-			string(content))
+			content)
+	}
+
+	if content, ok := contextFile(workingDir, "AGENTS.md"); ok {
+		prompt += fmt.Sprintf("\n\n## AGENTS.md\nThe following is agent-specific guidance from AGENTS.md:\n\n%s",
+			content)
 	}
 
 	// Include relevant project memories if available
