@@ -183,3 +183,30 @@ func TestInvestigateModeRefusesTheC1Holes(t *testing.T) {
 		t.Fatal("the redirect must not run")
 	}
 }
+
+// TestAClassifierPanicIsARefusalNotACrash: a classifier that panics must never take the session
+// down; the loop refuses the call, with the panic in the reason, and audits the refusal.
+func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
+	a, srv, _ := gateAssistant(t, policy.ModeOperate, toolCall("broken_probe", map[string]any{}),
+		ollamatest.Turn{Content: "ok"})
+	ran := false
+	a.toolRegistry.Register(&tools.Tool{Name: "broken_probe", Description: "probe", ReadForm: true,
+		Classify: func(map[string]any, string) policy.Invocation { panic("index out of range [1] with length 0") },
+		Run:      func(context.Context, map[string]any, string) (string, error) { ran = true; return "ran", nil }})
+	a.refreshTools()
+	out := captureStdout(t, func() { _ = a.ProcessMessage("go") })
+	if ran {
+		t.Fatal("a call whose classifier panicked must not run")
+	}
+	msg := messageContent(t, lastChatBody(t, srv), 0)
+	if !strings.Contains(msg, "classifier failed") || !strings.Contains(msg, "index out of range") {
+		t.Fatalf("the refusal names the panic: %q", msg)
+	}
+	if !strings.Contains(out, "classifier failed") {
+		t.Fatalf("the refusal is shown:\n%s", out)
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 1 || recs[0].Decision != "deny" || recs[0].Rule != "classifier" || recs[0].Classification != "mutate" {
+		t.Fatalf("audit %+v", recs)
+	}
+}
