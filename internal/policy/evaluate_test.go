@@ -108,6 +108,33 @@ func TestBuiltInPolicyDeniesCommandsNamingThePolicyFile(t *testing.T) {
 	}
 }
 
+// TestAStarKubeTargetDenyNamesItsCauseAndRemedy (pre-tag round 2, item 5): a "*" kube target denial
+// names why taracode could not pin it down (the cause the classifier recorded) and how to avoid it,
+// so a model does not retry the same line. Two causes are checked, on the context and the namespace.
+func TestAStarKubeTargetDenyNamesItsCauseAndRemedy(t *testing.T) {
+	remedy := "run kubectl or helm as its own command with a literal --context and -n, or use the"
+	ctxDeny := Default().Evaluate(ModeOperate, mutate("shell", "", "kubectl config use-context prod-eu && kubectl delete pod web",
+		Targets{KubeContext: "*", KubeNamespace: "apps", KubeReason: "the context is switched earlier on the line"}))
+	if ctxDeny.Allow || ctxDeny.Rule != "protected.kube_contexts" ||
+		!strings.Contains(ctxDeny.Reason, "the context is switched earlier on the line") ||
+		!strings.Contains(ctxDeny.Reason, remedy) {
+		t.Fatalf("a context-switch * deny must name the cause and the remedy: %+v", ctxDeny)
+	}
+	nsDeny := Default().Evaluate(ModeOperate, mutate("shell", "", "kubectl delete pod web -n default -n kube-system",
+		Targets{KubeNamespace: "*", KubeReason: "conflicting --context, -n or --kubeconfig values"}))
+	if nsDeny.Allow || nsDeny.Rule != "protected.kube_namespaces" ||
+		!strings.Contains(nsDeny.Reason, "conflicting --context, -n or --kubeconfig values") ||
+		!strings.Contains(nsDeny.Reason, remedy) {
+		t.Fatalf("a conflicting-flags * deny must name the cause and the remedy: %+v", nsDeny)
+	}
+	// A "*" with no recorded cause still names the remedy, with no empty parentheses.
+	plain := Default().Evaluate(ModeOperate, mutate("shell", "", "kubectl delete pod web",
+		Targets{KubeContext: "*", KubeNamespace: "apps"}))
+	if !strings.Contains(plain.Reason, remedy) || strings.Contains(plain.Reason, "()") {
+		t.Fatalf("a * deny with no cause still names the remedy without empty parentheses: %+v", plain)
+	}
+}
+
 // TestSeveralContextsHitProtectedContexts: a shell line that names more than one kube context
 // reports "*", which touches the protected contexts too (ruling P2-R34).
 func TestSeveralContextsHitProtectedContexts(t *testing.T) {

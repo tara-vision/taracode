@@ -37,19 +37,33 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 	return Verdict{Allow: true, Rule: "policy", DryRun: p.dryRunFor(inv)}
 }
 
+// kubeRemedy tells the model how to turn a "*" kube target into one taracode can pin down, so it does
+// not retry the same line: adding --context to a line that already switched context does not help.
+const kubeRemedy = "run kubectl or helm as its own command with a literal --context and -n, or use the " +
+	"kubectl or helm tool"
+
+// causeClause is the parenthesised cause of a "*" target, empty when none was recorded.
+func causeClause(reason string) string {
+	if reason == "" {
+		return ""
+	}
+	return " (" + reason + ")"
+}
+
 func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 	t := inv.Targets
 	if t.KubeContext == "*" && len(p.Protected.KubeContexts) > 0 {
 		return denied("protected.kube_contexts", "the command touches more than one kube context, or one taracode "+
-			"cannot determine before it runs, and the policy protects %s", strings.Join(p.Protected.KubeContexts, ", ")), true
+			"cannot determine before it runs%s, and the policy protects %s; %s", causeClause(t.KubeReason),
+			strings.Join(p.Protected.KubeContexts, ", "), kubeRemedy), true
 	}
 	if pat, ok := firstGlob(p.Protected.KubeContexts, t.KubeContext); ok {
 		return denied("protected.kube_contexts", "kube context %q matches the protected pattern %q", t.KubeContext, pat), true
 	}
 	if t.KubeNamespace == "*" && len(p.Protected.KubeNamespaces) > 0 {
 		return denied("protected.kube_namespaces", "the command touches every namespace (-A), several namespaces or "+
-			"one taracode cannot determine before it runs, including the protected %s",
-			strings.Join(p.Protected.KubeNamespaces, ", ")), true
+			"one taracode cannot determine before it runs%s, including the protected %s; %s", causeClause(t.KubeReason),
+			strings.Join(p.Protected.KubeNamespaces, ", "), kubeRemedy), true
 	}
 	if pat, ok := firstGlob(p.Protected.KubeNamespaces, t.KubeNamespace); ok {
 		return denied("protected.kube_namespaces",
