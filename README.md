@@ -140,7 +140,13 @@ taracode starts in **investigate** mode: only tools with a read form are exposed
 you. **operate** mode exposes every tool; each mutation goes through the policy, in order:
 
 1. **Protected targets** - kube contexts, namespaces, cloud accounts, paths and hosts named in the policy
-   are a hard deny, with the reason printed.
+   are a hard deny, with the reason printed. A mutation of every namespace (`-A`) counts as touching the
+   protected ones. Protected paths cover the file `write_file` or `edit_file` changes, the directory the
+   `terraform` tool runs in, and in a `shell` command the targets of its redirects and the files it hands to
+   a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `chmod`, `ln`, `dd`, `sort -o`,
+   `curl -o`, ...), also after a literal `cd`. A path a command builds at run time (a variable, a command
+   substitution) is not seen, which is why the built-in deny patterns also refuse any mutation that names
+   `.taracode/policy.yaml`.
 2. **Deny patterns** - command globs that are refused outright.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
    produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first.
@@ -149,6 +155,10 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
 ```bash
 > /mode investigate|operate   # show or switch mode (or --mode at startup)
 ```
+
+A call to a tool the session does not offer (one the model repeats from a resumed session, or makes up) is
+refused. `offline` hides the two web tools, but it does not reach into `shell`: curl, `wget -O-`, dig,
+nslookup, host and ping still count as reads there.
 
 The policy comes from `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml` (lists unioned, booleans
 take the stricter value); with neither file, a built-in policy identical to the one below applies. `/init`
@@ -167,8 +177,8 @@ protected:                      # never mutated in operate mode (hard deny, prin
   cloud_accounts: []            # AWS account ids, Azure subscription ids, GCP project ids, or *globs*
   paths: ["**/*.tfstate", ".git/**"]
   hosts: []
-deny:
-  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*"]
+deny:                           # refused outright; the last pattern keeps the policy files safe
+  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*", "*.taracode/policy.yaml*"]
 require_dry_run:                # shown before the permission prompt
   kubectl_apply: true           # kubectl diff first
   terraform_apply: true         # a plan from this session, its summary first
@@ -183,6 +193,11 @@ per-tool rules (`/permissions allow|deny|ask <tool|all>`, `/permissions reset`).
 denied, is appended to `.taracode/audit.jsonl` before it runs; `/audit`, `/audit all` and `/audit export json`
 read it.
 
+Redaction runs on every tool result before the model, the session or the history sees it. The live output of
+a `shell` command is redacted a line at a time as it reaches the screen, so a secret that spans lines, such
+as a PEM private key block, is redacted in the tool result but not in the live view
+(`no_stream_commands: true` in `config.yaml` turns the live view off).
+
 ### Tools
 
 Sixteen tools replace the old 58; every call is classified read or mutate from its arguments, not from the
@@ -195,7 +210,7 @@ tool's name. Investigate mode exposes the tools that have a read form (fourteen,
 | `search_files` | pattern, path, glob, max | always | never |
 | `write_file` | path, content | never | always |
 | `edit_file` | path, old, new, preview | never | always |
-| `shell` | command, timeout | command matches the read-only allowlist (cat, ls, grep, find, ps, df, du, curl GET, dig, nslookup, jq, yq, git read verbs, kubectl read verbs, terraform read verbs, ...) | otherwise |
+| `shell` | command, timeout | command matches the read-only allowlist (cat, ls, grep, find, ps, df, du, curl GET, dig, nslookup, jq, git read verbs, kubectl read verbs, terraform read verbs, ...) | otherwise |
 | `git` | args | status, diff, log, show, branch (list), blame | add, commit, stash, checkout, reset, push, merge, rebase |
 | `kubectl` | verb, resource, name, namespace, context, args, output | get, describe, logs, events, top, explain, api-resources, version, diff, dry-run | apply, delete, patch, edit, scale, rollout, exec, cp, drain, cordon |
 | `helm` | args | list, status, get, history, show, template, lint, diff | install, upgrade, rollback, uninstall |
