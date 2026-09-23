@@ -24,7 +24,8 @@ func (r *repl) cmdInit(_ []string) {
 		currentVendor = provInfo.Type.String()
 	}
 	// Reinitialize assistant to pick up new context
-	newAsst, err := assistant.New(currentHost, r.apiKey, currentModel, currentVendor, r.streaming, r.spinner)
+	newAsst, err := assistant.New(
+		currentHost, r.apiKey, currentModel, currentVendor, r.streaming, r.spinner, toolConfig(r.renderer))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reinitializing assistant: %v\n", err)
 		return
@@ -41,7 +42,7 @@ func (r *repl) cmdInit(_ []string) {
 // cmdReload is the /reload command: rebuild the assistant from the current connection settings so
 // it re-reads TARACODE.md.
 func (r *repl) cmdReload(_ []string) {
-	newAsst, err := assistant.New(r.host, r.apiKey, r.model, r.vendor, r.streaming, r.spinner)
+	newAsst, err := assistant.New(r.host, r.apiKey, r.model, r.vendor, r.streaming, r.spinner, toolConfig(r.renderer))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reloading: %v\n", err)
 		return

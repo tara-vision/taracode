@@ -73,7 +73,7 @@ func (a *Assistant) Think() llm.Think { return a.think }
 func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) error {
 	if err != nil {
 		if errors.Is(err, llm.ErrNotSupported) {
-			// OpenAI-compatible servers: no capability data, keep the JSON fallback path.
+			// OpenAI-compatible servers: no capability data; the tools go out and the server decides.
 			a.contextWindow = 0
 			a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 			return nil

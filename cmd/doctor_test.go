@@ -13,6 +13,7 @@ import (
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestRunDoctorAgainstAClosedPortIsUnreachable covers `taracode doctor` against a server that
@@ -107,7 +108,7 @@ func TestHandleDoctorRunsAgainstTheLiveAssistant(t *testing.T) {
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
-	a, err := assistant.New(srv.URL, "", "gemma4:12b", "ollama", false, false)
+	a, err := assistant.New(srv.URL, "", "gemma4:12b", "ollama", false, false, tools.Config{})
 	if err != nil {
 		t.Fatalf("assistant.New() = %v", err)
 	}

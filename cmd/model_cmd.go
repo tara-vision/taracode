@@ -11,12 +11,13 @@ import (
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/provider"
+	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // cmdModel is the /model command: switch between available models.
 func (r *repl) cmdModel(_ []string) {
-	handleModelSwitch(&r.asst, r.hostPool, r.streaming, r.spinner)
+	handleModelSwitch(&r.asst, r.hostPool, r.streaming, r.spinner, toolConfig(r.renderer))
 }
 
 // modelWithHost combines model info with host name for multi-host display
@@ -28,8 +29,11 @@ type modelWithHost struct {
 	Vendor   string
 }
 
-// handleModelSwitch lists available models and allows switching
-func handleModelSwitch(asst **assistant.Assistant, hostPool *provider.HostPool, streaming, enableSpinner bool) {
+// handleModelSwitch lists available models and allows switching; toolCfg wires the tools of an
+// assistant re-created on another host.
+func handleModelSwitch(
+	asst **assistant.Assistant, hostPool *provider.HostPool, streaming, enableSpinner bool, toolCfg tools.Config,
+) {
 	// Get current model
 	currentModel := (*asst).GetCurrentModel()
 	currentHost := ""
@@ -64,7 +68,7 @@ func handleModelSwitch(asst **assistant.Assistant, hostPool *provider.HostPool, 
 		return
 	}
 
-	applyModelSwitch(asst, chosen, currentModel, currentHost, streaming, enableSpinner)
+	applyModelSwitch(asst, chosen, currentModel, currentHost, streaming, enableSpinner, toolCfg)
 }
 
 // collectAvailableModels lists models from the host pool (multi-host) or from the current
@@ -196,6 +200,7 @@ func runModelSelector(items []string) (idx int, selected bool) {
 // (multi-host mode), or switches the model in place on the current host.
 func applyModelSwitch(
 	asst **assistant.Assistant, selected modelWithHost, currentModel, currentHost string, streaming, enableSpinner bool,
+	toolCfg tools.Config,
 ) {
 	selectedModel := selected.Name
 	// Check if we need to switch hosts (multi-host mode)
@@ -212,7 +217,7 @@ func applyModelSwitch(
 		fmt.Printf("Switching to %s on host %s...\n", selectedModel, selected.HostName)
 
 		newAsst, err := assistant.New(
-			selected.HostURL, selected.APIKey, selectedModel, selected.Vendor, streaming, enableSpinner)
+			selected.HostURL, selected.APIKey, selectedModel, selected.Vendor, streaming, enableSpinner, toolCfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error switching host: %v\n", err)
 			return

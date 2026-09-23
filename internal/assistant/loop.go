@@ -8,11 +8,9 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
-	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/permissions"
 	"github.com/tara-vision/taracode/internal/storage"
+	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -80,7 +78,7 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 			return err
 		}
 
-		calls, display, native := a.toolCallsOf(res)
+		calls, display := toolCallsOf(res)
 		if len(calls) == 0 && display == "" && !nudged {
 			// An empty reply gets one nudge instead of ending the turn in silence (v2.0.4).
 			nudged = true
@@ -91,20 +89,13 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 			continue
 		}
 
-		// The JSON fallback keeps the tool call the model wrote in the stored reply, the way v2
-		// stored the raw response; only the prose before it is displayed.
-		reply := display
-		if !native {
-			reply = cleanResponse(res.Content)
-		}
-
-		a.appendAssistantTurn(res, calls, reply)
+		a.appendAssistantTurn(res, calls, display)
 		a.printAnswer(display)
 		if len(calls) == 0 {
 			a.lastResponse = display
 			return nil
 		}
-		a.runToolCalls(calls, reply, native)
+		a.runToolCalls(calls)
 	}
 
 	fmt.Printf("\n%s Stopped after %d tool iterations (context.max_tool_iterations)\n",
@@ -152,7 +143,7 @@ func (a *Assistant) injectDatetimeIfNeeded(userMessage string) string {
 	if !isDatetimeQuestion(userMessage) {
 		return userMessage
 	}
-	result, err := legacytools.GetDateTime(map[string]interface{}{}, "")
+	result, err := tools.DateTimeTool().Run(gocontext.Background(), nil, "")
 	if err != nil {
 		return userMessage
 	}
@@ -206,24 +197,12 @@ func (a *Assistant) requestOptions() llm.Options {
 	return options
 }
 
-// complete sends the conversation once and returns the reply, handling the no-native-tools
-// fallback, the host failover and the session token accounting.
+// complete sends the conversation once and returns the reply, handling the host failover and the
+// session token accounting.
 func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
-	req := llm.Request{Model: a.model, Messages: a.conversation, Options: a.requestOptions()}
-	if a.useNativeTools {
-		req.Tools = a.toolDefs
-	}
+	req := llm.Request{Model: a.model, Messages: a.conversation, Options: a.requestOptions(), Tools: a.toolDefs}
 
 	res, err := a.chat(ctx, req)
-	if err != nil && a.useNativeTools && looksLikeNoToolSupport(err) {
-		// The model cannot do native function calling: drop the schemas and switch the system
-		// prompt to the one that teaches JSON-in-content tool calls.
-		a.useNativeTools = false
-		a.RefreshSystemPrompt()
-		req.Tools = nil
-		req.Messages = a.conversation
-		res, err = a.chat(ctx, req)
-	}
 	if err != nil && a.hostPool != nil && isHostRetryableError(err) {
 		res, err = a.retryOnFallbackHost(ctx, req, err)
 	}
@@ -235,14 +214,6 @@ func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
 	a.sessionUsage.CompletionTokens += res.Usage.CompletionTokens
 	a.sessionUsage.TotalTokens += res.Usage.PromptTokens + res.Usage.CompletionTokens
 	return res, nil
-}
-
-// looksLikeNoToolSupport recognises the errors servers return for a model without tool support.
-func looksLikeNoToolSupport(err error) bool {
-	message := err.Error()
-	return strings.Contains(message, "does not support tools") ||
-		strings.Contains(message, "tools.function.parameters") ||
-		strings.Contains(message, "400 Bad Request")
 }
 
 // retryOnFallbackHost switches to a healthy host from the pool and repeats the request. When no
@@ -324,27 +295,21 @@ func (a *Assistant) startTurnSpinner() *ui.Spinner {
 	return spinner
 }
 
-// toolCallsOf returns the tool calls of a reply, the text to display and whether the reply came
-// through the native path. Native tool calls win; the JSON-in-content fallback only runs for models
-// that have no native tool support, and an "id" a model writes into that JSON never turns its call
-// into a native one.
-func (a *Assistant) toolCallsOf(res *llm.Result) (calls []*ToolCall, display string, native bool) {
-	if len(res.ToolCalls) > 0 {
-		calls = make([]*ToolCall, 0, len(res.ToolCalls))
-		for _, tc := range res.ToolCalls {
-			params := make(map[string]interface{})
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &params); err != nil {
-				params = make(map[string]interface{})
-			}
-			calls = append(calls, &ToolCall{ID: tc.ID, Tool: tc.Function.Name, Params: params})
+// toolCallsOf returns the native tool calls of a reply and the text to display. Tool calls written
+// into the content as JSON are not parsed: 3.0 needs a model with native tool support.
+func toolCallsOf(res *llm.Result) (calls []*ToolCall, display string) {
+	if len(res.ToolCalls) == 0 {
+		return nil, cleanResponse(res.Content)
+	}
+	calls = make([]*ToolCall, 0, len(res.ToolCalls))
+	for _, tc := range res.ToolCalls {
+		params := make(map[string]interface{})
+		if err := json.Unmarshal([]byte(tc.Function.Arguments), &params); err != nil {
+			params = make(map[string]interface{})
 		}
-		return calls, cleanResponse(res.Content), true
+		calls = append(calls, &ToolCall{ID: tc.ID, Tool: tc.Function.Name, Params: params})
 	}
-	if a.useNativeTools {
-		return nil, cleanResponse(res.Content), true
-	}
-	calls, display = parseToolCalls(res.Content)
-	return calls, display, false
+	return calls, cleanResponse(res.Content)
 }
 
 // appendAssistantTurn stores the assistant reply in the conversation and in the session. Only
@@ -379,115 +344,39 @@ func (a *Assistant) printAnswer(display string) {
 // toolOutcome is what one tool call produced, including the gates it had to pass.
 type toolOutcome struct {
 	result     string
-	isError    bool  // the tool failed, or permissions blocked it
-	denied     bool  // a gate (permission, security audit, edit preview) refused the call
+	isError    bool  // the tool failed, or a gate could not complete (a failed dry run or backup)
+	denied     bool  // a gate (policy, dry run, permission, edit preview) refused the call
 	durationMs int64 // time spent in the tool itself, 0 when it never ran
 }
 
 // success reports whether the tool actually ran and returned a result.
 func (o toolOutcome) success() bool { return !o.isError && !o.denied }
 
-// toolRun is one call about to be executed, with the batch state the audit prompt needs.
+// toolRun is one call about to be executed and its position in the reply.
 type toolRun struct {
 	call  *ToolCall
 	index int
 	total int
-	batch *ui.BatchAuditContext
 }
 
-// runToolCalls executes every call of one reply and appends the results in the shape the transport
-// expects: one tool message per native call, or a single user message for the JSON fallback.
-// Every call gets a result, including the ones a gate refused, so the model is never left waiting.
-func (a *Assistant) runToolCalls(calls []*ToolCall, rawReply string, native bool) {
-	batch := a.newAuditBatch(calls)
-	var fallback strings.Builder
-
+// runToolCalls executes every call of one reply and appends one tool message per call. Every call
+// gets a result, including the ones a gate refused, so the model is never left waiting.
+func (a *Assistant) runToolCalls(calls []*ToolCall) {
 	for idx, call := range calls {
-		outcome := a.executeOne(toolRun{call: call, index: idx, total: len(calls), batch: batch})
+		outcome := a.executeOne(toolRun{call: call, index: idx, total: len(calls)})
 		if !outcome.denied {
 			// A gate that refused already said so on its own; a status line here would claim the
 			// operation happened.
 			fmt.Println(a.renderer.FormatToolStatusWithDuration(
 				call.Tool, call.Params, outcome.result, outcome.isError, outcome.durationMs))
 		}
-
-		if native && call.ID != "" {
-			a.conversation = append(a.conversation, openai.ChatCompletionMessage{
-				Role:       openai.ChatMessageRoleTool,
-				Content:    outcome.result,
-				ToolCallID: call.ID,
-			})
-			a.recordToolResult(call, outcome)
-			continue
-		}
-		appendFallbackResult(&fallback, idx, len(calls), call.Tool, outcome.result)
-		a.recordFallbackToolResult(call, outcome, rawReply)
-	}
-
-	if fallback.Len() > 0 {
 		a.conversation = append(a.conversation, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: fallback.String(),
+			Role:       openai.ChatMessageRoleTool,
+			Content:    outcome.result,
+			ToolCallID: call.ID,
 		})
+		a.recordToolResult(call, outcome)
 	}
-}
-
-// executeOne runs the permission, audit and preview gates and then the tool itself. Every outcome,
-// including a refusal, comes back as text so the model learns what happened.
-func (a *Assistant) executeOne(run toolRun) toolOutcome {
-	call := run.call
-
-	if allowed, message := a.checkToolPermission(call.Tool, call.Params); !allowed {
-		return toolOutcome{result: message, isError: true, denied: true}
-	}
-
-	advanceAuditBatch(run.batch, call.Tool)
-	if allowed, message := a.checkSecurityAudit(call.Tool, call.Params, run.batch); !allowed {
-		// A user saying no is a choice, not an error.
-		return toolOutcome{result: message, denied: true}
-	}
-
-	if call.Tool == "edit_file" {
-		proceed, message, err := a.handleEditPreview(call.Params)
-		if err != nil {
-			return toolOutcome{result: message, isError: true, denied: true}
-		}
-		if !proceed {
-			return toolOutcome{result: message, denied: true}
-		}
-	}
-
-	return a.runTool(run)
-}
-
-// runTool executes the tool with its spinner and applies the output truncation budget.
-func (a *Assistant) runTool(run toolRun) toolOutcome {
-	call := run.call
-	if spinner := a.startToolSpinner(run); spinner != nil {
-		defer spinner.Stop()
-	}
-
-	start := time.Now()
-	output, err := a.toolRegistry.ExecuteTool(call.Tool, execParams(call), a.workingDir)
-	durationMs := time.Since(start).Milliseconds()
-	if err != nil {
-		return toolOutcome{result: fmt.Sprintf("Error: %v", err), isError: true, durationMs: durationMs}
-	}
-
-	truncated := TruncateToolOutput(output, call.Tool, a.truncationCfg)
-	if truncated.WasTruncated {
-		a.truncationEvents = append(a.truncationEvents, truncated)
-		output = truncated.Output
-	}
-	return toolOutcome{result: output, durationMs: durationMs}
-}
-
-// execParams injects the configured default severity into security tool calls.
-func execParams(call *ToolCall) map[string]interface{} {
-	if !legacytools.IsSecurityTool(call.Tool) {
-		return call.Params
-	}
-	return legacytools.InjectSecurityDefaults(call.Tool, call.Params, viper.GetString("security.default_severity"))
 }
 
 // startToolSpinner shows which tool is running, with its position in a multi-tool reply.
@@ -504,43 +393,7 @@ func (a *Assistant) startToolSpinner(run toolRun) *ui.Spinner {
 	return spinner
 }
 
-// newAuditBatch prepares the batch confirmation state for a reply that asks for more than one
-// audited operation. It stays nil outside security mode, where nothing is audited.
-func (a *Assistant) newAuditBatch(calls []*ToolCall) *ui.BatchAuditContext {
-	if a.mode != storage.ModeSecurity {
-		return nil
-	}
-	audited := 0
-	for _, call := range calls {
-		if permissions.GetToolCategory(call.Tool) != permissions.CategoryRead {
-			audited++
-		}
-	}
-	if audited <= 1 {
-		return nil
-	}
-	return &ui.BatchAuditContext{TotalTools: audited}
-}
-
-// advanceAuditBatch moves the batch counter on for every audited (non-read) operation.
-func advanceAuditBatch(batch *ui.BatchAuditContext, tool string) {
-	if batch == nil || permissions.GetToolCategory(tool) == permissions.CategoryRead {
-		return
-	}
-	batch.CurrentIndex++
-}
-
-// appendFallbackResult writes one result into the aggregated user message that carries tool output
-// back to models without native tool calling.
-func appendFallbackResult(sb *strings.Builder, idx, total int, tool, result string) {
-	if total > 1 {
-		fmt.Fprintf(sb, "[%d] %s result:\n%s\n\n", idx+1, tool, result)
-		return
-	}
-	fmt.Fprintf(sb, "Tool result:\n%s", result)
-}
-
-// recordToolResult saves the result of a native tool call to the session.
+// recordToolResult saves the result of a tool call to the session.
 func (a *Assistant) recordToolResult(call *ToolCall, outcome toolOutcome) {
 	a.recordMessage(storage.ConversationMessage{
 		Role:       "tool",
@@ -549,23 +402,6 @@ func (a *Assistant) recordToolResult(call *ToolCall, outcome toolOutcome) {
 		ToolCallID: call.ID,
 		ToolCall: &storage.ToolCallRecord{
 			ID:       call.ID,
-			Tool:     call.Tool,
-			Params:   call.Params,
-			Result:   outcome.result,
-			Duration: outcome.durationMs,
-			Success:  outcome.success(),
-		},
-	})
-}
-
-// recordFallbackToolResult saves a JSON-fallback tool result the way v2 did: as an assistant
-// message carrying the tool call record.
-func (a *Assistant) recordFallbackToolResult(call *ToolCall, outcome toolOutcome, rawReply string) {
-	a.recordMessage(storage.ConversationMessage{
-		Role:      "assistant",
-		Content:   rawReply,
-		Timestamp: time.Now(),
-		ToolCall: &storage.ToolCallRecord{
 			Tool:     call.Tool,
 			Params:   call.Params,
 			Result:   outcome.result,

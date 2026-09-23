@@ -9,6 +9,7 @@ import (
 
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/tools"
 )
 
 func TestResolveContextWindow(t *testing.T) {
@@ -47,15 +48,15 @@ func TestNewRefusesAModelWithoutToolSupport(t *testing.T) {
 	srv := ollamatest.New(t)
 	srv.Models = []ollamatest.ModelSpec{{Name: "old:7b", Capabilities: []string{"completion"}, ContextLength: 4096, Family: "old"}}
 
-	_, err := New(srv.URL, "", "old:7b", "ollama", false, false)
+	_, err := New(srv.URL, "", "old:7b", "ollama", false, false, tools.Config{})
 	if err == nil || !strings.Contains(err.Error(), "does not support tools") {
 		t.Fatalf("expected the capability gate, got %v", err)
 	}
 }
 
 // TestApplyModelDetailsHandlesShowErrors covers the fix for every Show error being treated as the
-// OpenAI-compatible case: only llm.ErrNotSupported keeps num_ctx unresolved (the JSON fallback
-// path); any other error (a transient Show failure, for example) still resolves and requests a
+// OpenAI-compatible case: only llm.ErrNotSupported keeps num_ctx unresolved (a server without
+// capability data); any other error (a transient Show failure, for example) still resolves and requests a
 // window instead of silently disabling num_ctx for the whole session, and warns once through the
 // renderer.
 func TestApplyModelDetailsHandlesShowErrors(t *testing.T) {

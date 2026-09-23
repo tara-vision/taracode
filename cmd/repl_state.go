@@ -14,6 +14,7 @@ import (
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
 	"github.com/tara-vision/taracode/internal/upgrade"
@@ -72,8 +73,8 @@ func connectionConfig() (host, apiKey, modelName, vendor string, multiHost bool)
 	return host, apiKey, modelName, vendor, true
 }
 
-// newREPL builds the session in the order the old startREPL did: connection, assistant, banner,
-// mode, search and streaming wiring, project managers, update check, MCP, host pool, readline.
+// newREPL builds the session in the order the old startREPL did: connection, assistant (with the
+// tool wiring), banner, mode, project managers, update check, MCP, host pool, readline.
 func newREPL() (*repl, error) {
 	host, apiKey, modelName, vendor, multiHost := connectionConfig()
 	if host == "" {
@@ -100,16 +101,14 @@ func newREPL() (*repl, error) {
 		initialised: isInitializedProject(workingDir),
 		updates:     make(chan *upgrade.CheckResult, 1),
 	}
-	asst, err := assistant.New(host, apiKey, modelName, vendor, r.streaming, r.spinner)
+	asst, err := assistant.New(host, apiKey, modelName, vendor, r.streaming, r.spinner, toolConfig(r.renderer))
 	if err != nil {
 		return nil, fmt.Errorf("%s", ui.FormatConnectionError(host, err))
 	}
 	r.asst = asst
 	r.printBanner()      // moved: provider message, session resume message (113-121)
 	r.applyInitialMode() // moved: viper "mode" -> asst.SetMode with the warning (124-128)
-	initSearchOrchestrator(r.renderer)
-	initCommandStreaming()
-	r.printWelcome() // moved: WelcomeMessage, ProjectContextMessage (137-138)
+	r.printWelcome()     // moved: WelcomeMessage, ProjectContextMessage (137-138)
 	if r.initialised {
 		r.enableProject()
 	} else {
@@ -146,8 +145,8 @@ func (r *repl) enableProject() {
 		}
 		if hm, err := history.NewManager(taracodeDir, sessionID); err == nil {
 			r.history = hm
-			if registry := r.asst.GetToolRegistry(); registry != nil {
-				registry.SetHistoryManager(hm)
+			if registry := r.asst.ToolRegistry(); registry != nil {
+				registry.SetHistory(hm)
 			}
 		}
 	}
@@ -174,11 +173,11 @@ func (r *repl) startMCP() {
 	}
 	r.mcp = mcp.NewManager(cfg)
 	r.mcp.SetToolDiscoveryCallback(func(_ string, tools []mcp.MCPTool) {
-		registry := r.asst.GetToolRegistry()
+		registry := r.asst.ToolRegistry()
 		for _, tool := range tools {
-			registry.RegisterMCPTool(tool.Name, tool.ServerName, mcp.CreateExecutor(r.mcp, tool))
-			r.asst.AddMCPToolDefinition(mcp.ToOpenAITool(tool))
+			registry.RegisterMCP(mcp.ToTool(r.mcp, tool), tool.ServerName)
 		}
+		r.asst.RefreshTools()
 	})
 	if r.initialised {
 		r.mcp.AutoConnect(context.Background())
@@ -227,17 +226,24 @@ func (r *repl) printBanner() {
 // applyInitialMode sets the mode from the config/flag, warning (not failing) on an invalid value
 // (moved from the old startREPL, lines 121-126).
 func (r *repl) applyInitialMode() {
-	if initialMode := viper.GetString("mode"); initialMode != "" {
-		if err := r.asst.SetMode(initialMode); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: %v, using default mode\n", err)
-		}
+	initialMode := viper.GetString("mode")
+	if initialMode == "" {
+		return
+	}
+	mode, ok := policy.ParseMode(initialMode)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Warning: invalid mode %q (investigate or operate), using default mode\n", initialMode)
+		return
+	}
+	if err := r.asst.SetMode(mode); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v, using default mode\n", err)
 	}
 }
 
-// printWelcome shows the mode-aware welcome message and the project-context line (moved from the
-// old startREPL, lines 134-138).
+// printWelcome shows the welcome message and the project-context line (moved from the old
+// startREPL, lines 134-138).
 func (r *repl) printWelcome() {
-	fmt.Print(r.renderer.WelcomeMessage(r.asst.GetMode()))
+	fmt.Print(r.renderer.WelcomeMessage())
 	fmt.Print(r.renderer.ProjectContextMessage(r.initialised))
 }
 

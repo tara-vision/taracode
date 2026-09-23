@@ -1,50 +1,16 @@
 package assistant
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 )
-
-// TestBuildSystemPromptFullSecurityPrompt covers the one prompt pairing the other tests never
-// reach: security mode without native tools, which picks the full securitySystemPrompt (the one
-// that teaches the JSON-in-content tool format) rather than its compact counterpart.
-func TestBuildSystemPromptFullSecurityPrompt(t *testing.T) {
-	dir := t.TempDir()
-
-	prompt := buildSystemPromptWithModeAndTools(dir, nil, storage.ModeSecurity, false)
-
-	if !strings.Contains(prompt, "SECURITY MODE") || !strings.Contains(prompt, "TOOL FORMAT") {
-		t.Fatalf("expected the full security prompt (with TOOL FORMAT):\n%s", prompt)
-	}
-}
-
-// TestBuildSystemPromptPicksCompactOrFullByNativeTools pins the whole point of the two prompt
-// pairs: native function calling needs no JSON-in-content tool examples, so the compact prompt
-// stays well under the size of the one that teaches the fallback format.
-func TestBuildSystemPromptPicksCompactOrFullByNativeTools(t *testing.T) {
-	dir := t.TempDir()
-
-	compact := buildSystemPromptWithModeAndTools(dir, nil, storage.ModeDevOps, true)
-	if len(compact) >= 2000 {
-		t.Fatalf("compact prompt is %d chars, want under 2000:\n%s", len(compact), compact)
-	}
-	if strings.Contains(compact, "TOOL FORMAT") {
-		t.Fatalf("compact prompt should not teach JSON-in-content tool calls:\n%s", compact)
-	}
-
-	full := buildSystemPromptWithModeAndTools(dir, nil, storage.ModeDevOps, false)
-	if !strings.Contains(full, "TOOL FORMAT") {
-		t.Fatalf("full prompt should teach JSON-in-content tool calls:\n%s", full)
-	}
-	if len(full) <= len(compact) {
-		t.Fatalf("full prompt (%d chars) should be longer than the compact one (%d chars)", len(full), len(compact))
-	}
-}
 
 // TestBuildSystemPromptAppendsTaracodeMD covers the project-context injection: a TARACODE.md in
 // the working directory is folded into the prompt verbatim.
@@ -55,7 +21,7 @@ func TestBuildSystemPromptAppendsTaracodeMD(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prompt := buildSystemPromptWithModeAndTools(dir, nil, storage.ModeDevOps, true)
+	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate)
 
 	if !strings.Contains(prompt, "PROJECT CONTEXT") {
 		t.Fatalf("prompt missing the PROJECT CONTEXT header:\n%s", prompt)
@@ -66,11 +32,11 @@ func TestBuildSystemPromptAppendsTaracodeMD(t *testing.T) {
 }
 
 // TestBuildSystemPromptAppendsWorkingDirectory covers the trailing "Current working directory"
-// line every prompt ends with, whatever mode or tool setting produced it.
+// line every prompt ends with, whatever mode produced it.
 func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 	dir := t.TempDir()
 
-	prompt := buildSystemPromptWithModeAndTools(dir, nil, storage.ModeDevOps, true)
+	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate)
 
 	want := fmt.Sprintf("Current working directory: %s", dir)
 	if !strings.HasSuffix(prompt, want) {
@@ -78,62 +44,64 @@ func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 	}
 }
 
-// TestSetModeSwitchesPromptAndRejectsUnknown covers all three branches of SetMode: switching to
-// security rebuilds the prompt, initializes the audit log (a real session is attached so that
-// branch actually runs) and updates the conversation's system message; switching back to devops
-// does the same without an audit log; an unrecognized mode is refused without touching either.
-func TestSetModeSwitchesPromptAndRejectsUnknown(t *testing.T) {
+// TestSetModeSwitchesToolsAndPrompt covers SetMode: investigate exposes the fourteen read-form
+// tools, operate all sixteen, the system prompt (and the conversation's system message) carries the
+// mode line, and operate without project storage is refused.
+func TestSetModeSwitchesToolsAndPrompt(t *testing.T) {
 	a, _ := newTestAssistant(t, false)
+	if a.Mode() != policy.ModeInvestigate || len(a.toolDefs) != 14 {
+		t.Fatalf("start: mode %q, %d tools", a.Mode(), len(a.toolDefs))
+	}
+	if err := a.SetMode(policy.ModeOperate); err == nil || !strings.Contains(err.Error(), "/init") {
+		t.Fatalf("operate without storage: %v", err)
+	}
+	if a.Mode() != policy.ModeInvestigate {
+		t.Fatal("a refused switch must keep the mode")
+	}
 	store, err := storage.NewManager(a.workingDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession("")
-	if err != nil {
+	a.storage = store
+
+	if err := a.SetMode(policy.ModeOperate); err != nil {
+		t.Fatalf("SetMode(operate) = %v", err)
+	}
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 || a.ToolRegistry().Available(a.Mode()) != 16 {
+		t.Fatalf("operate: mode %q, %d tools", a.Mode(), len(a.toolDefs))
+	}
+	if !strings.Contains(a.systemPrompt, "Mode: operate") || a.conversation[0].Content != a.systemPrompt {
+		t.Fatalf("the prompt must carry the mode:\n%s", a.conversation[0].Content)
+	}
+	if err := a.SetMode(policy.ModeInvestigate); err != nil || len(a.toolDefs) != 14 ||
+		!strings.Contains(a.systemPrompt, "Mode: investigate") {
+		t.Fatalf("back to investigate: %v, %d tools", err, len(a.toolDefs))
+	}
+}
+
+// TestSetModeRejectsUnknownModesAndALockedPolicy covers the two other refusals: a mode name that
+// is neither investigate nor operate changes nothing, and a policy file that failed to load locks
+// operate mode.
+func TestSetModeRejectsUnknownModesAndALockedPolicy(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
+	enterOperate(t, a)
+
+	if err := a.SetMode("yolo"); err == nil || !strings.Contains(err.Error(), "invalid mode") {
+		t.Fatalf("SetMode(yolo) = %v", err)
+	}
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 {
+		t.Fatal("an unknown mode must change nothing")
+	}
+
+	if err := a.SetMode(policy.ModeInvestigate); err != nil {
 		t.Fatal(err)
 	}
-	a.storage, a.session = store, session
-
-	if err := a.SetMode("security"); err != nil {
-		t.Fatalf("SetMode(security) = %v", err)
+	a.policyErr = errors.New("policy.yaml: bad key")
+	if err := a.SetMode(policy.ModeOperate); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Fatalf("a policy error must lock operate mode: %v", err)
 	}
-	if a.GetMode() != storage.ModeSecurity {
-		t.Fatalf("GetMode() = %q, want security", a.GetMode())
-	}
-	if !strings.Contains(a.systemPrompt, "SECURITY MODE") {
-		t.Fatalf("system prompt not switched to security mode:\n%s", a.systemPrompt)
-	}
-	if a.conversation[0].Content != a.systemPrompt {
-		t.Fatalf("conversation's system message was not updated with the new prompt")
-	}
-	auditLog, err := store.GetAuditLog(session.ID)
-	if err != nil || auditLog == nil {
-		t.Fatalf("audit log not initialized on entering security mode: log=%v err=%v", auditLog, err)
-	}
-
-	if err := a.SetMode("devops"); err != nil {
-		t.Fatalf("SetMode(devops) = %v", err)
-	}
-	if a.GetMode() != storage.ModeDevOps {
-		t.Fatalf("GetMode() = %q, want devops", a.GetMode())
-	}
-	if strings.Contains(a.systemPrompt, "SECURITY MODE") {
-		t.Fatalf("system prompt still in security mode after switching back to devops:\n%s", a.systemPrompt)
-	}
-	if a.conversation[0].Content != a.systemPrompt {
-		t.Fatalf("conversation's system message was not updated after switching back to devops")
-	}
-	beforeBogus := a.systemPrompt
-
-	badErr := a.SetMode("bogus")
-	if badErr == nil || !strings.Contains(badErr.Error(), "invalid mode") {
-		t.Fatalf("SetMode(bogus) = %v, want an invalid mode error", badErr)
-	}
-	if a.GetMode() != storage.ModeDevOps {
-		t.Fatalf("GetMode() = %q after a rejected switch, want it to stay devops", a.GetMode())
-	}
-	if a.systemPrompt != beforeBogus {
-		t.Fatal("a rejected SetMode call must not change the current system prompt")
+	if a.Mode() != policy.ModeInvestigate {
+		t.Fatal("a locked switch must keep investigate mode")
 	}
 }
 
@@ -181,7 +149,7 @@ func TestBuildSystemPromptIncludesTheActivePlanWithTaskStatusMarkers(t *testing.
 		t.Fatal(err)
 	}
 
-	prompt := buildSystemPromptWithModeAndTools(dir, store, storage.ModeDevOps, true)
+	prompt := buildSystemPrompt(dir, store, policy.ModeInvestigate)
 
 	if !strings.Contains(prompt, "ACTIVE PLAN") || !strings.Contains(prompt, "Ship the feature") {
 		t.Fatalf("prompt missing the active plan section:\n%s", prompt)

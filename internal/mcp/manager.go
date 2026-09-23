@@ -124,6 +124,7 @@ func (m *Manager) Connect(ctx context.Context, name string) error {
 			OriginalName: ti.Name,
 			Description:  ti.Description,
 			InputSchema:  ti.InputSchema,
+			ReadOnly:     ti.Annotations["readOnlyHint"] == true,
 		}
 	}
 

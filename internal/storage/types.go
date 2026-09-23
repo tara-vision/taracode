@@ -12,7 +12,6 @@ type Session struct {
 	Summary    string                `json:"summary,omitempty"`
 	Tags       []string              `json:"tags,omitempty"`
 	TotalUsage *TokenUsage           `json:"total_usage,omitempty"`
-	AuditLog   *AuditLog             `json:"audit_log,omitempty"` // Security audit log (security mode only)
 }
 
 // ConversationMessage represents a single message in conversation
@@ -100,21 +99,12 @@ const (
 	TaskStatusSkipped    TaskStatus = "skipped"
 )
 
-// OperatingMode defines the operational mode of the assistant
-type OperatingMode string
-
-const (
-	ModeDevOps   OperatingMode = "devops"   // Default DevOps mode
-	ModeSecurity OperatingMode = "security" // Security/DevSecOps mode
-)
-
 // CurrentState tracks runtime state
 type CurrentState struct {
-	ActivePlanID   string        `json:"active_plan_id,omitempty"`
-	ActiveTaskID   string        `json:"active_task_id,omitempty"`
-	LastActivity   time.Time     `json:"last_activity"`
-	WorkingContext string        `json:"working_context,omitempty"`
-	Mode           OperatingMode `json:"mode,omitempty"`
+	ActivePlanID   string    `json:"active_plan_id,omitempty"`
+	ActiveTaskID   string    `json:"active_task_id,omitempty"`
+	LastActivity   time.Time `json:"last_activity"`
+	WorkingContext string    `json:"working_context,omitempty"`
 }
 
 // Preferences stores user preferences for this project
@@ -142,39 +132,4 @@ type ProjectConfig struct {
 	ProjectType   string    `json:"type,omitempty"`           // Detected project type (Go, Node.js, Python, etc.)
 	DetectedTools []string  `json:"detected_tools,omitempty"` // Relevant taracode tools for this project
 	Frameworks    []string  `json:"frameworks,omitempty"`     // Detected frameworks (docker, kubernetes, terraform)
-}
-
-// =============================================================================
-// Security Audit Log Types
-// =============================================================================
-
-// AuditAction represents the type of audit action
-type AuditAction string
-
-const (
-	AuditActionAllow    AuditAction = "allow"     // User allowed the operation
-	AuditActionDeny     AuditAction = "deny"      // User denied the operation
-	AuditActionAllowAll AuditAction = "allow_all" // User allowed all remaining operations
-	AuditActionDenyAll  AuditAction = "deny_all"  // User denied all remaining operations
-)
-
-// AuditEntry records a single security audit decision
-type AuditEntry struct {
-	Timestamp   time.Time              `json:"timestamp"`
-	ToolName    string                 `json:"tool_name"`
-	Category    string                 `json:"category"` // write, execute, git, destructive
-	Action      AuditAction            `json:"action"`
-	Params      map[string]interface{} `json:"params,omitempty"`
-	Target      string                 `json:"target,omitempty"`      // Primary target (file path, command, etc.)
-	Implication string                 `json:"implication,omitempty"` // Security implication description
-	BatchIndex  int                    `json:"batch_index,omitempty"` // Position in batch (1-based), 0 if not batch
-	BatchTotal  int                    `json:"batch_total,omitempty"` // Total in batch, 0 if not batch
-}
-
-// AuditLog contains all audit entries for a session
-type AuditLog struct {
-	Entries     []AuditEntry `json:"entries"`
-	TotalAllow  int          `json:"total_allow"`  // Count of allowed operations
-	TotalDeny   int          `json:"total_deny"`   // Count of denied operations
-	SessionMode string       `json:"session_mode"` // Operating mode when audit occurred
 }

@@ -27,6 +27,7 @@ type MCPTool struct {
 	OriginalName string // Original name without prefix
 	Description  string
 	InputSchema  map[string]interface{}
+	ReadOnly     bool // the server annotates it readOnlyHint: true
 }
 
 // MCPConnection represents a connection to an MCP server

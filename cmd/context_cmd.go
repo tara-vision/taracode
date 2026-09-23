@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/history"
-	"github.com/tara-vision/taracode/internal/legacytools"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -283,13 +282,11 @@ func printContextFilesRead(session *storage.Session) {
 
 // printContextModeSettings prints the operating mode, compaction and iteration settings.
 func printContextModeSettings(asst *assistant.Assistant, ctxInfo assistant.ContextInfo) {
-	mode := asst.GetMode()
+	mode := asst.Mode()
+	registry := asst.ToolRegistry()
 	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
-	if mode == storage.ModeSecurity {
-		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s security (audit-first)", ui.IconShield)))
-	} else {
-		fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s (%d DevOps tools)", mode, legacytools.GetToolCount())))
-	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Mode: %s (%d of %d tools exposed)",
+		mode, registry.Available(mode), len(registry.Names()))))
 	compactionStatus := "disabled"
 	if ctxInfo.CompactionEnabled {
 		compactionStatus = fmt.Sprintf("enabled (threshold: %.0f%%)", ctxInfo.CompactionThreshold*100)
@@ -376,6 +373,7 @@ func handleStats(asst *assistant.Assistant, hm *history.Manager) {
 		}
 		fmt.Println(formatBoxLine(fmt.Sprintf("  Chars saved: %d", totalSaved)))
 	}
+	fmt.Println(formatBoxLine(fmt.Sprintf("Redactions: %d", asst.Redactions())))
 
 	// File operations
 	if hm != nil {
@@ -423,13 +421,16 @@ func extractFilesRead(messages []storage.ConversationMessage) []string {
 
 	for _, msg := range messages {
 		for _, tc := range msg.ToolCalls {
-			if tc.Tool == "read_file" {
-				if filePath, ok := tc.Params["file_path"].(string); ok && filePath != "" {
-					if !seen[filePath] {
-						seen[filePath] = true
-						files = append(files, filePath)
-					}
-				}
+			if tc.Tool != "read_file" {
+				continue
+			}
+			filePath, _ := tc.Params["path"].(string)
+			if filePath == "" {
+				filePath, _ = tc.Params["file_path"].(string) // sessions recorded by 2.x
+			}
+			if filePath != "" && !seen[filePath] {
+				seen[filePath] = true
+				files = append(files, filePath)
 			}
 		}
 	}

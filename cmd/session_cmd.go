@@ -80,7 +80,7 @@ func (r *repl) cmdSessions(_ []string) {
 func (r *repl) cmdClear(_ []string) {
 	if err := r.asst.NewSession(""); err != nil {
 		// Fallback to creating new assistant
-		newAsst, err := assistant.New(r.host, r.apiKey, r.model, r.vendor, r.streaming, r.spinner)
+		newAsst, err := assistant.New(r.host, r.apiKey, r.model, r.vendor, r.streaming, r.spinner, toolConfig(r.renderer))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error clearing: %v\n", err)
 			return

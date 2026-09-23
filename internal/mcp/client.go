@@ -67,6 +67,7 @@ type ToolInfo struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	InputSchema map[string]interface{} `json:"inputSchema"`
+	Annotations map[string]any         `json:"annotations,omitempty"`
 }
 
 // ToolResult represents the result of a tool call

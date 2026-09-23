@@ -169,17 +169,15 @@ func buildTruncationNotice(toolName string, origLines, origChars, keptLines, kep
 	hint := ""
 	switch toolName {
 	case "read_file":
-		hint = " Use start_line/end_line parameters to read specific sections."
+		hint = " Use start_line and end_line."
 	case "search_files":
-		hint = " Narrow your search pattern to reduce results."
-	case "execute_command":
-		hint = " Pipe to head/tail or grep to filter output."
-	case "kubectl_logs":
-		hint = " Use --tail or --since to limit log output."
-	case "git_log":
-		hint = " Use max_count parameter to limit commits."
-	case "git_diff":
-		hint = " Specify file paths to limit diff scope."
+		hint = " Narrow the pattern or the glob."
+	case "shell":
+		hint = " Pipe to head, tail or grep."
+	case "kubectl":
+		hint = " Use --tail or --since in args for logs."
+	case "git":
+		hint = " Use -n to limit log output."
 	}
 
 	return fmt.Sprintf("[Output truncated: %s.%s]", detail, hint)

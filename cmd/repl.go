@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/assistant"
-	"github.com/tara-vision/taracode/internal/storage"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -130,8 +130,8 @@ func (r *repl) refreshPrompt() {
 	if usage == nil {
 		return
 	}
-	securityMode := r.asst.GetMode() == storage.ModeSecurity
-	r.rl.SetPrompt(FormatPromptWithMode(r.relDir, usage.TotalTokens, viper.GetInt("max_context_tokens"), securityMode))
+	operate := r.asst.Mode() == policy.ModeOperate
+	r.rl.SetPrompt(FormatPromptWithMode(r.relDir, usage.TotalTokens, viper.GetInt("max_context_tokens"), operate))
 }
 
 // changeDir moves inside the project sandbox.
