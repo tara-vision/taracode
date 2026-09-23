@@ -22,3 +22,19 @@ func TestDockerToolAddsNoStreamToStats(t *testing.T) {
 		t.Errorf("%+v", inv)
 	}
 }
+
+// TestDockerToolAddsNoStreamToStatsAfterGlobalFlags (pre-tag round 2, item 7): docker stats streams
+// until the command timeout, so --no-stream is added whenever the verb is stats even behind a global
+// flag such as --context; a non-stats verb behind a global flag is left alone.
+func TestDockerToolAddsNoStreamToStatsAfterGlobalFlags(t *testing.T) {
+	fakeBin(t, "docker", "")
+	tool := DockerTool()
+	out, err := tool.Run(context.Background(), map[string]any{"args": "--context x stats"}, "")
+	if err != nil || !strings.Contains(out, "docker --context x stats --no-stream") {
+		t.Fatalf("stats after a global flag must get --no-stream: %q %v", out, err)
+	}
+	out, err = tool.Run(context.Background(), map[string]any{"args": "--context x ps"}, "")
+	if err != nil || strings.Contains(out, "--no-stream") {
+		t.Fatalf("a non-stats verb must not get --no-stream: %q %v", out, err)
+	}
+}
