@@ -276,13 +276,9 @@ func (f *FileCompleter) getFilesWithGitignore() ([]string, error) {
 // maxCompletionResults is the maximum number of completion candidates to show
 const maxCompletionResults = 20
 
-// Do implements readline.AutoCompleter interface with fuzzy matching
+// Do implements readline.AutoCompleter interface with fuzzy matching. It needs nothing beyond a real
+// directory on disk to walk, so it works whether or not the project has been initialised.
 func (f *FileCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
-	// Only complete if we're in an initialized project
-	if !isInitializedProject(f.workingDir) {
-		return nil, 0
-	}
-
 	// Find the @ symbol before cursor
 	lineStr := string(line[:pos])
 	lastAtIdx := strings.LastIndex(lineStr, "@")
@@ -506,16 +502,11 @@ func expandDirectoryReference(dirPath string, workingDir string) (string, error)
 	return result.String(), nil
 }
 
-// expandFileReferences detects @ symbols and expands them with file content
+// expandFileReferences detects @ symbols and expands them with file content. Reading a file off
+// disk needs no .taracode/, so this works whether or not the project has been initialised.
 func expandFileReferences(message string, workingDir string) (string, error) {
 	// Pattern: @ followed by optional whitespace/path or standalone @
 	if !strings.Contains(message, "@") {
-		return message, nil
-	}
-
-	// Check if project is initialized
-	if !isInitializedProject(workingDir) {
-		// Don't expand @ in non-initialized projects
 		return message, nil
 	}
 
@@ -593,9 +584,12 @@ type ExpandedMessage struct {
 	Images []*assistant.ImageData
 }
 
-// expandFileReferencesWithImages detects @ symbols and expands them, separating images from text
-// projectRoot is used for init check, workingDir is the current directory for file resolution
-func expandFileReferencesWithImages(message string, projectRoot string, workingDir string) (*ExpandedMessage, error) {
+// expandFileReferencesWithImages detects @ symbols and expands them, separating images from text.
+// workingDir is the current directory for file resolution. Reading a file (or an image) off disk
+// needs no .taracode/, so this works whether or not the project has been initialised; it used to
+// gate on isInitializedProject(projectRoot) and silently pass @refs through unexpanded when that
+// failed, with no feedback to the user (fix round 1, review finding).
+func expandFileReferencesWithImages(message string, workingDir string) (*ExpandedMessage, error) {
 	result := &ExpandedMessage{
 		Text:   message,
 		Images: nil,
@@ -603,12 +597,6 @@ func expandFileReferencesWithImages(message string, projectRoot string, workingD
 
 	// Pattern: @ followed by optional whitespace/path or standalone @
 	if !strings.Contains(message, "@") {
-		return result, nil
-	}
-
-	// Check if project is initialized (check at project root, not current dir)
-	if !isInitializedProject(projectRoot) {
-		// Don't expand @ in non-initialized projects
 		return result, nil
 	}
 
