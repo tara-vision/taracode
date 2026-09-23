@@ -3,12 +3,18 @@ package classify
 // Helm classifies the arguments after "helm". A last --dry-run that is bare, client, server or true
 // makes any verb a read (helm 3.13 and later run for real on =false and =none), unless the command
 // runs a post-renderer (a program) or writes rendered manifests to a directory. Tokens after a lone
-// "--" are release names, never flags: helm uninstall web -- --dry-run uninstalls web.
+// "--" are release names, never flags: helm uninstall web -- --dry-run uninstalls web. Global
+// options before the verb (helm -n kube-system list) are skipped with their values; an option there
+// that is not a known global makes the command a mutation.
 func Helm(tokens []string) Result {
-	if len(tokens) == 0 {
+	verb, rest, ok := helmGlobals.splitVerb(tokens)
+	if !ok {
+		return unknownGlobal("helm", verb)
+	}
+	if verb == "" {
 		return read("")
 	}
-	verb, rest := tokens[0], beforeDoubleDash(tokens[1:])
+	rest = beforeDoubleDash(rest)
 	if hasFlag(rest, "--post-renderer") {
 		return mutate(verb, "helm --post-renderer runs a program on the rendered manifests")
 	}
@@ -29,11 +35,4 @@ func Helm(tokens []string) Result {
 		return mutate(verb, "helm "+verb+" "+first(rest)+" changes local helm state")
 	}
 	return mutate(verb, "helm "+verb+" changes releases")
-}
-
-// HelmTargets reads the kube context (--kube-context) and namespace (-n, --namespace; -A and
-// --all-namespaces are "*") a helm command names, from the tokens before "--".
-func HelmTargets(tokens []string) (context, namespace string) {
-	_, namespace = KubeTargets(tokens)
-	return flagValue(beforeDoubleDash(tokens), "--kube-context"), namespace
 }

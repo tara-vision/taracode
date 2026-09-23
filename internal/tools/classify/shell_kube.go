@@ -100,8 +100,3 @@ func kubeMutation(prog string, tokens []string, kubeconfig string) (KubeTarget, 
 	}
 	return t, true
 }
-
-// KubeconfigFlag is the --kubeconfig a kubectl or helm command names before "--".
-func KubeconfigFlag(tokens []string) string {
-	return flagValue(beforeDoubleDash(tokens), "--kubeconfig")
-}
