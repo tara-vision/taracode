@@ -49,6 +49,7 @@ const (
 type Targets struct {
 	KubeContext   string
 	KubeNamespace string
+	KubeReason    string // why a "*" context or namespace could not be pinned down, for the deny message
 	CloudAccount  string
 	Paths         []string // absolute paths
 	Hosts         []string
