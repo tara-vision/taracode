@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/tara-vision/taracode/internal/context"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
-// InitProject analyzes the project and creates TARACODE.md with comprehensive context
-func InitProject(workingDir string) error {
+// InitProject analyzes the project and creates TARACODE.md with comprehensive context. version is
+// recorded in .taracode/project.json (cmd.Version, the taracode build running /init).
+func InitProject(workingDir, version string) error {
 	fmt.Println("Analyzing project structure...")
 
 	// Initialize storage manager (creates .taracode/ structure)
@@ -65,7 +67,7 @@ func InitProject(workingDir string) error {
 	projectConfig := &storage.ProjectConfig{
 		ProjectRoot:   workingDir,
 		InitializedAt: time.Now(),
-		Version:       "0.3.15",
+		Version:       version,
 		ProjectType:   projectInfo.Type,
 		DetectedTools: projectInfo.DetectedTools,
 		Frameworks:    projectInfo.Frameworks,
@@ -79,10 +81,34 @@ func InitProject(workingDir string) error {
 		return fmt.Errorf("failed to generate TARACODE.md: %w", err)
 	}
 
+	// Write the starter policy only when the project has none yet: /init must never clobber rules a
+	// project has already customised, even a broken one (the doctor and /policy show report the
+	// break; /init is not the place to silently fix or discard it).
+	policyWritten, err := writeStarterPolicyIfAbsent(workingDir)
+	if err != nil {
+		fmt.Printf("  Warning: Could not write .taracode/policy.yaml: %v\n", err)
+	}
+
 	// Print summary
-	printInitSummary(projectCtx)
+	printInitSummary(projectCtx, policyWritten)
 
 	return nil
+}
+
+// writeStarterPolicyIfAbsent writes policy.StarterYAML to .taracode/policy.yaml only when that file
+// does not exist yet, and reports whether it wrote it.
+func writeStarterPolicyIfAbsent(workingDir string) (bool, error) {
+	path := filepath.Join(workingDir, ".taracode", "policy.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	//nolint:gosec // the starter policy is meant to be user-editable, like TARACODE.md
+	if err := os.WriteFile(path, []byte(policy.StarterYAML), 0644); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // extractBuildCommands extracts build commands from Makefile
@@ -237,8 +263,9 @@ func writeTreeStructure(sb *strings.Builder, node *context.DirectoryTree, prefix
 	}
 }
 
-// printInitSummary prints a summary of the initialization
-func printInitSummary(ctx *context.ProjectContext) {
+// printInitSummary prints a summary of the initialization. policyWritten is whether InitProject wrote
+// the starter policy (false means an existing .taracode/policy.yaml was kept as-is).
+func printInitSummary(ctx *context.ProjectContext, policyWritten bool) {
 	fmt.Println()
 	fmt.Println("✓ Project initialized successfully!")
 	fmt.Println()
@@ -288,6 +315,11 @@ func printInitSummary(ctx *context.ProjectContext) {
 	fmt.Println("  Created:")
 	fmt.Println("    - TARACODE.md (project context for AI)")
 	fmt.Println("    - .taracode/ (storage for history, plans, state)")
+	if policyWritten {
+		fmt.Println("    - .taracode/policy.yaml (starter policy; edit to change protected targets and dry-run rules)")
+	} else {
+		fmt.Println("    - .taracode/policy.yaml kept as-is (an existing policy is never overwritten)")
+	}
 	fmt.Println()
 	fmt.Println("Edit TARACODE.md to add custom instructions.")
 }

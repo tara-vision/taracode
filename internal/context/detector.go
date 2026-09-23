@@ -16,29 +16,31 @@ type ProjectTypeInfo struct {
 	DetectedTools []string // Relevant taracode tools for this project
 }
 
-// ToolMapping maps frameworks/tools to relevant taracode tools
+// ToolMapping maps frameworks/tools to relevant taracode tools. Values are v3 tool names only
+// (ruling P2-R4): the sixteen tools the registry actually exposes, not the finer-grained v2 verbs
+// (terraform_plan, kubectl_get and so on) that taracode no longer has as separate tools.
 var ToolMapping = map[string][]string{
 	// Infrastructure as Code
-	"terraform":  {"terraform_init", "terraform_plan", "terraform_apply", "terraform_destroy", "terraform_output", "terraform_state", "tfsec_scan"},
-	"kubernetes": {"kubectl_get", "kubectl_apply", "kubectl_delete", "kubectl_describe", "kubectl_logs", "kubectl_exec", "kubesec_scan"},
-	"helm":       {"helm_list", "helm_install", "kubectl_get", "kubectl_apply"},
-	"docker":     {"docker_build", "docker_ps", "docker_logs", "docker_compose", "docker_exec", "trivy_scan"},
+	"terraform":  {"terraform", "scan"},
+	"kubernetes": {"kubectl", "scan"},
+	"helm":       {"helm", "kubectl"},
+	"docker":     {"docker", "scan"},
 
 	// Cloud providers
-	"aws":   {"aws_cli", "aws_ecs", "aws_eks"},
-	"azure": {"az_cli", "az_aks"},
-	"gcp":   {"gcloud", "gke"},
+	"aws":   {"cloud"},
+	"azure": {"cloud"},
+	"gcp":   {"cloud"},
 
 	// Languages (provide common development tools)
-	"go":         {"execute_command", "search_files", "git_status", "git_diff", "git_commit"},
-	"nodejs":     {"execute_command", "search_files", "git_status", "dependency_audit"},
-	"python":     {"execute_command", "search_files", "git_status", "dependency_audit"},
-	"rust":       {"execute_command", "search_files", "git_status"},
-	"java":       {"execute_command", "search_files", "git_status", "dependency_audit"},
-	"typescript": {"execute_command", "search_files", "git_status", "dependency_audit"},
+	"go":         {"shell", "search_files", "git"},
+	"nodejs":     {"shell", "search_files", "git", "scan"},
+	"python":     {"shell", "search_files", "git", "scan"},
+	"rust":       {"shell", "search_files", "git"},
+	"java":       {"shell", "search_files", "git", "scan"},
+	"typescript": {"shell", "search_files", "git", "scan"},
 
 	// Security
-	"security": {"trivy_scan", "gitleaks_scan", "secrets_scan", "dependency_audit", "sast_scan"},
+	"security": {"scan"},
 }
 
 // DetectProject performs comprehensive project type and tools detection
@@ -58,8 +60,8 @@ func DetectProject(workingDir string) *ProjectTypeInfo {
 	// Map detected items to taracode tools
 	mapToTools(info)
 
-	// Always include core file operations
-	coreTools := []string{"read_file", "write_file", "edit_file", "list_files", "find_files"}
+	// Always include core file operations (v3 tool names, ruling P2-R4)
+	coreTools := []string{"read_file", "write_file", "edit_file", "list_files", "search_files"}
 	for _, tool := range coreTools {
 		if !contains(info.DetectedTools, tool) {
 			info.DetectedTools = append(info.DetectedTools, tool)

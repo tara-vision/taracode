@@ -3,14 +3,18 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/tara-vision/taracode/internal/assistant"
 )
 
-// cmdInit is the /init command: analyze the project, write TARACODE.md and .taracode/, then
-// reinitialise the assistant so it picks up the new context.
+// cmdInit is the /init command: analyze the project, write TARACODE.md and .taracode/ (creating the
+// starter policy when none exists yet), then reinitialise the assistant so it picks up the new
+// context. It always runs against the sandbox root (r.projectRoot), not wherever cd left the session
+// (r.absDir): the storage manager and .taracode/ live at the project root, so /init after a cd into a
+// subdirectory must not scatter project state there.
 func (r *repl) cmdInit(_ []string) {
-	if err := assistant.InitProject(r.absDir); err != nil {
+	if err := assistant.InitProject(r.projectRoot, Version); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
@@ -34,9 +38,7 @@ func (r *repl) cmdInit(_ []string) {
 	fmt.Println("Assistant reloaded with project context.")
 	fmt.Println()
 
-	if isInitializedProject(r.projectRoot) {
-		r.enableProject()
-	}
+	r.enableProject()
 }
 
 // cmdReload is the /reload command: rebuild the assistant from the current connection settings so
@@ -49,5 +51,8 @@ func (r *repl) cmdReload(_ []string) {
 	}
 	r.replaceAssistant(newAsst)
 	fmt.Println("Project context reloaded.")
+	if _, err := os.Stat(filepath.Join(r.projectRoot, "TARACODE.md")); os.IsNotExist(err) {
+		fmt.Println("No TARACODE.md yet; run /init to generate one.")
+	}
 	fmt.Println()
 }

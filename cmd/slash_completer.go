@@ -87,6 +87,8 @@ func GetSlashCommands() []SlashCommand {
 		{"/audit all", "Mutations recorded in every session"},
 		{"/audit export json", "Export the audit log to a JSON file"},
 		{"/audit clear", "Clear the audit log"},
+		// Policy
+		{"/policy show", "Effective policy and where it comes from"},
 		// History & Undo
 		{"/history", "Show last 20 file operations"},
 		{"/history all", "Show all operations"},

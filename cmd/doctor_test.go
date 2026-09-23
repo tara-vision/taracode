@@ -111,7 +111,7 @@ func TestHandleDoctorRunsAgainstTheLiveAssistant(t *testing.T) {
 		t.Fatalf("assistant.New() = %v", err)
 	}
 
-	out := captureStdoutForTest(t, func() { handleDoctor(a) })
+	out := captureStdoutForTest(t, func() { handleDoctor(a, t.TempDir()) })
 
 	for _, want := range []string{"Ollama 0.34.2", "gemma4:12b"} {
 		if !strings.Contains(out, want) {

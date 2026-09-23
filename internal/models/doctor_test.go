@@ -204,3 +204,16 @@ func TestRenderShowsARegistryLoadError(t *testing.T) {
 		t.Fatalf("render lacks the registry error:\n%s", rep.Render())
 	}
 }
+
+// TestRenderShowsThePolicyNote covers the doctor's policy line (Task 14): a Report with PolicyNote
+// set prints it right after the model/context section; an empty PolicyNote (Diagnose does not set
+// it - only cmd's runDoctor and handleDoctor do) prints no Policy line at all.
+func TestRenderShowsThePolicyNote(t *testing.T) {
+	rep := Report{Host: "http://example", ServerOK: true, PolicyNote: "ok (built-in)"}
+	if !strings.Contains(rep.Render(), "Policy    ok (built-in)") {
+		t.Fatalf("render lacks the policy note:\n%s", rep.Render())
+	}
+	if strings.Contains((&Report{Host: "http://example", ServerOK: true}).Render(), "Policy") {
+		t.Fatal("render should not show a Policy line without a PolicyNote")
+	}
+}

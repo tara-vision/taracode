@@ -37,6 +37,7 @@ func commandTable() []command {
 			(*repl).cmdPermissions,
 		},
 		{"/audit", "[all|export json|clear]", "Mutations recorded in this project", "Safety", (*repl).cmdAudit},
+		{"/policy", "show", "Effective policy and where it comes from", "Safety", (*repl).cmdPolicy},
 		{"/plan", "", "Show the active plan", "Context", (*repl).cmdPlan},
 		{"/context", "", "Context window budget breakdown", "Context", (*repl).cmdContext},
 		{"/compact", "", "Force conversation compaction", "Context", (*repl).cmdCompact},

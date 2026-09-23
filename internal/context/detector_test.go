@@ -149,16 +149,9 @@ func TestDetectProject_Terraform(t *testing.T) {
 	if info.Type != "Terraform" {
 		t.Errorf("Expected type 'Terraform', got '%s'", info.Type)
 	}
-	// Should detect terraform tools
-	hasTerraformTool := false
-	for _, tool := range info.DetectedTools {
-		if tool == "terraform_plan" || tool == "terraform_apply" {
-			hasTerraformTool = true
-			break
-		}
-	}
-	if !hasTerraformTool {
-		t.Error("Expected terraform tools in detected tools")
+	// Should detect the terraform tool
+	if !contains(info.DetectedTools, "terraform") {
+		t.Error("Expected terraform in detected tools")
 	}
 }
 
@@ -180,9 +173,9 @@ func TestDetectFrameworks_Docker(t *testing.T) {
 	if !contains(info.Frameworks, "docker") {
 		t.Error("Expected 'docker' in frameworks")
 	}
-	// Should include docker tools
-	if !contains(info.DetectedTools, "docker_build") {
-		t.Error("Expected docker_build in detected tools")
+	// Should include the docker tool
+	if !contains(info.DetectedTools, "docker") {
+		t.Error("Expected docker in detected tools")
 	}
 }
 
@@ -199,9 +192,9 @@ func TestDetectFrameworks_Kubernetes(t *testing.T) {
 	if !contains(info.Frameworks, "kubernetes") {
 		t.Error("Expected 'kubernetes' in frameworks")
 	}
-	// Should include kubectl tools
-	if !contains(info.DetectedTools, "kubectl_get") {
-		t.Error("Expected kubectl_get in detected tools")
+	// Should include the kubectl tool
+	if !contains(info.DetectedTools, "kubectl") {
+		t.Error("Expected kubectl in detected tools")
 	}
 }
 
@@ -220,8 +213,8 @@ version: 0.1.0
 	if !contains(info.Frameworks, "helm") {
 		t.Error("Expected 'helm' in frameworks")
 	}
-	if !contains(info.DetectedTools, "helm_list") {
-		t.Error("Expected helm_list in detected tools")
+	if !contains(info.DetectedTools, "helm") {
+		t.Error("Expected helm in detected tools")
 	}
 }
 
@@ -272,7 +265,7 @@ func TestDetectProject_MultiFramework(t *testing.T) {
 	}
 
 	// Should have tools from all frameworks
-	expectedTools := []string{"docker_build", "kubectl_get", "terraform_plan"}
+	expectedTools := []string{"docker", "kubectl", "terraform"}
 	for _, expected := range expectedTools {
 		if !contains(info.DetectedTools, expected) {
 			t.Errorf("Expected %s in detected tools", expected)

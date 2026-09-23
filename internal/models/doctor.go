@@ -44,6 +44,7 @@ type Report struct {
 	RegistryError           string // set when the embedded registry failed to load; "" otherwise.
 	registry                *Registry
 	RecommendationInstalled bool
+	PolicyNote              string // which policy files load, or the parse error; "" = not checked.
 }
 
 // Diagnose collects everything the doctor prints. lookPath is exec.LookPath in production.
@@ -177,6 +178,9 @@ func (r *Report) Render() string {
 	fmt.Fprintf(&b, "Machine   %d GB RAM, tier %s GB\n", r.RAMGB, r.Tier)
 	r.renderModels(&b)
 	r.renderModelAndContext(&b)
+	if r.PolicyNote != "" {
+		fmt.Fprintf(&b, "Policy    %s\n", r.PolicyNote)
+	}
 	r.renderAdvice(&b)
 	r.renderTools(&b)
 	return b.String()

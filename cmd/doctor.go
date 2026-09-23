@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 )
 
@@ -29,6 +31,9 @@ var doctorCmd = &cobra.Command{
 		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
 			return err
+		}
+		if cwd, err := os.Getwd(); err == nil {
+			rep.PolicyNote = policyNote(cwd)
 		}
 		fmt.Print(rep.Render())
 		if code := doctorExitCode(rep); code != 0 {
@@ -93,14 +98,27 @@ func doctorExitCode(rep models.Report) int {
 	return 1
 }
 
+// policyNote is the doctor's policy line: which files load, or the parse error.
+func policyNote(projectDir string) string {
+	home, _ := os.UserHomeDir()
+	_, sources, err := policy.Load(projectDir, home)
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	return "ok (" + strings.Join(sources, ", ") + ")"
+}
+
 // cmdDoctor is the /doctor command: diagnose the LLM server and tools.
 func (r *repl) cmdDoctor(_ []string) {
-	handleDoctor(r.asst)
+	handleDoctor(r.asst, r.projectRoot)
 }
 
 // handleDoctor runs the doctor's diagnosis against the assistant's live connection: the REPL's
-// /doctor, mirroring `taracode doctor` without leaving the session.
-func handleDoctor(asst *assistant.Assistant) {
+// /doctor, mirroring `taracode doctor` without leaving the session. projectRoot supplies the policy
+// line: it is the sandbox root (r.projectRoot), not whatever the assistant's own working directory
+// happens to be, since the assistant is re-created on /init, /model and /reload while the project
+// root never moves during a session.
+func handleDoctor(asst *assistant.Assistant, projectRoot string) {
 	liveHost := ""
 	if info := asst.GetProviderInfo(); info != nil {
 		liveHost = info.Host
@@ -110,6 +128,7 @@ func handleDoctor(asst *assistant.Assistant) {
 		context.Background(), asst.GetProvider().LLM(), liveHost, ramGB, asst.GetCurrentModel(), exec.LookPath,
 		doctorResolveWindow,
 	)
+	rep.PolicyNote = policyNote(projectRoot)
 	fmt.Print(rep.Render())
 	fmt.Println()
 }
