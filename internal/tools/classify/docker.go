@@ -4,12 +4,17 @@ package classify
 var composeValueFlags = []string{"-f", "--file", "-p", "--project-name", "--env-file", "--profile",
 	"--project-directory", "--parallel", "--progress"}
 
-// Docker classifies the arguments after "docker" (or podman).
+// Docker classifies the arguments after "docker" (or podman). Global options before the command
+// (docker --context x ps) are skipped with their values; an option there that is not a known
+// global makes the command a mutation.
 func Docker(tokens []string) Result {
-	if len(tokens) == 0 {
+	verb, rest, ok := dockerGlobals.splitVerb(tokens)
+	if !ok {
+		return unknownGlobal("docker", verb)
+	}
+	if verb == "" {
 		return read("")
 	}
-	verb, rest := tokens[0], tokens[1:]
 	sub := first(positionals(rest, composeValueFlags...))
 	if res, ok := dockerWrites(verb, sub, rest); ok {
 		return res
