@@ -174,6 +174,16 @@ func New(opts Options) (*Assistant, error) {
 	if compactionCfg.MaxTokens <= 0 {
 		compactionCfg.MaxTokens = opts.MaxContextTokens
 	}
+	// A 2.x config (or any caller) can hand New an out-of-range threshold (2.x examples used
+	// percent-like values such as 75 instead of 0.75) or a non-positive keep-recent; both must be
+	// clamped here; an unclamped negative KeepRecent inflates CompactConversation's keepEnd past
+	// len(conversation) and panics the first time compaction fires (fix review finding 1).
+	if compactionCfg.Threshold <= 0 || compactionCfg.Threshold > 1.0 {
+		compactionCfg.Threshold = 0.75
+	}
+	if compactionCfg.KeepRecent <= 0 {
+		compactionCfg.KeepRecent = 4
+	}
 
 	// Request options (Task 8): reasoning mode, context window, keep-alive. An unrecognized think
 	// value falls back to auto rather than failing the whole assistant.
