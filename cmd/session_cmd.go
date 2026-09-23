@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -80,7 +80,7 @@ func (r *repl) cmdSessions(_ []string) {
 func (r *repl) cmdClear(_ []string) {
 	if err := r.asst.NewSession(""); err != nil {
 		// Fallback to creating new assistant
-		newAsst, err := assistant.New(r.options())
+		newAsst, err := agent.New(r.options())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error clearing: %v\n", err)
 			return
@@ -92,7 +92,7 @@ func (r *repl) cmdClear(_ []string) {
 }
 
 // handleSessionInfo displays current session information
-func handleSessionInfo(asst *assistant.Assistant) {
+func handleSessionInfo(asst *agent.Assistant) {
 	// Use GetSessionFresh to get updated message count from storage
 	session := asst.GetSessionFresh()
 	if session == nil {
@@ -116,7 +116,7 @@ func handleSessionInfo(asst *assistant.Assistant) {
 }
 
 // handleListSessions displays all available sessions with names and summaries
-func handleListSessions(asst *assistant.Assistant) {
+func handleListSessions(asst *agent.Assistant) {
 	sessions, err := asst.ListSessions()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing sessions: %v\n", err)
@@ -168,7 +168,7 @@ func handleListSessions(asst *assistant.Assistant) {
 }
 
 // handleDeleteSession deletes a session by ID with confirmation
-func handleDeleteSession(asst *assistant.Assistant, sessionID string) {
+func handleDeleteSession(asst *agent.Assistant, sessionID string) {
 	storage := asst.GetStorage()
 	if storage == nil {
 		fmt.Fprintf(os.Stderr, "Error: storage not initialized\n")
@@ -203,7 +203,7 @@ func handleDeleteSession(asst *assistant.Assistant, sessionID string) {
 }
 
 // handleRenameSession renames a session
-func handleRenameSession(asst *assistant.Assistant, sessionID, newName string) {
+func handleRenameSession(asst *agent.Assistant, sessionID, newName string) {
 	storage := asst.GetStorage()
 	if storage == nil {
 		fmt.Fprintf(os.Stderr, "Error: storage not initialized\n")
@@ -220,7 +220,7 @@ func handleRenameSession(asst *assistant.Assistant, sessionID, newName string) {
 }
 
 // handleExitWithSummary handles exit by generating session summary
-func handleExitWithSummary(asst *assistant.Assistant) {
+func handleExitWithSummary(asst *agent.Assistant) {
 	// Generate summary for current session if it has enough messages
 	session := asst.GetSession()
 	if session != nil && len(session.Messages) > 2 && session.Summary == "" {
@@ -236,7 +236,7 @@ func handleExitWithSummary(asst *assistant.Assistant) {
 }
 
 // handleStatus displays project and session status
-func handleStatus(asst *assistant.Assistant, workingDir string) {
+func handleStatus(asst *agent.Assistant, workingDir string) {
 	fmt.Println("Status:")
 	fmt.Println()
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/manifoldco/promptui"
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -71,7 +71,7 @@ func handleModelSwitch(r *repl) {
 // collectAvailableModels lists models from the host pool (multi-host) or from the current
 // assistant (single host). ok is false when listing failed; the error is already printed.
 func collectAvailableModels(
-	asst *assistant.Assistant, hostPool *provider.HostPool,
+	asst *agent.Assistant, hostPool *provider.HostPool,
 ) (allModels []modelWithHost, ok bool) {
 	if hostPool != nil {
 		return collectModelsFromHostPool(hostPool), true
@@ -215,7 +215,7 @@ func applyModelSwitch(r *repl, selected modelWithHost, currentModel, currentHost
 		opts.APIKey = selected.APIKey
 		opts.Model = selectedModel
 		opts.Vendor = selected.Vendor
-		newAsst, err := assistant.New(opts)
+		newAsst, err := agent.New(opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error switching host: %v\n", err)
 			return

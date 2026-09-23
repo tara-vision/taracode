@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/mcp"
 )
 
@@ -15,7 +15,7 @@ func (r *repl) cmdMCP(args []string) {
 }
 
 // handleMCP handles the /mcp command for managing MCP server connections
-func handleMCP(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
+func handleMCP(mgr *mcp.Manager, args []string, asst *agent.Assistant) {
 	if mgr == nil {
 		printMCPNotEnabled()
 		return
@@ -114,7 +114,7 @@ func formatMCPStatus(status string) string {
 }
 
 // mcpConnect handles "/mcp connect <server-name>".
-func mcpConnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
+func mcpConnect(mgr *mcp.Manager, args []string, asst *agent.Assistant) {
 	if len(args) < 2 {
 		fmt.Println("Usage: /mcp connect <server-name>")
 		fmt.Println()
@@ -144,7 +144,7 @@ func mcpConnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
 }
 
 // mcpDisconnect handles "/mcp disconnect <server-name>".
-func mcpDisconnect(mgr *mcp.Manager, args []string, asst *assistant.Assistant) {
+func mcpDisconnect(mgr *mcp.Manager, args []string, asst *agent.Assistant) {
 	if len(args) < 2 {
 		fmt.Println("Usage: /mcp disconnect <server-name>")
 		fmt.Println()

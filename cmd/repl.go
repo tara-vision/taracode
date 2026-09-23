@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -72,7 +72,7 @@ func (r *repl) handleLine(line string) {
 // expandReferences replaces @file references in the line and collects referenced images. This
 // reads files off disk relative to r.absDir, so it needs no .taracode/ and works the same before
 // and after /init.
-func (r *repl) expandReferences(line *string) ([]*assistant.ImageData, bool) {
+func (r *repl) expandReferences(line *string) ([]*agent.ImageData, bool) {
 	if !strings.Contains(*line, "@") {
 		return nil, true
 	}
@@ -87,7 +87,7 @@ func (r *repl) expandReferences(line *string) ([]*assistant.ImageData, bool) {
 
 // ask sends a prompt to the model, then shows the Tab suggestion, captures memories and refreshes
 // the prompt line.
-func (r *repl) ask(line string, images []*assistant.ImageData) {
+func (r *repl) ask(line string, images []*agent.ImageData) {
 	if err := r.asst.ProcessMessageWithImages(line, images); err != nil {
 		fmt.Fprintln(os.Stderr, ui.EnhanceError(err))
 	}

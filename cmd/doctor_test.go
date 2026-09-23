@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/models"
 )
@@ -106,9 +106,9 @@ func TestHandleDoctorRunsAgainstTheLiveAssistant(t *testing.T) {
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
-	a, err := assistant.New(assistant.Options{Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama", WorkingDir: t.TempDir(), Ephemeral: true})
+	a, err := agent.New(agent.Options{Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama", WorkingDir: t.TempDir(), Ephemeral: true})
 	if err != nil {
-		t.Fatalf("assistant.New() = %v", err)
+		t.Fatalf("agent.New() = %v", err)
 	}
 
 	out := captureStdoutForTest(t, func() { handleDoctor(a, t.TempDir()) })
