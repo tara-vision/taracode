@@ -5,16 +5,21 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+
+	"github.com/tara-vision/taracode/internal/policy"
 )
 
 // resetConfig resets viper for a clean config test and re-establishes the defaults and the --model
-// binding: viper.Reset drops every prior BindPFlag call (including the one root.go's init runs),
-// so a test that wants the production shadowing path (ruling P2-R17) needs it back.
+// and --mode bindings: viper.Reset drops every prior BindPFlag call (including the ones root.go's
+// init runs once at process start), so a test that wants the production shadowing path (ruling
+// P2-R17) or the real --mode flag's Changed() state to reach viper.GetString("mode") needs them
+// bound again.
 func resetConfig(t *testing.T) {
 	t.Helper()
 	viper.Reset()
 	setDefaults()
 	_ = viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))
+	_ = viper.BindPFlag("mode", rootCmd.PersistentFlags().Lookup("mode"))
 	t.Cleanup(viper.Reset)
 }
 
@@ -96,5 +101,46 @@ func TestLoadOptionsReadsTheV3Keys(t *testing.T) {
 	viper.Set("mode", "yolo")
 	if _, warnings := loadOptions(); !strings.Contains(joined(warnings), "yolo") {
 		t.Error("an unknown mode warns")
+	}
+}
+
+// TestLoadOptionsModeFlagChangedWinsOverDefaultMode covers loadOptions' "if
+// rootCmd.PersistentFlags().Changed('mode') { opts.Mode = opts.DefaultMode }" line through the real
+// pflag rather than viper.Set: once --mode is actually changed on the command line, Mode (the
+// explicit flag Options carries into applyStartupMode's precedence switch) and DefaultMode both
+// resolve to the same value.
+func TestLoadOptionsModeFlagChangedWinsOverDefaultMode(t *testing.T) {
+	resetConfig(t)
+	flag := rootCmd.PersistentFlags().Lookup("mode")
+	if err := rootCmd.PersistentFlags().Set("mode", "operate"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = flag.Value.Set("")
+		flag.Changed = false
+	})
+
+	opts, warnings := loadOptions()
+
+	if len(warnings) != 0 {
+		t.Fatalf("no warnings expected: %v", warnings)
+	}
+	if opts.Mode != policy.ModeOperate || opts.DefaultMode != policy.ModeOperate {
+		t.Fatalf("Mode = %q DefaultMode = %q, want both operate once --mode is actually changed", opts.Mode, opts.DefaultMode)
+	}
+}
+
+// TestLoadOptionsModeConfigDefaultWithoutTheFlagLeavesModeEmpty covers the other side: a mode:
+// value that came from the config file, not the flag, only ever fills DefaultMode. Mode stays
+// empty so applyStartupMode's precedence switch still lets a policy file's own mode win over it.
+func TestLoadOptionsModeConfigDefaultWithoutTheFlagLeavesModeEmpty(t *testing.T) {
+	resetConfig(t)
+	viper.Set("mode", "operate")
+
+	opts, _ := loadOptions()
+
+	if opts.DefaultMode != policy.ModeOperate || opts.Mode != "" {
+		t.Fatalf("DefaultMode = %q Mode = %q, want DefaultMode operate and Mode empty when the flag was not changed",
+			opts.DefaultMode, opts.Mode)
 	}
 }

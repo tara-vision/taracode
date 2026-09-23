@@ -252,6 +252,73 @@ func TestPolicyModeGoesThroughSetMode(t *testing.T) {
 	}
 }
 
+// TestApplyStartupModePrecedence covers the rest of the precedence switch
+// TestPolicyModeGoesThroughSetMode does not: the --mode flag (Options.Mode) applied directly, the
+// config default (Options.DefaultMode) applied when nothing else names a mode (and refused the
+// same way without storage, warning and staying in investigate), and the flag winning over a
+// policy file naming the opposite mode in both directions.
+func TestApplyStartupModePrecedence(t *testing.T) {
+	cases := []struct {
+		name        string
+		opts        Options
+		withStorage bool
+		policyMode  policy.Mode // "" = no policy file (a.policySources stays empty, so "built-in")
+		wantMode    policy.Mode
+		wantWarn    string // substring expected in the warning output; "" = none expected
+	}{
+		{
+			name: "the flag applies with storage",
+			opts: Options{Mode: policy.ModeOperate}, withStorage: true,
+			wantMode: policy.ModeOperate,
+		},
+		{
+			name: "the config default applies with storage",
+			opts: Options{DefaultMode: policy.ModeOperate}, withStorage: true,
+			wantMode: policy.ModeOperate,
+		},
+		{
+			name: "the config default is refused without storage and stays investigate",
+			opts: Options{DefaultMode: policy.ModeOperate}, withStorage: false,
+			wantMode: policy.ModeInvestigate, wantWarn: "operate mode needs an initialised project",
+		},
+		{
+			name: "the flag investigate wins over a policy file naming operate",
+			opts: Options{Mode: policy.ModeInvestigate}, withStorage: true,
+			policyMode: policy.ModeOperate, wantMode: policy.ModeInvestigate,
+		},
+		{
+			name: "the flag operate wins over a policy file naming investigate",
+			opts: Options{Mode: policy.ModeOperate}, withStorage: true,
+			policyMode: policy.ModeInvestigate, wantMode: policy.ModeOperate,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := newTestAssistant(t, false)
+			if tc.withStorage {
+				st, err := storage.NewManager(a.workingDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				a.storage = st
+			}
+			if tc.policyMode != "" {
+				a.pol.Mode = tc.policyMode
+				a.policySources = []string{"policy.yaml"}
+			}
+
+			out := captureStdout(t, func() { a.applyStartupMode(tc.opts) })
+
+			if a.Mode() != tc.wantMode {
+				t.Fatalf("Mode() = %q, want %q", a.Mode(), tc.wantMode)
+			}
+			if tc.wantWarn != "" && !strings.Contains(out, tc.wantWarn) {
+				t.Fatalf("warning output = %q, want it to contain %q", out, tc.wantWarn)
+			}
+		})
+	}
+}
+
 func TestAuditWithoutStorageWarns(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	srv.Turns = []ollamatest.Turn{

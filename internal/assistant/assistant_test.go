@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
+
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 )
 
@@ -56,5 +58,49 @@ func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
 	}
 	if a.GetCurrentModel() != "gemma4:12b" {
 		t.Fatalf("GetCurrentModel() = %q, want gemma4:12b", a.GetCurrentModel())
+	}
+}
+
+// TestNewClampsInvalidCompactionSettings covers a fix review regression: New used to clamp an
+// out-of-range compaction threshold (2.x examples used percent-like values such as 75 instead of
+// 0.75) and a non-positive keep-recent, but that clamp was lost when the viper reads moved into
+// Options. Losing it does not just silently disable compaction (an unclamped 75 as a fraction
+// never triggers): a negative KeepRecent also reopens a slice-bounds panic the first time
+// compaction fires, since CompactConversation's keepEnd := len(conversation) - KeepRecent*2
+// overshoots len(conversation) once KeepRecent is negative. This covers both: the assistant ends
+// up with the same 0.75/4 defaults the old code fell back to, and ForceCompact on a short
+// conversation refuses cleanly instead of panicking.
+func TestNewClampsInvalidCompactionSettings(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	srv := ollamatest.New(t)
+	srv.Models = []ollamatest.ModelSpec{
+		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
+	}
+
+	a, err := New(Options{
+		Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama",
+		Compaction: CompactionConfig{Enabled: true, Threshold: 75, KeepRecent: -1, MaxTokens: 32768},
+	})
+	if err != nil {
+		t.Fatalf("New() = %v", err)
+	}
+	if a.compactionCfg.Threshold != 0.75 {
+		t.Fatalf("compactionCfg.Threshold = %v, want the 0.75 default", a.compactionCfg.Threshold)
+	}
+	if a.compactionCfg.KeepRecent != 4 {
+		t.Fatalf("compactionCfg.KeepRecent = %v, want the 4 default", a.compactionCfg.KeepRecent)
+	}
+
+	// The panic path: before the clamp, KeepRecent -1 made ForceCompact's own too-short guard
+	// (KeepRecent*2+3) go non-positive, so a short conversation sailed straight into
+	// CompactConversation and panicked on the resulting out-of-range slice. With KeepRecent
+	// correctly clamped to 4, the same short conversation is refused instead.
+	a.conversation = append(a.conversation,
+		openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: "hi"},
+		openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: "hello"},
+	)
+	if err := a.ForceCompact(); err == nil || !strings.Contains(err.Error(), "too short to compact") {
+		t.Fatalf("ForceCompact() = %v, want the too-short-to-compact error, not a panic", err)
 	}
 }
