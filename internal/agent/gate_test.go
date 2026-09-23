@@ -70,7 +70,7 @@ func TestInvestigateModeBlocksMutationsWithoutRunningThem(t *testing.T) {
 }
 
 func TestOperateModeDeniesProtectedPathsAndDenyPatterns(t *testing.T) {
-	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+	a, srv, dir := gateAssistant(t, policy.ModeOperate,
 		toolCall("write_file", map[string]any{"path": "infra/terraform.tfstate", "content": "{}"}),
 		toolCall("shell", map[string]any{"command": "terraform destroy -auto-approve"}), ollamatest.Turn{Content: "ok"})
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("go") })
@@ -80,6 +80,9 @@ func TestOperateModeDeniesProtectedPathsAndDenyPatterns(t *testing.T) {
 	}
 	if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "deny pattern") {
 		t.Fatalf("%q", msg)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "infra", "terraform.tfstate")); !os.IsNotExist(err) {
+		t.Fatalf("the protected state file must never be written: %v", err)
 	}
 }
 
