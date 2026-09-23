@@ -13,8 +13,8 @@ protected:                      # never mutated in operate mode (hard deny, prin
   cloud_accounts: []            # AWS account ids, Azure subscription ids, GCP project ids, or *globs*
   paths: ["**/*.tfstate", ".git/**"]
   hosts: []
-deny:
-  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*"]
+deny:                           # refused outright; the last pattern keeps the policy files safe
+  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*", "*.taracode/policy.yaml*"]
 require_dry_run:                # shown before the permission prompt
   kubectl_apply: true           # kubectl diff first
   terraform_apply: true         # a plan from this session, its summary first

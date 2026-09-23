@@ -10,22 +10,26 @@ import (
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
-// ShellResult is a shell classification plus the hosts the command line names.
+// ShellResult is a shell classification, the hosts the command line names, and the files it writes
+// or removes as they are written on the line (the caller resolves them against the working
+// directory).
 type ShellResult struct {
 	Result
 	Hosts []string
+	Paths []string
 }
 
 var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
 
 // Shell classifies a whole command line: every segment of every pipeline must read, no segment may
-// redirect into a file, run in the background or use command substitution.
+// redirect into a file, run in the background or use command substitution. Paths holds the files
+// every segment writes or removes, whatever the classification, so the protected paths apply.
 func Shell(command string) ShellResult {
 	parsed, err := shellwords.Split(command)
 	if err != nil {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
 	}
-	out := ShellResult{Result: read("")}
+	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments)}
 	if parsed.Substitution {
 		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) hides what runs")
 		return out
