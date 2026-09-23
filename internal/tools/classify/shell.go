@@ -32,6 +32,11 @@ func Shell(command string) ShellResult {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
 	}
 	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed)}
+	if parsed.FunctionDef {
+		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+
+			"any read-only name")
+		return out
+	}
 	if parsed.Substitution {
 		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) or a translated $\"...\" "+
 			"hides what runs")
@@ -273,6 +278,9 @@ func shellProgram(words []string) Result {
 	rest := words[1:]
 	if res, ok := shellWrapper(prog, rest); ok {
 		return res
+	}
+	if args, ok := distroKubectl(prog, rest); ok {
+		return Kubectl(first(args), tail(args)) // microk8s/k3s/minikube kubectl <verb>
 	}
 	if res, ok := shellDevopsTool(prog, rest); ok {
 		return res

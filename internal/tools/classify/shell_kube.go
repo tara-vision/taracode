@@ -16,18 +16,43 @@ import (
 type KubeTarget struct {
 	Context, Namespace, Kubeconfig string
 	Helm                           bool
+	Cause                          string // why Context or Namespace is "*": one short phrase, "" when concrete
 }
+
+// The causes a kube target is "*": one short phrase per kind, carried into the deny reason with a
+// remedy so a model does not retry the same line.
+const (
+	causeContextSwitch = "the context is switched earlier on the line"
+	causeKubeconfigSet = "the kubeconfig is set by an assignment earlier on the line"
+	causeRunTimeArg    = "an argument is computed at run time"
+	causeWrapper       = "sudo, xargs or env -i runs kubectl"
+	causeUnknownProg   = "a program before kubectl is not known"
+	causeConflicting   = "conflicting --context, -n or --kubeconfig values"
+	causeFunctionDef   = "kubectl runs inside a shell function"
+	causeEnvVariable   = "a variable set for the command changes what kubectl reads"
+	causeRelativeKube  = "a relative kubeconfig is read from a directory changed earlier"
+)
 
 // kubeLine collects the targets of a shell line's kubectl and helm mutations, segment by segment.
 type kubeLine struct {
-	targets []KubeTarget
-	named   []string // the kubeconfig files the line names anywhere
-	vars    lineVars // the variables earlier segments set
-	changed bool     // an earlier segment may have changed the kube configuration
-	moved   bool     // an earlier cd, pushd or popd: a relative kubeconfig is another file
-	opaque  bool     // the line runs something the classifier cannot see into
-	words   int      // the words of the line that name kubectl or helm
-	placed  int      // of them, the ones read as the program of a command
+	targets     []KubeTarget
+	named       []string // the kubeconfig files the line names anywhere
+	vars        lineVars // the variables earlier segments set
+	changed     bool     // an earlier segment may have changed the kube configuration
+	changeCause string   // why (the earliest reason), carried into the deny
+	moved       bool     // an earlier cd, pushd or popd: a relative kubeconfig is another file
+	opaque      bool     // the line runs something the classifier cannot see into
+	words       int      // the words of the line that name kubectl or helm
+	placed      int      // of them, the ones read as the program of a command
+}
+
+// noteChanged records that an earlier segment may have changed the kube configuration, keeping the
+// earliest cause so the deny names why the later command's context is "*".
+func (l *kubeLine) noteChanged(cause string) {
+	l.changed = true
+	if l.changeCause == "" {
+		l.changeCause = cause
+	}
 }
 
 // shellKube returns the clusters the kubectl and helm mutations of a shell line act on (the rules
@@ -35,12 +60,24 @@ type kubeLine struct {
 // classifier does not read it as a program (an argument of sh, eval, find -exec, docker run, kubectl
 // exec, a program it does not know) on a line that runs something it cannot see into.
 func shellKube(parsed shellwords.Result) []KubeTarget {
+	if parsed.FunctionDef {
+		// A function body runs on the call, with arguments the classifier cannot correlate, so a
+		// kubectl or helm anywhere on the line acts on a context it cannot know.
+		var words int
+		for _, seg := range parsed.Segments {
+			words += countKubeWords(seg.Words)
+		}
+		if words > 0 {
+			return []KubeTarget{{Context: "*", Namespace: "*", Cause: causeFunctionDef}}
+		}
+		return nil
+	}
 	l := kubeLine{opaque: parsed.Substitution, named: namedKubeconfigs(parsed.Segments), vars: lineVars{}}
 	for _, seg := range parsed.Segments {
 		l.segment(seg)
 	}
 	if l.opaque && l.words > l.placed {
-		l.targets = append(l.targets, KubeTarget{Context: "*", Namespace: "*"})
+		l.targets = append(l.targets, KubeTarget{Context: "*", Namespace: "*", Cause: causeUnknownProg})
 	}
 	return l.targets
 }
@@ -53,36 +90,70 @@ func (l *kubeLine) segment(seg shellwords.Segment) {
 	l.words += countKubeWords(seg.Words)
 	words, header := simpleCommand(seg.Words)
 	words = withoutGluedBrace(words)
-	changes := l.writesKubeconfig(words, seg.Redirects)
-	if !header {
-		changes = l.command(words) || changes
+	if l.writesKubeconfig(words, seg.Redirects) {
+		l.noteChanged(causeKubeconfigSet)
 	}
-	l.changed = l.changed || changes
+	if !header {
+		l.command(words)
+	}
 	l.vars.note(seg.Words)
 }
 
-// command reads a simple command and reports whether it may change the kube configuration.
-func (l *kubeLine) command(words []string) bool {
+// command reads a simple command; when it may change the kube configuration for the commands after
+// it, it records that with noteChanged.
+func (l *kubeLine) command(words []string) {
 	end := assignmentsEnd(words)
 	prefix, command := words[:end], words[end:]
 	if len(command) == 0 {
-		return !neutralNames(prefix) // KUBECONFIG=x; or export's plain twin: sh may export it
+		if !neutralNames(prefix) { // KUBECONFIG=x; or export's plain twin: sh may export it
+			l.noteChanged(exportCause(prefix))
+		}
+		return
 	}
 	w := unwrap(command)
 	if len(w.words) == 0 { // a wrapper alone; with an option it may run a string (env -S "kubectl ...")
 		if len(w.options) > 0 {
 			l.opaque = true
+			l.noteChanged(causeUnknownProg)
 		}
-		return len(w.options) > 0
+		return
 	}
 	prog := path.Base(w.words[0])
+	if args, ok := distroKubectl(prog, w.words[1:]); ok {
+		kw := w
+		kw.words = append([]string{"kubectl"}, args...)
+		l.placed++
+		l.kubeCommand("kubectl", kw, append(append([]string{}, prefix...), w.env...))
+		return
+	}
 	if prog != "kubectl" && prog != "helm" {
-		return l.otherCommand(prog, w)
+		l.otherCommand(prog, w)
+		return
 	}
 	l.placed++
 	l.kubeCommand(prog, w, append(append([]string{}, prefix...), w.env...))
-	return prog == "kubectl" && kubectlChangesConfig(w.words[1:], l.named)
+	if prog == "kubectl" && kubectlChangesConfig(w.words[1:], l.named) {
+		l.noteChanged(causeContextSwitch)
+	}
 }
+
+// distroKubectl reports the kubectl arguments when prog is a single-binary Kubernetes distribution
+// that runs kubectl as a subcommand (microk8s, k3s, k0s, minikube). The classifier reads the line by
+// the kubectl verb after it, so a read stays a read; minikube separates the arguments with "--". ok
+// is false when prog is not such a wrapper or its subcommand is not kubectl.
+func distroKubectl(prog string, rest []string) ([]string, bool) {
+	if !kubectlDistros[prog] || len(rest) == 0 || rest[0] != "kubectl" {
+		return nil, false
+	}
+	args := rest[1:]
+	if len(args) > 0 && args[0] == "--" { // minikube kubectl -- get pods
+		args = args[1:]
+	}
+	return args, true
+}
+
+// kubectlDistros run kubectl as a subcommand: "<distro> kubectl <verb>" is classified by that verb.
+var kubectlDistros = map[string]bool{"microk8s": true, "k3s": true, "k0s": true, "minikube": true}
 
 // kubeCommand records the target of a kubectl or helm mutation, read from its flags and from env,
 // the NAME=value words set for it (its prefix, then env's or sudo's). The context is "*", and so is
@@ -99,19 +170,47 @@ func (l *kubeLine) kubeCommand(prog string, w wrapped, env []string) {
 	if prog == "kubectl" && kubectlRunsCommands(tokens) {
 		l.opaque = true
 	}
-	unknown := t.applyEnv(env) || l.changed || w.changesEnvironment() || l.moved && relativeKubeconfig(t.Kubeconfig)
+	envUnknown := t.applyEnv(env)
 	switch {
 	case w.feedsArguments() || l.runTimeArguments(tokens):
 		_, mutates = kubeTarget(prog, append(append([]string{}, tokens...), "--dry-run=none"))
 		t.Context, t.Namespace = "*", "*"
-	case unknown:
+		if w.feedsArguments() {
+			t.Cause = causeWrapper
+		} else {
+			t.Cause = causeRunTimeArg
+		}
+	case envUnknown || l.changed || w.changesEnvironment() || l.moved && relativeKubeconfig(t.Kubeconfig):
 		t.Context = "*"
 		if t.Namespace == "" {
 			t.Namespace = "*"
 		}
+		t.Cause = l.opaqueCause(w, envUnknown)
+	default:
+		if t.Context == "*" || t.Namespace == "*" {
+			t.Cause = causeConflicting // two --context or -n values, or an ambiguous short cluster
+		}
 	}
 	if mutates {
 		l.targets = append(l.targets, t)
+	}
+}
+
+// opaqueCause names why a kubectl or helm mutation's context is "*": the most specific reason among
+// the wrapper, an earlier change on the line, a variable set for the command, and a relative
+// kubeconfig read after a cd.
+func (l *kubeLine) opaqueCause(w wrapped, envUnknown bool) string {
+	switch {
+	case w.changesEnvironment():
+		return causeWrapper
+	case l.changed && l.changeCause != "":
+		return l.changeCause
+	case envUnknown:
+		return causeEnvVariable
+	case l.moved:
+		return causeRelativeKube
+	default:
+		return causeContextSwitch
 	}
 }
 
@@ -126,17 +225,27 @@ func (l *kubeLine) runTimeArguments(tokens []string) bool {
 	return false
 }
 
-// runTime reports a word whose value the classifier cannot read: any expansion except a variable
-// the line set to plain words and a special parameter (empty or a number in sh -c). An argument of
-// kubectl or helm like that can split into -n, --context or --kubeconfig and override the ones read.
+// runTime reports a word whose value the classifier cannot read: a ${...} with an operator, a
+// substitution, a special or positional parameter ($@, $*, $1..$9, $#, $_, $-, ...) that set -- or a
+// function's arguments can set to anything, or a variable the line did not set to plain words. An
+// argument of kubectl or helm like that can split into -n, --context or --kubeconfig and override
+// the ones read.
 func (v lineVars) runTime(word string) bool {
 	for _, r := range references(word) {
-		special := len(r) == 1 && strings.Contains("0123456789@*#?$!-", r)
-		if kind, set := v[r]; !special && (!set || kind != literalValue) {
+		if r == "" || specialParameter(r) {
+			return true
+		}
+		if kind, set := v[r]; !set || kind != literalValue {
 			return true
 		}
 	}
 	return strings.ContainsRune(word, '`')
+}
+
+// specialParameter reports a shell special or positional parameter: $@, $*, $1..$9, $#, $?, $!, $-,
+// $$, $0 and bash's $_. Their values are not known before the command runs.
+func specialParameter(ref string) bool {
+	return len(ref) == 1 && strings.Contains("0123456789@*#?$!-_", ref)
 }
 
 // kubeTarget reads the target a kubectl or helm command names and whether it mutates.
@@ -211,20 +320,56 @@ func relativeKubeconfig(kubeconfig string) bool {
 // script, sh, eval, source, python, make, find -exec), which is also something it cannot see into.
 // A container (docker run) is too, but it cannot change the kubeconfig. cd, pushd and popd change
 // only the directory a relative kubeconfig is read from.
-func (l *kubeLine) otherCommand(prog string, w wrapped) bool {
+func (l *kubeLine) otherCommand(prog string, w wrapped) {
 	rest := w.words[1:]
 	switch {
 	case prog == "cd" || prog == "pushd" || prog == "popd":
 		l.moved = true
+	case prog == "set":
+		if len(rest) > 0 { // set -- ... sets the positional parameters, set -k the keyword mode
+			l.noteChanged(causeContextSwitch)
+		}
 	case prog == "export" || prog == "unset":
-		return !neutralNames(operands(rest))
+		if !neutralNames(operands(rest)) {
+			l.noteChanged(exportCause(operands(rest)))
+		}
 	case switchesKubeContext(prog, rest):
-		return true
+		l.noteChanged(causeContextSwitch)
 	case !knownProgram(w.words) || runsCode(prog, rest):
 		l.opaque = true
-		return true
+		l.noteChanged(causeUnknownProg)
 	case containerPrograms[prog]:
-		l.opaque = true
+		if dockerRunsContainer(rest) { // only a container that runs a command can run a hidden kubectl
+			l.opaque = true
+		}
+	}
+}
+
+// exportCause names why an assignment, export or unset earlier on the line makes a later target "*":
+// a KUBECONFIG change points at the kubeconfig, any other variable at what kubectl reads or runs.
+func exportCause(names []string) string {
+	for _, w := range names {
+		if name, _, _ := strings.Cut(w, "="); name == "KUBECONFIG" {
+			return causeKubeconfigSet
+		}
+	}
+	return causeEnvVariable
+}
+
+// dockerRunsContainer reports the docker (podman, nerdctl) commands that run a command in a container,
+// where a kubectl the classifier cannot see may act on a cluster: run and exec, container run and
+// exec, compose run and exec. Every other verb (pull, tag, push, ps, images, ...) touches no cluster.
+func dockerRunsContainer(rest []string) bool {
+	verb, after, ok := dockerGlobals.splitVerb(rest)
+	if !ok {
+		return true // an unknown global before the verb: fail closed
+	}
+	sub := first(positionals(after, composeValueFlags...))
+	switch verb {
+	case "run", "exec":
+		return true
+	case "container", "compose":
+		return in(sub, "run", "exec")
 	}
 	return false
 }
