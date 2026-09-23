@@ -60,14 +60,27 @@ func HelmTool() *Tool {
 			if len(words) == 0 || (words[0] != "upgrade" && words[0] != "install") {
 				return "", ErrNoDryRun
 			}
-			if !hasWord(words, "--dry-run") {
-				words = append(words, "--dry-run")
-			}
 			ctx, cancel := withTimeout(ctx, helmTimeout)
 			defer cancel()
-			return runCommand(ctx, workingDir, "helm", words...)
+			return runCommand(ctx, workingDir, "helm", helmDryRunArgv(words)...)
 		},
 	}
+}
+
+// helmDryRunArgv makes the invocation a real dry run: a --dry-run the model wrote is dropped (with
+// =false or =none helm would install or upgrade for real) and one --dry-run goes at the end of the
+// flags, before a "--" after which it would be a release name.
+func helmDryRunArgv(words []string) []string {
+	out := make([]string, 0, len(words)+1)
+	for i, w := range words {
+		if w == "--" {
+			return append(append(out, "--dry-run"), words[i:]...)
+		}
+		if w != "--dry-run" && !strings.HasPrefix(w, "--dry-run=") {
+			out = append(out, w)
+		}
+	}
+	return append(out, "--dry-run")
 }
 
 func helmContext(words []string) string {

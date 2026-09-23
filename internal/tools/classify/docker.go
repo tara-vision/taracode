@@ -11,6 +11,9 @@ func Docker(tokens []string) Result {
 	}
 	verb, rest := tokens[0], tokens[1:]
 	sub := first(positionals(rest, composeValueFlags...))
+	if res, ok := dockerWrites(verb, sub, rest); ok {
+		return res
+	}
 	switch verb {
 	case "ps", "images", "logs", "inspect", "top", "port", "diff", "history", "version", "info", "search", "stats",
 		"events":
@@ -48,4 +51,16 @@ func Docker(tokens []string) Result {
 		return mutate(verb, "docker "+verb+" "+sub+" changes containers, images or local state")
 	}
 	return mutate(verb, "docker "+verb+" changes containers, images or local state")
+}
+
+// dockerWrites catches the write forms of read subcommands: compose config -o writes the resolved
+// file and buildx inspect --bootstrap starts the builder. ok is false when the read stands.
+func dockerWrites(verb, sub string, rest []string) (Result, bool) {
+	switch {
+	case verb == "compose" && sub == "config" && hasFlag(rest, "-o", "--output"):
+		return mutate(verb, "docker compose config -o writes a file"), true
+	case verb == "buildx" && sub == "inspect" && hasFlag(rest, "--bootstrap"):
+		return mutate(verb, "docker buildx inspect --bootstrap starts the builder"), true
+	}
+	return Result{}, false
 }

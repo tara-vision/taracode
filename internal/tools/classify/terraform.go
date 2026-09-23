@@ -3,17 +3,26 @@ package classify
 import "strings"
 
 // Terraform classifies a command with its arguments. plan is a read (the tool writes the plan file
-// into a session temp file); init is a read only with -backend=false.
+// into a session temp file) unless it is told to write a file itself; init is a read only with
+// -backend=false. Options follow Go's flag package: -name or --name, and the last one wins.
 func Terraform(command string, tokens []string) Result {
 	command = strings.ToLower(strings.TrimSpace(command))
 	switch command {
-	case "validate", "show", "output", "graph", "version", "plan", "metadata", "help":
+	case "validate", "show", "output", "graph", "version", "metadata", "help":
+		return read(command)
+	case "plan":
+		if goFlagSet(tokens, "out") || goFlagSet(tokens, "generate-config-out") {
+			return mutate(command, "terraform plan -out and -generate-config-out write files")
+		}
 		return read(command)
 	case "fmt":
-		if hasFlag(tokens, "-check", "-diff") {
+		if check, _ := goBoolFlag(tokens, "check"); check {
 			return read(command)
 		}
-		return mutate(command, "terraform fmt without -check rewrites files")
+		if write, set := goBoolFlag(tokens, "write"); set && !write {
+			return read(command)
+		}
+		return mutate(command, "terraform fmt without -check or -write=false rewrites files")
 	case "state":
 		if in(first(tokens), "list", "show", "pull") {
 			return read("state " + first(tokens))
@@ -30,7 +39,7 @@ func Terraform(command string, tokens []string) Result {
 		}
 		return mutate(command, "terraform providers "+first(tokens)+" writes the lock file or a mirror")
 	case "init":
-		if hasFlag(tokens, "-backend=false") {
+		if backend, set := goBoolFlag(tokens, "backend"); set && !backend {
 			return read(command)
 		}
 		return mutate(command, "terraform init without -backend=false may configure or migrate state")

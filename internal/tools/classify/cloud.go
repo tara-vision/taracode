@@ -12,6 +12,13 @@ var azValueFlags = []string{"--subscription", "-s", "-n", "--name", "-g", "--res
 var gcloudValueFlags = []string{"--project", "--zone", "--region", "--format", "--filter", "--account",
 	"--configuration"}
 
+// cloudFileWriters are the verbs that look like reads but write a file: get-credentials merges a
+// cluster into the kubeconfig (az, gcloud), and the AWS operations that stream their response
+// into the outfile operand they require.
+var cloudFileWriters = []string{"get-credentials", "get-object", "get-object-torrent", "get-job-output", "get-export",
+	"get-sdk", "get-media", "get-clip", "get-snapshot-block", "get-thing-shadow", "get-raw-message-content",
+	"get-package-version-asset"}
+
 // Cloud classifies a provider CLI invocation by the verb in the position each CLI uses.
 func Cloud(provider string, tokens []string) Result {
 	switch provider {
@@ -45,6 +52,9 @@ func awsVerb(tokens []string) Result {
 		return read(strings.Join(pos, " "))
 	}
 	service, verb := pos[0], pos[1]
+	if in(verb, cloudFileWriters...) {
+		return mutate(verb, "aws "+service+" "+verb+" writes a file")
+	}
 	if service == "configure" {
 		if in(verb, "list", "get", "list-profiles") {
 			return read("configure " + verb)
@@ -63,6 +73,9 @@ func azVerb(tokens []string) Result {
 		return read("")
 	}
 	verb := pos[len(pos)-1]
+	if in(verb, cloudFileWriters...) {
+		return mutate(verb, "az "+strings.Join(pos, " ")+" writes a file (get-credentials writes the kubeconfig)")
+	}
 	if hasPrefixIn(verb, cloudReadPrefixes...) {
 		return read(verb)
 	}
@@ -80,6 +93,9 @@ var gcloudMutatePrefixes = []string{"create", "delete", "update", "add-", "remov
 func gcloudVerb(tokens []string) Result {
 	pos := positionals(tokens, gcloudValueFlags...)
 	for _, p := range pos {
+		if in(p, cloudFileWriters...) {
+			return mutate(p, "gcloud "+strings.Join(pos, " ")+" writes a file (get-credentials writes the kubeconfig)")
+		}
 		if hasPrefixIn(p, gcloudMutatePrefixes...) {
 			return mutate(p, "gcloud "+strings.Join(pos, " ")+" changes cloud resources or local state")
 		}

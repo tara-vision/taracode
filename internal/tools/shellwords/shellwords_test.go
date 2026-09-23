@@ -87,3 +87,42 @@ func TestWordsKeepsEmptyQuotedArgs(t *testing.T) {
 		t.Fatalf("%q", w)
 	}
 }
+
+// TestSplitOutputDuplicationToAWordIsAFileRedirect: bash (macOS /bin/sh) reads `>& word` and
+// `>&word`, where word is not a descriptor number or -, as "stdout and stderr to the file word", so
+// the word is the redirect's target, not an argument of the command.
+func TestSplitOutputDuplicationToAWordIsAFileRedirect(t *testing.T) {
+	cases := []struct{ in, redirects, words string }{
+		{"echo x >& out.txt", ">& out.txt", "echo x"},
+		{"echo x >&out.txt", ">& out.txt", "echo x"},
+		{"echo x 2>&1", "2>&1", "echo x"},
+		{"echo x >&2", ">&2", "echo x"},
+		{"echo x >&-", ">&-", "echo x"},
+	}
+	for _, c := range cases {
+		res, err := Split(c.in)
+		if err != nil || len(res.Segments) != 1 {
+			t.Fatalf("%q: %+v %v", c.in, res, err)
+		}
+		seg := res.Segments[0]
+		if got := strings.Join(seg.Redirects, ","); got != c.redirects {
+			t.Errorf("%q: redirects %q, want %q", c.in, got, c.redirects)
+		}
+		if got := strings.Join(seg.Words, " "); got != c.words {
+			t.Errorf("%q: words %q, want %q", c.in, got, c.words)
+		}
+	}
+}
+
+// TestSplitFlagsProcessSubstitution: <(...) and >(...) run a command the way $(...) does when sh
+// is bash 5.1 or later, so they set Substitution.
+func TestSplitFlagsProcessSubstitution(t *testing.T) {
+	for _, c := range []string{"diff <(rm -rf x) y", "tee >(sh) < in.txt", "cat <(id)"} {
+		if res, _ := Split(c); !res.Substitution {
+			t.Errorf("process substitution not detected in %q", c)
+		}
+	}
+	if res, _ := Split("sort < in.txt > out.txt"); res.Substitution {
+		t.Error("plain redirects are not a substitution")
+	}
+}
