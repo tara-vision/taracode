@@ -237,16 +237,13 @@ func New(
 		return nil, err
 	}
 
-	// The policy file may name the startup mode; a policy that failed to load keeps investigate.
-	if gate.err == nil && gate.pol.Mode != "" {
-		a.mode = gate.pol.Mode
-	}
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode)
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
 	}}
+	a.applyPolicyMode()
 
 	return a, nil
 }

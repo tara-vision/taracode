@@ -70,6 +70,19 @@ func (a *Assistant) SetMode(mode policy.Mode) error {
 	return nil
 }
 
+// applyPolicyMode switches to the mode the policy file names. It goes through SetMode, so operate
+// mode still needs a loadable policy and project storage; a refusal is shown and the session stays
+// in its current mode.
+func (a *Assistant) applyPolicyMode() {
+	if a.policyErr != nil || a.pol.Mode == "" || a.pol.Mode == a.mode {
+		return
+	}
+	if err := a.SetMode(a.pol.Mode); err != nil {
+		fmt.Println(a.renderer.WarningMessage(
+			fmt.Sprintf("The policy's %s mode was not applied, staying in %s mode: %v", a.pol.Mode, a.mode, err)))
+	}
+}
+
 // buildSystemPrompt assembles the prompt: the persona with the mode line, TARACODE.md, memories,
 // the active plan and the working directory.
 func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode policy.Mode) string {
