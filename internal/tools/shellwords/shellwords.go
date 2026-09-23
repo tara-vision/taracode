@@ -1,7 +1,8 @@
 // Package shellwords splits a POSIX shell command line into pipeline segments and words without
-// running it: single and double quotes, backslash escapes, the control operators | || && ; & and
-// newlines, redirections, comments, and a flag for command substitution ($(...), backticks and the
-// process substitutions <(...) and >(...)) so a classifier can refuse what it cannot see through.
+// running it: single and double quotes, bash's $'...' quoting, backslash escapes, the control
+// operators | || && ; & and newlines, the grouping operators ( and ), redirections, comments, and a
+// flag for what it cannot see through (command substitution: $(...), backticks and the process
+// substitutions <(...) and >(...); and bash's translated $"...") so a classifier can refuse it.
 package shellwords
 
 import (
@@ -20,7 +21,7 @@ type Segment struct {
 // Result is a parsed command line.
 type Result struct {
 	Segments     []Segment
-	Substitution bool // $(...), a backtick, <(...) or >(...) appeared anywhere
+	Substitution bool // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
 }
 
 type parser struct {
@@ -31,20 +32,30 @@ type parser struct {
 	word    strings.Builder
 	hasWord bool
 	pending string // a redirection operator waiting for its target word
+	shell   bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
+	closed  bool   // the last segment was ended by a closing )
 }
 
-// Split parses a command line. It returns an error on an unbalanced quote.
+// Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
+// the commands of a subshell, of $(...) and <(...), and after a case pattern are segments of their
+// own. $'...' is decoded as bash decodes it (macOS runs sh as bash), so $'-delete' is the word
+// -delete. It returns an error on an unbalanced quote.
 func Split(command string) (Result, error) {
-	p := &parser{in: []rune(command)}
+	return split(command, true)
+}
+
+func split(command string, shell bool) (Result, error) {
+	p := &parser{in: []rune(command), shell: shell}
 	if err := p.run(); err != nil {
 		return Result{}, err
 	}
 	return p.res, nil
 }
 
-// Words splits an argument string into words with the same quoting rules, ignoring operators.
+// Words splits an argument string into words with the same quoting rules, ignoring operators. The
+// words are a tool's arguments, never run by a shell, so parentheses and $'...' stay literal.
 func Words(args string) ([]string, error) {
-	res, err := Split(args)
+	res, err := split(args, false)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +80,11 @@ func (p *parser) run() error {
 // step consumes and handles the rune at the current position, advancing pos.
 func (p *parser) step() error {
 	c := p.in[p.pos]
+	if p.shell {
+		if handled, err := p.shellStep(c); handled {
+			return err
+		}
+	}
 	switch {
 	case c == '\'':
 		return p.quoted('\'')
@@ -83,6 +99,7 @@ func (p *parser) step() error {
 	case p.substitutionStart(c):
 		p.res.Substitution = true
 		p.word.WriteRune(c)
+		p.hasWord = true
 		p.pos++
 	case c == '|' || c == '&' || c == ';' || c == '\n':
 		p.operator(c)
@@ -97,6 +114,111 @@ func (p *parser) step() error {
 		p.pos++
 	}
 	return nil
+}
+
+// shellStep handles what only a shell reads: the grouping operators ( and ), bash's $'...' and the
+// translated $"..." (unseen). handled is false for any other rune.
+func (p *parser) shellStep(c rune) (handled bool, err error) {
+	switch {
+	case c == '$' && p.next() == '\'':
+		return true, p.ansiC()
+	case c == '$' && p.next() == '"':
+		p.res.Substitution = true // $"..." is translated through the locale's message catalog
+		p.pos++
+		return true, nil
+	case c == '(' || c == ')':
+		p.group(c)
+		return true, nil
+	}
+	return false, nil
+}
+
+// next is the rune after the current one, or 0 at the end.
+func (p *parser) next() rune {
+	if p.pos+1 < len(p.in) {
+		return p.in[p.pos+1]
+	}
+	return 0
+}
+
+// ansiC reads a $'...' string as bash decodes it: backslash escapes for control characters, octal,
+// hexadecimal and Unicode code points, \' for a quote. The decoded text joins the word.
+func (p *parser) ansiC() error {
+	p.pos += 2 // $'
+	for p.pos < len(p.in) {
+		c := p.in[p.pos]
+		switch {
+		case c == '\'':
+			p.hasWord = true
+			p.pos++
+			return nil
+		case c == '\\' && p.pos+1 < len(p.in):
+			p.pos++
+			p.escape()
+		default:
+			p.word.WriteRune(c)
+			p.pos++
+		}
+	}
+	return errors.New("unbalanced quote")
+}
+
+// ansiEscapes are the one-letter escapes of $'...'.
+var ansiEscapes = map[rune]rune{'a': '\a', 'b': '\b', 'e': 0x1b, 'E': 0x1b, 'f': '\f', 'n': '\n', 'r': '\r',
+	't': '\t', 'v': '\v', '\\': '\\', '\'': '\'', '"': '"', '?': '?'}
+
+// escape decodes the escape at the current position (after the backslash) into the word and
+// advances past it; an escape bash does not know stays a backslash and the character.
+func (p *parser) escape() {
+	c := p.in[p.pos]
+	p.pos++
+	if r, ok := ansiEscapes[c]; ok {
+		p.word.WriteRune(r)
+		return
+	}
+	switch {
+	case c == 'x':
+		p.word.WriteRune(p.codePoint(16, 2))
+	case c == 'u':
+		p.word.WriteRune(p.codePoint(16, 4))
+	case c == 'U':
+		p.word.WriteRune(p.codePoint(16, 8))
+	case c >= '0' && c <= '7':
+		p.pos--
+		p.word.WriteRune(p.codePoint(8, 3))
+	case c == 'c' && p.pos < len(p.in):
+		p.pos++
+		p.word.WriteRune(p.in[p.pos-1] & 0x1f)
+	default:
+		p.word.WriteRune('\\')
+		p.word.WriteRune(c)
+	}
+}
+
+// codePoint reads up to digits digits in base and returns the character they encode.
+func (p *parser) codePoint(base rune, digits int) rune {
+	var r rune
+	for n := 0; n < digits && p.pos < len(p.in); n++ {
+		d := digitValue(p.in[p.pos])
+		if d < 0 || d >= base {
+			break
+		}
+		r = r*base + d
+		p.pos++
+	}
+	return r
+}
+
+func digitValue(c rune) rune {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0'
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10
+	}
+	return -1
 }
 
 // substitutionStart reports whether c opens a backtick or $(...) command substitution.
@@ -132,6 +254,15 @@ func (p *parser) skipComment() {
 	for p.pos < len(p.in) && p.in[p.pos] != '\n' {
 		p.pos++
 	}
+}
+
+// group ends the segment at a ( or ). A background & or a redirect after the closing ) applies to
+// the whole group: the & marks the last segment (endSegment), a redirect starts a segment of its own.
+func (p *parser) group(c rune) {
+	p.endWord()
+	p.pos++
+	p.endSegment(false)
+	p.closed = c == ')'
 }
 
 func (p *parser) operator(c rune) {
@@ -177,6 +308,9 @@ func (p *parser) redirect() {
 	op := fd + string(p.in[start:p.pos])
 	if p.pos < len(p.in) && p.in[p.pos] == '(' {
 		p.res.Substitution = true
+		if p.shell {
+			return // <(...) or >(...): the ( opens the command it runs, not a redirect target
+		}
 	}
 	if strings.HasSuffix(op, "&") { // descriptor duplication: the target is a number or -
 		tstart := p.pos
@@ -210,11 +344,15 @@ func (p *parser) endWord() {
 
 func (p *parser) endSegment(background bool) {
 	if len(p.seg.Words) == 0 && len(p.seg.Redirects) == 0 {
+		if background && p.closed && len(p.res.Segments) > 0 {
+			p.res.Segments[len(p.res.Segments)-1].Background = true // (sleep 100) &
+		}
 		return
 	}
 	p.seg.Background = background
 	p.res.Segments = append(p.res.Segments, p.seg)
 	p.seg = Segment{}
+	p.closed = false
 }
 
 func isDigits(s string) bool {
