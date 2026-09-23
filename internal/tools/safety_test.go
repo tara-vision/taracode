@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/redact"
 )
@@ -119,5 +120,43 @@ func TestLiveShellStreamIsRedactedLineByLine(t *testing.T) {
 	}
 	if !strings.Contains(raw.String(), "AKIAIOSFODNN7EXAMPLE") {
 		t.Fatalf("without a redactor the stream is the raw output: %q", raw.String())
+	}
+}
+
+// TestWriteIsRefusedWhenTheBackupFails: write_file and edit_file never overwrite a file they could
+// not back up, so /undo always has the original (final review I7).
+func TestWriteIsRefusedWhenTheBackupFails(t *testing.T) {
+	r, dir := fileRegistry(t)
+	root := filepath.Join(dir, ".taracode")
+	hm, err := history.NewManager(root, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SetHistory(hm)
+	// A regular file where the backups directory must go makes every backup fail.
+	if err := os.WriteFile(filepath.Join(root, "backups"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	calls := []struct {
+		tool string
+		args map[string]any
+	}{
+		{"write_file", map[string]any{"path": "a.txt", "content": "replaced"}},
+		{"edit_file", map[string]any{"path": "a.txt", "old": "two", "new": "2"}},
+	}
+	for _, c := range calls {
+		_, err := r.Execute(context.Background(), c.tool, c.args, dir)
+		if err == nil || !strings.Contains(err.Error(), "backup") {
+			t.Errorf("%s: a failed backup must refuse the write: %v", c.tool, err)
+		}
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(data) != "one\ntwo\nthree\nfour\n" {
+		t.Fatalf("the file must be unchanged: %q", data)
+	}
+	if ops := hm.GetAllHistory(); len(ops) != 0 {
+		t.Fatalf("a refused write records nothing: %+v", ops)
+	}
+	if _, err := r.Execute(context.Background(), "write_file", map[string]any{"path": "new.txt", "content": "x"}, dir); err != nil {
+		t.Fatalf("a new file needs no backup and is written: %v", err)
 	}
 }
