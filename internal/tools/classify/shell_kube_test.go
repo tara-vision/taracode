@@ -101,7 +101,7 @@ func TestShellKubeTargetsAfterAConfigChange(t *testing.T) {
 		{"TZ=UTC; kubectl delete pod web", "{  }"},
 		{"mkdir -p out && kubectl delete pod web -n apps", "{ apps }"},
 		{"[ -f x.yaml ] && kubectl apply -f x.yaml -n apps", "{ apps }"},
-		{"set -euo pipefail; kubectl rollout restart deploy/web -n apps", "{ apps }"},
+		{"set -euo pipefail; kubectl rollout restart deploy/web -n apps", "{* apps }"},
 		{"docker build -t app . && kubectl apply -f k8s/ -n apps", "{ apps }"},
 		{"kubectl apply -f a.yaml && kubectl delete pod web", "{  }|{  }"},
 	}
