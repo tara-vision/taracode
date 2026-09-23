@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
@@ -74,7 +74,7 @@ func resolveDoctorTarget() (targetHost, apiKey, vendor, configuredModel string) 
 // context window taracode would request for a model with this native maximum, from the same
 // config key and resolver a live turn uses.
 func doctorResolveWindow(modelMax int) (int, string) {
-	return assistant.ResolveContextWindow(viper.GetString("context.window"), modelMax)
+	return agent.ResolveContextWindow(viper.GetString("context.window"), modelMax)
 }
 
 // runDoctor builds a provider for hostURL and runs models.Diagnose against it. It is the testable
@@ -118,7 +118,7 @@ func (r *repl) cmdDoctor(_ []string) {
 // line: it is the sandbox root (r.projectRoot), not whatever the assistant's own working directory
 // happens to be, since the assistant is re-created on /init, /model and /reload while the project
 // root never moves during a session.
-func handleDoctor(asst *assistant.Assistant, projectRoot string) {
+func handleDoctor(asst *agent.Assistant, projectRoot string) {
 	liveHost := ""
 	if info := asst.GetProviderInfo(); info != nil {
 		liveHost = info.Host

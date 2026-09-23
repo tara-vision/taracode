@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/llm"
 )
 
@@ -17,7 +17,7 @@ func (r *repl) cmdThink(args []string) {
 }
 
 // handleThink shows or changes the reasoning mode used for later requests.
-func handleThink(asst *assistant.Assistant, args []string) {
+func handleThink(asst *agent.Assistant, args []string) {
 	if len(args) == 0 {
 		fmt.Printf("Reasoning mode: %s\n", displayThink(asst.Think()))
 		fmt.Println()

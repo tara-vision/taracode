@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/storage"
@@ -55,7 +55,7 @@ func formatBoxLine(content string) string {
 	return fmt.Sprintf("│  %-*s│", boxWidth, content)
 }
 
-func handleContext(asst *assistant.Assistant, mm *memory.Manager) {
+func handleContext(asst *agent.Assistant, mm *memory.Manager) {
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
 	fmt.Println("│  Context Window                                                     │")
@@ -80,7 +80,7 @@ func handleContext(asst *assistant.Assistant, mm *memory.Manager) {
 
 // printContextBudget prints the context budget breakdown (v2.0.2): total, system prompt, tool
 // definitions, server/requested context window, conversation and available tokens.
-func printContextBudget(ctxInfo assistant.ContextInfo) {
+func printContextBudget(ctxInfo agent.ContextInfo) {
 	usedPct := 0
 	if ctxInfo.MaxTokens > 0 {
 		usedPct = ctxInfo.TotalTokens * 100 / ctxInfo.MaxTokens
@@ -118,7 +118,7 @@ func printContextBudget(ctxInfo assistant.ContextInfo) {
 }
 
 // printContextCompactionHistory prints the compaction history section, when there is one.
-func printContextCompactionHistory(ctxInfo assistant.ContextInfo) {
+func printContextCompactionHistory(ctxInfo agent.ContextInfo) {
 	if len(ctxInfo.CompactionEvents) == 0 {
 		return
 	}
@@ -134,7 +134,7 @@ func printContextCompactionHistory(ctxInfo assistant.ContextInfo) {
 }
 
 // printContextTruncationEvents prints the truncated-output section, when there is one.
-func printContextTruncationEvents(ctxInfo assistant.ContextInfo) {
+func printContextTruncationEvents(ctxInfo agent.ContextInfo) {
 	if len(ctxInfo.TruncationEvents) == 0 {
 		return
 	}
@@ -179,7 +179,7 @@ func printContextSessionInfo(session *storage.Session) {
 }
 
 // printContextTokenUsage prints the LLM token usage line, when there is any.
-func printContextTokenUsage(asst *assistant.Assistant) {
+func printContextTokenUsage(asst *agent.Assistant) {
 	usage := asst.GetSessionUsage()
 	if usage == nil || usage.TotalTokens == 0 {
 		return
@@ -190,7 +190,7 @@ func printContextTokenUsage(asst *assistant.Assistant) {
 }
 
 // printContextProjectInfo prints the TARACODE.md-derived project context, when there is one.
-func printContextProjectInfo(asst *assistant.Assistant) {
+func printContextProjectInfo(asst *agent.Assistant) {
 	projectCtx := asst.GetProjectContext()
 	if projectCtx == nil {
 		return
@@ -281,7 +281,7 @@ func printContextFilesRead(session *storage.Session) {
 }
 
 // printContextModeSettings prints the operating mode, compaction and iteration settings.
-func printContextModeSettings(asst *assistant.Assistant, ctxInfo assistant.ContextInfo) {
+func printContextModeSettings(asst *agent.Assistant, ctxInfo agent.ContextInfo) {
 	mode := asst.Mode()
 	registry := asst.ToolRegistry()
 	fmt.Println("├─────────────────────────────────────────────────────────────────────┤")
@@ -296,7 +296,7 @@ func printContextModeSettings(asst *assistant.Assistant, ctxInfo assistant.Conte
 }
 
 // handleCompact forces immediate conversation compaction (v2.0.2)
-func handleCompact(asst *assistant.Assistant) {
+func handleCompact(asst *agent.Assistant) {
 	fmt.Println()
 	ctxInfo := asst.GetContextInfo()
 	fmt.Printf("Current context: %.1fk / %.1fk tokens (%d messages)\n",
@@ -325,7 +325,7 @@ func handleCompact(asst *assistant.Assistant) {
 }
 
 // handleStats shows session statistics (v2.0.2)
-func handleStats(asst *assistant.Assistant, hm *history.Manager, gen assistant.ModelOptions) {
+func handleStats(asst *agent.Assistant, hm *history.Manager, gen agent.ModelOptions) {
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
 	fmt.Println("│  Session Statistics                                                 │")
@@ -436,7 +436,7 @@ func extractFilesRead(messages []storage.ConversationMessage) []string {
 }
 
 // handleShowPlan displays the active task plan
-func handleShowPlan(asst *assistant.Assistant) {
+func handleShowPlan(asst *agent.Assistant) {
 	storage := asst.GetStorage()
 	if storage == nil {
 		fmt.Println("Storage not initialized. Run /init first.")

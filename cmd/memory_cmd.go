@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/storage"
 )
@@ -24,7 +24,7 @@ func (r *repl) cmdMemory(args []string) {
 }
 
 // handleRemember saves a new memory about the project
-func handleRemember(mm *memory.Manager, args []string, asst **assistant.Assistant) {
+func handleRemember(mm *memory.Manager, args []string, asst **agent.Assistant) {
 	if mm == nil {
 		fmt.Println("Memory not available.")
 		fmt.Println("Initialize the project with /init first.")

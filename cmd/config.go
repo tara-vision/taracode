@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
@@ -52,8 +52,8 @@ func setDefaults() {
 
 // loadOptions builds the assistant options from viper and returns the migration warnings to print
 // once at startup.
-func loadOptions() (assistant.Options, []string) {
-	opts := assistant.DefaultOptions()
+func loadOptions() (agent.Options, []string) {
+	opts := agent.DefaultOptions()
 	var warnings []string
 	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
 
@@ -64,7 +64,7 @@ func loadOptions() (assistant.Options, []string) {
 	opts.Spinner = !viper.GetBool("no_spinner")
 	opts.Offline = viper.GetBool("offline")
 
-	gen := assistant.ModelOptions{
+	gen := agent.ModelOptions{
 		Temperature: float32(viper.GetFloat64("generation.temperature")),
 		TopP:        float32(viper.GetFloat64("generation.top_p")),
 		NumPredict:  viper.GetInt("generation.num_predict"),
@@ -117,11 +117,11 @@ func loadOptions() (assistant.Options, []string) {
 	opts.KeepAlive = viper.GetString("keep_alive")
 	opts.ContextWindow = viper.GetString("context.window")
 	opts.MaxContextTokens = viper.GetInt("max_context_tokens")
-	opts.Truncation = assistant.TruncationConfig{
+	opts.Truncation = agent.TruncationConfig{
 		MaxLines: viper.GetInt("context.max_tool_output_lines"),
 		MaxChars: viper.GetInt("context.max_tool_output_chars"),
 	}
-	opts.Compaction = assistant.CompactionConfig{
+	opts.Compaction = agent.CompactionConfig{
 		Enabled:    viper.GetBool("context.compaction_enabled") && !viper.GetBool("context.no_compaction"),
 		Threshold:  viper.GetFloat64("context.compaction_threshold"),
 		KeepRecent: viper.GetInt("context.compaction_keep_recent"),

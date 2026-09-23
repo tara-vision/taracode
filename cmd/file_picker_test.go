@@ -20,7 +20,7 @@ func TestExpandFileReferencesWithImagesWorksBeforeInit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello from disk"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// LoadImage only reads and base64-encodes bytes (internal/assistant/image.go); it does not
+	// LoadImage only reads and base64-encodes bytes (internal/agent/image.go); it does not
 	// decode or validate image content, so arbitrary bytes with a recognised extension are enough
 	// to exercise the image branch without a real PNG encoder.
 	if err := os.WriteFile(filepath.Join(dir, "pic.png"), []byte("not-real-png-bytes-are-enough"), 0o644); err != nil {

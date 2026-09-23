@@ -10,7 +10,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
@@ -23,12 +23,12 @@ import (
 // project is initialised, the host pool and the readline instance. Command handlers are methods
 // on it, so re-creating the assistant (/init, /model, /reload, /clear) goes through replaceAssistant.
 type repl struct {
-	asst      *assistant.Assistant
+	asst      *agent.Assistant
 	renderer  *ui.Renderer
 	rl        *readline.Instance
 	completer *SlashCompleter
 
-	opts assistant.Options // the startup connection and settings, reused by /reload and /clear
+	opts agent.Options // the startup connection and settings, reused by /reload and /clear
 
 	projectRoot string // fixed at startup; the sandbox root
 	relDir      string // current directory relative to projectRoot ("" = root)
@@ -45,7 +45,7 @@ type repl struct {
 // options returns the settings a freshly re-created assistant should use: r.opts with Mode pinned
 // to whatever mode the live assistant is in, so /init, /reload and /clear do not silently drop
 // back to investigate mode.
-func (r *repl) options() assistant.Options {
+func (r *repl) options() agent.Options {
 	opts := r.opts
 	if r.asst != nil {
 		opts.Mode = r.asst.Mode()
@@ -53,12 +53,12 @@ func (r *repl) options() assistant.Options {
 	return opts
 }
 
-// replaceAssistant swaps in a freshly built assistant and re-wires everything assistant.New does
+// replaceAssistant swaps in a freshly built assistant and re-wires everything agent.New does
 // not know about on its own: the history manager and the tools of every connected MCP server (the
 // new assistant has a brand new, empty tool registry). Every /init, /reload, /clear and /model
 // re-creation goes through this one helper, so neither wiring can be silently dropped at one call
 // site while staying wired at another (ruling P2-R18; both were lost on every re-creation in v2).
-func (r *repl) replaceAssistant(newAsst *assistant.Assistant) {
+func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
 	r.asst = newAsst
 	registry := r.asst.ToolRegistry()
 	if r.history != nil {
@@ -122,7 +122,7 @@ func newREPL() (*repl, error) {
 		initialised: initialised,
 		updates:     make(chan *upgrade.CheckResult, 1),
 	}
-	asst, err := assistant.New(r.opts)
+	asst, err := agent.New(r.opts)
 	if err != nil {
 		return nil, fmt.Errorf("%s", ui.FormatConnectionError(opts.Host, err))
 	}

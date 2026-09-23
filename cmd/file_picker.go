@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/manifoldco/promptui"
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 )
 
 // fuzzyMatch returns a score for how well pattern matches candidate (higher is better, 0 means no match)
@@ -581,7 +581,7 @@ func expandFileReferences(message string, workingDir string) (string, error) {
 // ExpandedMessage contains both text and any images extracted from file references
 type ExpandedMessage struct {
 	Text   string
-	Images []*assistant.ImageData
+	Images []*agent.ImageData
 }
 
 // expandFileReferencesWithImages detects @ symbols and expands them, separating images from text.
@@ -648,9 +648,9 @@ func expandFileReferencesWithImages(message string, workingDir string) (*Expande
 			}
 			textResult.WriteString(expanded)
 			textResult.WriteString(remainingText)
-		} else if assistant.IsImageFile(filePath) {
+		} else if agent.IsImageFile(filePath) {
 			// Load image and add to images slice
-			img, err := assistant.LoadImage(fullPath)
+			img, err := agent.LoadImage(fullPath)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load image %s: %w", filePath, err)
 			}

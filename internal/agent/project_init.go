@@ -1,0 +1,325 @@
+package agent
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/tara-vision/taracode/internal/context"
+	"github.com/tara-vision/taracode/internal/policy"
+	"github.com/tara-vision/taracode/internal/storage"
+)
+
+// InitProject analyzes the project and creates TARACODE.md with comprehensive context. version is
+// recorded in .taracode/project.json (cmd.Version, the taracode build running /init).
+func InitProject(workingDir, version string) error {
+	fmt.Println("Analyzing project structure...")
+
+	// Initialize storage manager (creates .taracode/ structure)
+	storageMgr, err := storage.NewManager(workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
+	}
+
+	// Explore project with smart filtering
+	fmt.Println("  Exploring directories...")
+	opts := context.DefaultExplorerOptions()
+	tree, err := context.ExploreProject(workingDir, opts)
+	if err != nil {
+		return fmt.Errorf("failed to explore project: %w", err)
+	}
+
+	// Analyze important files
+	fmt.Println("  Analyzing key files...")
+	analyses := context.AnalyzeImportantFiles(workingDir, tree)
+
+	// Build project context
+	projectCtx := &context.ProjectContext{
+		RootPath:       workingDir,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Structure:      tree,
+		ImportantFiles: analyses,
+	}
+
+	// Detect project type, frameworks, and relevant tools
+	fmt.Println("  Detecting project type...")
+	projectInfo := context.DetectProject(workingDir)
+	projectCtx.ProjectType = projectInfo.Type
+	projectCtx.ModuleName = projectInfo.ModuleName
+	projectCtx.Dependencies = projectInfo.Dependencies
+	projectCtx.Frameworks = projectInfo.Frameworks
+	projectCtx.DetectedTools = projectInfo.DetectedTools
+
+	// Extract build commands and git info
+	extractBuildCommands(workingDir, projectCtx)
+	extractGitInfo(workingDir, projectCtx)
+
+	// Save context to .taracode/context/project.json
+	if err := storageMgr.SaveProjectContext(projectCtx); err != nil {
+		fmt.Printf("  Warning: Could not save project context: %v\n", err)
+	}
+
+	// Save project config to .taracode/project.json with detected info
+	projectConfig := &storage.ProjectConfig{
+		ProjectRoot:   workingDir,
+		InitializedAt: time.Now(),
+		Version:       version,
+		ProjectType:   projectInfo.Type,
+		DetectedTools: projectInfo.DetectedTools,
+		Frameworks:    projectInfo.Frameworks,
+	}
+	if err := storageMgr.SaveProjectConfig(projectConfig); err != nil {
+		fmt.Printf("  Warning: Could not save project config: %v\n", err)
+	}
+
+	// Generate TARACODE.md from context
+	if err := generateTaracodeMD(workingDir, projectCtx); err != nil {
+		return fmt.Errorf("failed to generate TARACODE.md: %w", err)
+	}
+
+	// Write the starter policy only when the project has none yet: /init must never clobber rules a
+	// project has already customised, even a broken one (the doctor and /policy show report the
+	// break; /init is not the place to silently fix or discard it).
+	policyWritten, err := writeStarterPolicyIfAbsent(workingDir)
+	if err != nil {
+		fmt.Printf("  Warning: Could not write .taracode/policy.yaml: %v\n", err)
+	}
+
+	// Print summary
+	printInitSummary(projectCtx, policyWritten)
+
+	return nil
+}
+
+// writeStarterPolicyIfAbsent writes policy.StarterYAML to .taracode/policy.yaml only when that file
+// does not exist yet, and reports whether it wrote it.
+func writeStarterPolicyIfAbsent(workingDir string) (bool, error) {
+	path := filepath.Join(workingDir, ".taracode", "policy.yaml")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	//nolint:gosec // the starter policy is meant to be user-editable, like TARACODE.md
+	if err := os.WriteFile(path, []byte(policy.StarterYAML), 0644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// extractBuildCommands extracts build commands from Makefile
+func extractBuildCommands(workingDir string, ctx *context.ProjectContext) {
+	//nolint:gosec // reads Makefile from the project's own working directory
+	content, err := os.ReadFile(filepath.Join(workingDir, "Makefile"))
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		// Match targets that are not indented and end with :
+		isTarget := strings.HasSuffix(line, ":") && !strings.HasPrefix(line, "\t") &&
+			!strings.HasPrefix(line, ".") && !strings.HasPrefix(line, " ")
+		if isTarget {
+			target := strings.TrimSuffix(line, ":")
+			// Skip targets with special characters or spaces
+			if !strings.ContainsAny(target, " \t$%") {
+				ctx.BuildCommands = append(ctx.BuildCommands, fmt.Sprintf("make %s", target))
+			}
+		}
+	}
+}
+
+// extractGitInfo extracts git repository information
+func extractGitInfo(workingDir string, ctx *context.ProjectContext) {
+	gitDir := filepath.Join(workingDir, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return
+	}
+
+	ctx.GitInfo = &context.GitInfo{}
+
+	// Get current branch
+	if out, err := exec.Command("git", "-C", workingDir, "branch", "--show-current").Output(); err == nil {
+		ctx.GitInfo.Branch = strings.TrimSpace(string(out))
+	}
+
+	// Get remote URL
+	if out, err := exec.Command("git", "-C", workingDir, "remote", "get-url", "origin").Output(); err == nil {
+		ctx.GitInfo.RemoteURL = strings.TrimSpace(string(out))
+	}
+
+	// Check for uncommitted changes
+	if out, err := exec.Command("git", "-C", workingDir, "status", "--porcelain").Output(); err == nil {
+		ctx.GitInfo.HasUncommitted = len(strings.TrimSpace(string(out))) > 0
+	}
+
+	// Get last commit
+	if out, err := exec.Command("git", "-C", workingDir, "log", "-1", "--format=%h %s").Output(); err == nil {
+		ctx.GitInfo.LastCommit = strings.TrimSpace(string(out))
+	}
+}
+
+// generateTaracodeMD creates the TARACODE.md file from project context
+func generateTaracodeMD(workingDir string, ctx *context.ProjectContext) error {
+	var sb strings.Builder
+
+	sb.WriteString("# TARACODE.md\n\n")
+	sb.WriteString("This file provides context to Tara Code. Auto-generated by `/init`.\n\n")
+
+	// Project overview
+	sb.WriteString("## Project Overview\n\n")
+	if ctx.ProjectType != "" {
+		fmt.Fprintf(&sb, "**Type:** %s project\n", ctx.ProjectType)
+	}
+	if ctx.ModuleName != "" {
+		fmt.Fprintf(&sb, "**Module:** %s\n", ctx.ModuleName)
+	}
+	sb.WriteString("\n")
+
+	// Project structure (tree view)
+	sb.WriteString("## Project Structure\n\n```\n")
+	writeTreeStructure(&sb, ctx.Structure, "", true)
+	sb.WriteString("```\n\n")
+
+	// Important files with summaries
+	if len(ctx.ImportantFiles) > 0 {
+		sb.WriteString("## Key Files\n\n")
+		for _, file := range ctx.ImportantFiles {
+			fmt.Fprintf(&sb, "- **`%s`** - %s\n", file.Path, file.Summary)
+		}
+		sb.WriteString("\n")
+	}
+
+	// Build commands
+	if len(ctx.BuildCommands) > 0 {
+		sb.WriteString("## Build Commands\n\n```bash\n")
+		for _, cmd := range ctx.BuildCommands {
+			sb.WriteString(cmd + "\n")
+		}
+		sb.WriteString("```\n\n")
+	}
+
+	// Git info
+	if ctx.GitInfo != nil && ctx.GitInfo.Branch != "" {
+		sb.WriteString("## Git Info\n\n")
+		fmt.Fprintf(&sb, "- **Branch:** %s\n", ctx.GitInfo.Branch)
+		if ctx.GitInfo.RemoteURL != "" {
+			fmt.Fprintf(&sb, "- **Remote:** %s\n", ctx.GitInfo.RemoteURL)
+		}
+		if ctx.GitInfo.LastCommit != "" {
+			fmt.Fprintf(&sb, "- **Last commit:** %s\n", ctx.GitInfo.LastCommit)
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("---\n*Edit this file to add custom instructions for Tara Code.*\n")
+
+	//nolint:gosec // TARACODE.md is project documentation meant to be user-readable
+	return os.WriteFile(filepath.Join(workingDir, "TARACODE.md"), []byte(sb.String()), 0644)
+}
+
+// writeTreeStructure writes the directory tree in a visual format
+func writeTreeStructure(sb *strings.Builder, node *context.DirectoryTree, prefix string, isLast bool) {
+	if node == nil {
+		return
+	}
+
+	// Handle root node specially
+	if node.Path == "" {
+		for i, child := range node.Children {
+			writeTreeStructure(sb, child, "", i == len(node.Children)-1)
+		}
+		return
+	}
+
+	connector := "├── "
+	if isLast {
+		connector = "└── "
+	}
+
+	displayName := node.Name
+	if node.IsDir {
+		displayName += "/"
+	}
+
+	sb.WriteString(prefix + connector + displayName + "\n")
+
+	if node.IsDir && len(node.Children) > 0 {
+		newPrefix := prefix
+		if isLast {
+			newPrefix += "    "
+		} else {
+			newPrefix += "│   "
+		}
+
+		for i, child := range node.Children {
+			writeTreeStructure(sb, child, newPrefix, i == len(node.Children)-1)
+		}
+	}
+}
+
+// printInitSummary prints a summary of the initialization. policyWritten is whether InitProject wrote
+// the starter policy (false means an existing .taracode/policy.yaml was kept as-is).
+func printInitSummary(ctx *context.ProjectContext, policyWritten bool) {
+	fmt.Println()
+	fmt.Println("✓ Project initialized successfully!")
+	fmt.Println()
+
+	if ctx.ProjectType != "" {
+		fmt.Printf("  Type: %s", ctx.ProjectType)
+		if ctx.ModuleName != "" {
+			fmt.Printf(" (%s)", ctx.ModuleName)
+		}
+		fmt.Println()
+	}
+
+	// Show detected frameworks
+	if len(ctx.Frameworks) > 0 {
+		fmt.Printf("  Frameworks: %s\n", strings.Join(ctx.Frameworks, ", "))
+	}
+
+	fileCount := context.CountFiles(ctx.Structure)
+	dirCount := context.CountDirs(ctx.Structure)
+	fmt.Printf("  Structure: %d files, %d directories\n", fileCount, dirCount)
+	fmt.Printf("  Key files analyzed: %d\n", len(ctx.ImportantFiles))
+
+	if len(ctx.BuildCommands) > 0 {
+		fmt.Printf("  Build commands: %d\n", len(ctx.BuildCommands))
+	}
+
+	if ctx.GitInfo != nil && ctx.GitInfo.Branch != "" {
+		fmt.Printf("  Git branch: %s\n", ctx.GitInfo.Branch)
+	}
+
+	// Show detected tools
+	if len(ctx.DetectedTools) > 0 {
+		fmt.Println()
+		fmt.Printf("  Detected %d relevant tools for this project:\n", len(ctx.DetectedTools))
+		// Show up to 10 tools, then summarize
+		maxShow := 10
+		for i, tool := range ctx.DetectedTools {
+			if i >= maxShow {
+				fmt.Printf("    ... and %d more (use /tools to see all)\n", len(ctx.DetectedTools)-maxShow)
+				break
+			}
+			fmt.Printf("    - %s\n", tool)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("  Created:")
+	fmt.Println("    - TARACODE.md (project context for AI)")
+	fmt.Println("    - .taracode/ (storage for history, plans, state)")
+	if policyWritten {
+		fmt.Println("    - .taracode/policy.yaml (starter policy; edit to change protected targets and dry-run rules)")
+	} else {
+		fmt.Println("    - .taracode/policy.yaml kept as-is (an existing policy is never overwritten)")
+	}
+	fmt.Println()
+	fmt.Println("Edit TARACODE.md to add custom instructions.")
+}

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tara-vision/taracode/internal/assistant"
+	"github.com/tara-vision/taracode/internal/agent"
 )
 
 // cmdInit is the /init command: analyze the project, write TARACODE.md and .taracode/ (creating the
@@ -14,7 +14,7 @@ import (
 // (r.absDir): the storage manager and .taracode/ live at the project root, so /init after a cd into a
 // subdirectory must not scatter project state there.
 func (r *repl) cmdInit(_ []string) {
-	if err := assistant.InitProject(r.projectRoot, Version); err != nil {
+	if err := agent.InitProject(r.projectRoot, Version); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
@@ -28,7 +28,7 @@ func (r *repl) cmdInit(_ []string) {
 	}
 	opts.Ephemeral = false // InitProject just created .taracode/, so storage is available now
 	// Reinitialize assistant to pick up new context
-	newAsst, err := assistant.New(opts)
+	newAsst, err := agent.New(opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reinitializing assistant: %v\n", err)
 		return
@@ -44,7 +44,7 @@ func (r *repl) cmdInit(_ []string) {
 // cmdReload is the /reload command: rebuild the assistant from the current connection settings so
 // it re-reads TARACODE.md.
 func (r *repl) cmdReload(_ []string) {
-	newAsst, err := assistant.New(r.options())
+	newAsst, err := agent.New(r.options())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reloading: %v\n", err)
 		return
