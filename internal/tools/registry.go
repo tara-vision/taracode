@@ -179,6 +179,7 @@ func (r *Registry) Classify(name string, args map[string]any, workingDir string)
 }
 
 // Execute runs a tool: backup before a file mutation, redaction of the output, and a history record.
+// A file mutation whose backup fails does not run.
 func (r *Registry) Execute(ctx context.Context, name string, args map[string]any, workingDir string) (string, error) {
 	t, ok := r.Get(name)
 	if !ok {
@@ -187,7 +188,10 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]any
 	r.mu.RLock()
 	h := r.history
 	r.mu.RUnlock()
-	target, backup := r.backupBefore(h, name, args, workingDir)
+	target, backup, err := r.backupBefore(h, name, args, workingDir)
+	if err != nil {
+		return "", errors.New(r.redact(err.Error()))
+	}
 	start := time.Now()
 	out, err := t.Run(ctx, args, workingDir)
 	out = r.redact(out)
@@ -224,20 +228,24 @@ func (r *Registry) redact(s string) string {
 }
 
 // backupBefore backs the target of write_file and edit_file up when the history is on and the file
-// exists; it returns the target path and the backup path. h is the registry's history as of the
-// start of Execute, snapshotted under a read lock so it cannot race with a concurrent SetHistory.
+// exists; it returns the target path and the backup path. A backup that fails is an error, so the
+// write does not happen and /undo never meets a change it cannot restore. h is the registry's
+// history as of the start of Execute, snapshotted under a read lock so it cannot race with a
+// concurrent SetHistory.
 func (r *Registry) backupBefore(h *history.Manager, name string, args map[string]any, workingDir string) (
-	target, backup string,
+	target, backup string, err error,
 ) {
 	if h == nil || (name != "write_file" && name != "edit_file") || argBool(args, "preview") {
-		return "", ""
+		return "", "", nil
 	}
 	target = resolvePath(argString(args, "path"), workingDir)
-	if _, err := os.Stat(target); err != nil {
-		return target, ""
+	if _, statErr := os.Stat(target); statErr != nil {
+		return target, "", nil
 	}
-	backup, _ = h.CreateBackup(target)
-	return target, backup
+	if backup, err = h.CreateBackup(target); err != nil {
+		return target, "", fmt.Errorf("%s was not changed: its backup for /undo failed (%w)", argString(args, "path"), err)
+	}
+	return target, backup, nil
 }
 
 // recordAfter records the operation in h, the history snapshotted at the start of Execute (see
