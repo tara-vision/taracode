@@ -21,7 +21,7 @@ status=0
 for entry in $gates; do
   pkg="${entry%%:*}"
   floor="${entry##*:}"
-  line=$(go test -cover "$pkg" 2>&1 | tail -1)
+  line=$(go test -cover "$pkg" 2>&1 | tail -1) || true
   pct=$(printf '%s' "$line" | sed -n 's/.*coverage: \([0-9.]*\)%.*/\1/p')
   if [ -z "$pct" ]; then
     echo "FAIL $pkg: no coverage line: $line"
