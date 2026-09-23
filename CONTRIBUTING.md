@@ -119,20 +119,20 @@ test: add tests for memory manager
 
 ```
 taracode/
-├── cmd/                     # CLI commands and the REPL (one file per command group, e.g. mode_cmd.go)
-│   ├── root.go              # Cobra CLI setup
-│   ├── repl.go              # Interactive REPL loop
-│   ├── commands.go          # The command table: dispatch, /help, completion
+├── cmd/                       # CLI commands and the REPL (one file per command group, e.g. mode_cmd.go)
+│   ├── root.go                # Cobra CLI setup
+│   ├── repl.go                # Interactive REPL loop
+│   ├── commands.go            # The command table: dispatch, /help, completion
 │   └── ...
 ├── internal/
-│   ├── agent/               # The agentic loop: classify, policy, audit, dry run, permission, execute
-│   ├── policy/              # Modes, the policy YAML and its merge, the permission store
-│   ├── tools/                # The sixteen built-in tools and their registry
+│   ├── agent/                 # The agentic loop: classify, policy, audit, dry run, permission, execute
+│   ├── policy/                # Modes, the policy YAML and its merge, the permission store
+│   ├── tools/                 # The sixteen built-in tools and their registry
 │   │   ├── classify/          # Per-invocation read/mutate classifiers (git, kubectl, helm, terraform, ...)
 │   │   ├── shellwords/        # Shell command-line tokenizer
 │   │   ├── redact/            # Secret redaction of tool output
 │   │   └── tfplan/            # terraform plan -json summariser
-│   ├── llm/                  # Transport to the model server (native Ollama, OpenAI-compatible adapter)
+│   ├── llm/                   # Transport to the model server (native Ollama, OpenAI-compatible adapter)
 │   ├── models/                # Embedded model registry and host RAM diagnostics
 │   ├── context/               # Project context analysis
 │   ├── history/               # Operation history and undo

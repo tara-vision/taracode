@@ -16,7 +16,8 @@ the modes, the configuration layout and the permission store change; migration n
 - **Investigate and operate modes.** Investigate (the default) exposes read-only tools and never prompts;
   operate exposes every tool and routes each mutation through the policy: protected targets are hard
   denies, deny patterns are refused, `kubectl apply`, `terraform apply` and `helm upgrade` dry-run first,
-  then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`.
+  then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`. MCP tools are
+  gated by the per-tool permission only: protected targets and deny patterns do not apply to them.
 - **Policy files.** `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml` (lists unioned, booleans
   stricter); a built-in policy applies when neither exists; `/init` writes a starter; `/policy show`;
   `taracode doctor` reports the policy status; a broken policy locks the session to investigate mode.
@@ -27,13 +28,17 @@ the modes, the configuration layout and the permission store change; migration n
   list with no file redirect. Schemas total under 8 KB.
 - **Terraform plans as summaries.** `terraform plan` keeps the plan file for the session and returns adds,
   changes, destroys, replacements and a risk list; `terraform apply` applies that plan and refuses without one.
-- **Redaction** of AWS, GCP, GitHub, Slack, JWT, private-key, URL-password and `password=`/`token=` secrets,
-  plus the values of `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*` environment variables, in every tool output
-  before the model, the session or the screen sees it; counted in `/stats`.
+- **Redaction** of AWS, GCP (API keys and OAuth access tokens), GitHub, Slack (including app-level tokens),
+  JWT, private-key (PEM, and base64 PEM as in a kubeconfig's `*-data` fields), URL-password and
+  `password=`/`token=`/`key-data:` secrets, plus the values of `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`
+  environment variables, in every tool output before the model, the session or the screen sees it; counted
+  in `/stats`. Live shell output is redacted a line at a time as it streams, so a secret that spans lines
+  (a PEM private key block) is redacted in the tool result only, not on screen.
 - **Audit log.** Every mutate-classified call is appended to `.taracode/audit.jsonl` before it runs, with the
   decision and the rule; `/audit`, `/audit all`, `/audit export json`, `/audit clear`.
 - **AGENTS.md** is read as project context next to TARACODE.md. **`--offline`** disables the web tools and the
-  update check.
+  update check; it does not stop shell commands that reach the network (curl, `wget -O-`, dig, nslookup, host,
+  ping), which still count as reads.
 - CI: no Go file over 800 lines, per-package coverage floors (`scripts/coverage-gate.sh`), `codecov.yml`.
 
 ### Changed
