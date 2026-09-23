@@ -1,11 +1,15 @@
 package tools
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/policy"
+	"github.com/tara-vision/taracode/internal/tools/redact"
 )
 
 // TestShellTargetsReachThePolicy: a shell write names its files in Targets.Paths, resolved against
@@ -86,5 +90,34 @@ func TestRegistryExposedMatchesTheDefinitions(t *testing.T) {
 		if got := r.Exposed(c.name, c.mode); got != c.want {
 			t.Errorf("Exposed(%s, %s) = %v", c.name, c.mode, got)
 		}
+	}
+}
+
+// TestLiveShellStreamIsRedactedLineByLine: the registry puts the configured redactor in front of the
+// shell tool's live stream, so a secret a command prints never reaches the screen raw, a line
+// without a newline included (final review I4); without a redactor the stream stays raw.
+func TestLiveShellStreamIsRedactedLineByLine(t *testing.T) {
+	red, _ := redact.New(redact.Options{})
+	var screen bytes.Buffer
+	r := NewBuiltinRegistry(Options{Redactor: red}, Config{Stream: &screen})
+	command := `printf 'key=AKIAIOSFODNN7EXAMPLE\nlast AKIAIOSFODNN7EXAMPLE'`
+	out, err := r.Execute(context.Background(), "shell", map[string]any{"command": command}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(screen.String(), "AKIAIOSFODNN7EXAMPLE") ||
+		screen.String() != "key=[redacted:aws-access-key]\nlast [redacted:aws-access-key]" {
+		t.Fatalf("the live stream must be redacted line by line, the tail at the end: %q", screen.String())
+	}
+	if strings.Contains(out, "AKIAIOSFODNN7EXAMPLE") || r.Redactions() != 2 {
+		t.Fatalf("the result is redacted and each secret counted once: %q %d", out, r.Redactions())
+	}
+	var raw bytes.Buffer
+	plain := NewBuiltinRegistry(Options{}, Config{Stream: &raw})
+	if _, err := plain.Execute(context.Background(), "shell", map[string]any{"command": command}, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw.String(), "AKIAIOSFODNN7EXAMPLE") {
+		t.Fatalf("without a redactor the stream is the raw output: %q", raw.String())
 	}
 }
