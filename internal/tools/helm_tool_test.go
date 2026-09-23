@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,5 +51,25 @@ func TestHelmDryRunIsAlwaysARealDryRun(t *testing.T) {
 		if err != nil || out != want {
 			t.Errorf("%q: dry run ran %q (%v), want %q", args, out, err, want)
 		}
+	}
+}
+
+// TestHelmDryRunRefusesAPostRenderer is ruling P2-R34: the dry run the policy requires before the
+// prompt must not run the --post-renderer program, so the registry's dry run refuses the call and
+// helm never starts.
+func TestHelmDryRunRefusesAPostRenderer(t *testing.T) {
+	ranMarker := filepath.Join(t.TempDir(), "ran")
+	fakeBin(t, "helm", "#!/bin/sh\ntouch "+ranMarker+"\necho helm \"$@\"\n")
+	r := NewRegistry(Options{})
+	r.Register(HelmTool())
+	for _, args := range []string{"upgrade web ./chart --post-renderer ./render.sh",
+		"install web ./chart --post-renderer=./render.sh --post-renderer-args x"} {
+		_, err := r.DryRun(context.Background(), "helm", map[string]any{"args": args}, t.TempDir())
+		if err == nil || !strings.Contains(err.Error(), "--post-renderer") {
+			t.Errorf("%q: the dry run must refuse a post-renderer: %v", args, err)
+		}
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("helm must not run when the dry run is refused")
 	}
 }

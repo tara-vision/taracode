@@ -10,26 +10,28 @@ import (
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
-// ShellResult is a shell classification, the hosts the command line names, and the files it writes
-// or removes as they are written on the line (the caller resolves them against the working
-// directory).
+// ShellResult is a shell classification, the hosts the command line names, the files it writes or
+// removes and the clusters its kubectl and helm mutations act on, as they are written on the line
+// (the caller resolves them against the working directory and the kubeconfig).
 type ShellResult struct {
 	Result
 	Hosts []string
 	Paths []string
+	Kube  []KubeTarget
 }
 
 var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
 
 // Shell classifies a whole command line: every segment of every pipeline must read, no segment may
 // redirect into a file, run in the background or use command substitution. Paths holds the files
-// every segment writes or removes, whatever the classification, so the protected paths apply.
+// every segment writes or removes and Kube the clusters its kubectl and helm mutations act on,
+// whatever the classification, so the protected targets apply.
 func Shell(command string) ShellResult {
 	parsed, err := shellwords.Split(command)
 	if err != nil {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
 	}
-	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments)}
+	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed.Segments)}
 	if parsed.Substitution {
 		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) hides what runs")
 		return out

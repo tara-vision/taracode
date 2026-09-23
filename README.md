@@ -139,17 +139,20 @@ OpenAI-compatible path, where only `think low|medium|high` reaches the server (a
 taracode starts in **investigate** mode: only tools with a read form are exposed, and nothing ever prompts
 you. **operate** mode exposes every tool; each mutation goes through the policy, in order:
 
-1. **Protected targets** - kube contexts, namespaces, cloud accounts, paths and hosts named in the policy
-   are a hard deny, with the reason printed. A mutation of every namespace (`-A`) counts as touching the
-   protected ones. Protected paths cover the file `write_file` or `edit_file` changes, the directory the
-   `terraform` tool runs in, and in a `shell` command the targets of its redirects and the files it hands to
-   a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `chmod`, `ln`, `dd`, `sort -o`,
-   `curl -o`, ...), also after a literal `cd`. A path a command builds at run time (a variable, a command
-   substitution) is not seen, which is why the built-in deny patterns also refuse any mutation that names
-   `.taracode/policy.yaml`.
+1. **Protected targets** - kube contexts, namespaces, cloud accounts, paths and hosts named in the policy are
+   a hard deny, with the reason printed. A `kubectl` or `helm` mutation run through `shell` carries its
+   context and namespace like the dedicated tools (the current ones of the kubeconfig it names when it names
+   none). A mutation of every namespace (`-A`), of several contexts or namespaces, or of one known only at run
+   time counts as touching the protected ones. Protected paths cover the file `write_file` or `edit_file`
+   changes, the directory the `terraform` tool runs in, and in a `shell` command the targets of its redirects
+   and the files it hands to a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `chmod`,
+   `ln`, `dd`, `sort -o`, `curl -o`, ...), also after a literal `cd`. A path a command builds at run time (a
+   variable, a command substitution) is not seen, which is why the built-in deny patterns also refuse any
+   mutation that names `.taracode/policy.yaml`.
 2. **Deny patterns** - command globs that are refused outright.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
-   produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first.
+   produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first (a release with a
+   `--post-renderer` is refused: the dry run would run the renderer before you approve).
 4. **Permission** - the remembered allow/ask/deny rule for the tool, or a prompt.
 
 ```bash

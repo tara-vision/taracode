@@ -17,23 +17,28 @@ const (
 	kubeResolveTimeout = 3 * time.Second
 )
 
-// currentKubeTarget asks kubectl for the current context and its default namespace; empty when
-// kubectl is missing or has no context. Only mutate invocations pay this cost. kubectl config
-// current-context/view read the kubeconfig (global or $KUBECONFIG), not project files, so a
-// workingDir that does not exist (or is unset) must not fail the resolution the way it would fail
-// an ordinary command run there; runCommand only sets cmd.Dir when dir is non-empty, so passing ""
-// falls back to the process's own, always-valid, working directory.
-func currentKubeTarget(ctx context.Context, workingDir string) (kubeContext, namespace string) {
+// currentKubeTarget asks kubectl for the current context and its default namespace, from the
+// kubeconfig the command names (kubeconfig, "" for the usual one); empty when kubectl is missing or
+// has no context, and "*" for both when the kubeconfig is known only at run time. Only mutate
+// invocations pay this cost. kubectl config current-context/view read the kubeconfig, not project
+// files, so a workingDir that does not exist (or is unset) must not fail the resolution the way it
+// would fail an ordinary command run there; runCommandEnv only sets cmd.Dir when dir is non-empty,
+// so passing "" falls back to the process's own, always-valid, working directory.
+func currentKubeTarget(ctx context.Context, workingDir, kubeconfig string) (kubeContext, namespace string) {
+	env, known := kubeconfigEnv(kubeconfig)
+	if !known {
+		return "*", "*"
+	}
 	ctx, cancel := withTimeout(ctx, kubeResolveTimeout)
 	defer cancel()
 	dir := workingDir
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		dir = ""
 	}
-	if out, err := runCommand(ctx, dir, "kubectl", "config", "current-context"); err == nil {
+	if out, err := runCommandEnv(ctx, dir, env, "kubectl", "config", "current-context"); err == nil {
 		kubeContext = strings.TrimSpace(out)
 	}
-	if out, err := runCommand(ctx, dir, "kubectl", "config", "view",
+	if out, err := runCommandEnv(ctx, dir, env, "kubectl", "config", "view",
 		"--minify", "-o", "jsonpath={..namespace}"); err == nil {
 		namespace = strings.TrimSpace(out)
 	}
@@ -43,11 +48,32 @@ func currentKubeTarget(ctx context.Context, workingDir string) (kubeContext, nam
 	return kubeContext, namespace
 }
 
-// kubeTargetsFor fills the targets from the explicit flags, falling back to the current context.
-func kubeTargetsFor(ctx context.Context, workingDir, explicitCtx, explicitNS string) policy.Targets {
+// kubeconfigEnv is the environment that points kubectl at the kubeconfig a command names: a path or
+// a list, as KUBECONFIG takes it, with a leading ~, $HOME or ${HOME} expanded. known is false when
+// a path is computed at run time (another variable, a command substitution).
+func kubeconfigEnv(kubeconfig string) (env []string, known bool) {
+	if kubeconfig == "" {
+		return nil, true
+	}
+	home, _ := os.UserHomeDir()
+	parts := strings.Split(kubeconfig, string(os.PathListSeparator))
+	paths := make([]string, 0, len(parts))
+	for _, p := range parts {
+		expanded := expandHome(p, home)
+		if strings.ContainsAny(expanded, "$`") {
+			return nil, false
+		}
+		paths = append(paths, expanded)
+	}
+	return []string{"KUBECONFIG=" + strings.Join(paths, string(os.PathListSeparator))}, true
+}
+
+// kubeTargetsFor fills the targets from the explicit flags, falling back to the current context of
+// the kubeconfig the command names.
+func kubeTargetsFor(ctx context.Context, workingDir, explicitCtx, explicitNS, kubeconfig string) policy.Targets {
 	t := policy.Targets{KubeContext: explicitCtx, KubeNamespace: explicitNS}
 	if t.KubeContext == "" || t.KubeNamespace == "" {
-		cur, ns := currentKubeTarget(ctx, workingDir)
+		cur, ns := currentKubeTarget(ctx, workingDir, kubeconfig)
 		if t.KubeContext == "" {
 			t.KubeContext = cur
 		}
@@ -142,7 +168,8 @@ func KubectlTool() *Tool {
 				Command: "kubectl " + strings.Join(argv, " ")}
 			if res.Classification == policy.Mutate {
 				explicitCtx, explicitNS := classify.KubeTargets(argv[1:])
-				inv.Targets = kubeTargetsFor(context.Background(), workingDir, explicitCtx, explicitNS)
+				inv.Targets = kubeTargetsFor(context.Background(), workingDir, explicitCtx, explicitNS,
+					classify.KubeconfigFlag(argv[1:]))
 			}
 			return inv
 		},

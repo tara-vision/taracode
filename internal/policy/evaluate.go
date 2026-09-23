@@ -39,12 +39,16 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 
 func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 	t := inv.Targets
+	if t.KubeContext == "*" && len(p.Protected.KubeContexts) > 0 {
+		return denied("protected.kube_contexts", "the command touches more than one kube context, or one known only "+
+			"at run time, and the policy protects %s", strings.Join(p.Protected.KubeContexts, ", ")), true
+	}
 	if pat, ok := firstGlob(p.Protected.KubeContexts, t.KubeContext); ok {
 		return denied("protected.kube_contexts", "kube context %q matches the protected pattern %q", t.KubeContext, pat), true
 	}
 	if t.KubeNamespace == "*" && len(p.Protected.KubeNamespaces) > 0 {
-		return denied("protected.kube_namespaces", "the command touches every namespace (-A), including the protected %s",
-			strings.Join(p.Protected.KubeNamespaces, ", ")), true
+		return denied("protected.kube_namespaces", "the command touches every namespace (-A), several namespaces or "+
+			"one known only at run time, including the protected %s", strings.Join(p.Protected.KubeNamespaces, ", ")), true
 	}
 	if pat, ok := firstGlob(p.Protected.KubeNamespaces, t.KubeNamespace); ok {
 		return denied("protected.kube_namespaces",
