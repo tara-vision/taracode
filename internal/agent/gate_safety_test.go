@@ -212,36 +212,119 @@ func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
 	}
 }
 
-// TestShellRunKubectlHitsProtectedNamespaces drives ruling P2-R34 through the loop: with shell on
-// allow, a kubectl or helm mutation run through the shell in a protected namespace or context is a
-// hard deny and never runs; a shell kubectl read still runs.
-func TestShellRunKubectlHitsProtectedNamespaces(t *testing.T) {
+// fakeKubeTools puts a kubectl and a helm on PATH that answer the target resolution with kind-dev,
+// print "pods" for a get, and otherwise touch the returned marker: a denied call must never make it.
+func fakeKubeTools(t *testing.T) (marker string) {
+	t.Helper()
 	fake := "#!/bin/sh\nif [ \"$1\" = config ]; then echo kind-dev; exit 0; fi\n" +
-		"if [ \"$1\" = get ]; then echo pods; exit 0; fi\ntouch \"$KUBE_RAN\"\n"
+		"for a in \"$@\"; do if [ \"$a\" = get ]; then echo pods; exit 0; fi; done\ntouch \"$KUBE_RAN\"\n"
 	bin := t.TempDir()
 	for _, name := range []string{"kubectl", "helm"} {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(fake), 0o755); err != nil { //nolint:gosec // test binary
 			t.Fatal(err)
 		}
 	}
-	ranMarker := filepath.Join(t.TempDir(), "ran")
+	marker = filepath.Join(t.TempDir(), "ran")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("KUBE_RAN", ranMarker)
-	t.Setenv("KUBECONFIG", "")
-	a, srv, _ := gateAssistant(t, policy.ModeOperate,
-		toolCall("shell", map[string]any{"command": "kubectl -n kube-system delete pod coredns"}),
-		toolCall("shell", map[string]any{"command": "helm uninstall web --kube-context prod-eu"}),
-		toolCall("shell", map[string]any{"command": "kubectl get pods -n kube-system"}),
+	t.Setenv("KUBE_RAN", marker)
+	return marker
+}
+
+// setProcessKubeconfig puts taracode's own KUBECONFIG in one of its two states: exported (naming a
+// small kubeconfig file) or not set at all.
+func setProcessKubeconfig(t *testing.T, exported bool) {
+	t.Helper()
+	t.Setenv("KUBECONFIG", "") // restores the caller's value after the test
+	if !exported {
+		if err := os.Unsetenv("KUBECONFIG"); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	path := filepath.Join(t.TempDir(), "env.yaml")
+	if err := os.WriteFile(path, []byte("apiVersion: v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", path)
+}
+
+// TestShellRunKubectlHitsProtectedNamespaces drives ruling P2-R34 through the loop: with shell on
+// allow, a kubectl or helm mutation run through the shell in a protected namespace or context is a
+// hard deny and never runs; a shell kubectl read still runs. A plain KUBECONFIG= assignment earlier
+// on the line is never trusted, whether or not taracode's own environment exports KUBECONFIG
+// (pre-tag round F: both states are driven).
+func TestShellRunKubectlHitsProtectedNamespaces(t *testing.T) {
+	for _, exported := range []bool{false, true} {
+		t.Run(map[bool]string{false: "KUBECONFIG unset", true: "KUBECONFIG exported"}[exported], func(t *testing.T) {
+			ranMarker := fakeKubeTools(t)
+			setProcessKubeconfig(t, exported)
+			dev := filepath.Join(t.TempDir(), "dev.yaml")
+			if err := os.WriteFile(dev, []byte("apiVersion: v1\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			a, srv, _ := gateAssistant(t, policy.ModeOperate,
+				toolCall("shell", map[string]any{"command": "kubectl -n kube-system delete pod coredns"}),
+				toolCall("shell", map[string]any{"command": "helm uninstall web --kube-context prod-eu"}),
+				toolCall("shell", map[string]any{"command": "KUBECONFIG=" + dev + "; kubectl delete pod web -n apps"}),
+				toolCall("shell", map[string]any{"command": "kubectl get pods -n kube-system"}),
+				ollamatest.Turn{Content: "ok"})
+			_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
+			msgs := toolMessages(t, srv)
+			if len(msgs) != 4 || !strings.Contains(msgs[0], "kube-system") || !strings.Contains(msgs[1], "prod-eu") ||
+				!strings.Contains(msgs[2], "kube context") || !strings.Contains(msgs[3], "pods") {
+				t.Fatalf("tool messages %q", msgs)
+			}
+			recs, _ := a.storage.ReadAudit("")
+			if len(recs) != 3 || recs[0].Rule != "protected.kube_namespaces" || recs[1].Rule != "protected.kube_contexts" ||
+				recs[2].Rule != "protected.kube_contexts" {
+				t.Fatalf("audit %+v", recs)
+			}
+			if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+				t.Fatal("a denied kubectl or helm mutation must not run")
+			}
+		})
+	}
+}
+
+// TestShellKubeTargetsHoldThroughTheLoop drives the pre-tag round through the loop in operate mode
+// with the built-in policy and shell on allow: a kubectl or helm mutation behind a shell keyword or
+// a subshell (B), after a context switch (C), with a repeated namespace (D), in HELM_NAMESPACE (E)
+// or with a kubeconfig that is not a small regular file (G) is a hard deny and never runs; a read
+// with leading global flags (A) runs.
+func TestShellKubeTargetsHoldThroughTheLoop(t *testing.T) {
+	ranMarker := fakeKubeTools(t)
+	setProcessKubeconfig(t, false)
+	denied := []struct{ command, rule string }{
+		{"for p in a; do kubectl delete pod $p -n kube-system; done", "protected.kube_namespaces"},
+		{"(kubectl -n kube-system delete pod x)", "protected.kube_namespaces"},
+		{"if true; then helm uninstall web -n kube-system; fi", "protected.kube_namespaces"},
+		{"kubectl config use-context prod-eu && kubectl delete pod web", "protected.kube_contexts"},
+		{"kubens kube-system && kubectl delete pod coredns", "protected.kube_contexts"},
+		{"kubectl delete pod web -n default -n kube-system", "protected.kube_namespaces"},
+		{"kubectl delete pod web -nkube-system", "protected.kube_namespaces"},
+		{"HELM_NAMESPACE=kube-system helm uninstall web", "protected.kube_namespaces"},
+		{"kubectl delete pod web --kubeconfig /dev/zero", "protected.kube_contexts"},
+	}
+	turns := make([]ollamatest.Turn, 0, len(denied)+2)
+	for _, d := range denied {
+		turns = append(turns, toolCall("shell", map[string]any{"command": d.command}))
+	}
+	turns = append(turns, toolCall("shell", map[string]any{"command": "kubectl --context kind-dev -n kube-system get pods"}),
 		ollamatest.Turn{Content: "ok"})
+	a, srv, _ := gateAssistant(t, policy.ModeOperate, turns...)
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
 	msgs := toolMessages(t, srv)
-	if len(msgs) != 3 || !strings.Contains(msgs[0], "kube-system") || !strings.Contains(msgs[1], "prod-eu") ||
-		!strings.Contains(msgs[2], "pods") {
+	if len(msgs) != len(denied)+1 || !strings.Contains(msgs[len(denied)], "pods") {
 		t.Fatalf("tool messages %q", msgs)
 	}
 	recs, _ := a.storage.ReadAudit("")
-	if len(recs) != 2 || recs[0].Rule != "protected.kube_namespaces" || recs[1].Rule != "protected.kube_contexts" {
+	if len(recs) != len(denied) {
 		t.Fatalf("audit %+v", recs)
+	}
+	for i, d := range denied {
+		if recs[i].Decision != "deny" || recs[i].Rule != d.rule || !strings.Contains(msgs[i], "Blocked by policy") {
+			t.Errorf("%q: audit %+v, message %q, want a %s deny", d.command, recs[i], msgs[i], d.rule)
+		}
 	}
 	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
 		t.Fatal("a denied kubectl or helm mutation must not run")

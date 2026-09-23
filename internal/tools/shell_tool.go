@@ -142,16 +142,22 @@ func expandHome(p, home string) string {
 }
 
 // shellKubeTargets resolves the clusters the kubectl and helm mutations of a shell line act on, as
-// the kubectl tool does (what a command does not name is the current context or namespace of its
-// kubeconfig), and reports "*" for a value the shell computes at run time or when the line names
-// more than one context or namespace.
+// the kubectl and helm tools do (what a command does not name is HELM_KUBECONTEXT or HELM_NAMESPACE
+// for helm, then the current context or namespace of its kubeconfig, each kubeconfig read once), and
+// reports "*" for a value the shell computes at run time or when the line names more than one
+// context or namespace.
 func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.KubeTarget) (
 	kubeContext, namespace string,
 ) {
+	resolver := newKubeResolver(ctx, workingDir)
 	contexts := make([]string, 0, len(refs))
 	namespaces := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		t := kubeTargetsFor(ctx, workingDir, runTimeAsAll(ref.Context), runTimeAsAll(ref.Namespace), ref.Kubeconfig)
+		c, ns := runTimeAsAll(ref.Context), runTimeAsAll(ref.Namespace)
+		if ref.Helm {
+			c, ns = helmEnvTargets(c, ns)
+		}
+		t := resolver.targets(c, ns, ref.Kubeconfig)
 		contexts = append(contexts, t.KubeContext)
 		namespaces = append(namespaces, t.KubeNamespace)
 	}
