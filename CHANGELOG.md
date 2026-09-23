@@ -19,7 +19,8 @@ the modes, the configuration layout and the permission store change; migration n
   subshells, and a command that touches every namespace, several contexts or namespaces, or one taracode
   cannot determine before it runs counts as touching the protected ones, as after a context switch, a
   `KUBECONFIG` assignment or a sourced file earlier on the line; kubectl or helm inside another program's
-  string, `sh -c "kubectl ..."`, is not seen), deny patterns are refused, `kubectl apply`, `terraform apply`
+  string, `sh -c "kubectl ..."`, or a double-quoted `"$(kubectl ...)"` is not seen, though the unquoted
+  `$(kubectl ...)` is), deny patterns are refused, `kubectl apply`, `terraform apply`
   and `helm upgrade` dry-run first (a release with a `--post-renderer` is refused, since its dry run would run
   the renderer), then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`.
   MCP tools are gated by the per-tool permission only: protected targets and deny patterns do not apply to
