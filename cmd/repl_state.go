@@ -209,7 +209,7 @@ func (r *repl) startMCP() {
 func (r *repl) openReadline() error {
 	r.completer = NewSlashCompleter(r.absDir)
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          FormatPrompt(r.relDir),
+		Prompt:          r.formatPrompt(),
 		HistoryFile:     filepath.Join(os.Getenv("HOME"), ".taracode", "history"),
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
@@ -244,28 +244,21 @@ func (r *repl) printBanner() {
 	fmt.Println()
 }
 
-// printWelcome shows the welcome message and the project-context line (moved from the old
-// startREPL, lines 134-138).
+// printWelcome shows the welcome message, the project-context line (moved from the old startREPL,
+// lines 134-138) and the active mode: the REPL now works before /init too, so the welcome banner is
+// where a session first learns whether it started in investigate or operate mode.
 func (r *repl) printWelcome() {
 	fmt.Print(r.renderer.WelcomeMessage())
 	fmt.Print(r.renderer.ProjectContextMessage(r.initialised))
+	fmt.Printf("Mode: %s (%d tools)\n", r.asst.Mode(), r.asst.ToolRegistry().Available(r.asst.Mode()))
 }
 
-// printNotInitialised shows the "Project Not Initialized" box and the commands available before
-// /init (moved from the old startREPL, lines 139-153).
+// printNotInitialised shows the one-line notice that nothing is persisted until /init runs. The REPL
+// itself is fully usable before /init (an ephemeral assistant with nothing saved), so this replaces
+// the old multi-line "Project Not Initialized" box that listed features as unavailable.
 func (r *repl) printNotInitialised() {
-	fmt.Println()
-	fmt.Println("\033[33m┌─────────────────────────────────────────────────────┐\033[0m")
-	fmt.Println("\033[33m│  Project Not Initialized                            │\033[0m")
-	fmt.Println("\033[33m└─────────────────────────────────────────────────────┘\033[0m")
-	fmt.Println()
-	fmt.Println("  Run /init to initialize and enable:")
-	fmt.Println("    - @ file references with Tab completion")
-	fmt.Println("    - Project context awareness")
-	fmt.Println("    - Session persistence")
-	fmt.Println("    - Directory navigation (cd)")
-	fmt.Println()
-	fmt.Println("  Available commands: /init, /help, exit")
+	fmt.Println("Not initialised: nothing is saved (sessions, memory, history off); " +
+		"run /init to enable them and operate mode.")
 	fmt.Println()
 }
 

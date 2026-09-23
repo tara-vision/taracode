@@ -45,8 +45,10 @@ func (r *repl) run() {
 	}
 }
 
-// handleLine routes one input line: cd and pwd, the init gate, @file expansion, a slash command,
-// or a prompt for the model.
+// handleLine routes one input line: cd and pwd, @file expansion, a slash command, or a prompt for
+// the model. Nothing here is gated on initialisation any more: an uninitialised project runs on an
+// ephemeral assistant (nothing persisted), and /init is just one more slash command available at any
+// time, not a precondition for the rest of the REPL.
 func (r *repl) handleLine(line string) {
 	if line == "cd" || strings.HasPrefix(line, "cd ") {
 		r.changeDir(strings.TrimSpace(strings.TrimPrefix(line, "cd")))
@@ -54,9 +56,6 @@ func (r *repl) handleLine(line string) {
 	}
 	if line == "pwd" {
 		r.printPwd()
-		return
-	}
-	if !r.initialised && !r.allowedBeforeInit(line) {
 		return
 	}
 	images, ok := r.expandReferences(&line)
@@ -70,29 +69,9 @@ func (r *repl) handleLine(line string) {
 	r.ask(line, images)
 }
 
-// allowedBeforeInit keeps the old gate: only /init and /help run before the project is initialised.
-func (r *repl) allowedBeforeInit(line string) bool {
-	if strings.HasPrefix(line, "/") {
-		name := strings.Fields(line)[0]
-		if name == "/init" || name == "/help" {
-			return true
-		}
-		fmt.Println("Project not initialized. Only /init, /help, and exit are available.")
-		fmt.Println("Run /init to enable all features.")
-	} else {
-		fmt.Println("Project not initialized. Run /init to enable AI chat.")
-	}
-	fmt.Println()
-	return false
-}
-
 // expandReferences replaces @file references in the line and collects referenced images.
 func (r *repl) expandReferences(line *string) ([]*assistant.ImageData, bool) {
 	if !strings.Contains(*line, "@") {
-		return nil, true
-	}
-	if !r.initialised {
-		fmt.Println("💡 Tip: Run /init to enable @ file references with Tab completion")
 		return nil, true
 	}
 	expanded, err := expandFileReferencesWithImages(*line, r.projectRoot, r.absDir)
@@ -121,26 +100,35 @@ func (r *repl) ask(line string, images []*assistant.ImageData) {
 	r.refreshPrompt()
 }
 
-// refreshPrompt shows the context budget and the mode in the prompt when configured.
-func (r *repl) refreshPrompt() {
-	if !viper.GetBool("show_context_budget") {
-		return
-	}
-	usage := r.asst.GetSessionUsage()
-	if usage == nil {
-		return
-	}
+// formatPrompt builds the current prompt string: the operate-mode marker, the current directory and,
+// when show_context_budget is on and usage is known, the token budget. refreshPrompt, openReadline
+// and changeDir all build the prompt through this one helper, so the mode marker cannot go stale in
+// one of them while it is current in another (ruling P2-R23: openReadline's first prompt and
+// changeDir's prompt after cd used to build with the mode-blind FormatPrompt, so the [operate] marker
+// was missing on session start in operate mode and after cd, even though refreshPrompt showed it).
+// The marker itself does not depend on show_context_budget; that setting only gates the token count.
+func (r *repl) formatPrompt() string {
 	operate := r.asst.Mode() == policy.ModeOperate
-	r.rl.SetPrompt(FormatPromptWithMode(r.relDir, usage.TotalTokens, viper.GetInt("max_context_tokens"), operate))
+	var usedTokens, maxTokens int
+	if viper.GetBool("show_context_budget") {
+		if usage := r.asst.GetSessionUsage(); usage != nil {
+			usedTokens, maxTokens = usage.TotalTokens, viper.GetInt("max_context_tokens")
+		}
+	}
+	return FormatPromptWithMode(r.relDir, usedTokens, maxTokens, operate)
+}
+
+// refreshPrompt updates the prompt line after the mode or the context usage may have changed. A repl
+// built directly (as tests do, with no readline instance) leaves r.rl nil; that is a no-op here.
+func (r *repl) refreshPrompt() {
+	if r.rl == nil {
+		return
+	}
+	r.rl.SetPrompt(r.formatPrompt())
 }
 
 // changeDir moves inside the project sandbox.
 func (r *repl) changeDir(target string) {
-	if !r.initialised {
-		fmt.Println("Project not initialized. Run /init first to enable cd.")
-		fmt.Println()
-		return
-	}
 	newRel, newAbs, err := SandboxedPath(target, r.relDir, r.projectRoot)
 	if err != nil {
 		fmt.Printf("Error: %v\n\n", err)
@@ -148,7 +136,7 @@ func (r *repl) changeDir(target string) {
 	}
 	r.relDir, r.absDir = newRel, newAbs
 	r.completer.UpdateWorkingDir(r.absDir)
-	r.rl.SetPrompt(FormatPrompt(r.relDir))
+	r.rl.SetPrompt(r.formatPrompt())
 	if r.relDir == "" {
 		fmt.Println("Changed to project root")
 	} else {
@@ -158,11 +146,6 @@ func (r *repl) changeDir(target string) {
 }
 
 func (r *repl) printPwd() {
-	if !r.initialised {
-		fmt.Println("Project not initialized. Run /init first to enable pwd.")
-		fmt.Println()
-		return
-	}
 	fmt.Println(FormatPwd(r.relDir, r.projectRoot))
 	fmt.Println()
 }

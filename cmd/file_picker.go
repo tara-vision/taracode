@@ -61,14 +61,13 @@ type matchCandidate struct {
 // skipDirectories contains directories to exclude from file operations
 var skipDirectories = []string{"node_modules", "vendor", "__pycache__", "dist", "build", ".git", ".taracode"}
 
-// isInitializedProject checks if current directory has TARACODE.md and .taracode/
+// isInitializedProject reports whether workingDir has been initialised: .taracode/ exists.
+// TARACODE.md is optional - a project whose .taracode/ survived (from source control, or from an
+// /init that ran before TARACODE.md was regenerated) still counts as initialised, so sessions,
+// memory, history and operate mode stay available; /reload notes it when TARACODE.md itself is
+// missing.
 func isInitializedProject(workingDir string) bool {
-	taracodeFile := filepath.Join(workingDir, "TARACODE.md")
 	taracodeDir := filepath.Join(workingDir, ".taracode")
-
-	if _, err := os.Stat(taracodeFile); os.IsNotExist(err) {
-		return false
-	}
 	if _, err := os.Stat(taracodeDir); os.IsNotExist(err) {
 		return false
 	}

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -33,6 +36,34 @@ func (r *repl) cmdMode(args []string) {
 	}
 	fmt.Printf("%s Mode: %s (%d tools exposed)\n\n", ui.IconSuccess, mode, r.asst.ToolRegistry().Available(mode))
 	r.refreshPrompt()
+}
+
+// cmdPolicy is the /policy command: the effective policy (built-in, global and project files
+// merged), where it came from, and any remembered per-tool permissions.
+func (r *repl) cmdPolicy(args []string) {
+	if len(args) == 0 || args[0] != "show" {
+		fmt.Println("Usage: /policy show")
+		fmt.Println()
+		return
+	}
+	if err := r.asst.PolicyError(); err != nil {
+		fmt.Printf("%s Policy error (operate mode locked): %v\n\n", ui.IconError, err)
+		return
+	}
+	fmt.Printf("Sources: %s\n", strings.Join(r.asst.PolicySources(), ", "))
+	data, err := yaml.Marshal(r.asst.Policy())
+	if err != nil {
+		fmt.Printf("%s %v\n\n", ui.IconError, err)
+		return
+	}
+	fmt.Println(strings.TrimSpace(string(data)))
+	if perms := r.asst.Permissions(); perms != nil && len(perms.Rules()) > 0 {
+		fmt.Println("Remembered permissions:")
+		for tool, perm := range perms.Rules() {
+			fmt.Printf("  %-14s %s\n", tool, perm)
+		}
+	}
+	fmt.Println()
 }
 
 // cmdPermissions is the /permissions command: the remembered answers for mutations.
