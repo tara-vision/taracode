@@ -1,8 +1,9 @@
 // Package shellwords splits a POSIX shell command line into pipeline segments and words without
-// running it: single and double quotes, bash's $'...' quoting, backslash escapes, the control
-// operators | || && ; & and newlines, the grouping operators ( and ), redirections, comments, and a
-// flag for what it cannot see through (command substitution: $(...), backticks and the process
-// substitutions <(...) and >(...); and bash's translated $"...") so a classifier can refuse it.
+// running it: single and double quotes, bash's $'...' quoting (truncated at a NUL as bash does),
+// backslash escapes, the control operators | || && ; & and newlines, the grouping operators ( and ),
+// redirections, comments, a flag for what it cannot see through (command substitution: $(...),
+// backticks and the process substitutions <(...) and >(...); and bash's translated $"..."), and a
+// flag for a function definition (name (), function name) so a classifier can refuse it.
 package shellwords
 
 import (
@@ -22,18 +23,20 @@ type Segment struct {
 type Result struct {
 	Segments     []Segment
 	Substitution bool // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
+	FunctionDef  bool // the line defines a shell function (name (), function name), which can shadow any name
 }
 
 type parser struct {
-	in      []rune
-	pos     int
-	res     Result
-	seg     Segment
-	word    strings.Builder
-	hasWord bool
-	pending string // a redirection operator waiting for its target word
-	shell   bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
-	closed  bool   // the last segment was ended by a closing )
+	in          []rune
+	pos         int
+	res         Result
+	seg         Segment
+	word        strings.Builder
+	hasWord     bool
+	pending     string // a redirection operator waiting for its target word
+	shell       bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
+	closed      bool   // the last segment was ended by a closing )
+	ansiStopped bool   // a NUL was decoded inside the current $'...': the rest of the quote is discarded
 }
 
 // Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
@@ -142,9 +145,12 @@ func (p *parser) next() rune {
 }
 
 // ansiC reads a $'...' string as bash decodes it: backslash escapes for control characters, octal,
-// hexadecimal and Unicode code points, \' for a quote. The decoded text joins the word.
+// hexadecimal and Unicode code points, \' for a quote. The decoded text joins the word. A NUL (\x00,
+// \0, \c@, a NUL code point) ends the decoded string as bash does: the rest of the $'...' is scanned
+// to the closing quote but not emitted, and the word continues with whatever is glued after it.
 func (p *parser) ansiC() error {
 	p.pos += 2 // $'
+	p.ansiStopped = false
 	for p.pos < len(p.in) {
 		c := p.in[p.pos]
 		switch {
@@ -156,11 +162,24 @@ func (p *parser) ansiC() error {
 			p.pos++
 			p.escape()
 		default:
-			p.word.WriteRune(c)
+			p.ansiWrite(c)
 			p.pos++
 		}
 	}
 	return errors.New("unbalanced quote")
+}
+
+// ansiWrite adds a decoded rune of a $'...' string to the word, unless a NUL has already ended it. A
+// NUL is not written: bash cannot hold it in a word and truncates the ANSI-C string there.
+func (p *parser) ansiWrite(r rune) {
+	if p.ansiStopped {
+		return
+	}
+	if r == 0 {
+		p.ansiStopped = true
+		return
+	}
+	p.word.WriteRune(r)
 }
 
 // ansiEscapes are the one-letter escapes of $'...'.
@@ -173,25 +192,25 @@ func (p *parser) escape() {
 	c := p.in[p.pos]
 	p.pos++
 	if r, ok := ansiEscapes[c]; ok {
-		p.word.WriteRune(r)
+		p.ansiWrite(r)
 		return
 	}
 	switch {
 	case c == 'x':
-		p.word.WriteRune(p.codePoint(16, 2))
+		p.ansiWrite(p.codePoint(16, 2))
 	case c == 'u':
-		p.word.WriteRune(p.codePoint(16, 4))
+		p.ansiWrite(p.codePoint(16, 4))
 	case c == 'U':
-		p.word.WriteRune(p.codePoint(16, 8))
+		p.ansiWrite(p.codePoint(16, 8))
 	case c >= '0' && c <= '7':
 		p.pos--
-		p.word.WriteRune(p.codePoint(8, 3))
+		p.ansiWrite(p.codePoint(8, 3))
 	case c == 'c' && p.pos < len(p.in):
 		p.pos++
-		p.word.WriteRune(p.in[p.pos-1] & 0x1f)
+		p.ansiWrite(p.in[p.pos-1] & 0x1f)
 	default:
-		p.word.WriteRune('\\')
-		p.word.WriteRune(c)
+		p.ansiWrite('\\')
+		p.ansiWrite(c)
 	}
 }
 
@@ -258,11 +277,27 @@ func (p *parser) skipComment() {
 
 // group ends the segment at a ( or ). A background & or a redirect after the closing ) applies to
 // the whole group: the & marks the last segment (endSegment), a redirect starts a segment of its own.
+// A "(" that closes a function definition (a single name, then "()") flags the line: the body runs
+// on the call, so the name can shadow any allowlisted program.
 func (p *parser) group(c rune) {
 	p.endWord()
+	if c == '(' && len(p.seg.Words) == 1 && len(p.seg.Redirects) == 0 && p.nextNonSpaceIsCloseParen() {
+		p.res.FunctionDef = true
+	}
 	p.pos++
 	p.endSegment(false)
 	p.closed = c == ')'
+}
+
+// nextNonSpaceIsCloseParen reports whether the first non-space rune after the current "(" is ")",
+// so "name (" or "name(" followed by ")" is a function definition and not a subshell.
+func (p *parser) nextNonSpaceIsCloseParen() bool {
+	for j := p.pos + 1; j < len(p.in); j++ {
+		if !unicode.IsSpace(p.in[j]) {
+			return p.in[j] == ')'
+		}
+	}
+	return false
 }
 
 func (p *parser) operator(c rune) {
@@ -338,6 +373,9 @@ func (p *parser) endWord() {
 		p.seg.Redirects = append(p.seg.Redirects, p.pending+" "+w)
 		p.pending = ""
 		return
+	}
+	if p.shell && w == "function" && len(p.seg.Words) == 0 {
+		p.res.FunctionDef = true // the bash keyword: function name { ... }
 	}
 	p.seg.Words = append(p.seg.Words, w)
 }

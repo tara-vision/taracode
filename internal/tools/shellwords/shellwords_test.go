@@ -212,3 +212,68 @@ func TestSplitDecodesANSICQuotingAndFlagsTranslation(t *testing.T) {
 		t.Errorf("Words keeps $'...' literal: %q", w)
 	}
 }
+
+// TestSplitFlagsFunctionDefinitions (pre-tag round 2, item 1): the shell runs a function's body on
+// the call, so a definition can shadow any read-only name; Split flags the three forms (name(),
+// name (), function name). A subshell, a case pattern, "if ("... and quoted parentheses are not
+// definitions, and Words (the dedicated tools' arguments) never runs a shell, so it flags none.
+func TestSplitFlagsFunctionDefinitions(t *testing.T) {
+	defs := []string{
+		`ls() { find . "$@"; }; ls -delete`,
+		`ls () { find . "$@"; }; ls -delete`,
+		`ls() ( find . "$@" ); ls -delete`,
+		`echo() { find . $*; }; echo -delete`,
+		`grep() { find "$@"; }; grep . -delete`,
+		`function ff { find . -delete; }; ff`,
+		`function ff() { find . -delete; }; ff`,
+		`a && b() { rm x; }; b`,
+	}
+	for _, c := range defs {
+		if res, err := Split(c); err != nil || !res.FunctionDef {
+			t.Errorf("%q must flag a function definition: %+v %v", c, res, err)
+		}
+	}
+	notDefs := []string{
+		`(ls -la)`, `(a; b) | c`, `if (ls); then echo yes; fi`, `time ( ls )`, `[ -f x ] && (rm y)`,
+		`echo "(hi)"`, `grep -E '(foo|bar)' f`, `case x in a) ls;; esac`, `arr=(a b); echo x`,
+		`echo $(ls)`, `ls -la`, `echo function here`,
+	}
+	for _, c := range notDefs {
+		if res, err := Split(c); err != nil || res.FunctionDef {
+			t.Errorf("%q must not flag a function definition: %+v %v", c, res, err)
+		}
+	}
+}
+
+// TestSplitTruncatesANSICAtNUL (pre-tag round 2, item 2): bash stops a $'...' string at the first
+// NUL (\x00, \0, \c@, a NUL code point) but continues the word with text glued after the closing
+// quote, so the decoded word is what runs. Verified against /bin/sh: $'-del\x00'ete is -delete
+// (deletes), $'-del\x00ete' is -del (does not), and kube-system$'\x00' is kube-system.
+func TestSplitTruncatesANSICAtNUL(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`find . $'-delete\x00'`, "find|.|-delete"},
+		{`find . $'-delete\0'`, "find|.|-delete"},
+		{`find . $'-delete\c@'`, "find|.|-delete"},
+		{`find . $'-delete\U00000000'`, "find|.|-delete"},
+		{`find . $'-del\x00'ete`, "find|.|-delete"},
+		{`find . $'-del\x00ete'`, "find|.|-del"},
+		{`echo kube-system$'\x00'`, "echo|kube-system"},
+		{`echo $'kube-system\x00'`, "echo|kube-system"},
+		{`echo a$'\x00'b`, "echo|ab"},
+		{`echo x$'\x00'`, "echo|x"},
+	}
+	for _, c := range cases {
+		res, err := Split(c.in)
+		if err != nil || len(res.Segments) != 1 {
+			t.Fatalf("%q: %+v %v", c.in, res, err)
+		}
+		if got := strings.Join(res.Segments[0].Words, "|"); got != c.want {
+			t.Errorf("%q: words %q, want %q", c.in, got, c.want)
+		}
+	}
+	// A $'...' that is only a NUL still produces an (empty) word.
+	if res, _ := Split(`echo $'\x00'`); len(res.Segments) != 1 || len(res.Segments[0].Words) != 2 ||
+		res.Segments[0].Words[1] != "" {
+		t.Errorf(`echo $'\x00' must keep an empty word: %+v`, res)
+	}
+}
