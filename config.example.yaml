@@ -1,228 +1,134 @@
-# Tara Code Configuration File
+# Tara Code Configuration File (v3)
 # Copy this to ~/.taracode/config.yaml
+#
+# Migrating from a 2.x config file: model: was a section (model.temperature, model.top_p,
+# model.num_predict); model: <name> takes its place now, and those three keys move under
+# generation:. security.default_severity is scan.default_severity now. The agents: and watch:
+# sections are no longer read. mode: devops/security became investigate/operate (unset starts in
+# investigate, or the mode a policy file names). A 2.x file still starts taracode; each of these
+# prints a one-time migration warning after the startup banner.
 
-# =============================================================================
-# SINGLE HOST CONFIGURATION (Legacy - still fully supported)
-# =============================================================================
-# Ollama Server Host (required for single-host mode)
-# The base URL of your Ollama server
+# LLM server host (required unless hosts: below is used)
 host: http://localhost:11434
 
-# API Key (optional)
-# Leave empty or omit for local servers without authentication
+# API key (optional, for hosts that require one)
 key: ""
 
-# Model name (optional)
-# The model is auto-detected from your Ollama server via /v1/models endpoint.
-# Only specify this if auto-detection fails or you want a specific model.
-# model: qwen3.8:27b
-
 # =============================================================================
-# MULTI-HOST CONFIGURATION (v2.0)
+# MULTI-HOST CONFIGURATION
 # =============================================================================
-# Configure multiple LLM hosts with fallback support and per-agent assignment.
-# When using multi-host mode, the 'host' field above is ignored.
+# Configure multiple LLM hosts with fallback support. When hosts: is set, host: above is ignored.
 #
 # hosts:
-#   # Primary GPU server - high-performance models
 #   primary:
 #     url: http://gpu-server:11434
-#     vendor: ollama           # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
-#     # api_key: ""            # optional: API key if required
-#     models: [qwen3.8:27b, qwen3.6:35b]  # optional: available models
-#     timeout: 30s             # connection timeout
-#     priority: 1              # lower = higher priority
+#     vendor: ollama                       # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
+#     # api_key: ""                        # optional: API key if required
+#     models: [qwen3.8:27b, qwen3.6:35b]   # optional: models available on this host
+#     timeout: 30s                         # connection timeout
+#     priority: 1                          # lower = higher priority
 #
-#   # Local fallback - lightweight models
 #   local:
 #     url: http://localhost:11434
-#     fallback: primary        # use 'primary' if this host is unavailable
+#     fallback: primary                    # use primary when this host is unavailable
 #     priority: 2
 #
-# # Which host to use by default
 # default_host: primary
 #
-# =============================================================================
-# PER-AGENT HOST ASSIGNMENT
-# =============================================================================
-# Assign specific hosts to agents in the agents section of config:
-#
-# agents:
-#   planner:
-#     model: gemma4:12b
-#     host: local            # Use local for quick planning
-#
-#   coder:
-#     model: qwen3.6:35b
-#     host: primary          # Use powerful GPU for code generation
-#
-#   reviewer:
-#     model: gemma4:e4b
-#     host: local            # Use lightweight model for reviews
-#
 # Run /hosts in the REPL to see host status and health.
-# =============================================================================
 
-# =============================================================================
-# MODEL GENERATION OPTIONS (v2.0.4)
-# =============================================================================
-# Control how the LLM generates responses. These apply to the main chat.
-# Agents inherit top_p and num_predict as defaults (agents have their own temperature).
-model:
-  # Sampling randomness: 0.0 = deterministic, 2.0 = maximum randomness (default: 0.7)
-  temperature: 0.7
+# Model name (optional; auto-detected from the server when unset)
+# model: qwen3.8:27b
 
-  # Nucleus sampling: only consider tokens within this cumulative probability (default: 0.9)
-  # Lower = more focused, higher = more diverse
-  top_p: 0.9
+# Generation options for the main chat
+generation:
+  temperature: 0.7     # sampling randomness, 0.0-2.0 (default: 0.7)
+  top_p: 0.9            # nucleus sampling threshold, 0.0-1.0 (default: 0.9)
+  num_predict: 0         # max tokens per response, 0 = model default / no limit (default: 0)
 
-  # Maximum tokens per response, 0 = model default / no limit (default: 0)
-  # Useful for controlling response length and context window usage
-  num_predict: 0
-
-# Search Configuration
-search:
-  # Primary search provider: "brave", "duckduckgo", or "searxng"
-  # If brave_api_key is set and primary is not specified, Brave will be used automatically
-  primary: duckduckgo
-
-  # Fallback provider when primary fails
-  fallback: searxng
-
-  # Brave Search API key (optional)
-  # Get your API key from: https://brave.com/search/api/
-  # When configured, Brave becomes the default primary search provider
-  # brave_api_key: your-brave-api-key-here
-
-  # Custom SearXNG instance URL (optional)
-  # searxng_instance: https://your-searxng-instance.com
-
-  # Search timeout (default: 10s)
-  timeout: 10s
-
-  # Number of retries before falling back (default: 1)
-  retry_count: 1
-
-# Context budget display
-# Shows token usage in prompt like [5.0k/32k]
-show_context_budget: true
-max_context_tokens: 32768
-
-# Edit preview mode
-# Shows diff before applying edit_file operations
-preview_edits: true
-preview_threshold: 0
-
-# Security configuration
-security:
-  # Default severity filter for security scans (empty = all severities)
-  # Examples: "HIGH,CRITICAL" or "MEDIUM,HIGH,CRITICAL"
-  default_severity: ""
-
-# MCP (Model Context Protocol) Configuration
-# MCP enables integration with external tools and services via MCP servers.
-# Servers are spawned as subprocesses and communicate via JSON-RPC over stdio.
-mcp:
-  # Enable or disable MCP support (default: true)
-  enabled: true
-
-  # List of MCP server configurations
-  servers:
-    # GitHub MCP Server - provides GitHub integration tools
-    # - name: github
-    #   command: npx
-    #   args: ["-y", "@modelcontextprotocol/server-github"]
-    #   env:
-    #     GITHUB_TOKEN: "${GITHUB_TOKEN}"  # Uses env var expansion
-    #   auto_connect: false                # Set true to connect on startup
-    #   timeout: 30s                       # Connection timeout
-
-    # Brave Search MCP Server - provides web search capabilities
-    # - name: brave-search
-    #   command: npx
-    #   args: ["-y", "@modelcontextprotocol/server-brave-search"]
-    #   env:
-    #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
-
-    # Filesystem MCP Server - provides filesystem access
-    # - name: filesystem
-    #   command: npx
-    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
-
-    # PostgreSQL MCP Server - provides database access
-    # - name: postgres
-    #   command: npx
-    #   args: ["-y", "@modelcontextprotocol/server-postgres"]
-    #   env:
-    #     POSTGRES_CONNECTION_STRING: "${DATABASE_URL}"
-
-# Memory (Persistent Project Knowledge) Configuration
-memory:
-  # Enable or disable memory feature (default: true)
-  enabled: true
-
-  # Maximum number of memories per project (default: 500)
-  max_memories: 500
-
-  # Maximum tokens to inject into prompt (default: 2000)
-  max_context_tokens: 2000
-
-  # Auto-cleanup memories not used in N days (default: 90)
-  retention_days: 90
-
-  # Detect and suggest memories from conversation (default: true)
-  auto_capture: true
-
-# Context Management (v2.0.2)
+# Context management
 context:
-  # Maximum lines per tool output (default: 500, 0 = unlimited)
-  # Prevents large tool outputs from consuming the context window
-  max_tool_output_lines: 500
+  max_tool_output_lines: 500    # max lines per tool output, 0 = unlimited (default: 500)
+  max_tool_output_chars: 15000  # max chars per tool output, 0 = unlimited (default: 15000)
+  max_tool_iterations: 20       # max tool call iterations per message (default: 20)
+  compaction_enabled: true      # auto-compact the conversation as the budget fills (default: true)
+  compaction_threshold: 0.75    # compact at this fraction of max_context_tokens (default: 0.75)
+  compaction_keep_recent: 4     # recent message pairs compaction never summarizes (default: 4)
+  window: auto                  # "auto" (the model's native max, capped) or a token count (default: auto)
 
-  # Maximum characters per tool output (default: 15000, 0 = unlimited)
-  max_tool_output_chars: 15000
-
-  # Maximum tool call iterations per message (default: 10)
-  # Limits how many consecutive tool calls the AI can make per user message
-  max_tool_iterations: 10
-
-  # Auto-compact conversation when context is filling up (default: true)
-  # Uses LLM to summarize older messages, keeping recent ones intact
-  compaction_enabled: true
-
-  # Trigger compaction at this fraction of max_context_tokens (default: 0.75)
-  # 0.75 = compact when 75% of context window is used
-  compaction_threshold: 0.75
-
-  # Number of recent message pairs to keep during compaction (default: 4)
-  # These messages are never summarized
-  compaction_keep_recent: 4
-
-  # Context window to request from the model (default: auto)
-  # "auto" requests 32768 tokens, or the model's native maximum when that is smaller (never more,
-  # to keep the KV cache affordable on 16 GB and 32 GB machines); a non-numeric value falls back to
-  # auto. Set a number instead to request an explicit window, clamped to the model's native maximum,
-  # on a model that supports going higher
-  window: auto
-
-# Request options (v3.0.0-alpha.1)
-# Reasoning mode sent with every request: auto, off, on, low, medium, or high (default: auto)
+# Reasoning mode sent with every request: auto, off, on, low, medium, high (default: auto)
 # Change it mid-session with /think without restarting taracode
 think: auto
 
 # How long Ollama keeps the model loaded, "" = server default, "-1" = keep loaded (default: "")
 keep_alive: ""
 
-# Upgrade (Auto-update) Configuration
+# Starting operating mode: investigate or operate (default: unset, starts in investigate unless a
+# policy file names one - see .taracode/policy.yaml)
+mode: investigate
+
+# Disable every internet-facing tool (web_search, web_fetch) and the startup update check
+# (default: false)
+offline: false
+
+# Security scanning
+scan:
+  # Default severity filter for the scan tool (empty = all severities)
+  # Examples: "HIGH,CRITICAL" or "MEDIUM,HIGH,CRITICAL"
+  default_severity: ""
+
+# Web search
+search:
+  primary: duckduckgo    # primary provider: brave, duckduckgo, or searxng (default: duckduckgo)
+  fallback: searxng        # fallback provider when primary fails (default: searxng)
+  timeout: 10s               # search timeout (default: 10s)
+  retry_count: 1               # retries before falling back (default: 1)
+  # brave_api_key: your-brave-api-key-here       # becomes the default primary when set
+  # searxng_instance: https://your-searxng-instance.com
+
+# Persistent project knowledge
+memory:
+  enabled: true              # remember and recall project facts (default: true)
+  max_memories: 500           # maximum memories kept per project (default: 500)
+  max_context_tokens: 2000     # max tokens of memories injected into the prompt (default: 2000)
+  retention_days: 90            # auto-cleanup memories unused for N days (default: 90)
+  auto_capture: true              # detect and suggest memories from the conversation (default: true)
+
+# Auto-update
 upgrade:
-  # Check for updates on startup (default: true)
-  # Set to false to disable automatic update checks
-  auto_check: true
+  auto_check: true      # check for updates on startup (default: true)
+  auto_upgrade: false     # install updates without prompting (default: false)
+  show_changelog: true      # show the changelog when an update is available (default: true)
 
-  # Automatically install updates without prompting (default: false)
-  # When true, updates are installed immediately without confirmation
-  # Use with caution - recommended to keep this false
-  auto_upgrade: false
+# Model Context Protocol servers
+mcp:
+  enabled: true    # enable MCP support (default: true)
+  servers:
+    # GitHub MCP Server
+    # - name: github
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    #   env:
+    #     GITHUB_TOKEN: "${GITHUB_TOKEN}"   # env var expansion
+    #   auto_connect: false                 # true connects on startup
+    #   timeout: 30s
 
-  # Show changelog when update is available (default: true)
-  show_changelog: true
+    # Filesystem MCP Server
+    # - name: filesystem
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
+
+# Show a diff preview before applying edit_file operations (default: true)
+preview_edits: true
+
+# Minimum lines changed to trigger a preview, 0 = always preview (default: 0)
+preview_threshold: 0
+
+# Show token usage in the prompt, like [5.0k/32k] (default: true)
+show_context_budget: true
+
+# The model's context window in tokens; also the compaction budget (default: 32768)
+max_context_tokens: 32768
+
+# Disable live streaming of shell command output to the terminal (default: false)
+no_stream_commands: false

@@ -14,23 +14,23 @@ func (r *repl) cmdInit(_ []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return
 	}
-	// Get current host and model from existing assistant to preserve state
-	currentHost := r.host
-	currentModel := r.model
-	currentVendor := r.vendor
+	opts := r.options()
+	// Preserve the live connection, which may have moved since startup (e.g. /model), rather than
+	// whatever taracode started with.
 	if provInfo := r.asst.GetProviderInfo(); provInfo != nil {
-		currentHost = provInfo.Host
-		currentModel = provInfo.Model
-		currentVendor = provInfo.Type.String()
+		opts.Host = provInfo.Host
+		opts.Model = provInfo.Model
+		opts.Vendor = provInfo.Type.String()
 	}
+	opts.Ephemeral = false // InitProject just created .taracode/, so storage is available now
 	// Reinitialize assistant to pick up new context
-	newAsst, err := assistant.New(
-		currentHost, r.apiKey, currentModel, currentVendor, r.streaming, r.spinner, toolConfig(r.renderer))
+	newAsst, err := assistant.New(opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reinitializing assistant: %v\n", err)
 		return
 	}
-	r.asst = newAsst
+	r.opts = opts
+	r.replaceAssistant(newAsst)
 	fmt.Println("Assistant reloaded with project context.")
 	fmt.Println()
 
@@ -42,12 +42,12 @@ func (r *repl) cmdInit(_ []string) {
 // cmdReload is the /reload command: rebuild the assistant from the current connection settings so
 // it re-reads TARACODE.md.
 func (r *repl) cmdReload(_ []string) {
-	newAsst, err := assistant.New(r.host, r.apiKey, r.model, r.vendor, r.streaming, r.spinner, toolConfig(r.renderer))
+	newAsst, err := assistant.New(r.options())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reloading: %v\n", err)
 		return
 	}
-	r.asst = newAsst
+	r.replaceAssistant(newAsst)
 	fmt.Println("Project context reloaded.")
 	fmt.Println()
 }

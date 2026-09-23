@@ -234,7 +234,10 @@ func TestRememberWithoutAPermissionStoreWarns(t *testing.T) {
 func TestPolicyModeGoesThroughSetMode(t *testing.T) {
 	a, _ := newTestAssistant(t, false)
 	a.pol.Mode = policy.ModeOperate
-	out := captureStdout(t, a.applyPolicyMode)
+	// A non-"built-in" source is what marks this as coming from an actual policy file; applyStartupMode
+	// ignores pol.Mode otherwise (the built-in default's Mode is always "investigate" anyway).
+	a.policySources = []string{"policy.yaml"}
+	out := captureStdout(t, func() { a.applyStartupMode(Options{}) })
 	if a.Mode() != policy.ModeInvestigate || !strings.Contains(out, "operate mode needs an initialised project") {
 		t.Fatalf("operate from the policy without storage must be refused with a warning: %q\n%s", a.Mode(), out)
 	}
@@ -243,7 +246,7 @@ func TestPolicyModeGoesThroughSetMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.storage = st
-	a.applyPolicyMode()
+	a.applyStartupMode(Options{})
 	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 {
 		t.Fatalf("operate from the policy with storage: %q, %d tools", a.Mode(), len(a.toolDefs))
 	}

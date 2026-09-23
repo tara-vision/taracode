@@ -21,7 +21,7 @@ func TestBuildSystemPromptAppendsTaracodeMD(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate)
+	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate, 0)
 
 	if !strings.Contains(prompt, "PROJECT CONTEXT") {
 		t.Fatalf("prompt missing the PROJECT CONTEXT header:\n%s", prompt)
@@ -36,7 +36,7 @@ func TestBuildSystemPromptAppendsTaracodeMD(t *testing.T) {
 func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 	dir := t.TempDir()
 
-	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate)
+	prompt := buildSystemPrompt(dir, nil, policy.ModeInvestigate, 0)
 
 	want := fmt.Sprintf("Current working directory: %s", dir)
 	if !strings.HasSuffix(prompt, want) {
@@ -149,7 +149,7 @@ func TestBuildSystemPromptIncludesTheActivePlanWithTaskStatusMarkers(t *testing.
 		t.Fatal(err)
 	}
 
-	prompt := buildSystemPrompt(dir, store, policy.ModeInvestigate)
+	prompt := buildSystemPrompt(dir, store, policy.ModeInvestigate, 0)
 
 	if !strings.Contains(prompt, "ACTIVE PLAN") || !strings.Contains(prompt, "Ship the feature") {
 		t.Fatalf("prompt missing the active plan section:\n%s", prompt)

@@ -4,10 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/viper"
-
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
-	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne covers the capability gate SwitchModel
@@ -43,7 +40,6 @@ func TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne(t *testing.T) {
 // that path, and New must still construct a usable Assistant instead of failing, leaving the
 // context window unresolved (0).
 func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
-	viper.Reset()
 	t.Chdir(t.TempDir())
 
 	srv := ollamatest.New(t)
@@ -51,7 +47,7 @@ func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
-	a, err := New(srv.URL, "", "gemma4:12b", "vllm", false, false, tools.Config{})
+	a, err := New(Options{Host: srv.URL, Model: "gemma4:12b", Vendor: "vllm"})
 	if err != nil {
 		t.Fatalf("New() against a Show-less backend should still construct: %v", err)
 	}

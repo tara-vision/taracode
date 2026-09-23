@@ -4,10 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/viper"
-
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
-	"github.com/tara-vision/taracode/internal/tools"
 )
 
 // TestNewPrintsFirstRunAdviceWhenNoModelIsAvailable covers the first-run hint (native core, Task
@@ -15,14 +12,13 @@ import (
 // is persisted or configured and the server lists no model at all, New must print the registry's
 // recommendation before it returns its "no models available" error.
 func TestNewPrintsFirstRunAdviceWhenNoModelIsAvailable(t *testing.T) {
-	viper.Reset()
 	t.Chdir(t.TempDir())
 
 	srv := ollamatest.New(t) // no Models scripted: the server has nothing installed
 
 	var err error
 	out := captureStdout(t, func() {
-		_, err = New(srv.URL, "", "", "ollama", false, false, tools.Config{})
+		_, err = New(Options{Host: srv.URL, Vendor: "ollama"})
 	})
 
 	if err == nil || !strings.Contains(err.Error(), "no models available") {
@@ -36,7 +32,6 @@ func TestNewPrintsFirstRunAdviceWhenNoModelIsAvailable(t *testing.T) {
 // TestNewPrintsNoAdviceWhenAModelIsConfigured guards the other side: a configured model still
 // lets New proceed (no advice to print, nothing to fail on this path).
 func TestNewPrintsNoAdviceWhenAModelIsConfigured(t *testing.T) {
-	viper.Reset()
 	t.Chdir(t.TempDir())
 
 	srv := ollamatest.New(t)
@@ -45,7 +40,7 @@ func TestNewPrintsNoAdviceWhenAModelIsConfigured(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if _, err := New(srv.URL, "", "gemma4:12b", "ollama", false, false, tools.Config{}); err != nil {
+		if _, err := New(Options{Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama"}); err != nil {
 			t.Fatalf("New() = %v, want success with a configured model", err)
 		}
 	})

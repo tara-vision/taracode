@@ -11,13 +11,12 @@ import (
 	"github.com/tara-vision/taracode/internal/assistant"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/provider"
-	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // cmdModel is the /model command: switch between available models.
 func (r *repl) cmdModel(_ []string) {
-	handleModelSwitch(&r.asst, r.hostPool, r.streaming, r.spinner, toolConfig(r.renderer))
+	handleModelSwitch(r)
 }
 
 // modelWithHost combines model info with host name for multi-host display
@@ -29,20 +28,18 @@ type modelWithHost struct {
 	Vendor   string
 }
 
-// handleModelSwitch lists available models and allows switching; toolCfg wires the tools of an
-// assistant re-created on another host.
-func handleModelSwitch(
-	asst **assistant.Assistant, hostPool *provider.HostPool, streaming, enableSpinner bool, toolCfg tools.Config,
-) {
+// handleModelSwitch lists available models and allows switching; a host switch goes through
+// r.replaceAssistant so the re-created assistant keeps the history and MCP tool wiring.
+func handleModelSwitch(r *repl) {
 	// Get current model
-	currentModel := (*asst).GetCurrentModel()
+	currentModel := r.asst.GetCurrentModel()
 	currentHost := ""
-	if provInfo := (*asst).GetProviderInfo(); provInfo != nil {
+	if provInfo := r.asst.GetProviderInfo(); provInfo != nil {
 		currentHost = provInfo.Host
 	}
 	fmt.Printf("Current model: %s\n\n", currentModel)
 
-	allModels, ok := collectAvailableModels(*asst, hostPool)
+	allModels, ok := collectAvailableModels(r.asst, r.hostPool)
 	if !ok {
 		return
 	}
@@ -68,7 +65,7 @@ func handleModelSwitch(
 		return
 	}
 
-	applyModelSwitch(asst, chosen, currentModel, currentHost, streaming, enableSpinner, toolCfg)
+	applyModelSwitch(r, chosen, currentModel, currentHost)
 }
 
 // collectAvailableModels lists models from the host pool (multi-host) or from the current
@@ -198,10 +195,7 @@ func runModelSelector(items []string) (idx int, selected bool) {
 
 // applyModelSwitch recreates the assistant on a new host when the selected model lives elsewhere
 // (multi-host mode), or switches the model in place on the current host.
-func applyModelSwitch(
-	asst **assistant.Assistant, selected modelWithHost, currentModel, currentHost string, streaming, enableSpinner bool,
-	toolCfg tools.Config,
-) {
+func applyModelSwitch(r *repl, selected modelWithHost, currentModel, currentHost string) {
 	selectedModel := selected.Name
 	// Check if we need to switch hosts (multi-host mode)
 	needsHostSwitch := selected.HostURL != "" && selected.HostURL != currentHost
@@ -209,26 +203,31 @@ func applyModelSwitch(
 	if needsHostSwitch {
 		// Update persisted model BEFORE creating new assistant
 		// This prevents the warning about saved model not being available
-		if storage := (*asst).GetStorage(); storage != nil {
+		if storage := r.asst.GetStorage(); storage != nil {
 			_ = storage.SetPreferredModel(selectedModel)
 		}
 
 		// Recreate assistant with new host
 		fmt.Printf("Switching to %s on host %s...\n", selectedModel, selected.HostName)
 
-		newAsst, err := assistant.New(
-			selected.HostURL, selected.APIKey, selectedModel, selected.Vendor, streaming, enableSpinner, toolCfg)
+		opts := r.options()
+		opts.Host = selected.HostURL
+		opts.APIKey = selected.APIKey
+		opts.Model = selectedModel
+		opts.Vendor = selected.Vendor
+		newAsst, err := assistant.New(opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error switching host: %v\n", err)
 			return
 		}
-		*asst = newAsst
+		r.opts = opts
+		r.replaceAssistant(newAsst)
 		fmt.Printf("Now using: %s [%s]\n", selectedModel, selected.HostName)
 	} else {
 		// Same host, just switch model
 		fmt.Printf("Switching from %s to %s...\n", currentModel, selectedModel)
 
-		if err := (*asst).SwitchModel(selectedModel); err != nil {
+		if err := r.asst.SwitchModel(selectedModel); err != nil {
 			fmt.Fprintf(os.Stderr, "Error switching model: %v\n", err)
 			return
 		}

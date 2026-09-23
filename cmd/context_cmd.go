@@ -30,7 +30,7 @@ func (r *repl) cmdCompact(_ []string) {
 
 // cmdStats is the /stats command: session statistics.
 func (r *repl) cmdStats(_ []string) {
-	handleStats(r.asst, r.history)
+	handleStats(r.asst, r.history, r.opts.Generation)
 }
 
 // cmdUsage is the /usage command: token usage for this session.
@@ -325,7 +325,7 @@ func handleCompact(asst *assistant.Assistant) {
 }
 
 // handleStats shows session statistics (v2.0.2)
-func handleStats(asst *assistant.Assistant, hm *history.Manager) {
+func handleStats(asst *assistant.Assistant, hm *history.Manager, gen assistant.ModelOptions) {
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────────────┐")
 	fmt.Println("│  Session Statistics                                                 │")
@@ -400,15 +400,12 @@ func handleStats(asst *assistant.Assistant, hm *history.Manager) {
 	fmt.Println(formatBoxLine(fmt.Sprintf("Compaction: %s", compactionStatus)))
 	fmt.Println(formatBoxLine(fmt.Sprintf("Max iterations: %d per message", ctxInfo.MaxIterations)))
 	// Model generation options
-	temp := viper.GetFloat64("model.temperature")
-	topP := viper.GetFloat64("model.top_p")
-	numPredict := viper.GetInt("model.num_predict")
 	numPredictStr := "model default"
-	if numPredict > 0 {
-		numPredictStr = fmt.Sprintf("%d", numPredict)
+	if gen.NumPredict > 0 {
+		numPredictStr = fmt.Sprintf("%d", gen.NumPredict)
 	}
 	fmt.Println(formatBoxLine(fmt.Sprintf(
-		"Model options: temp=%.1f top_p=%.1f num_predict=%s", temp, topP, numPredictStr)))
+		"Model options: temp=%.1f top_p=%.1f num_predict=%s", gen.Temperature, gen.TopP, numPredictStr)))
 
 	fmt.Println("└─────────────────────────────────────────────────────────────────────┘")
 	fmt.Println()

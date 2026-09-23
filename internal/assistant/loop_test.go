@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/policy"
@@ -235,11 +234,11 @@ func TestEmptyReplyIsNudgedOnce(t *testing.T) {
 // depend on a terminal.
 func withEditPreview(t *testing.T, a *Assistant, choice ui.EditPreviewChoice) {
 	t.Helper()
-	viper.Set("preview_edits", true)
-	viper.Set("preview_threshold", 0)
+	a.previewEdits = true
+	a.previewThreshold = 0
 	t.Cleanup(func() {
-		viper.Set("preview_edits", false)
-		viper.Set("preview_threshold", 0)
+		a.previewEdits = false
+		a.previewThreshold = 0
 	})
 	a.confirmEditPreview = func(*ui.EditPreview) ui.EditPreviewChoice { return choice }
 }
@@ -319,11 +318,11 @@ func TestAcceptedEditPreviewAppliesTheEdit(t *testing.T) {
 // the model as the tool result (executeOne denies it); this pins the on-screen warning.
 func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	viper.Set("preview_edits", true)
-	viper.Set("preview_threshold", 0)
+	a.previewEdits = true
+	a.previewThreshold = 0
 	t.Cleanup(func() {
-		viper.Set("preview_edits", false)
-		viper.Set("preview_threshold", 0)
+		a.previewEdits = false
+		a.previewThreshold = 0
 	})
 	storageMgr, err := storage.NewManager(a.workingDir)
 	if err != nil {

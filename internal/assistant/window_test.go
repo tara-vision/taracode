@@ -5,11 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/viper"
-
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
-	"github.com/tara-vision/taracode/internal/tools"
 )
 
 func TestResolveContextWindow(t *testing.T) {
@@ -42,13 +39,12 @@ func TestResolveContextWindow(t *testing.T) {
 // TestNewRefusesAModelWithoutToolSupport runs New for real against a fake server whose only model
 // lacks the "tools" capability: the capability gate must refuse it before the assistant is usable.
 func TestNewRefusesAModelWithoutToolSupport(t *testing.T) {
-	viper.Reset()
 	t.Chdir(t.TempDir())
 
 	srv := ollamatest.New(t)
 	srv.Models = []ollamatest.ModelSpec{{Name: "old:7b", Capabilities: []string{"completion"}, ContextLength: 4096, Family: "old"}}
 
-	_, err := New(srv.URL, "", "old:7b", "ollama", false, false, tools.Config{})
+	_, err := New(Options{Host: srv.URL, Model: "old:7b", Vendor: "ollama"})
 	if err == nil || !strings.Contains(err.Error(), "does not support tools") {
 		t.Fatalf("expected the capability gate, got %v", err)
 	}
