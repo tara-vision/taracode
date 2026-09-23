@@ -126,3 +126,89 @@ func TestSplitFlagsProcessSubstitution(t *testing.T) {
 		t.Error("plain redirects are not a substitution")
 	}
 }
+
+// segmentsOf renders the segments of a parse: words joined by spaces, a redirect after "+", and
+// "&" for a background segment; segments are joined by " | ".
+func segmentsOf(t *testing.T, command string) (string, bool) {
+	t.Helper()
+	res, err := Split(command)
+	if err != nil {
+		t.Fatalf("%q: %v", command, err)
+	}
+	var out []string
+	for _, s := range res.Segments {
+		text := strings.Join(s.Words, " ")
+		for _, r := range s.Redirects {
+			text += " +" + r
+		}
+		if s.Background {
+			text += " &"
+		}
+		out = append(out, strings.TrimSpace(text))
+	}
+	return strings.Join(out, " | "), res.Substitution
+}
+
+// TestSplitParenthesesSeparateCommands (pre-tag round B): an unquoted ( or ) is a shell operator, so
+// a subshell, a case pattern and the command inside $(...) or <(...) are segments of their own; a
+// background & or a redirect after the closing ) still reaches the classifier. Quoted or escaped
+// parentheses stay in the word, and Words (the dedicated tools' arguments, never run by a shell)
+// keeps them literal.
+func TestSplitParenthesesSeparateCommands(t *testing.T) {
+	cases := []struct {
+		in, want     string
+		substitution bool
+	}{
+		{"(ls -la)", "ls -la", false},
+		{"(a; b) | c", "a | b | c", false},
+		{"(sleep 100) &", "sleep 100 &", false},
+		{"(ls) > out.txt", "ls | +> out.txt", false},
+		{"case x in a) ls;; esac", "case x in a | ls | esac", false},
+		{"echo $(kubectl delete pod x -n kube-system)", "echo $ | kubectl delete pod x -n kube-system", true},
+		{"diff <(rm -rf x) y", "diff | rm -rf x | y", true},
+		{"find . \\( -name a -o -name b \\)", "find . ( -name a -o -name b )", false},
+		{`grep "(x)" f`, "grep (x) f", false},
+		{"f() { rm x; }; f", "f | { rm x | } | f", false},
+	}
+	for _, c := range cases {
+		got, sub := segmentsOf(t, c.in)
+		if got != c.want || sub != c.substitution {
+			t.Errorf("%q: segments %q (substitution %v), want %q (%v)", c.in, got, sub, c.want, c.substitution)
+		}
+	}
+	if w, err := Words("log --format=%h(%an) -n 3"); err != nil || strings.Join(w, "|") != "log|--format=%h(%an)|-n|3" {
+		t.Errorf("Words keeps parentheses literal: %q %v", w, err)
+	}
+}
+
+// TestSplitDecodesANSICQuotingAndFlagsTranslation (pre-tag round B): bash decodes $'...' before the
+// command sees it, so an option written $'-delete' or $'\x2ddelete' is the -delete it runs; $"..."
+// is translated through the locale's message catalog, so its text is not known and counts as a
+// substitution. Words, for the dedicated tools' arguments, runs no shell and keeps them literal.
+func TestSplitDecodesANSICQuotingAndFlagsTranslation(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`find . $'-delete'`, "find|.|-delete"},
+		{`find . $'\x2ddelete'`, "find|.|-delete"},
+		{`grep $'a\tb' f`, "grep|a\tb|f"},
+		{`echo $'it\'s' $'\101\u0042'`, "echo|it's|AB"},
+		{`echo x$'\n'y`, "echo|x\ny"},
+	}
+	for _, c := range cases {
+		res, err := Split(c.in)
+		if err != nil || len(res.Segments) != 1 || res.Substitution {
+			t.Fatalf("%q: %+v %v", c.in, res, err)
+		}
+		if got := strings.Join(res.Segments[0].Words, "|"); got != strings.NewReplacer(`\t`, "\t", `\n`, "\n").Replace(c.want) {
+			t.Errorf("%q: words %q, want %q", c.in, got, c.want)
+		}
+	}
+	if res, _ := Split(`echo $"hello"`); !res.Substitution {
+		t.Error(`$"..." is translated at run time: it must count as a substitution`)
+	}
+	if _, err := Split(`echo $'unterminated`); err == nil {
+		t.Error("an unbalanced $'...' must error")
+	}
+	if w, _ := Words(`-l $'a'`); strings.Join(w, "|") != "-l|$a" {
+		t.Errorf("Words keeps $'...' literal: %q", w)
+	}
+}

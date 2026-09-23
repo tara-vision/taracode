@@ -37,6 +37,8 @@ var readProgramFlags = map[string]writeFlags{
 	"dmesg": {long: []string{"--clear", "--read-clear", "--console-level", "--console-off", "--console-on"}, gnu: true,
 		short: "cCDEn", valued: "lfsF", reason: "dmesg -c, -C, -n, -D and -E change the kernel log"},
 	"ss": {long: []string{"--kill"}, gnu: true, short: "K", valued: "fAFN", reason: "ss -K closes sockets"},
+	"printf": {short: "v",
+		reason: "printf -v sets a shell variable, which a later command can expand into options"},
 }
 
 // readProgramWrites catches the write forms of the read-listed programs: the options in

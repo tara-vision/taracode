@@ -10,13 +10,16 @@ import (
 
 // shellPaths returns the files the segments write or remove, as written on the line: the targets of
 // redirects into files and the operands fileWriters names, also behind sudo, env, xargs and the
-// other wrappers. A relative path is also returned joined to every literal directory an earlier cd
-// or pushd of the line moved to, since the caller resolves it against the directory the line
-// starts in. Paths computed at run time (variables, command substitution) are not seen.
+// other wrappers and after the shell's reserved words (do, then, !, {, ...). A relative path is
+// also returned joined to every literal directory an earlier cd or pushd of the line moved to, since
+// the caller resolves it against the directory the line starts in. Paths computed at run time
+// (variables, command substitution) are not seen.
 func shellPaths(segments []shellwords.Segment) []string {
 	var paths, dirs []string
 	for _, seg := range segments {
-		words := seg.Words[assignmentsEnd(seg.Words):]
+		simple, _ := simpleCommand(seg.Words)
+		simple = withoutGluedBrace(simple)
+		words := simple[assignmentsEnd(simple):]
 		written := writtenOperands(words)
 		for _, r := range seg.Redirects {
 			if writesFile(r) {

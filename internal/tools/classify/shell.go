@@ -33,12 +33,14 @@ func Shell(command string) ShellResult {
 	}
 	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed.Segments)}
 	if parsed.Substitution {
-		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) hides what runs")
+		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) or a translated $\"...\" "+
+			"hides what runs")
 		return out
 	}
 	var hosts []string
+	vars := lineVars{}
 	for _, seg := range parsed.Segments {
-		res, words := shellSegment(seg)
+		res, words := shellSegment(seg, vars)
 		if res.Classification != policy.Read {
 			out.Result = res
 			return out
@@ -49,16 +51,20 @@ func Shell(command string) ShellResult {
 		if len(words) > 0 { // a segment of safe assignments only names no program and no host
 			hosts = append(hosts, hostsIn(words)...)
 		}
+		vars.note(seg.Words)
 	}
 	out.Hosts = hosts
 	return out
 }
 
-// shellSegment classifies one simple command and returns it without its assignment prefix. A
-// redirect into a file, a background job, an assignment outside the safe list or a program that is
-// not a read makes it a mutation.
-func shellSegment(seg shellwords.Segment) (Result, []string) {
-	command := seg.Words[assignmentsEnd(seg.Words):]
+// shellSegment classifies one simple command and returns it without the shell's reserved words
+// before it (do, then, !, {, ...) and without its assignment prefix. A redirect into a file, a
+// background job, an assignment outside the safe list, an argument that expands a value the line
+// controls (vars) or a program that is not a read makes it a mutation; a segment that only opens or
+// closes a compound command, or is the head of a for loop or a case, runs nothing and reads.
+func shellSegment(seg shellwords.Segment, vars lineVars) (Result, []string) {
+	simple, header := simpleCommand(seg.Words)
+	command := simple[assignmentsEnd(simple):]
 	// Redirects and the background flag are checked before the empty-words case below: a segment
 	// that is only a redirect ("> out.txt") or only an assignment ("NAME=value &") must never pass
 	// just because it has no program to classify.
@@ -70,12 +76,21 @@ func shellSegment(seg shellwords.Segment) (Result, []string) {
 	if seg.Background {
 		return mutate(first(command), "background jobs (&) outlive the command timeout"), nil
 	}
-	words, res, ok := splitAssignments(seg.Words)
+	if header {
+		if res, found := vars.expansionCheck(seg.Words, seg.Redirects, nil); found {
+			return res, nil // for x in ${y:=-z}; the list's expansions assign too
+		}
+		return read(""), nil
+	}
+	words, res, ok := splitAssignments(simple)
 	if !ok {
 		return res, nil
 	}
 	if len(words) == 0 {
 		return read(""), nil
+	}
+	if res, found := vars.expansionCheck(simple, seg.Redirects, words); found {
+		return res, nil
 	}
 	return shellProgram(words), words
 }

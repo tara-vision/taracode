@@ -304,3 +304,45 @@ func TestSedBracketsAndBSDInPlaceClusters(t *testing.T) {
 		{"sed '/[/]/w out.txt' in.txt", "sed"},
 	})
 }
+
+// TestShellVariableExpansionsCannotAddOptions (pre-tag round B): once a loop is classified by its
+// body, a loop variable is a value the line itself sets, and unquoted it splits into words any of
+// which can be an option: for x in -delete; do find . $x; done deletes. A variable the line sets (a
+// loop over words, a NAME=value segment) is safe to expand only when no word of its value starts
+// with "-"; ${...} with an operator can assign one (also in a prefix or a redirect), bash's $_ is
+// the last argument of the previous command, printf -v sets one and a special builtin keeps a
+// prefix assignment, so they count as mutations. bash also rewrites $'...' (ANSI-C quoting: the
+// classifier reads the decoded word), $"..." (translated: unseen) and brace expansions, one of
+// which can yield an option. Variables from taracode's own environment are the user's and stay
+// reads.
+func TestShellVariableExpansionsCannotAddOptions(t *testing.T) {
+	checkMutations(t, []hardeningCase{
+		{"for x in -delete; do find . $x; done", "$x"},
+		{"for o in -i; do sed $o s/a/b/ f.txt; done", "$o"},
+		{"for x in --dry-run=none; do kubectl delete pod web --dry-run=client $x; done", "$x"},
+		{"for x in 'a -delete'; do find . $x; done", "$x"},
+		{"TZ=-delete; find . $TZ", "$TZ"},
+		{"LANG='x -exec rm {} ;'; find . -name y $LANG", "$LANG"},
+		{"echo ${x:=-delete}; find . $x", "${x:=-delete}"},
+		{"echo -delete; find . $_", "$_"},
+		{"printf -v TZ -- -delete; find . $TZ", "printf"},
+		{"TZ=${x:=-delete} date; find . $x", "${x:=-delete}"},
+		{"cat < ${x:=-delete}; find . $x", "${x:=-delete}"},
+		{"TZ=-delete exec; find . $TZ", "$TZ"},
+		{"find . $'-delete'", "find"},
+		{"find . $'\\x2ddelete'", "find"},
+		{"sed $'-i' s/a/b/ f.txt", "sed -i"},
+		{"echo $\"x\"", "$\"...\""},
+		{"find . {-delete,-print}", "{-delete,-print}"},
+		{"sed {-i,s/a/b/} f.txt", "{-i,s/a/b/}"},
+		{"find . -{delete,print}", "-{delete,print}"},
+		{"for x in {-delete,a}; do find . $x; done", "$x"},
+		{"for x in ${y:=-delete}; do echo $x; done; find . $y", "${y:=-delete}"},
+	})
+	checkReads(t, []string{
+		"for f in a b; do cat $f; done", "for f in *.go; do wc -l $f; done", "TZ=UTC; date +%H $TZ",
+		"echo $HOME", "ls $HOME/.kube", "for x in a b; do echo ${x}; done", "echo $1 $@ $#",
+		"for n in 1 2 3; do head -n $n f.txt; done", "grep $'\\t' f.txt", "echo $'a b'", "ls {a,b}.txt",
+		"cat f.{txt,md}", "echo {1..5}", "awk '{print $1,$2}' f.txt", "TZ=UTC date; echo $TZ",
+	})
+}
