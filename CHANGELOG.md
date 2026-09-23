@@ -14,13 +14,16 @@ the modes, the configuration layout and the permission store change; migration n
 
 ### Added
 - **Investigate and operate modes.** Investigate (the default) exposes read-only tools and never prompts;
-  operate exposes every tool and routes each mutation through the policy: protected targets are hard
-  denies (kubectl and helm run through `shell` carry their context and namespace too, and a command that
-  touches every namespace, several contexts or namespaces, or one known only at run time counts as touching
-  the protected ones), deny patterns are refused, `kubectl apply`, `terraform apply` and `helm upgrade`
-  dry-run first (a release with a `--post-renderer` is refused, since its dry run would run the renderer),
-  then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`. MCP tools are
-  gated by the per-tool permission only: protected targets and deny patterns do not apply to them.
+  operate exposes every tool and routes each mutation through the policy: protected targets are hard denies
+  (kubectl and helm run through `shell` carry their context and namespace too, also inside loops and
+  subshells, and a command that touches every namespace, several contexts or namespaces, or one taracode
+  cannot determine before it runs counts as touching the protected ones, as after a context switch, a
+  `KUBECONFIG` assignment or a sourced file earlier on the line; kubectl or helm inside another program's
+  string, `sh -c "kubectl ..."`, is not seen), deny patterns are refused, `kubectl apply`, `terraform apply`
+  and `helm upgrade` dry-run first (a release with a `--post-renderer` is refused, since its dry run would run
+  the renderer), then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`.
+  MCP tools are gated by the per-tool permission only: protected targets and deny patterns do not apply to
+  them.
 - **Policy files.** `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml` (lists unioned, booleans
   stricter); a built-in policy applies when neither exists; `/init` writes a starter; `/policy show`;
   `taracode doctor` reports the policy status; a broken policy locks the session to investigate mode.
