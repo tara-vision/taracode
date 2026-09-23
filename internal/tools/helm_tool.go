@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -38,8 +39,8 @@ func HelmTool() *Tool {
 			inv := policy.Invocation{Tool: "helm", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
 				Command: "helm " + raw}
 			if res.Classification == policy.Mutate {
-				_, ns := classify.KubeTargets(words)
-				inv.Targets = kubeTargetsFor(context.Background(), workingDir, helmContext(words), ns)
+				kubeContext, ns := classify.HelmTargets(words)
+				inv.Targets = kubeTargetsFor(context.Background(), workingDir, kubeContext, ns, classify.KubeconfigFlag(words))
 			}
 			return inv
 		},
@@ -60,12 +61,21 @@ func HelmTool() *Tool {
 			if len(words) == 0 || (words[0] != "upgrade" && words[0] != "install") {
 				return "", ErrNoDryRun
 			}
+			if hasWord(words, "--post-renderer") {
+				return "", errPostRendererDryRun
+			}
 			ctx, cancel := withTimeout(ctx, helmTimeout)
 			defer cancel()
 			return runCommand(ctx, workingDir, "helm", helmDryRunArgv(words)...)
 		},
 	}
 }
+
+// errPostRendererDryRun refuses the dry run of a release with a post-renderer: helm runs the
+// --post-renderer program while rendering, so the dry run itself would run it before the user
+// approves the call. No other helm option runs a program.
+var errPostRendererDryRun = errors.New("the dry run would run the --post-renderer program before you approve " +
+	"the call; run the upgrade or install without --post-renderer")
 
 // helmDryRunArgv makes the invocation a real dry run: a --dry-run the model wrote is dropped (with
 // =false or =none helm would install or upgrade for real) and one --dry-run goes at the end of the
@@ -81,18 +91,6 @@ func helmDryRunArgv(words []string) []string {
 		}
 	}
 	return append(out, "--dry-run")
-}
-
-func helmContext(words []string) string {
-	for i, w := range words {
-		if strings.HasPrefix(w, "--kube-context=") {
-			return strings.TrimPrefix(w, "--kube-context=")
-		}
-		if w == "--kube-context" && i+1 < len(words) {
-			return words[i+1]
-		}
-	}
-	return ""
 }
 
 func hasWord(words []string, want string) bool {

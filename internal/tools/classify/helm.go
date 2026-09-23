@@ -30,3 +30,10 @@ func Helm(tokens []string) Result {
 	}
 	return mutate(verb, "helm "+verb+" changes releases")
 }
+
+// HelmTargets reads the kube context (--kube-context) and namespace (-n, --namespace; -A and
+// --all-namespaces are "*") a helm command names, from the tokens before "--".
+func HelmTargets(tokens []string) (context, namespace string) {
+	_, namespace = KubeTargets(tokens)
+	return flagValue(beforeDoubleDash(tokens), "--kube-context"), namespace
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/tools/redact"
+	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // toolMessages returns the tool results of the last chat request, oldest first.
@@ -208,5 +209,80 @@ func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
 	recs, _ := a.storage.ReadAudit("")
 	if len(recs) != 1 || recs[0].Decision != "deny" || recs[0].Rule != "classifier" || recs[0].Classification != "mutate" {
 		t.Fatalf("audit %+v", recs)
+	}
+}
+
+// TestShellRunKubectlHitsProtectedNamespaces drives ruling P2-R34 through the loop: with shell on
+// allow, a kubectl or helm mutation run through the shell in a protected namespace or context is a
+// hard deny and never runs; a shell kubectl read still runs.
+func TestShellRunKubectlHitsProtectedNamespaces(t *testing.T) {
+	fake := "#!/bin/sh\nif [ \"$1\" = config ]; then echo kind-dev; exit 0; fi\n" +
+		"if [ \"$1\" = get ]; then echo pods; exit 0; fi\ntouch \"$KUBE_RAN\"\n"
+	bin := t.TempDir()
+	for _, name := range []string{"kubectl", "helm"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(fake), 0o755); err != nil { //nolint:gosec // test binary
+			t.Fatal(err)
+		}
+	}
+	ranMarker := filepath.Join(t.TempDir(), "ran")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("KUBE_RAN", ranMarker)
+	t.Setenv("KUBECONFIG", "")
+	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("shell", map[string]any{"command": "kubectl -n kube-system delete pod coredns"}),
+		toolCall("shell", map[string]any{"command": "helm uninstall web --kube-context prod-eu"}),
+		toolCall("shell", map[string]any{"command": "kubectl get pods -n kube-system"}),
+		ollamatest.Turn{Content: "ok"})
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
+	msgs := toolMessages(t, srv)
+	if len(msgs) != 3 || !strings.Contains(msgs[0], "kube-system") || !strings.Contains(msgs[1], "prod-eu") ||
+		!strings.Contains(msgs[2], "pods") {
+		t.Fatalf("tool messages %q", msgs)
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 2 || recs[0].Rule != "protected.kube_namespaces" || recs[1].Rule != "protected.kube_contexts" {
+		t.Fatalf("audit %+v", recs)
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("a denied kubectl or helm mutation must not run")
+	}
+}
+
+// TestHelmPostRendererIsRefusedBeforeThePrompt: in operate mode a helm upgrade with a post-renderer
+// fails its required dry run, so the call is refused and audited before any prompt and helm never
+// runs the renderer (ruling P2-R34).
+func TestHelmPostRendererIsRefusedBeforeThePrompt(t *testing.T) {
+	fake := "#!/bin/sh\nif [ \"$1\" = config ]; then echo kind-dev; exit 0; fi\n"
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "kubectl"), []byte(fake), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	ranMarker := filepath.Join(t.TempDir(), "helm-ran")
+	if err := os.WriteFile(filepath.Join(bin, "helm"), []byte("#!/bin/sh\ntouch "+ranMarker+"\n"), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("KUBECONFIG", "")
+	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("helm", map[string]any{"args": "upgrade web ./chart -n apps --post-renderer ./render.sh"}),
+		ollamatest.Turn{Content: "ok"})
+	asked := false
+	a.confirmPermission = func(policy.Invocation, map[string]any) ui.PermissionChoice {
+		asked = true
+		return ui.PermissionChoice{Allowed: true}
+	}
+	a.permissions, _, _ = policy.LoadPermissions("")
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("upgrade") })
+	if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "--post-renderer") {
+		t.Fatalf("%q", msg)
+	}
+	if asked {
+		t.Fatal("the refusal comes before the prompt")
+	}
+	if recs, _ := a.storage.ReadAudit(""); len(recs) != 1 || recs[0].Decision != "deny" || recs[0].Rule != "dry_run" {
+		t.Fatalf("audit %+v", recs)
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("helm must not run")
 	}
 }

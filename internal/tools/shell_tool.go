@@ -32,7 +32,8 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 // ShellTool runs a command line with sh -c in the working directory. stream, when set, receives the
 // output live (NewBuiltinRegistry hands it a redacting one, flushed when the command ends); the
 // result carries the merged output and the exit status. The invocation's targets are the hosts the
-// line names and the files it writes or removes, for the protected targets.
+// line names, the files it writes or removes and the clusters its kubectl and helm mutations act on,
+// for the protected targets.
 func ShellTool(stream io.Writer) *Tool {
 	return &Tool{
 		Name: "shell", ReadForm: true,
@@ -45,8 +46,12 @@ func ShellTool(stream io.Writer) *Tool {
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
+			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}
+			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
+				targets.KubeContext, targets.KubeNamespace = shellKubeTargets(context.Background(), workingDir, res.Kube)
+			}
 			return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: command, Targets: policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}}
+				Command: command, Targets: targets}
 		},
 		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 			command, err := required(args, "command")
@@ -134,4 +139,39 @@ func expandHome(p, home string) string {
 		}
 	}
 	return p
+}
+
+// shellKubeTargets resolves the clusters the kubectl and helm mutations of a shell line act on, as
+// the kubectl tool does (what a command does not name is the current context or namespace of its
+// kubeconfig), and reports "*" for a value the shell computes at run time or when the line names
+// more than one context or namespace.
+func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.KubeTarget) (
+	kubeContext, namespace string,
+) {
+	contexts := make([]string, 0, len(refs))
+	namespaces := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		t := kubeTargetsFor(ctx, workingDir, runTimeAsAll(ref.Context), runTimeAsAll(ref.Namespace), ref.Kubeconfig)
+		contexts = append(contexts, t.KubeContext)
+		namespaces = append(namespaces, t.KubeNamespace)
+	}
+	return oneOrAll(contexts), oneOrAll(namespaces)
+}
+
+// runTimeAsAll maps a value the shell computes at run time ($CTX) to "*": it can be any.
+func runTimeAsAll(value string) string {
+	if strings.ContainsAny(value, "$`") {
+		return "*"
+	}
+	return value
+}
+
+// oneOrAll is the value every entry shares, or "*" when they differ.
+func oneOrAll(values []string) string {
+	for _, v := range values[1:] {
+		if v != values[0] {
+			return "*"
+		}
+	}
+	return values[0]
 }

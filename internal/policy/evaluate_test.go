@@ -107,3 +107,19 @@ func TestBuiltInPolicyDeniesCommandsNamingThePolicyFile(t *testing.T) {
 		t.Errorf("another policy.yaml is not the policy file: %+v", v)
 	}
 }
+
+// TestSeveralContextsHitProtectedContexts: a shell line that names more than one kube context
+// reports "*", which touches the protected contexts too (ruling P2-R34).
+func TestSeveralContextsHitProtectedContexts(t *testing.T) {
+	inv := mutate("shell", "", "kubectl --context a delete pod x; kubectl --context b delete pod y",
+		Targets{KubeContext: "*", KubeNamespace: "apps"})
+	if v := Default().Evaluate(ModeOperate, inv); v.Allow || v.Rule != "protected.kube_contexts" ||
+		!strings.Contains(v.Reason, "*prod*") {
+		t.Fatalf("%+v", v)
+	}
+	open := Default()
+	open.Protected.KubeContexts = nil
+	if v := open.Evaluate(ModeOperate, inv); !v.Allow {
+		t.Fatalf("without protected contexts the call goes on to the permission: %+v", v)
+	}
+}
