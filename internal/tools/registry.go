@@ -132,6 +132,15 @@ func (r *Registry) Redactions() int64 {
 	return r.redactor.Count()
 }
 
+// Exposed reports whether the model is offered the tool in mode, as Definitions decides it. The
+// loop refuses a call to a tool it was not offered: one repeated from a resumed session, or made up.
+func (r *Registry) Exposed(name string, mode policy.Mode) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	t, ok := r.tools[name]
+	return ok && r.exposed(t, mode)
+}
+
 func (r *Registry) exposed(t *Tool, mode policy.Mode) bool {
 	if r.offline && t.External {
 		return false

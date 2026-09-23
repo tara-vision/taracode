@@ -105,7 +105,9 @@ type Redact struct {
 // CurrentVersion is the only policy file version this build reads.
 const CurrentVersion = 1
 
-// Default is the built-in policy, in force when no policy file exists.
+// Default is the built-in policy, in force when no policy file exists. The last deny pattern
+// refuses any mutating command that names a policy file: Load already protects the policy files as
+// paths, and the pattern also catches a shell command whose path the protected paths cannot see.
 func Default() Policy {
 	on := true
 	return Policy{
@@ -116,7 +118,8 @@ func Default() Policy {
 			KubeNamespaces: []string{"kube-system"},
 			Paths:          []string{"**/*.tfstate", ".git/**"},
 		},
-		Deny:          DenyRules{Commands: []string{"rm -rf /*", "kubectl delete namespace *", "terraform destroy*"}},
+		Deny: DenyRules{Commands: []string{"rm -rf /*", "kubectl delete namespace *", "terraform destroy*",
+			"*.taracode/policy.yaml*"}},
 		RequireDryRun: RequireDryRun{KubectlApply: &on, TerraformApply: &on, HelmUpgrade: &on},
 		Redact:        Redact{Enabled: &on},
 	}

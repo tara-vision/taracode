@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,7 +30,8 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 }
 
 // ShellTool runs a command line with sh -c in the working directory. stream, when set, receives the
-// output live; the result carries the merged output and the exit status.
+// output live; the result carries the merged output and the exit status. The invocation's targets
+// are the hosts the line names and the files it writes or removes, for the protected targets.
 func ShellTool(stream io.Writer) *Tool {
 	return &Tool{
 		Name: "shell", ReadForm: true,
@@ -38,11 +41,11 @@ func ShellTool(stream io.Writer) *Tool {
 			{Name: "command", Type: "string", Description: "The command line", Required: true},
 			{Name: "timeout", Type: "integer", Description: "Seconds before the command is killed (default 60, max 600)"},
 		},
-		Classify: func(args map[string]any, _ string) policy.Invocation {
+		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
 			return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: command, Targets: policy.Targets{Hosts: res.Hosts}}
+				Command: command, Targets: policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}}
 		},
 		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 			command, err := required(args, "command")
@@ -85,4 +88,46 @@ func ShellTool(stream io.Writer) *Tool {
 			return out, nil
 		},
 	}
+}
+
+// shellTargets resolves the files a shell line writes or removes: a leading ~, $HOME or ${HOME} to
+// the home directory, a relative path against the working directory, and a glob to itself and to
+// the files it matches now.
+func shellTargets(paths []string, workingDir string) []string {
+	home, _ := os.UserHomeDir()
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	for _, p := range paths {
+		abs := resolvePath(expandHome(p, home), workingDir)
+		add(abs)
+		if strings.ContainsAny(p, "*?[") {
+			matches, _ := filepath.Glob(abs)
+			for _, m := range matches {
+				add(m)
+			}
+		}
+	}
+	return out
+}
+
+// expandHome replaces a leading ~, $HOME or ${HOME} with home.
+func expandHome(p, home string) string {
+	if home == "" {
+		return p
+	}
+	for _, prefix := range []string{"~", "$HOME", "${HOME}"} {
+		if p == prefix {
+			return home
+		}
+		if rest, ok := strings.CutPrefix(p, prefix+"/"); ok {
+			return filepath.Join(home, rest)
+		}
+	}
+	return p
 }

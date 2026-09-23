@@ -42,6 +42,10 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 	if pat, ok := firstGlob(p.Protected.KubeContexts, t.KubeContext); ok {
 		return denied("protected.kube_contexts", "kube context %q matches the protected pattern %q", t.KubeContext, pat), true
 	}
+	if t.KubeNamespace == "*" && len(p.Protected.KubeNamespaces) > 0 {
+		return denied("protected.kube_namespaces", "the command touches every namespace (-A), including the protected %s",
+			strings.Join(p.Protected.KubeNamespaces, ", ")), true
+	}
 	if pat, ok := firstGlob(p.Protected.KubeNamespaces, t.KubeNamespace); ok {
 		return denied("protected.kube_namespaces",
 			"namespace %q matches the protected pattern %q", t.KubeNamespace, pat), true

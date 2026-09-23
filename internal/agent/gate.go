@@ -12,13 +12,20 @@ import (
 )
 
 // executeOne runs the gate and then the tool. Every outcome, including a refusal, comes back as
-// text so the model learns what happened. Order: classify, policy (mode, protected targets, deny
-// patterns), audit, dry run, permission, edit preview, execute.
+// text so the model learns what happened. Order: classify, exposure (a tool the model was not
+// offered does not run), policy (mode, protected targets, deny patterns), audit, dry run,
+// permission, edit preview, execute.
 func (a *Assistant) executeOne(run toolRun) toolOutcome {
 	call := run.call
 	inv, err := a.toolRegistry.Classify(call.Tool, call.Params, a.workingDir)
 	if err != nil {
 		return toolOutcome{result: "Error: " + err.Error(), isError: true}
+	}
+	if !a.toolRegistry.Exposed(call.Tool, a.mode) {
+		if !a.toolRegistry.Exposed(call.Tool, policy.ModeOperate) {
+			return a.refuseUnavailable(call.Tool)
+		}
+		inv = operateOnly(inv)
 	}
 	if inv.Classification == policy.Mutate {
 		if outcome, ok := a.gateMutation(inv, call); !ok {
@@ -35,6 +42,26 @@ func (a *Assistant) executeOne(run toolRun) toolOutcome {
 		}
 	}
 	return a.runTool(run)
+}
+
+// refuseUnavailable answers a call to a tool no mode offers in this session: offline hides the tools
+// that reach the internet, and a call the model repeats from a resumed session or makes up must not
+// run them anyway.
+func (a *Assistant) refuseUnavailable(tool string) toolOutcome {
+	message := fmt.Sprintf("Tool '%s' is not available in this session: offline is set, "+
+		"so the tools that reach the internet are hidden", tool)
+	fmt.Println(a.renderer.WarningMessage(message))
+	return toolOutcome{result: message, denied: true}
+}
+
+// operateOnly marks a call to a tool investigate mode does not offer as a mutation whatever its
+// arguments (an edit_file preview included), so the mode check refuses it with its usual message.
+func operateOnly(inv policy.Invocation) policy.Invocation {
+	if inv.Classification != policy.Mutate {
+		inv.Classification = policy.Mutate
+		inv.Reason = inv.Tool + " is only offered in operate mode"
+	}
+	return inv
 }
 
 // gateMutation applies the policy, the dry run and the permission store to a mutate invocation and

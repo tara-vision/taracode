@@ -72,3 +72,38 @@ func TestDryRunCanBeSwitchedOffPerKind(t *testing.T) {
 		t.Fatal("the investigate denial must tell the model how the user switches modes")
 	}
 }
+
+// TestAllNamespacesMutationHitsProtectedNamespaces: -A maps to the namespace "*", which no concrete
+// protected pattern matches; a mutation of every namespace touches the protected ones too (final
+// review I2).
+func TestAllNamespacesMutationHitsProtectedNamespaces(t *testing.T) {
+	inv := mutate("kubectl", "delete", "kubectl delete pods --all -A", Targets{KubeContext: "kind-dev", KubeNamespace: "*"})
+	v := Default().Evaluate(ModeOperate, inv)
+	if v.Allow || v.Rule != "protected.kube_namespaces" || !strings.Contains(v.Reason, "every namespace") ||
+		!strings.Contains(v.Reason, "kube-system") {
+		t.Fatalf("an all-namespace mutation must hit the protected namespaces: %+v", v)
+	}
+	open := Default()
+	open.Protected.KubeNamespaces = nil
+	if v := open.Evaluate(ModeOperate, inv); !v.Allow || v.Rule != "policy" {
+		t.Fatalf("without protected namespaces an all-namespace mutation goes on to the permission: %+v", v)
+	}
+}
+
+// TestBuiltInPolicyDeniesCommandsNamingThePolicyFile: belt and braces for R6 (final review I1): a
+// mutating command that names a policy file is refused by the built-in deny patterns, even when its
+// path is built so the protected paths cannot see it.
+func TestBuiltInPolicyDeniesCommandsNamingThePolicyFile(t *testing.T) {
+	for _, command := range []string{
+		"echo x > .taracode/policy.yaml", "sed -i 's/investigate/operate/' ~/.taracode/policy.yaml",
+		"rm $HOME/.taracode/policy.yaml", "cp /tmp/p.yaml ./.taracode/policy.yaml",
+	} {
+		v := Default().Evaluate(ModeOperate, mutate("shell", "", command, Targets{}))
+		if v.Allow || v.Rule != "deny.commands" {
+			t.Errorf("%q: %+v", command, v)
+		}
+	}
+	if v := Default().Evaluate(ModeOperate, mutate("shell", "", "echo x > notes/policy.yaml", Targets{})); !v.Allow {
+		t.Errorf("another policy.yaml is not the policy file: %+v", v)
+	}
+}
