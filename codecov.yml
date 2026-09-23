@@ -1,0 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+        informational: true
+comment:
+  layout: "condensed_header, diff, files"
+  require_changes: true
