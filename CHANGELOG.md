@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0-alpha.2] - 2026-09-23
+
+Second pre-release of the v3 line (ROADMAP.md, Phase 2 "Tools and policy"). Breaking: the tool set,
+the modes, the configuration layout and the permission store change; migration notes below.
+
+### Added
+- **Investigate and operate modes.** Investigate (the default) exposes read-only tools and never prompts;
+  operate exposes every tool and routes each mutation through the policy: protected targets are hard
+  denies, deny patterns are refused, `kubectl apply`, `terraform apply` and `helm upgrade` dry-run first,
+  then the remembered permission or a prompt decides. `/mode investigate|operate`, `--mode`.
+- **Policy files.** `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml` (lists unioned, booleans
+  stricter); a built-in policy applies when neither exists; `/init` writes a starter; `/policy show`;
+  `taracode doctor` reports the policy status; a broken policy locks the session to investigate mode.
+- **Sixteen tools with a per-call classifier** (read_file, list_files, search_files, write_file, edit_file,
+  shell, git, kubectl, helm, terraform, docker, cloud, scan, web_search, web_fetch, get_datetime). Every call
+  is classified read or mutate from its arguments: `git status` and `kubectl get` are reads, `git push` and
+  `kubectl delete` are mutations, a shell pipeline is a read only when every command is on the read-only
+  list with no file redirect. Schemas total under 8 KB.
+- **Terraform plans as summaries.** `terraform plan` keeps the plan file for the session and returns adds,
+  changes, destroys, replacements and a risk list; `terraform apply` applies that plan and refuses without one.
+- **Redaction** of AWS, GCP, GitHub, Slack, JWT, private-key, URL-password and `password=`/`token=` secrets,
+  plus the values of `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*` environment variables, in every tool output
+  before the model, the session or the screen sees it; counted in `/stats`.
+- **Audit log.** Every mutate-classified call is appended to `.taracode/audit.jsonl` before it runs, with the
+  decision and the rule; `/audit`, `/audit all`, `/audit export json`, `/audit clear`.
+- **AGENTS.md** is read as project context next to TARACODE.md. **`--offline`** disables the web tools and the
+  update check.
+- CI: no Go file over 800 lines, per-package coverage floors (`scripts/coverage-gate.sh`), `codecov.yml`.
+
+### Changed
+- **Configuration v3:** `model` is a string, sampling moved to `generation:`, `security.default_severity` to
+  `scan.default_severity`, new `mode` and `offline`, `context.max_tool_iterations` defaults to 20. A 2.x
+  `model:` section is read with a one-line warning; `agents:` and `watch:` are ignored with a warning.
+- `/init` no longer gates the REPL: an uninitialised directory runs in investigate mode with nothing saved;
+  `/init` enables sessions, memory, history and operate mode.
+- `.taracode/permissions.json` is version 3, one rule per tool for mutations; a 2.x file is ignored once.
+- `web_fetch` refuses loopback, private, link-local and carrier-grade NAT addresses.
+- Tool executors take a context; each tool has its own timeout (shell: `timeout` argument, max 600 s).
+- The REPL is split into files with one command table; `/help` is generated from it.
+- The loop package is `internal/agent`.
+
+### Removed
+- The seven-agent system and the orchestrator, `/agent`, `/watch`, `/task` and the task templates (runbooks
+  return in Phase 4), security mode (`/mode security`, `/audit export html`), the JSON-in-content tool
+  fallback and the four prompt variants, the permission categories, and 42 of the 58 tools (folded into
+  shell, git, kubectl, helm, terraform, docker, cloud and scan).
+
+### Migration from 2.x and 3.0.0-alpha.1
+- `~/.taracode/config.yaml`: rename `model:` (section) to `generation:` and set `model: <name>`; rename
+  `security.default_severity` to `scan.default_severity`; delete `agents:` and `watch:`.
+- Delete `.taracode/permissions.json` (or let taracode ignore it) and answer the prompts again.
+- Scripts that relied on `/task`, `/agent` or `/watch` have no replacement in this release.
+
 ## [3.0.0-alpha.1] - 2026-09-22
 
 Phase 1 of the v3 native core (see [ROADMAP.md](ROADMAP.md)): taracode talks to Ollama over its native
@@ -307,7 +360,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.2...HEAD
+
+[3.0.0-alpha.2]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.1...v3.0.0-alpha.2
 
 [3.0.0-alpha.1]: https://github.com/tara-vision/taracode/compare/v2.1.0...v3.0.0-alpha.1
 

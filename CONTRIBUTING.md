@@ -52,8 +52,9 @@ ollama pull qwen3.8:27b     # gemma4:12b on 16 GB machines
 
 - Follow standard Go conventions and formatting
 - Run `gofmt -s -w .` before committing (the `-s` flag simplifies code)
-- Run `go vet ./...`, `make lint` (golangci-lint) and `make vuln` (govulncheck) before opening a PR
-- Keep functions focused and well-documented
+- Run `go vet ./...`, `make lint` (golangci-lint), `make vuln` (govulncheck) and `make coverage-gate`
+  (per-package coverage floors) before opening a PR
+- Keep functions focused and well-documented; CI fails on any Go file over 800 lines, test files included
 - Write tests for new functionality
 
 **Formatting check:**
@@ -118,25 +119,30 @@ test: add tests for memory manager
 
 ```
 taracode/
-├── cmd/                    # CLI commands
-│   ├── root.go             # Cobra CLI setup
-│   ├── repl.go             # Interactive REPL
+├── cmd/                     # CLI commands and the REPL (one file per command group, e.g. mode_cmd.go)
+│   ├── root.go              # Cobra CLI setup
+│   ├── repl.go              # Interactive REPL loop
+│   ├── commands.go          # The command table: dispatch, /help, completion
 │   └── ...
 ├── internal/
-│   ├── agent/              # Multi-agent system
-│   ├── assistant/          # Core AI loop
-│   ├── context/            # Project context analysis
-│   ├── history/            # Operation history
-│   ├── mcp/                # Model Context Protocol
-│   ├── memory/             # Project memory
-│   ├── orchestrator/       # Agent orchestration
-│   ├── permissions/        # Tool permissions
-│   ├── provider/           # LLM providers (Ollama, vLLM, llama.cpp)
-│   ├── search/             # Web search providers
-│   ├── storage/            # Session persistence
-│   ├── tools/              # Tool implementations
-│   ├── ui/                 # Terminal UI
-│   └── watch/              # Screen monitoring
+│   ├── agent/               # The agentic loop: classify, policy, audit, dry run, permission, execute
+│   ├── policy/              # Modes, the policy YAML and its merge, the permission store
+│   ├── tools/                # The sixteen built-in tools and their registry
+│   │   ├── classify/          # Per-invocation read/mutate classifiers (git, kubectl, helm, terraform, ...)
+│   │   ├── shellwords/        # Shell command-line tokenizer
+│   │   ├── redact/            # Secret redaction of tool output
+│   │   └── tfplan/            # terraform plan -json summariser
+│   ├── llm/                  # Transport to the model server (native Ollama, OpenAI-compatible adapter)
+│   ├── models/                # Embedded model registry and host RAM diagnostics
+│   ├── context/               # Project context analysis
+│   ├── history/               # Operation history and undo
+│   ├── mcp/                   # Model Context Protocol
+│   ├── memory/                # Project memory
+│   ├── provider/              # LLM providers (Ollama, vLLM, llama.cpp)
+│   ├── search/                # Web search providers
+│   ├── storage/               # Session persistence and the audit log
+│   ├── upgrade/               # Auto-upgrade
+│   └── ui/                    # Terminal UI
 ├── Makefile
 ├── go.mod
 └── README.md
@@ -144,11 +150,16 @@ taracode/
 
 ## Adding New Tools
 
-1. Add your tool implementation in `internal/tools/`
-2. Add the tool definition in `definitions.go`
-3. Register the tool in `registry.go`
-4. Add tests for your tool
-5. Update documentation if needed
+taracode ships sixteen tools (`internal/tools/builtin.go`); there is no `definitions.go` or separate
+registration step left from the old 58-tool set.
+
+1. Add your tool as a `*tools.Tool` (name, description, params, a `Classify` function that returns
+   `policy.Read` or `policy.Mutate` for each invocation, `Run`, and `DryRun` if the tool needs one) - see
+   any file in `internal/tools/` such as `kubectl_tool.go` for the pattern.
+2. Register it in `Builtin()` in `internal/tools/builtin.go`.
+3. Add a classifier under `internal/tools/classify/` if the read/mutate split depends on the command line.
+4. Add tests for the tool and its classifier.
+5. Update the Tools table in `README.md` and the operator view.
 
 ## Adding New Providers
 
