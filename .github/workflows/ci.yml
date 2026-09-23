@@ -50,6 +50,9 @@ jobs:
       - name: Tests
         run: go test -race -coverprofile=coverage.out ./...
 
+      - name: Coverage gate
+        run: bash scripts/coverage-gate.sh
+
       - name: Upload coverage
         uses: codecov/codecov-action@v7
         with:
@@ -67,6 +70,15 @@ jobs:
         run: |
           if git grep -n -E 'tara\.lab|aramis|porthos|192\.168\.' -- . ':!.github/workflows/ci.yml'; then
             echo "Lab hostnames must not appear in the public repository."
+            exit 1
+          fi
+
+      - name: No Go file over 800 lines
+        run: |
+          over=$(git ls-files '*.go' | xargs wc -l | awk '$2 != "total" && $1 > 800 {print}')
+          if [ -n "$over" ]; then
+            echo "$over"
+            echo "Go files must stay under 800 lines (ROADMAP.md, engineering hygiene)."
             exit 1
           fi
 

@@ -1,4 +1,4 @@
-.PHONY: build install test clean run deps build-all lint vuln snapshot lab-smoke
+.PHONY: build install test clean run deps build-all lint vuln coverage-gate snapshot lab-smoke
 
 # Binary name
 BINARY=taracode
@@ -32,6 +32,9 @@ lint:
 
 vuln:
 	$(GOVULNCHECK) ./...
+
+coverage-gate:
+	bash scripts/coverage-gate.sh
 
 clean:
 	rm -f $(BINARY)
