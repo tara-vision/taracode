@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -66,8 +64,5 @@ func TestShellRunKubectlAndHelmCarryTheirKubeTargets(t *testing.T) {
 	}
 	if inv := classifyIn("kubectl get pods -n kube-system"); inv.Classification != policy.Read {
 		t.Errorf("a kubectl read stays a read: %+v", inv)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o600); err != nil {
-		t.Fatal(err)
 	}
 }
