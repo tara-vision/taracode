@@ -44,7 +44,9 @@ func Shell(command string) ShellResult {
 		if out.Verb == "" {
 			out.Verb = res.Verb
 		}
-		hosts = append(hosts, hostsIn(words)...)
+		if len(words) > 0 { // a segment of safe assignments only names no program and no host
+			hosts = append(hosts, hostsIn(words)...)
+		}
 	}
 	out.Hosts = hosts
 	return out
@@ -318,8 +320,11 @@ func tail(tokens []string) []string {
 // host name.
 var nonHostSuffixes = []string{".log", ".txt", ".json", ".yaml", ".yml", ".tf", ".go"}
 
-// hostsIn returns the host names on a command line: URL hosts and bare dotted names.
+// hostsIn returns the host names in a command's arguments: URL hosts and bare dotted names.
 func hostsIn(words []string) []string {
+	if len(words) < 2 {
+		return nil
+	}
 	var hosts []string
 	for _, w := range words[1:] {
 		if u, err := url.Parse(w); err == nil && u.Host != "" {

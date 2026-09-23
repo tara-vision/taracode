@@ -12,14 +12,19 @@ import (
 )
 
 // executeOne runs the gate and then the tool. Every outcome, including a refusal, comes back as
-// text so the model learns what happened. Order: classify, exposure (a tool the model was not
-// offered does not run), policy (mode, protected targets, deny patterns), audit, dry run,
-// permission, edit preview, execute.
+// text so the model learns what happened. Order: classify (a classifier that panics is a refusal),
+// exposure (a tool the model was not offered does not run), policy (mode, protected targets, deny
+// patterns), audit, dry run, permission, edit preview, execute.
 func (a *Assistant) executeOne(run toolRun) toolOutcome {
 	call := run.call
-	inv, err := a.toolRegistry.Classify(call.Tool, call.Params, a.workingDir)
+	inv, panicked, err := a.classify(call)
 	if err != nil {
 		return toolOutcome{result: "Error: " + err.Error(), isError: true}
+	}
+	if panicked {
+		a.audit(inv, "deny", "classifier", inv.Reason, false)
+		fmt.Println(a.renderer.WarningMessage("Blocked: " + inv.Reason))
+		return toolOutcome{result: "Blocked: " + inv.Reason, denied: true}
 	}
 	if !a.toolRegistry.Exposed(call.Tool, a.mode) {
 		if !a.toolRegistry.Exposed(call.Tool, policy.ModeOperate) {
@@ -42,6 +47,20 @@ func (a *Assistant) executeOne(run toolRun) toolOutcome {
 		}
 	}
 	return a.runTool(run)
+}
+
+// classify runs the tool's classifier. A classifier that panics must never take the session down:
+// the call then becomes a mutation whose reason carries the panic, and executeOne refuses it.
+func (a *Assistant) classify(call *ToolCall) (inv policy.Invocation, panicked bool, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			inv = policy.Invocation{Tool: call.Tool, Classification: policy.Mutate, WorkingDir: a.workingDir,
+				Reason: fmt.Sprintf("the %s classifier failed (%v), so the call is refused", call.Tool, p)}
+			panicked, err = true, nil
+		}
+	}()
+	inv, err = a.toolRegistry.Classify(call.Tool, call.Params, a.workingDir)
+	return inv, false, err
 }
 
 // refuseUnavailable answers a call to a tool no mode offers in this session: offline hides the tools

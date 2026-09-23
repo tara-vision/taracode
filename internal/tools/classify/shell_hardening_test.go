@@ -276,3 +276,19 @@ func TestShellFailsClosedOnSameClassHoles(t *testing.T) {
 		"cat /etc/hosts", "grep -rn TODO .", "git log -n 3",
 	})
 }
+
+// TestShellAssignmentOnlySegments: a segment that only sets variables names no program. With the
+// safe variables it is a read, as before the fix wave (which made it panic in hostsIn); with any
+// other variable it is a mutation.
+func TestShellAssignmentOnlySegments(t *testing.T) {
+	checkReads(t, []string{
+		"TZ=UTC", "LANG=C", "TZ=UTC; date", "NO_COLOR=1 && ls", "KUBECONFIG=/x && kubectl get pods",
+		"AWS_PROFILE=dev; aws s3 ls", "LC_ALL=C LANG=C", "PAGER=cat | cat",
+	})
+	checkMutations(t, []hardeningCase{
+		{"PATH=/tmp/bin", "PATH"}, {"TZ=UTC FOO=bar", "FOO"}, {"FOO=bar; ls", "FOO"},
+	})
+	if got := hostsIn(nil); got != nil {
+		t.Errorf("hostsIn of no words: %v", got)
+	}
+}
