@@ -59,9 +59,10 @@ build-all:
 snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish,sign
 
-# Three real prompts against a lab Ollama. Needs LAB_HOST=http://<host>:<port> in the environment.
+# Three real sessions against a lab Ollama. Needs LAB_HOST=http://<host>:<port> in the environment.
 lab-smoke: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) doctor --host $(LAB_HOST)
-	cd $$(mktemp -d) && printf '/init\nWhat is 2+2? Answer with one word.\n/context\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
-	cd $$(mktemp -d) && printf '/init\n/think high\nList the files in this directory using a tool, then say done.\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
+	cd $$(mktemp -d) && printf 'What is 2+2? Answer with one word.\n/context\n/mode\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
+	cd $$(mktemp -d) && printf '/init\n/mode operate\n/think high\nList the files in this directory using a tool, then say done.\n/audit\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
+	cd $$(mktemp -d) && printf '/init\nCreate a file named hello.txt containing the word hi, using a tool.\n/audit\n/policy show\nexit\n' | $(CURDIR)/$(BINARY) --host $(LAB_HOST) --model $(LAB_MODEL) --no-spinner
