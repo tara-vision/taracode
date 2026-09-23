@@ -223,6 +223,57 @@ func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
 	}
 }
 
+// TestRound2FunctionAndNULHolesAreRefused drives pre-tag round 2 items 1 and 2 through the real
+// loop: in investigate mode a function-shadowed delete and a NUL-truncated find delete are refused
+// with the mode message and no file is removed; in operate mode under the built-in policy a kubectl
+// whose namespace is spelled kube-system$'\x00' (bash drops the NUL and acts on kube-system) is a
+// hard deny and kubectl never runs.
+func TestRound2FunctionAndNULHolesAreRefused(t *testing.T) {
+	t.Run("investigate refuses the function and NUL deletes", func(t *testing.T) {
+		a, srv, dir := gateAssistant(t, policy.ModeInvestigate,
+			toolCall("shell", map[string]any{"command": `ls() { find . "$@"; }; ls -delete`}),
+			toolCall("shell", map[string]any{"command": `find . $'-delete\x00'`}),
+			ollamatest.Turn{Content: "ok"})
+		for _, name := range []string{"keep1", "keep2"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = captureStdout(t, func() { _ = a.ProcessMessage("look") })
+		msgs := toolMessages(t, srv)
+		if len(msgs) != 2 {
+			t.Fatalf("every call gets a result: %q", msgs)
+		}
+		for i, msg := range msgs {
+			if !strings.Contains(msg, "investigate mode is read-only") {
+				t.Errorf("call %d must be refused: %q", i, msg)
+			}
+		}
+		for _, name := range []string{"keep1", "keep2"} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+				t.Fatalf("%s must survive a refused delete: %v", name, err)
+			}
+		}
+	})
+	t.Run("operate denies the NUL-truncated protected namespace", func(t *testing.T) {
+		ranMarker := fakeKubeTools(t)
+		setProcessKubeconfig(t, false)
+		a, srv, _ := gateAssistant(t, policy.ModeOperate,
+			toolCall("shell", map[string]any{"command": `kubectl delete pod coredns -n kube-system$'\x00'`}),
+			ollamatest.Turn{Content: "ok"})
+		_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
+		if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "kube-system") {
+			t.Fatalf("the NUL namespace must deny on the protected kube-system: %q", msg)
+		}
+		if recs, _ := a.storage.ReadAudit(""); len(recs) != 1 || recs[0].Rule != "protected.kube_namespaces" {
+			t.Fatalf("audit %+v", recs)
+		}
+		if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+			t.Fatal("the delete must not run")
+		}
+	})
+}
+
 // fakeKubeTools puts a kubectl and a helm on PATH that answer the target resolution with kind-dev,
 // print "pods" for a get, and otherwise touch the returned marker: a denied call must never make it.
 func fakeKubeTools(t *testing.T) (marker string) {

@@ -19,6 +19,8 @@ var everydayReads = []string{
 	"cat a | grep b | sort | uniq -c", "kubectl get pods -o yaml", "kubectl get pods --context dev -n apps",
 	"KUBECONFIG=~/.kube/dev kubectl get pods", "TZ=UTC date", "sed 's/[/]/_/g' f", "sed -n '1,5p' f",
 	"for f in a b; do cat $f; done", "if true; then ls; fi",
+	// added in pre-tag round 2 (item 9), from the round-1 re-review's 36 reads
+	"cat \"$HOME/.kube/config\"", "kubectl get pods | grep Running | wc -l",
 }
 
 // TestTheEverydayReadsStayReads locks everydayReads (pre-tag round).
