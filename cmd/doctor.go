@@ -22,14 +22,11 @@ var doctorCmd = &cobra.Command{
 	Short: "Diagnose the LLM server, installed models and external tools",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		targetHost, apiKey, vendor := resolveDoctorTarget()
+		targetHost, apiKey, vendor, configuredModel := resolveDoctorTarget()
 		if targetHost == "" {
 			return fmt.Errorf("LLM server host not found; set --host, TARACODE_HOST, or hosts: in config.yaml")
 		}
-		// model (not viper.GetString("model")) is the --model flag: "model" is a config section
-		// (model.temperature, model.top_p, ...) in config.yaml, not a plain viper string key - see
-		// the note on the flag's StringVar in root.go's init.
-		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, model)
+		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
 			return err
 		}
@@ -41,13 +38,16 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
-// resolveDoctorTarget picks the host, API key and vendor to check: --host (or TARACODE_HOST, or
-// config.yaml's host:) wins, otherwise the hosts: config's default host supplies whatever is still
-// missing. Same resolution startREPL runs at the top of the REPL.
-func resolveDoctorTarget() (targetHost, apiKey, vendor string) {
+// resolveDoctorTarget picks the host, API key, vendor and model to check: --host (or
+// TARACODE_HOST, or config.yaml's host:/model:) wins, otherwise the hosts: config's default host
+// supplies whatever is still missing. Same resolution startREPL runs at the top of the REPL.
+// "model" is a plain viper string key in v3 (--model is bound to it; the 2.x model: section is a
+// map, which viper.GetString turns into "").
+func resolveDoctorTarget() (targetHost, apiKey, vendor, configuredModel string) {
 	targetHost = viper.GetString("host")
 	apiKey = viper.GetString("key")
 	vendor = viper.GetString("vendor")
+	configuredModel = viper.GetString("model")
 	if defaultHost, ok := GetHostsConfig().GetDefaultHost(); ok {
 		if targetHost == "" {
 			targetHost = defaultHost.URL
@@ -58,8 +58,11 @@ func resolveDoctorTarget() (targetHost, apiKey, vendor string) {
 		if vendor == "" && defaultHost.Vendor != "" {
 			vendor = defaultHost.Vendor
 		}
+		if configuredModel == "" && len(defaultHost.Models) > 0 {
+			configuredModel = defaultHost.Models[0]
+		}
 	}
-	return targetHost, apiKey, vendor
+	return targetHost, apiKey, vendor, configuredModel
 }
 
 // doctorResolveWindow is the resolveWindow function every Diagnose call in this file passes: the

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/context"
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/policy"
@@ -24,7 +23,7 @@ const (
 	providerInitTimeout      = 2 * time.Minute // Timeout for provider initialization with retries
 	apiResponseTimeout       = 5 * time.Minute
 	modelOperationTimeout    = 30 * time.Second // Timeout for model list/switch operations
-	defaultMaxToolIterations = 10               // Default max tool call iterations before stopping
+	defaultMaxToolIterations = 20               // Default max tool call iterations before stopping
 )
 
 type Assistant struct {
@@ -88,15 +87,20 @@ type Assistant struct {
 	maxIterations   int // Configurable max tool iterations per message
 	modelOptions    ModelOptions
 
+	// Edit preview and memory settings (Task 13: from Options, no viper reads at call time)
+	previewEdits     bool
+	previewThreshold int
+	memoryEnabled    bool
+	memoryMaxTokens  int
+
 	// Truncation tracking for /context display
 	truncationEvents []TruncationResult
 }
 
 // New connects to the LLM server, picks the model, loads the policy, the permission store and the
-// redactor, builds the tool registry and the system prompt.
-func New(
-	host, apiKey, configModel, vendor string, streaming, enableSpinner bool, toolCfg tools.Config,
-) (*Assistant, error) {
+// redactor, builds the tool registry and the system prompt. Every setting comes from opts: no
+// package under internal/ reads viper (cmd's loadOptions does, with the 2.x migrations).
+func New(opts Options) (*Assistant, error) {
 	renderer := ui.NewRenderer()
 
 	// Create context with timeout for provider initialization
@@ -104,47 +108,53 @@ func New(
 	defer cancel()
 
 	// Create provider (auto-detects vendor if not specified)
-	prov, err := provider.New(ctx, host, vendor, apiKey)
+	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
-	workingDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+	workingDir := opts.WorkingDir
+	if workingDir == "" {
+		workingDir, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get working directory: %w", err)
+		}
 	}
 
-	// Initialize storage manager first (to load persisted model preference)
+	// Initialize storage manager first (to load persisted model preference). Ephemeral sessions
+	// (opts.Ephemeral) skip this entirely: no session, no permissions, no warning about it - the
+	// caller asked for nothing to be persisted.
 	var storageMgr *storage.Manager
 	var session *storage.Session
 	var projectCtx *context.ProjectContext
 	var persistedModel string
 
-	storageMgr, err = storage.NewManager(workingDir)
-	if err != nil {
-		// Storage initialization failed - continue without persistence
-		fmt.Println(renderer.WarningMessage(fmt.Sprintf("Could not initialize storage: %v", err)))
-	} else {
-		// Load persisted model preference
-		persistedModel = storageMgr.GetPreferredModel()
+	if !opts.Ephemeral {
+		storageMgr, err = storage.NewManager(workingDir)
+		if err != nil {
+			// Storage initialization failed - continue without persistence
+			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Could not initialize storage: %v", err)))
+		} else {
+			// Load persisted model preference
+			persistedModel = storageMgr.GetPreferredModel()
 
-		// Try to load or create active session
-		session, _ = storageMgr.GetActiveSession()
-		if session == nil {
-			session, _ = storageMgr.CreateSession("")
+			// Try to load or create active session
+			session, _ = storageMgr.GetActiveSession()
+			if session == nil {
+				session, _ = storageMgr.CreateSession("")
+			}
+
+			// Load project context if available
+			projectCtx, _ = storageMgr.LoadProjectContext()
 		}
-
-		// Load project context if available
-		projectCtx, _ = storageMgr.LoadProjectContext()
 	}
 
 	gate := loadGate(workingDir, storageMgr, renderer)
-	registry := tools.NewBuiltinRegistry(
-		tools.Options{Offline: viper.GetBool("offline"), Redactor: gate.redactor}, withDefaultSeverity(toolCfg))
+	registry := tools.NewBuiltinRegistry(tools.Options{Offline: opts.Offline, Redactor: gate.redactor}, opts.Tools)
 
 	// Determine which model to use (priority: persisted > config > auto-detect)
 	models, detectErr := prov.DetectModels(ctx)
-	model, err := chooseModel(models, detectErr, persistedModel, configModel, renderer)
+	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer)
 	if err != nil {
 		return nil, err
 	}
@@ -152,40 +162,24 @@ func New(
 	// Update provider with selected model
 	prov.SetModel(model)
 
-	// Load context management configuration (v2.0.2)
-	maxToolOutputLines := viper.GetInt("context.max_tool_output_lines")
-	maxToolOutputChars := viper.GetInt("context.max_tool_output_chars")
-	maxIter := viper.GetInt("context.max_tool_iterations")
+	maxIter := opts.MaxIterations
 	if maxIter <= 0 {
-		maxIter = 10 // default
+		maxIter = defaultMaxToolIterations
 	}
 	if maxIter > 50 {
 		maxIter = 50 // cap
 	}
 
-	// Load model generation options (v2.0.4)
-	modelOpts := ModelOptions{
-		Temperature: float32(viper.GetFloat64("model.temperature")),
-		TopP:        float32(viper.GetFloat64("model.top_p")),
-		NumPredict:  viper.GetInt("model.num_predict"),
+	compactionCfg := opts.Compaction
+	if compactionCfg.MaxTokens <= 0 {
+		compactionCfg.MaxTokens = opts.MaxContextTokens
 	}
 
-	compactionEnabled := viper.GetBool("context.compaction_enabled") && !viper.GetBool("context.no_compaction")
-	compactionThreshold := viper.GetFloat64("context.compaction_threshold")
-	if compactionThreshold <= 0 || compactionThreshold > 1.0 {
-		compactionThreshold = 0.75
-	}
-	compactionKeepRecent := viper.GetInt("context.compaction_keep_recent")
-	if compactionKeepRecent <= 0 {
-		compactionKeepRecent = 4
-	}
-
-	// Request options read from config (Task 8): reasoning mode, context window, keep-alive.
-	// An unrecognized think value falls back to auto rather than failing the whole assistant.
-	think, thinkOK := llm.ParseThink(viper.GetString("think"))
+	// Request options (Task 8): reasoning mode, context window, keep-alive. An unrecognized think
+	// value falls back to auto rather than failing the whole assistant.
+	think, thinkOK := llm.ParseThink(opts.Think)
 	if !thinkOK {
-		fmt.Println(renderer.WarningMessage(
-			fmt.Sprintf("think %q not recognized; using auto", viper.GetString("think"))))
+		fmt.Println(renderer.WarningMessage(fmt.Sprintf("think %q not recognized; using auto", opts.Think)))
 	}
 
 	a := &Assistant{
@@ -202,30 +196,26 @@ func New(
 		redactor:           gate.redactor,
 		mode:               policy.ModeInvestigate,
 		workingDir:         workingDir,
-		streaming:          streaming,
-		enableSpinner:      enableSpinner,
+		streaming:          opts.Streaming,
+		enableSpinner:      opts.Spinner,
 		renderer:           renderer,
 		storage:            storageMgr,
 		session:            session,
 		projectCtx:         projectCtx,
 		sessionUsage:       &storage.TokenUsage{},
 		think:              think,
-		keepAlive:          viper.GetString("keep_alive"),
-		configuredWindow:   viper.GetString("context.window"),
-		truncationCfg: TruncationConfig{
-			MaxLines: maxToolOutputLines,
-			MaxChars: maxToolOutputChars,
-		},
-		compactionCfg: CompactionConfig{
-			Enabled:    compactionEnabled,
-			Threshold:  compactionThreshold,
-			KeepRecent: compactionKeepRecent,
-			MaxTokens:  viper.GetInt("max_context_tokens"),
-		},
-		compactionState:  NewCompactionState(),
-		maxIterations:    maxIter,
-		modelOptions:     modelOpts,
-		truncationEvents: make([]TruncationResult, 0),
+		keepAlive:          opts.KeepAlive,
+		configuredWindow:   opts.ContextWindow,
+		truncationCfg:      opts.Truncation,
+		compactionCfg:      compactionCfg,
+		compactionState:    NewCompactionState(),
+		maxIterations:      maxIter,
+		modelOptions:       opts.Generation,
+		previewEdits:       opts.PreviewEdits,
+		previewThreshold:   opts.PreviewThreshold,
+		memoryEnabled:      opts.MemoryEnabled,
+		memoryMaxTokens:    opts.MemoryMaxTokens,
+		truncationEvents:   make([]TruncationResult, 0),
 	}
 
 	// Resolve the context window and gate on tool support once the model is chosen, before the
@@ -238,12 +228,12 @@ func New(
 	}
 
 	a.refreshTools()
-	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode)
+	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode, a.memoryBudget())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
 	}}
-	a.applyPolicyMode()
+	a.applyStartupMode(opts)
 
 	return a, nil
 }
@@ -357,27 +347,17 @@ func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Rende
 	return g
 }
 
-// withDefaultSeverity fills the scan severity default from the configuration when the caller set
-// none: scan.default_severity, else the 2.x security.default_severity.
-func withDefaultSeverity(cfg tools.Config) tools.Config {
-	if cfg.DefaultSeverity != "" {
-		return cfg
-	}
-	cfg.DefaultSeverity = viper.GetString("scan.default_severity")
-	if cfg.DefaultSeverity == "" {
-		cfg.DefaultSeverity = viper.GetString("security.default_severity")
-	}
-	return cfg
-}
-
 // newForTest builds an Assistant on a fake server without storage, spinner or interactive
-// prompts. Test-only: New is the constructor the binary uses.
+// prompts, with the same setting values DefaultOptions gives the binary. Auto-compaction is kept
+// off (ForceCompact is exercised directly where a test cares about it), so an ordinary test never
+// triggers a surprise summarization call. Test-only: New is the constructor the binary uses.
 func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	prov := provider.NewOllamaProvider(host, "")
 	prov.SetModel(model)
 	// The built-in policy has redaction on; the test redactor leaves the environment out so what a
 	// test sees does not depend on the machine's variables.
 	red, _ := redact.New(redact.Options{})
+	opts := DefaultOptions()
 	a := &Assistant{
 		provider:           prov,
 		llm:                prov.LLM(),
@@ -398,22 +378,24 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 		mode:              policy.ModeInvestigate,
 		contextWindow:     32768,
 		thinkingSupported: true, // no applyModelDetails call in tests; capabilities are unknown
-		truncationCfg: TruncationConfig{
-			MaxLines: DefaultMaxToolOutputLines,
-			MaxChars: DefaultMaxToolOutputChars,
-		},
+		truncationCfg:     opts.Truncation,
 		compactionCfg: CompactionConfig{
-			Enabled:    false,
-			Threshold:  0.75,
-			KeepRecent: 4,
-			MaxTokens:  32768,
+			Enabled:    false, // auto-compact off in tests; ForceCompact is exercised directly
+			Threshold:  opts.Compaction.Threshold,
+			KeepRecent: opts.Compaction.KeepRecent,
+			MaxTokens:  opts.Compaction.MaxTokens,
 		},
 		compactionState:  NewCompactionState(),
-		maxIterations:    defaultMaxToolIterations,
+		maxIterations:    opts.MaxIterations,
+		modelOptions:     opts.Generation,
+		previewEdits:     opts.PreviewEdits,
+		previewThreshold: opts.PreviewThreshold,
+		memoryEnabled:    opts.MemoryEnabled,
+		memoryMaxTokens:  opts.MemoryMaxTokens,
 		truncationEvents: make([]TruncationResult, 0),
 	}
 	a.refreshTools()
-	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode)
+	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode, a.memoryBudget())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,

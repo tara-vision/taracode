@@ -59,7 +59,7 @@ func (a *Assistant) NewSession(name string) error {
 	a.session = session
 
 	// Reset conversation to just system message
-	systemPrompt := buildSystemPrompt(a.workingDir, a.storage, a.mode)
+	systemPrompt := buildSystemPrompt(a.workingDir, a.storage, a.mode, a.memoryBudget())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: systemPrompt,
@@ -83,7 +83,7 @@ func (a *Assistant) LoadSession(id string) error {
 	_ = a.storage.SetActiveSession(id)
 
 	// Rebuild conversation from session messages
-	systemPrompt := buildSystemPrompt(a.workingDir, a.storage, a.mode)
+	systemPrompt := buildSystemPrompt(a.workingDir, a.storage, a.mode, a.memoryBudget())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: systemPrompt,

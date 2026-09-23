@@ -14,7 +14,6 @@ import (
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
-	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
 	"github.com/tara-vision/taracode/internal/upgrade"
@@ -22,15 +21,14 @@ import (
 
 // repl is the state of one interactive session: the assistant, the managers that exist once a
 // project is initialised, the host pool and the readline instance. Command handlers are methods
-// on it, so re-creating the assistant (/init, /model, /reload, /clear) updates one field.
+// on it, so re-creating the assistant (/init, /model, /reload, /clear) goes through replaceAssistant.
 type repl struct {
 	asst      *assistant.Assistant
 	renderer  *ui.Renderer
 	rl        *readline.Instance
 	completer *SlashCompleter
 
-	host, apiKey, model, vendor string // the startup connection, reused by /reload and /clear
-	streaming, spinner          bool
+	opts assistant.Options // the startup connection and settings, reused by /reload and /clear
 
 	projectRoot string // fixed at startup; the sandbox root
 	relDir      string // current directory relative to projectRoot ("" = root)
@@ -44,40 +42,60 @@ type repl struct {
 	updates  chan *upgrade.CheckResult
 }
 
-// connectionConfig resolves host, key, model and vendor from the flags, the config file and the
-// hosts: block (moved from the top of the old startREPL, lines 33-63).
-func connectionConfig() (host, apiKey, modelName, vendor string, multiHost bool) {
-	hostsCfg := GetHostsConfig()
-	multiHost = !hostsCfg.IsEmpty() && len(hostsCfg.Hosts) > 1
-	host = viper.GetString("host")
-	apiKey = viper.GetString("key")
-	modelName = model // the --model flag; model: is a config section in 2.x config files
-	vendor = viper.GetString("vendor")
-	if !multiHost {
-		return host, apiKey, modelName, vendor, false
+// options returns the settings a freshly re-created assistant should use: r.opts with Mode pinned
+// to whatever mode the live assistant is in, so /init, /reload and /clear do not silently drop
+// back to investigate mode.
+func (r *repl) options() assistant.Options {
+	opts := r.opts
+	if r.asst != nil {
+		opts.Mode = r.asst.Mode()
 	}
-	if defaultHost, ok := hostsCfg.GetDefaultHost(); ok {
-		if host == "" {
-			host = defaultHost.URL
-		}
-		if apiKey == "" && defaultHost.APIKey != "" {
-			apiKey = defaultHost.APIKey
-		}
-		if vendor == "" && defaultHost.Vendor != "" {
-			vendor = defaultHost.Vendor
-		}
-		if modelName == "" && len(defaultHost.Models) > 0 {
-			modelName = defaultHost.Models[0]
+	return opts
+}
+
+// replaceAssistant swaps in a freshly built assistant and re-wires everything assistant.New does
+// not know about on its own: the history manager and the tools of every connected MCP server (the
+// new assistant has a brand new, empty tool registry). Every /init, /reload, /clear and /model
+// re-creation goes through this one helper, so neither wiring can be silently dropped at one call
+// site while staying wired at another (ruling P2-R18; both were lost on every re-creation in v2).
+func (r *repl) replaceAssistant(newAsst *assistant.Assistant) {
+	r.asst = newAsst
+	registry := r.asst.ToolRegistry()
+	if r.history != nil {
+		registry.SetHistory(r.history)
+	}
+	if r.mcp != nil {
+		for _, tool := range r.mcp.GetAllTools() {
+			registry.RegisterMCP(mcp.ToTool(r.mcp, tool), tool.ServerName)
 		}
 	}
-	return host, apiKey, modelName, vendor, true
+	r.asst.RefreshTools()
+	r.refreshPrompt()
 }
 
 // newREPL builds the session in the order the old startREPL did: connection, assistant (with the
 // tool wiring), banner, mode, project managers, update check, MCP, host pool, readline.
 func newREPL() (*repl, error) {
-	host, apiKey, modelName, vendor, multiHost := connectionConfig()
-	if host == "" {
+	opts, warnings := loadOptions()
+	hostsCfg := GetHostsConfig()
+	multiHost := !hostsCfg.IsEmpty() && len(hostsCfg.Hosts) > 1
+	if multiHost {
+		if defaultHost, ok := hostsCfg.GetDefaultHost(); ok {
+			if opts.Host == "" {
+				opts.Host = defaultHost.URL
+			}
+			if opts.APIKey == "" && defaultHost.APIKey != "" {
+				opts.APIKey = defaultHost.APIKey
+			}
+			if opts.Vendor == "" && defaultHost.Vendor != "" {
+				opts.Vendor = defaultHost.Vendor
+			}
+			if opts.Model == "" && len(defaultHost.Models) > 0 {
+				opts.Model = defaultHost.Models[0]
+			}
+		}
+	}
+	if opts.Host == "" {
 		return nil, fmt.Errorf("LLM server host not found.\nSet it via:\n" +
 			"  - Environment variable: export TARACODE_HOST=http://localhost:11434\n" +
 			"  - Config file: ~/.taracode/config.yaml\n" +
@@ -88,33 +106,36 @@ func newREPL() (*repl, error) {
 	if err != nil {
 		return nil, fmt.Errorf("working directory: %w", err)
 	}
+	renderer := ui.NewRenderer()
+	toolCfg := toolConfig(renderer)
+	opts.Tools.Stream = toolCfg.Stream
+	opts.Tools.Search = toolCfg.Search
+	opts.WorkingDir = workingDir
+	initialised := isInitializedProject(workingDir)
+	opts.Ephemeral = !initialised
+
 	r := &repl{
-		renderer:    ui.NewRenderer(),
-		host:        host,
-		apiKey:      apiKey,
-		model:       modelName,
-		vendor:      vendor,
-		streaming:   !viper.GetBool("no_stream"),
-		spinner:     !viper.GetBool("no_spinner"),
+		renderer:    renderer,
+		opts:        opts,
 		projectRoot: workingDir,
 		absDir:      workingDir,
-		initialised: isInitializedProject(workingDir),
+		initialised: initialised,
 		updates:     make(chan *upgrade.CheckResult, 1),
 	}
-	asst, err := assistant.New(host, apiKey, modelName, vendor, r.streaming, r.spinner, toolConfig(r.renderer))
+	asst, err := assistant.New(r.opts)
 	if err != nil {
-		return nil, fmt.Errorf("%s", ui.FormatConnectionError(host, err))
+		return nil, fmt.Errorf("%s", ui.FormatConnectionError(opts.Host, err))
 	}
 	r.asst = asst
-	r.printBanner()      // moved: provider message, session resume message (113-121)
-	r.applyInitialMode() // moved: viper "mode" -> asst.SetMode with the warning (124-128)
-	r.printWelcome()     // moved: WelcomeMessage, ProjectContextMessage (137-138)
+	r.printBanner()         // moved: provider message, session resume message (113-121)
+	printWarnings(warnings) // the 2.x config migration warnings loadOptions collected
+	r.printWelcome()        // moved: WelcomeMessage, ProjectContextMessage (137-138)
 	if r.initialised {
 		r.enableProject()
 	} else {
 		r.printNotInitialised() // moved: the yellow "Project Not Initialized" box (141-155)
 	}
-	if viper.GetBool("upgrade.auto_check") {
+	if viper.GetBool("upgrade.auto_check") && !opts.Offline {
 		CheckForUpdateAsync(Version, r.updates)
 	}
 	r.startMCP() // moved: 199-219, callback registers into r.asst at call time
@@ -221,23 +242,6 @@ func (r *repl) printBanner() {
 		fmt.Print(r.renderer.SessionResumeMessage(len(session.Messages)))
 	}
 	fmt.Println()
-}
-
-// applyInitialMode sets the mode from the config/flag, warning (not failing) on an invalid value
-// (moved from the old startREPL, lines 121-126).
-func (r *repl) applyInitialMode() {
-	initialMode := viper.GetString("mode")
-	if initialMode == "" {
-		return
-	}
-	mode, ok := policy.ParseMode(initialMode)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Warning: invalid mode %q (investigate or operate), using default mode\n", initialMode)
-		return
-	}
-	if err := r.asst.SetMode(mode); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %v, using default mode\n", err)
-	}
 }
 
 // printWelcome shows the welcome message and the project-context line (moved from the old

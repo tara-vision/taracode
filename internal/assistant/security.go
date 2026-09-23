@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -14,7 +13,7 @@ import (
 // Returns (proceed, result, error) - if proceed is false, use result as the tool result
 func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, string, error) {
 	// Check if preview mode is enabled
-	if !viper.GetBool("preview_edits") {
+	if !a.previewEdits {
 		return true, "", nil
 	}
 
@@ -51,7 +50,7 @@ func (a *Assistant) handleEditPreview(params map[string]interface{}) (bool, stri
 	}
 
 	// Check preview threshold (number of lines changed)
-	threshold := viper.GetInt("preview_threshold")
+	threshold := a.previewThreshold
 	oldLines := strings.Count(oldString, "\n") + 1
 	newLines := strings.Count(newString, "\n") + 1
 	linesChanged := oldLines

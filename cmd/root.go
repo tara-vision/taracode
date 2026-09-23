@@ -26,6 +26,7 @@ var (
 	maxToolOutput int
 	maxIterations int
 	noCompaction  bool
+	offline       bool
 	Version       = "dev"
 )
 
@@ -237,17 +238,17 @@ and Site Reliability Engineering. Expert guidance for Kubernetes, Terraform, Doc
 multi-cloud deployments (AWS, Azure, GCP).`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		// Validate severity flag if provided
-		severityValue := viper.GetString("security.default_severity")
+		severityValue := viper.GetString("scan.default_severity")
 		if severityValue != "" && !IsValidSeverity(severityValue) {
 			return fmt.Errorf("invalid severity filter: %s\nValid levels: %s",
 				severityValue, strings.Join(ValidSeverityLevels, ", "))
 		}
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		// Start interactive REPL mode
-		startREPL()
-	},
+	// Run is assigned in init(), not here: startREPL reaches loadOptions, which reads
+	// rootCmd.PersistentFlags() (ruling P2-R17's --mode Changed() check), and a reference to
+	// rootCmd inside rootCmd's own var initializer is an initialization cycle. init() runs after
+	// package-level vars are initialized, so assigning it there breaks the cycle.
 }
 
 func Execute() error {
@@ -257,12 +258,17 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
+	rootCmd.Run = func(_ *cobra.Command, _ []string) {
+		// Start interactive REPL mode
+		startREPL()
+	}
+
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.taracode/config.yaml)")
 	rootCmd.PersistentFlags().StringVar(&host, "host", "", "LLM server URL (e.g., http://localhost:11434)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "key", "", "API key (optional for local servers)")
 	rootCmd.PersistentFlags().StringVar(&model, "model", "", "model name (optional, auto-detected from server)")
 	rootCmd.PersistentFlags().StringVar(&vendor, "vendor", "", "LLM vendor (auto, vllm, ollama, llama.cpp)")
-	rootCmd.PersistentFlags().StringVar(&mode, "mode", "", "operating mode (devops, security)")
+	rootCmd.PersistentFlags().StringVar(&mode, "mode", "", "operating mode (investigate, operate)")
 	rootCmd.PersistentFlags().StringVar(&severity, "severity", "", "default severity filter for security scans (e.g., HIGH,CRITICAL)")
 	rootCmd.PersistentFlags().BoolVar(&noStream, "no-stream", false, "disable streaming output (show response all at once)")
 	rootCmd.PersistentFlags().BoolVar(&noSpinner, "no-spinner", false, "disable spinner animations")
@@ -270,22 +276,23 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&maxToolOutput, "max-tool-output", 0, "max lines per tool output (0 = use config default)")
 	rootCmd.PersistentFlags().IntVar(&maxIterations, "max-iterations", 0, "max tool call iterations per message (0 = use config default)")
 	rootCmd.PersistentFlags().BoolVar(&noCompaction, "no-compaction", false, "disable automatic conversation compaction")
+	rootCmd.PersistentFlags().BoolVar(&offline, "offline", false, "disable every internet tool and the update check")
 
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
 	viper.BindPFlag("key", rootCmd.PersistentFlags().Lookup("key"))
-	// Note: "model" is NOT bound to viper because config.yaml uses "model:" as a
-	// section (model.temperature, model.top_p, etc). Binding "model" to a pflag
-	// shadows nested model.* keys in viper. The --model flag value is read directly
-	// from the package-level variable instead.
+	// "model" is a plain string key in v3 (loadOptions handles a 2.x model: section as a map), so
+	// binding it no longer shadows anything taracode itself reads through viper.
+	_ = viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))
 	viper.BindPFlag("vendor", rootCmd.PersistentFlags().Lookup("vendor"))
 	viper.BindPFlag("mode", rootCmd.PersistentFlags().Lookup("mode"))
-	viper.BindPFlag("security.default_severity", rootCmd.PersistentFlags().Lookup("severity"))
+	_ = viper.BindPFlag("scan.default_severity", rootCmd.PersistentFlags().Lookup("severity"))
 	viper.BindPFlag("no_stream", rootCmd.PersistentFlags().Lookup("no-stream"))
 	viper.BindPFlag("no_spinner", rootCmd.PersistentFlags().Lookup("no-spinner"))
 	viper.BindPFlag("verbose_errors", rootCmd.PersistentFlags().Lookup("verbose-errors"))
 	viper.BindPFlag("context.max_tool_output_lines", rootCmd.PersistentFlags().Lookup("max-tool-output"))
 	viper.BindPFlag("context.max_tool_iterations", rootCmd.PersistentFlags().Lookup("max-iterations"))
 	viper.BindPFlag("context.no_compaction", rootCmd.PersistentFlags().Lookup("no-compaction"))
+	_ = viper.BindPFlag("offline", rootCmd.PersistentFlags().Lookup("offline"))
 
 	rootCmd.AddCommand(doctorCmd)
 }
@@ -308,87 +315,7 @@ func initConfig() {
 		viper.SetConfigName("config")
 	}
 
-	// Set search configuration defaults
-	viper.SetDefault("search.primary", "duckduckgo")
-	viper.SetDefault("search.fallback", "searxng")
-	viper.SetDefault("search.timeout", "10s")
-	viper.SetDefault("search.retry_count", 1)
-	viper.SetDefault("search.searxng_instance", "")
-
-	// Set command streaming defaults
-	viper.SetDefault("no_stream_commands", false)
-
-	// Set context budget display defaults
-	// max_context_tokens: Model's context window (32k default for Gemma3:27b)
-	// show_context_budget: Whether to show token usage in prompt
-	viper.SetDefault("max_context_tokens", 32768)
-	viper.SetDefault("show_context_budget", true)
-
-	// Edit preview mode defaults
-	// preview_edits: Show diff preview before applying edit_file operations
-	// preview_threshold: Minimum lines changed to trigger preview (0 = always preview)
-	viper.SetDefault("preview_edits", true)
-	viper.SetDefault("preview_threshold", 0)
-
-	// Security configuration defaults
-	// default_severity: Default severity filter for security scans (empty = all severities)
-	// Common values: "HIGH,CRITICAL" or "MEDIUM,HIGH,CRITICAL"
-	viper.SetDefault("security.default_severity", "")
-
-	// MCP (Model Context Protocol) configuration defaults
-	// enabled: Whether MCP support is enabled (default: true)
-	// servers: List of MCP server configurations
-	viper.SetDefault("mcp.enabled", true)
-
-	// Memory (Persistent Project Knowledge) configuration defaults
-	// enabled: Whether memory feature is enabled (default: true)
-	// max_memories: Maximum number of memories per project (default: 500)
-	// max_context_tokens: Maximum tokens to inject into prompt (default: 2000)
-	// retention_days: Auto-cleanup memories not used in N days (default: 90)
-	// auto_capture: Detect and suggest memories from conversation (default: true)
-	viper.SetDefault("memory.enabled", true)
-	viper.SetDefault("memory.max_memories", 500)
-	viper.SetDefault("memory.max_context_tokens", 2000)
-	viper.SetDefault("memory.retention_days", 90)
-	viper.SetDefault("memory.auto_capture", true)
-
-	// Context management defaults (v2.0.2)
-	// max_tool_output_lines: Max lines per tool output (500 default, 0 = unlimited)
-	// max_tool_output_chars: Max chars per tool output (15000 default, 0 = unlimited)
-	// max_tool_iterations: Max tool call iterations per message (10 default)
-	// compaction_enabled: Auto-compact conversation when context budget is high (default: true)
-	// compaction_threshold: Trigger compaction at this fraction of max_context_tokens (default: 0.75)
-	// compaction_keep_recent: Keep this many recent message pairs during compaction (default: 4)
-	viper.SetDefault("context.max_tool_output_lines", 500)
-	viper.SetDefault("context.max_tool_output_chars", 15000)
-	viper.SetDefault("context.max_tool_iterations", 10)
-	viper.SetDefault("context.compaction_enabled", true)
-	viper.SetDefault("context.compaction_threshold", 0.75)
-	viper.SetDefault("context.compaction_keep_recent", 4)
-
-	// Model generation options (v2.0.4)
-	// temperature: Sampling randomness, 0.0-2.0 (default: 0.7)
-	// top_p: Nucleus sampling threshold, 0.0-1.0 (default: 0.9)
-	// num_predict: Max tokens per response, 0 = model default (default: 0)
-	viper.SetDefault("model.temperature", 0.7)
-	viper.SetDefault("model.top_p", 0.9)
-	viper.SetDefault("model.num_predict", 0)
-
-	// Request options (native core, Task 8)
-	// context.window: "auto" resolves from the model's native max via /api/show, or a number of tokens
-	// think: reasoning mode sent with every request - auto|off|on|low|medium|high (default: auto)
-	// keep_alive: how long Ollama keeps the model loaded, "" = server default
-	viper.SetDefault("context.window", "auto")
-	viper.SetDefault("think", "auto")
-	viper.SetDefault("keep_alive", "")
-
-	// Upgrade (Auto-update) configuration defaults
-	// auto_check: Check for updates on startup (default: true)
-	// auto_upgrade: Automatically install updates without prompting (default: false)
-	// show_changelog: Show changelog when update is available (default: true)
-	viper.SetDefault("upgrade.auto_check", true)
-	viper.SetDefault("upgrade.auto_upgrade", false)
-	viper.SetDefault("upgrade.show_changelog", true)
+	setDefaults()
 
 	viper.SetEnvPrefix("TARACODE")
 	viper.AutomaticEnv()

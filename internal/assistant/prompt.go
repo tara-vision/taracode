@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	openai "github.com/sashabaranov/go-openai"
-	"github.com/spf13/viper"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
@@ -43,11 +42,20 @@ When the user asks about the current date, time, day of week, or anything like "
 
 // RefreshSystemPrompt rebuilds the system prompt to include any new memories or context
 func (a *Assistant) RefreshSystemPrompt() {
-	a.systemPrompt = buildSystemPrompt(a.workingDir, a.storage, a.mode)
+	a.systemPrompt = buildSystemPrompt(a.workingDir, a.storage, a.mode, a.memoryBudget())
 	// Update system message in conversation
 	if len(a.conversation) > 0 && a.conversation[0].Role == openai.ChatMessageRoleSystem {
 		a.conversation[0].Content = a.systemPrompt
 	}
+}
+
+// memoryBudget is the token budget buildSystemPrompt gets for project memories: 0 (memories off)
+// when memory.enabled is false, a.memoryMaxTokens otherwise.
+func (a *Assistant) memoryBudget() int {
+	if !a.memoryEnabled {
+		return 0
+	}
+	return a.memoryMaxTokens
 }
 
 // SetMode switches the operating mode, the exposed tools and the system prompt. Operate needs a
@@ -70,22 +78,35 @@ func (a *Assistant) SetMode(mode policy.Mode) error {
 	return nil
 }
 
-// applyPolicyMode switches to the mode the policy file names. It goes through SetMode, so operate
-// mode still needs a loadable policy and project storage; a refusal is shown and the session stays
-// in its current mode.
-func (a *Assistant) applyPolicyMode() {
-	if a.policyErr != nil || a.pol.Mode == "" || a.pol.Mode == a.mode {
+// applyStartupMode resolves the mode New starts a session in and applies it through SetMode: the
+// --mode flag (opts.Mode) wins outright, then a policy file's own mode - only when the effective
+// policy actually came from a file rather than the built-in default, whose Mode is always
+// "investigate" - then the configured default (opts.DefaultMode), else investigate. A refusal
+// (operate without project storage, or a policy that failed to load) is warned and the session
+// stays in its current mode; a.mode is never assigned outside SetMode.
+func (a *Assistant) applyStartupMode(opts Options) {
+	target := policy.ModeInvestigate
+	switch {
+	case opts.Mode != "":
+		target = opts.Mode
+	case a.policyErr == nil && len(a.policySources) > 0 && a.policySources[0] != "built-in" && a.pol.Mode != "":
+		target = a.pol.Mode
+	case opts.DefaultMode != "":
+		target = opts.DefaultMode
+	}
+	if target == a.mode {
 		return
 	}
-	if err := a.SetMode(a.pol.Mode); err != nil {
+	if err := a.SetMode(target); err != nil {
 		fmt.Println(a.renderer.WarningMessage(
-			fmt.Sprintf("The policy's %s mode was not applied, staying in %s mode: %v", a.pol.Mode, a.mode, err)))
+			fmt.Sprintf("The %s mode was not applied, staying in %s mode: %v", target, a.mode, err)))
 	}
 }
 
 // buildSystemPrompt assembles the prompt: the persona with the mode line, TARACODE.md, memories,
-// the active plan and the working directory.
-func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode policy.Mode) string {
+// the active plan and the working directory. memoryMaxTokens is the token budget for the project
+// memories section; 0 leaves it out entirely.
+func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode policy.Mode, memoryMaxTokens int) string {
 	prompt := baseSystemPromptCompact + "\n\nMode: " + string(mode)
 
 	// Check for TARACODE.md in current directory
@@ -97,21 +118,18 @@ func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode poli
 	}
 
 	// Include relevant project memories if available
-	if viper.GetBool("memory.enabled") {
+	if memoryMaxTokens > 0 {
 		if memoryMgr := getMemoryManager(workingDir); memoryMgr != nil {
-			maxTokens := viper.GetInt("memory.max_context_tokens")
-			if maxTokens <= 0 {
-				maxTokens = 2000
-			}
-			memories := memoryMgr.GetRelevantMemories("", maxTokens)
+			memories := memoryMgr.GetRelevantMemories("", memoryMaxTokens)
 			if len(memories) > 0 {
 				prompt += "\n\n## PROJECT MEMORIES\nRemembered facts about this project:\n\n"
 				for _, mem := range memories {
 					prompt += fmt.Sprintf("- [%s] %s\n", mem.Category, mem.Content)
-					// Increment use count asynchronously to avoid blocking
-					go func(id string) {
-						_ = memoryMgr.IncrementUseCount(id)
-					}(mem.ID)
+				}
+				// Record use once the prompt text is assembled: synchronous, not fire-and-forget, so
+				// a failure or a slow store is never silently lost (Task 13 triage finding).
+				for _, mem := range memories {
+					_ = memoryMgr.IncrementUseCount(mem.ID)
 				}
 			}
 		}

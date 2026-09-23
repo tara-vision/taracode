@@ -55,8 +55,10 @@ func (r *repl) cmdTools(_ []string) {
 	fmt.Println()
 }
 
-// toolConfig is the process-level wiring for the built-in tools: live shell output, the search
-// provider chain and the scan severity default.
+// toolConfig is the process-level wiring for the built-in tools: live shell output and the search
+// provider chain. The scan severity default is not this function's business: loadOptions already
+// resolves it onto Options.Tools.DefaultSeverity with the 2.x security.default_severity fallback,
+// and a caller that merges this Config in must keep that value rather than overwrite it with "".
 func toolConfig(renderer *ui.Renderer) tools.Config {
 	cfg := GetSearchConfig()
 	timeout, err := time.ParseDuration(cfg.Timeout)
@@ -80,5 +82,5 @@ func toolConfig(renderer *ui.Renderer) tools.Config {
 	if !viper.GetBool("no_stream_commands") {
 		stream = os.Stdout
 	}
-	return tools.Config{Stream: stream, Search: orch, DefaultSeverity: viper.GetString("security.default_severity")}
+	return tools.Config{Stream: stream, Search: orch}
 }
