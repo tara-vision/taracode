@@ -48,7 +48,8 @@ func ShellTool(stream io.Writer) *Tool {
 			res := classify.Shell(command)
 			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}
 			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
-				targets.KubeContext, targets.KubeNamespace = shellKubeTargets(context.Background(), workingDir, res.Kube)
+				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
+					shellKubeTargets(context.Background(), workingDir, res.Kube)
 			}
 			return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
 				Command: command, Targets: targets}
@@ -147,7 +148,7 @@ func expandHome(p, home string) string {
 // reports "*" for a value the shell computes at run time or when the line names more than one
 // context or namespace.
 func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.KubeTarget) (
-	kubeContext, namespace string,
+	kubeContext, namespace, reason string,
 ) {
 	resolver := newKubeResolver(ctx, workingDir)
 	contexts := make([]string, 0, len(refs))
@@ -157,11 +158,14 @@ func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.Ku
 		if ref.Helm {
 			c, ns = helmEnvTargets(c, ns)
 		}
-		t := resolver.targets(c, ns, ref.Kubeconfig)
+		t := resolver.targets(c, ns, ref.Kubeconfig, ref.Cause)
 		contexts = append(contexts, t.KubeContext)
 		namespaces = append(namespaces, t.KubeNamespace)
+		if reason == "" {
+			reason = t.KubeReason
+		}
 	}
-	return oneOrAll(contexts), oneOrAll(namespaces)
+	return oneOrAll(contexts), oneOrAll(namespaces), reason
 }
 
 // runTimeAsAll maps a value the shell computes at run time ($CTX) to "*": it can be any.

@@ -42,38 +42,53 @@ func newKubeResolver(ctx context.Context, workingDir string) *kubeResolver {
 
 // targets fills the context and namespace a command does not name ("") from kubeconfig, the
 // kubeconfig it names ("" for the one taracode's environment gives kubectl). The namespace of a
-// named context is that context's default namespace, not the current one's.
-func (r *kubeResolver) targets(kubeContext, namespace, kubeconfig string) policy.Targets {
+// named context is that context's default namespace, not the current one's. cause is why the
+// classifier already made a value "*" (empty when it did not); it, or "the resolution failed", is
+// carried into the deny so a model reads why and how to avoid it.
+func (r *kubeResolver) targets(kubeContext, namespace, kubeconfig, cause string) policy.Targets {
 	t := policy.Targets{KubeContext: kubeContext, KubeNamespace: namespace}
 	if t.KubeContext != "" && t.KubeNamespace != "" {
-		return t
+		return withReason(t, cause)
 	}
 	env, ok := r.kubeconfigEnv(kubeconfig)
 	if !ok || t.KubeContext == "*" {
-		return unresolved(t)
+		return unresolved(t, cause)
 	}
 	named := t.KubeContext
 	if named == "" {
 		current, ok := r.currentContext(kubeconfig, env)
 		if !ok {
-			return unresolved(t)
+			return unresolved(t, cause)
 		}
 		t.KubeContext = current
 	}
 	if t.KubeNamespace == "" {
 		t.KubeNamespace = r.namespace(kubeconfig, env, named)
 	}
+	return withReason(t, cause)
+}
+
+// withReason records the cause of a "*" target so the deny can name it; a concrete target keeps none.
+func withReason(t policy.Targets, cause string) policy.Targets {
+	if t.KubeContext == "*" || t.KubeNamespace == "*" {
+		t.KubeReason = cause
+	}
 	return t
 }
 
-// unresolved makes the context and namespace a command does not name "*".
-func unresolved(t policy.Targets) policy.Targets {
+// unresolved makes the context and namespace a command does not name "*", recording the classifier's
+// cause, or "the resolution failed" when kubectl could not tell (no kubeconfig, no current context).
+func unresolved(t policy.Targets, cause string) policy.Targets {
 	if t.KubeContext == "" {
 		t.KubeContext = "*"
 	}
 	if t.KubeNamespace == "" {
 		t.KubeNamespace = "*"
 	}
+	if cause == "" {
+		cause = "the resolution failed"
+	}
+	t.KubeReason = cause
 	return t
 }
 
