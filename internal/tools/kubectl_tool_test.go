@@ -92,3 +92,23 @@ func TestKubectlRefusesFlagsGivenBothAsParameterAndInArgs(t *testing.T) {
 		}
 	}
 }
+
+// TestKubectlToolClassifiesExecAsAMutation is the final review's C1(a) probe on the kubectl tool: a
+// --dry-run after -- belongs to the command run in the container, so exec stays a mutation, and a
+// namespace after -- is not kubectl's.
+func TestKubectlToolClassifiesExecAsAMutation(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubectl)
+	tool := KubectlTool()
+	inv := tool.Classify(map[string]any{"verb": "exec", "name": "web", "args": "-- ls --dry-run=client"}, "/w")
+	if inv.Classification != policy.Mutate || inv.Verb != "exec" {
+		t.Fatalf("kubectl exec with a --dry-run after -- must be a mutation: %+v", inv)
+	}
+	inv = tool.Classify(map[string]any{"verb": "delete", "resource": "pods", "args": "--all -A"}, "/w")
+	if inv.Classification != policy.Mutate || inv.Targets.KubeNamespace != "*" {
+		t.Fatalf("-A targets every namespace: %+v", inv)
+	}
+	inv = tool.Classify(map[string]any{"verb": "exec", "name": "web", "args": "-- env -n kube-system"}, "/w")
+	if inv.Targets.KubeNamespace != "team-a" {
+		t.Fatalf("a namespace after -- is not kubectl's; the current one applies: %+v", inv)
+	}
+}

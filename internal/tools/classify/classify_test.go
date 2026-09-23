@@ -127,11 +127,11 @@ func TestCloud(t *testing.T) {
 		{"aws", "s3 cp a s3://b", policy.Mutate, ""}, {"aws", "ec2 terminate-instances --instance-ids i-1", policy.Mutate, ""},
 		{"aws", "configure list", policy.Read, ""}, {"aws", "configure set region x", policy.Mutate, ""},
 		{"az", "group list", policy.Read, ""}, {"az", "vm show -n x -g y --subscription sub-1", policy.Read, "sub-1"},
-		{"az", "aks get-credentials -n x -g y", policy.Read, ""}, {"az", "vm delete -n x -g y", policy.Mutate, ""},
+		{"az", "aks get-credentials -n x -g y", policy.Mutate, ""}, {"az", "vm delete -n x -g y", policy.Mutate, ""},
 		{"az", "account set -s x", policy.Mutate, "x"}, {"az", "login", policy.Mutate, ""},
 		{"gcloud", "compute instances list --project my-proj", policy.Read, "my-proj"},
 		{"gcloud", "projects describe my-proj", policy.Read, ""}, {"gcloud", "config list", policy.Read, ""},
-		{"gcloud", "container clusters get-credentials x --zone z", policy.Read, ""},
+		{"gcloud", "container clusters get-credentials x --zone z", policy.Mutate, ""},
 		{"gcloud", "compute instances delete vm --project=p", policy.Mutate, "p"}, {"gcloud", "auth login", policy.Mutate, ""},
 		{"nope", "x", policy.Mutate, ""},
 	}

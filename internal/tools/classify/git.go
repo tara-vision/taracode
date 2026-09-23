@@ -2,10 +2,19 @@ package classify
 
 import "strings"
 
-// Git classifies the arguments after "git". Leading global options (-C dir, -c k=v, --no-pager,
-// --git-dir=..., --work-tree=...) are skipped.
+// gitReadSafeConfig are the -c keys (or key prefixes, ending in a dot) that only change how a read
+// looks. Any other key can make a read run a program (diff.external, core.fsmonitor, gpg.program).
+var gitReadSafeConfig = []string{"color.", "core.quotepath", "core.abbrev", "log.date", "log.decorate",
+	"diff.noprefix", "diff.renames", "column.ui"}
+
+// Git classifies the arguments after "git". Leading global options (-C dir, -c k=v with a read-safe
+// key, --no-pager, --git-dir=..., --work-tree=...) are skipped; a -c with any other key is a
+// mutation.
 func Git(tokens []string) Result {
-	tokens = stripGitGlobals(tokens)
+	tokens, res, ok := stripGitGlobals(tokens)
+	if !ok {
+		return res
+	}
 	if len(tokens) == 0 {
 		return read("")
 	}
@@ -14,7 +23,7 @@ func Git(tokens []string) Result {
 	case "status", "diff", "log", "show", "blame", "rev-parse", "ls-files", "ls-tree", "cat-file", "describe",
 		"reflog", "shortlog", "grep", "rev-list", "name-rev", "check-ignore", "diff-tree", "show-ref",
 		"for-each-ref", "count-objects", "version", "help", "var", "merge-base", "cherry", "whatchanged":
-		return read(verb)
+		return gitReadVerb(verb, rest)
 	case "branch":
 		if hasFlag(rest, "-d", "-D", "-m", "-M", "-c", "-C", "-u", "--set-upstream-to", "--unset-upstream", "-f",
 			"--force", "--edit-description") {
@@ -54,17 +63,53 @@ func Git(tokens []string) Result {
 	return mutate(verb, "git "+verb+" changes the repository")
 }
 
-func stripGitGlobals(tokens []string) []string {
+// gitReadVerb catches the write forms of the read verbs: reflog expire and delete prune the
+// reflog, --output writes the diff or log to a file, and grep -O runs a program on the matches.
+func gitReadVerb(verb string, rest []string) Result {
+	switch {
+	case verb == "reflog" && in(first(rest), "expire", "delete"):
+		return mutate(verb, "git reflog "+first(rest)+" changes the reflog")
+	case hasGNUFlag(rest, nil, "--output"):
+		return mutate(verb, "git "+verb+" --output writes a file")
+	case verb == "grep" && (hasGNUFlag(rest, nil, "--open-files-in-pager") || shortFlag(rest, "O", "ABCefm")):
+		return mutate(verb, "git grep -O runs a program on the matching files")
+	}
+	return read(verb)
+}
+
+// stripGitGlobals drops the leading global options. ok is false, with the mutate result, when a -c
+// sets a key outside gitReadSafeConfig.
+func stripGitGlobals(tokens []string) ([]string, Result, bool) {
 	for len(tokens) > 0 {
 		switch {
-		case in(tokens[0], "-C", "-c") && len(tokens) > 1:
+		case tokens[0] == "-c" && len(tokens) > 1:
+			if key := gitConfigKey(tokens[1]); !gitReadSafeKey(key) {
+				return nil, mutate("-c", "git -c "+key+" can make any git command run a program or write files"), false
+			}
+			tokens = tokens[2:]
+		case tokens[0] == "-C" && len(tokens) > 1:
 			tokens = tokens[2:]
 		case strings.HasPrefix(tokens[0], "--git-dir"), strings.HasPrefix(tokens[0], "--work-tree"),
 			in(tokens[0], "--no-pager", "-P", "--paginate", "-p", "--no-optional-locks"):
 			tokens = tokens[1:]
 		default:
-			return tokens
+			return tokens, Result{}, true
 		}
 	}
-	return tokens
+	return tokens, Result{}, true
+}
+
+// gitConfigKey is the key of a -c name=value (git matches section and key names case-insensitively).
+func gitConfigKey(setting string) string {
+	key, _, _ := strings.Cut(setting, "=")
+	return strings.ToLower(key)
+}
+
+func gitReadSafeKey(key string) bool {
+	for _, safe := range gitReadSafeConfig {
+		if key == safe || strings.HasSuffix(safe, ".") && strings.HasPrefix(key, safe) {
+			return true
+		}
+	}
+	return false
 }

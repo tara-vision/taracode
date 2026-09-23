@@ -1,7 +1,7 @@
 // Package shellwords splits a POSIX shell command line into pipeline segments and words without
 // running it: single and double quotes, backslash escapes, the control operators | || && ; & and
-// newlines, redirections, comments, and a flag for command substitution ($(...) and backticks) so
-// a classifier can refuse what it cannot see through.
+// newlines, redirections, comments, and a flag for command substitution ($(...), backticks and the
+// process substitutions <(...) and >(...)) so a classifier can refuse what it cannot see through.
 package shellwords
 
 import (
@@ -20,7 +20,7 @@ type Segment struct {
 // Result is a parsed command line.
 type Result struct {
 	Segments     []Segment
-	Substitution bool // $(...) or a backtick appeared anywhere
+	Substitution bool // $(...), a backtick, <(...) or >(...) appeared anywhere
 }
 
 type parser struct {
@@ -156,7 +156,8 @@ func (p *parser) operator(c rune) {
 }
 
 // redirect consumes an operator such as >, >>, <, 2>, >&, 2>&1, &> and remembers it; a target word
-// follows unless the operator already named a descriptor (2>&1).
+// follows unless the operator already named a descriptor (2>&1). An operator followed by "(" opens
+// a process substitution, <(...) or >(...), which runs a command the way $(...) does.
 func (p *parser) redirect() {
 	fd := ""
 	switch {
@@ -174,13 +175,20 @@ func (p *parser) redirect() {
 		p.pos++
 	}
 	op := fd + string(p.in[start:p.pos])
+	if p.pos < len(p.in) && p.in[p.pos] == '(' {
+		p.res.Substitution = true
+	}
 	if strings.HasSuffix(op, "&") { // descriptor duplication: the target is a number or -
 		tstart := p.pos
 		for p.pos < len(p.in) && (unicode.IsDigit(p.in[p.pos]) || p.in[p.pos] == '-') {
 			p.pos++
 		}
-		p.seg.Redirects = append(p.seg.Redirects, op+string(p.in[tstart:p.pos]))
-		return
+		if p.pos > tstart {
+			p.seg.Redirects = append(p.seg.Redirects, op+string(p.in[tstart:p.pos]))
+			return
+		}
+		// Not a descriptor: bash reads ">& word" as "stdout and stderr to the file word", so the
+		// next word is this operator's target, like the target of &>.
 	}
 	p.pending = op
 }

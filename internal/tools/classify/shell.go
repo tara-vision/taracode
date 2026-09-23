@@ -2,7 +2,7 @@ package classify
 
 import (
 	"net/url"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 
@@ -25,56 +25,118 @@ func Shell(command string) ShellResult {
 	if err != nil {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
 	}
-	if parsed.Substitution {
-		return ShellResult{Result: mutate("", "command substitution ($(...) or backticks) hides what runs")}
-	}
 	out := ShellResult{Result: read("")}
+	if parsed.Substitution {
+		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) hides what runs")
+		return out
+	}
+	var hosts []string
 	for _, seg := range parsed.Segments {
-		words := stripAssignments(seg.Words)
-		// Redirects are checked before the empty-words skip below: a segment that is only a
-		// redirect (e.g. a bare "> out.txt", or a word merged into its target by a parser bug) must
-		// never pass just because it has no words to classify by program name.
-		for _, r := range seg.Redirects {
-			if writesFile(r) {
-				return ShellResult{Result: mutate(first(words), "the redirect "+r+" writes a file")}
-			}
-		}
-		if len(words) == 0 {
-			continue
-		}
-		if seg.Background {
-			return ShellResult{Result: mutate(words[0], "background jobs (&) outlive the command timeout")}
-		}
-		res := shellProgram(words)
+		res, words := shellSegment(seg)
 		if res.Classification != policy.Read {
-			return ShellResult{Result: res}
+			out.Result = res
+			return out
 		}
 		if out.Verb == "" {
 			out.Verb = res.Verb
 		}
-		out.Hosts = append(out.Hosts, hostsIn(words)...)
+		hosts = append(hosts, hostsIn(words)...)
 	}
+	out.Hosts = hosts
 	return out
 }
 
-// writesFile reports whether a redirection creates or appends to a file (>, >>, &>, N>) rather than
-// duplicating a descriptor (2>&1) or reading (<), and treats /dev/null and the standard streams
-// as harmless targets.
+// shellSegment classifies one simple command and returns it without its assignment prefix. A
+// redirect into a file, a background job, an assignment outside the safe list or a program that is
+// not a read makes it a mutation.
+func shellSegment(seg shellwords.Segment) (Result, []string) {
+	command := seg.Words[assignmentsEnd(seg.Words):]
+	// Redirects and the background flag are checked before the empty-words case below: a segment
+	// that is only a redirect ("> out.txt") or only an assignment ("NAME=value &") must never pass
+	// just because it has no program to classify.
+	for _, r := range seg.Redirects {
+		if writesFile(r) {
+			return mutate(first(command), "the redirect "+r+" writes a file"), nil
+		}
+	}
+	if seg.Background {
+		return mutate(first(command), "background jobs (&) outlive the command timeout"), nil
+	}
+	words, res, ok := splitAssignments(seg.Words)
+	if !ok {
+		return res, nil
+	}
+	if len(words) == 0 {
+		return read(""), nil
+	}
+	return shellProgram(words), words
+}
+
+// harmlessTargets are the only files a redirect may name in a read: the null device and the
+// standard streams. Every other path, /dev/sda and bash's /dev/tcp/host/port included, is a write.
+var harmlessTargets = map[string]bool{
+	"/dev/null": true, "/dev/stdout": true, "/dev/stderr": true, "/dev/tty": true, "/dev/fd/1": true, "/dev/fd/2": true,
+}
+
+// writesFile reports whether a redirection creates or appends to a file (>, >>, &>, >& file, N>)
+// rather than duplicating a descriptor (2>&1) or reading (<).
 func writesFile(redirect string) bool {
 	op, target, _ := strings.Cut(redirect, " ")
 	if !strings.Contains(op, ">") || strings.Contains(op, "&") && target == "" {
 		return false
 	}
-	return !strings.HasPrefix(target, "/dev/")
+	return !harmlessTargets[target]
 }
 
-// stripAssignments drops leading NAME=value words.
-func stripAssignments(words []string) []string {
-	for len(words) > 0 && strings.Contains(words[0], "=") && !strings.HasPrefix(words[0], "-") &&
-		regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`).MatchString(words[0]) {
-		words = words[1:]
+var assignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+
+// safeAssignments are the variables a read may set in front of its program: they pick a config
+// file, a profile, a locale or an output style, never which program runs or what it loads (PATH,
+// LD_PRELOAD and the like do both).
+var safeAssignments = map[string]bool{
+	"KUBECONFIG": true, "AWS_PROFILE": true, "AWS_REGION": true, "TZ": true, "LANG": true, "NO_COLOR": true,
+	"PAGER": true,
+}
+
+func safeAssignment(name string) bool { return safeAssignments[name] || strings.HasPrefix(name, "LC_") }
+
+// assignmentsEnd is the index of the first word that is not a leading NAME=value assignment.
+func assignmentsEnd(words []string) int {
+	i := 0
+	for i < len(words) && assignmentWord.MatchString(words[i]) {
+		i++
 	}
-	return words
+	return i
+}
+
+// splitAssignments drops the leading NAME=value words. ok is false, with the mutate result, when a
+// variable is outside the safe list: set in front of a command or on its own (it then applies to
+// every later command of the line), it can change which program an allowlisted name runs.
+func splitAssignments(words []string) (rest []string, res Result, ok bool) {
+	end := assignmentsEnd(words)
+	for _, w := range words[:end] {
+		if name, _, _ := strings.Cut(w, "="); !safeAssignment(name) {
+			return nil, mutate(name, "setting "+name+" can change which program runs or what it loads"), false
+		}
+	}
+	return words[end:], Result{}, true
+}
+
+// systemBinDirs are the directories a path-qualified program word may name and still be classified
+// by its name: they are root-owned, so /bin/cat is the cat the allowlist means.
+var systemBinDirs = map[string]bool{"/bin": true, "/usr/bin": true, "/sbin": true, "/usr/sbin": true}
+
+// programName returns the program a command word runs. A word with a slash names a file: ./cat is
+// whatever that file is, so only a program in systemBinDirs keeps its name (ok is false otherwise).
+func programName(word string) (string, bool) {
+	if !strings.Contains(word, "/") {
+		return word, true
+	}
+	clean := path.Clean(word)
+	if strings.HasPrefix(clean, "/") && systemBinDirs[path.Dir(clean)] {
+		return path.Base(clean), true
+	}
+	return word, false
 }
 
 // shellWrapper classifies the programs that run another command in a modified context: sudo, su and
@@ -97,7 +159,10 @@ func shellWrapper(prog string, rest []string) (Result, bool) {
 		}
 		return shellProgram(rest[1:]), true
 	case "env":
-		rest = stripAssignments(rest)
+		rest, res, ok := splitAssignments(rest)
+		if !ok {
+			return res, true
+		}
 		if len(rest) == 0 {
 			return read(prog), true
 		}
@@ -132,24 +197,18 @@ func shellDevopsTool(prog string, rest []string) (Result, bool) {
 func shellFileTool(prog string, rest []string) (Result, bool) {
 	switch prog {
 	case "find":
-		if hasFlag(rest, "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls") {
-			return mutate(prog, "find with -delete or -exec acts on the files it finds"), true
+		if hasFlag(rest, "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls") {
+			return mutate(prog, "find with -delete, -exec or -fprint acts on the files it finds or writes one"), true
 		}
 		return read(prog), true
 	case "sed":
 		return sedResult(prog, rest), true
 	case "awk", "gawk", "mawk", "nawk":
-		if program := awkProgram(rest); strings.Contains(program, ">") || strings.Contains(program, "system(") {
-			return mutate(prog, "the awk program writes files or runs commands"), true
-		}
-		return read(prog), true
+		return awkResult(prog, rest), true
 	case "curl":
 		return curlResult(rest), true
 	case "wget":
-		if hasFlag(rest, "-O-", "-qO-") || flagValue(rest, "-O", "--output-document") == "-" {
-			return read(prog), true
-		}
-		return mutate(prog, "wget writes the download to a file (use curl or wget -O-)"), true
+		return wgetResult(rest), true
 	case "make":
 		if hasFlag(rest, "-n", "--dry-run", "--just-print", "-q", "--question", "-p", "--print-data-base") {
 			return read(prog), true
@@ -157,22 +216,6 @@ func shellFileTool(prog string, rest []string) (Result, bool) {
 		return mutate(prog, "make runs build recipes"), true
 	}
 	return Result{}, false
-}
-
-func sedResult(prog string, rest []string) Result {
-	for _, t := range rest {
-		if sedInPlaceFlag(t) {
-			return mutate(prog, "sed -i edits files in place")
-		}
-	}
-	return read(prog)
-}
-
-func sedInPlaceFlag(t string) bool {
-	if t == "-i" || t == "--in-place" || strings.HasPrefix(t, "--in-place=") {
-		return true
-	}
-	return strings.HasPrefix(t, "-i") && !strings.HasPrefix(t, "-in")
 }
 
 // shellMiscTool classifies gh, the scripting language runtimes, sysctl and the programs that always
@@ -199,7 +242,11 @@ func shellMiscTool(prog string, rest []string) (Result, bool) {
 
 // shellProgram classifies one simple command by its program name.
 func shellProgram(words []string) Result {
-	prog := filepath.Base(words[0])
+	prog, ok := programName(words[0])
+	if !ok {
+		return mutate(prog, prog+" names a program file outside /bin, /usr/bin, /sbin and /usr/sbin, "+
+			"so it runs whatever that file is")
+	}
 	rest := words[1:]
 	if res, ok := shellWrapper(prog, rest); ok {
 		return res
@@ -215,25 +262,20 @@ func shellProgram(words []string) Result {
 	}
 	if reads, ok := subcommandReads[prog]; ok {
 		if len(rest) > 0 && in(rest[0], reads...) {
+			if res, writes := subcommandWrites(prog, rest); writes {
+				return res
+			}
 			return read(prog + " " + rest[0])
 		}
 		return mutate(prog+" "+first(rest), prog+" "+first(rest)+" is not a read-only operation")
 	}
 	if readOnlyPrograms[prog] {
+		if res, writes := readProgramWrites(prog, rest); writes {
+			return res
+		}
 		return read(prog)
 	}
 	return mutate(prog, prog+" is not in the read-only allowlist")
-}
-
-func curlResult(rest []string) Result {
-	if hasFlag(rest, "-o", "-O", "--output", "--remote-name", "--output-dir", "-T", "--upload-file", "-d", "--data",
-		"--data-raw", "--data-binary", "--data-urlencode", "-F", "--form", "--json") {
-		return mutate("curl", "curl with an output file or a request body is not a plain GET")
-	}
-	if method := strings.ToUpper(flagValue(rest, "-X", "--request")); method != "" && method != "GET" && method != "HEAD" {
-		return mutate("curl", "curl -X "+method+" is not a read")
-	}
-	return read("curl")
 }
 
 func ghResult(rest []string) Result {
@@ -247,29 +289,11 @@ func ghResult(rest []string) Result {
 		}
 		return read("gh api")
 	}
-	if in(op, "list", "view", "status", "checks", "diff", "download", "log") || group == "search" {
+	// download writes the run artifacts or release assets into the working directory.
+	if in(op, "list", "view", "status", "checks", "diff", "log") || group == "search" {
 		return read("gh " + group + " " + op)
 	}
-	return mutate("gh "+group+" "+op, "gh "+group+" "+op+" changes GitHub state")
-}
-
-func awkProgram(rest []string) string {
-	skip := false
-	for _, t := range rest {
-		if skip {
-			skip = false
-			continue
-		}
-		if in(t, "-F", "-v", "-f") {
-			skip = true
-			continue
-		}
-		if strings.HasPrefix(t, "-") {
-			continue
-		}
-		return t
-	}
-	return ""
+	return mutate("gh "+group+" "+op, "gh "+group+" "+op+" changes GitHub state or writes files")
 }
 
 func stripChdir(tokens []string) []string {

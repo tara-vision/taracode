@@ -32,3 +32,22 @@ func TestHelmToolDryRunsUpgrades(t *testing.T) {
 		t.Errorf("%q %v", out, err)
 	}
 }
+
+// TestHelmDryRunIsAlwaysARealDryRun: the dry run the policy requires before the prompt must never
+// run the release: a --dry-run=false or =none the model wrote is replaced, and --dry-run goes before
+// a "--" that would make it a release name.
+func TestHelmDryRunIsAlwaysARealDryRun(t *testing.T) {
+	fakeBin(t, "helm", "")
+	tool := HelmTool()
+	for args, want := range map[string]string{
+		"upgrade web ./chart --dry-run=false": "helm upgrade web ./chart --dry-run",
+		"upgrade web ./chart --dry-run=none":  "helm upgrade web ./chart --dry-run",
+		"install web ./chart --dry-run":       "helm install web ./chart --dry-run",
+		"upgrade web ./chart -- extra":        "helm upgrade web ./chart --dry-run -- extra",
+	} {
+		out, err := tool.DryRun(context.Background(), map[string]any{"args": args}, "")
+		if err != nil || out != want {
+			t.Errorf("%q: dry run ran %q (%v), want %q", args, out, err, want)
+		}
+	}
+}

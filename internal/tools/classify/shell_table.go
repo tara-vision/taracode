@@ -1,7 +1,8 @@
 package classify
 
-// readOnlyPrograms are commands whose every invocation only reads. Programs with read and write
-// forms (find, sed, awk, curl, make, git, kubectl, ...) are handled in shellProgram.
+// readOnlyPrograms are commands that read unless readProgramWrites finds one of their write forms
+// (sort -o, yq -i, rg --pre, ...). Programs whose read form is the exception (find, sed, awk, curl,
+// make, git, kubectl, ...) are handled in shellProgram.
 var readOnlyPrograms = map[string]bool{
 	"cat": true, "ls": true, "ll": true, "dir": true, "grep": true, "egrep": true, "fgrep": true, "rg": true, "ag": true,
 	"ack": true, "head": true, "tail": true, "wc": true, "sort": true, "uniq": true, "cut": true, "tr": true, "jq": true,
@@ -22,13 +23,13 @@ var readOnlyPrograms = map[string]bool{
 }
 
 // subcommandReads lists, for programs whose first argument selects the operation, the operations
-// that only read.
+// that read unless subcommandWrites finds a write form (ip link set, openssl -out, npm config set).
 var subcommandReads = map[string][]string{
 	"systemctl": {"status", "list-units", "list-unit-files", "list-timers", "list-dependencies", "is-active",
 		"is-enabled", "is-failed", "show", "cat"},
 	"brew":      {"list", "ls", "info", "deps", "outdated", "doctor", "config", "search", "--version", "-v"},
 	"apt":       {"list", "show", "search", "policy", "depends", "rdepends"},
-	"apt-get":   {"changelog", "download"},
+	"apt-get":   {"changelog"},
 	"yum":       {"list", "info", "search", "repolist", "check-update", "provides", "deplist"},
 	"dnf":       {"list", "info", "search", "repolist", "check-update", "provides", "deplist"},
 	"pip":       {"list", "show", "freeze", "check", "index", "--version", "-V"},
