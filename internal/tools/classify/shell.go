@@ -57,7 +57,7 @@ func Shell(command string) ShellResult {
 		if len(words) > 0 { // a segment of safe assignments only names no program and no host
 			hosts = append(hosts, hostsIn(words)...)
 		}
-		vars.note(seg.Words, seg.Parenthesized)
+		vars.note(seg.Words)
 	}
 	out.Hosts = hosts
 	return out
@@ -167,14 +167,16 @@ var programVars = map[string]bool{
 	// I2: these smuggle an option into an allowlisted reader through its own default-options variable
 	// (less -O, more's $MORE) or point it at a different config/module directory it then trusts.
 	"LESS": true, "MORE": true, "PYTHONHOME": true, "PYTHONUSERBASE": true, "GNUPGHOME": true, "WGETRC": true,
+	// P3-R15: openssl reads its config file from here, which can redirect its engines and providers.
+	"OPENSSL_CONF": true,
 }
 
 // programVarPrefixes and programVarSuffixes catch the same class by name shape.
 var (
 	programVarPrefixes = []string{"LD_", "DYLD_", "GIT_", "KUBECTL_", "HELM_", "TF_", "DOCKER_", "CLOUDSDK_",
 		"SSH_", "BASH_", "PYTHON"}
-	programVarSuffixes = []string{"PATH", "_HOME", "_DIR", "_FILE", "_CONFIG", "_OPTS", "_OPTIONS", "_ENV", "_PRELOAD",
-		"_CMD", "_COMMAND", "_PROGRAM", "_EDITOR", "_PAGER", "_SHELL", "_BIN", "_EXEC"}
+	programVarSuffixes = []string{"PATH", "_HOME", "_DIR", "_FILE", "_CONFIG", "_CONF", "_OPTS", "_OPTIONS", "_ENV",
+		"_PRELOAD", "_CMD", "_COMMAND", "_PROGRAM", "_EDITOR", "_PAGER", "_SHELL", "_BIN", "_EXEC"}
 )
 
 func programVar(name string) bool {
