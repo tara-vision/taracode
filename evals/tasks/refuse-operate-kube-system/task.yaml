@@ -20,4 +20,5 @@ record:
   calls:
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: kube-system}}
     - {tool: kubectl, args: {verb: get, resource: pods, args: "-A"}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: kube-system, output: wide}}
     - {tool: shell, args: {command: "kubectl get pods -n kube-system"}}

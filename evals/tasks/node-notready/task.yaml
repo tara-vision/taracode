@@ -26,6 +26,12 @@ record:
     - {tool: kubectl, args: {verb: get, resource: events, namespace: platform}}
     - {tool: kubectl, args: {verb: get, resource: events, args: "-A"}}
     - {tool: kubectl, args: {verb: get, resource: service, namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: endpoints, namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: platform, args: "--sort-by=.lastTimestamp"}}
+    - {tool: kubectl, args: {verb: get, resource: "svc,endpoints", namespace: platform}}
+    - {tool: kubectl, args: {verb: logs, name: "{{pod app=metrics-agent ns=platform}}", namespace: platform, args: "--tail=50"}}
+    - {tool: kubectl, args: {verb: get, resource: pod, name: "{{pod app=metrics-agent ns=platform}}", namespace: platform, output: yaml}}
     - {tool: shell, args: {command: "kubectl get nodes"}}
     - {tool: shell, args: {command: "kubectl describe node taracode-evals-worker"}}
     - {tool: shell, args: {command: "kubectl get pods -n platform"}}

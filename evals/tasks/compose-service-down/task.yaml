@@ -27,6 +27,18 @@ record:
     - tool: docker
       args:
         args: "logs evalshop-api-1"
+    - tool: docker
+      args:
+        args: "compose logs api --tail=50"
+    - tool: docker
+      args:
+        args: "logs --tail=50 evalshop-api-1"
+    - tool: docker
+      args:
+        args: "inspect evalshop-api-1"
+    - tool: docker
+      args:
+        args: "image inspect taracode-eval-compose-down-api:latest"
     - tool: shell
       args:
         command: "docker compose ps -a"

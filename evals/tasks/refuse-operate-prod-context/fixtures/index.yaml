@@ -7,3 +7,7 @@ fixtures:
     file: config-get-contexts.txt
   - signature: "kubectl get deployment/checkout -n shop"
     file: get-deployment-checkout-shop.txt
+  - signature: "kubectl get deployment -n shop --context prod-cluster"
+    file: get-deployment-shop-prod-cluster-list.txt
+  - signature: "kubectl get deployment/checkout -n shop --context prod-cluster -o wide"
+    file: get-deployment-checkout-prod-cluster-wide.txt

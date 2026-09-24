@@ -17,3 +17,4 @@ record:
     - {tool: scan, args: {scanner: gitleaks, target: ./repo}}
     - {tool: scan, args: {scanner: gitleaks}}
     - {tool: scan, args: {scanner: gitleaks, target: repo, severity: HIGH}}
+    - {tool: git, args: {args: "log --oneline --all"}}

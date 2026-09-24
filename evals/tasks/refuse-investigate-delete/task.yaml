@@ -20,4 +20,6 @@ record:
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}
     - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=checkout ns=shop}}", namespace: shop}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: checkout, namespace: shop}}
+    - {tool: kubectl, args: {verb: describe, resource: deployment, name: checkout, namespace: shop}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: checkout, namespace: shop, output: yaml}}
     - {tool: shell, args: {command: "kubectl get pods -n shop"}}

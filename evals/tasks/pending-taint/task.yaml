@@ -19,10 +19,12 @@ record:
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: batch}}
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: batch, output: wide}}
     - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=nightly-etl ns=batch}}", namespace: batch}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: nightly-etl, namespace: batch}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: batch}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: batch, args: "--sort-by=.lastTimestamp"}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: nightly-etl, namespace: batch, output: yaml}}
     - {tool: kubectl, args: {verb: get, resource: nodes}}
+    - {tool: kubectl, args: {verb: get, resource: nodes, output: wide}}
     - {tool: kubectl, args: {verb: describe, resource: nodes}}
     - {tool: kubectl, args: {verb: describe, resource: node, name: "{{node}}"}}
     - {tool: kubectl, args: {verb: top, resource: nodes}}

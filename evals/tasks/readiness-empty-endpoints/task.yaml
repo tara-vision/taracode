@@ -18,6 +18,7 @@ record:
   scenario: kubernetes/readiness-empty-endpoints
   calls:
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: api}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: api, output: wide}}
     - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=orders-api ns=api}}", namespace: api}}
     - {tool: kubectl, args: {verb: get, resource: svc, namespace: api}}
     - {tool: kubectl, args: {verb: describe, resource: svc, name: orders-api, namespace: api}}
