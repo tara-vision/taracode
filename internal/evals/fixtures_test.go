@@ -62,6 +62,8 @@ func TestLoadFixturesRejectsAnUnsafeFileNameOrADuplicateSignature(t *testing.T) 
 		"dot":                 "fixtures:\n  - signature: a\n    file: \".\"\n",
 		"dotdot":              "fixtures:\n  - signature: a\n    file: \"..\"\n",
 		"empty":               "fixtures:\n  - signature: a\n    file: \"\"\n",
+		"index.yaml itself":   "fixtures:\n  - signature: a\n    file: index.yaml\n",
+		"a dotfile":           "fixtures:\n  - signature: a\n    file: \".env\"\n",
 		"duplicate signature": "fixtures:\n  - signature: a\n    file: a.txt\n  - signature: a\n    file: b.txt\n",
 	}
 	for name, yamlText := range cases {
@@ -131,5 +133,62 @@ func TestStoreLookupErrDistinguishesACorpusDefectFromAMiss(t *testing.T) {
 	}
 	if s.LookupErr("never recorded") != nil {
 		t.Fatalf("a plain miss must not report a lookup error: %v", s.LookupErr("never recorded"))
+	}
+}
+
+// TestLoadFixturesTreatsAnEmptyOrCommentOnlyIndexAsEmpty covers ruling P3-R38: switching to a
+// KnownFields decoder must not regress an index.yaml that has never been written yet - an empty file,
+// a comment-only one, or a bare "---" document marker all decode as io.EOF, which is an empty index,
+// exactly as yaml.Unmarshal treated them before.
+func TestLoadFixturesTreatsAnEmptyOrCommentOnlyIndexAsEmpty(t *testing.T) {
+	cases := map[string]string{
+		"empty":           "",
+		"comment only":    "# nothing recorded yet\n",
+		"bare doc marker": "---\n",
+	}
+	for name, content := range cases {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "fixtures"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "fixtures", "index.yaml"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s, err := LoadFixtures(dir)
+		if err != nil || s.Len() != 0 {
+			t.Errorf("%s: %v %d", name, err, s.Len())
+		}
+	}
+}
+
+// TestSaveDoesNotRemoveAFileAnotherSignatureStillUses covers the write-time half of ruling P3-R38:
+// two signatures can validly share a file (a hand-authored index, or a corpus lint has not yet been
+// run to catch it), and replacing one of them under a new file name must not destroy the file the
+// other still needs.
+func TestSaveDoesNotRemoveAFileAnotherSignatureStillUses(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "shared.txt"), []byte("shared content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	indexYAML := "fixtures:\n  - signature: sig-a\n    file: shared.txt\n  - signature: sig-b\n    file: shared.txt\n"
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "index.yaml"), []byte(indexYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := LoadFixtures(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save("sig-a", "new content for sig-a", false); err == nil {
+		t.Fatal("expected Save to refuse removing a file sig-b still uses")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "fixtures", "shared.txt")); statErr != nil {
+		t.Fatalf("shared.txt must survive: %v", statErr)
+	}
+	out, _, ok := s.Lookup("sig-b")
+	if !ok || out != "shared content" {
+		t.Fatalf("sig-b's fixture must be untouched: %q %v", out, ok)
 	}
 }

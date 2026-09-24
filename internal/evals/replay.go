@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -131,11 +133,20 @@ func (r *Replay) confinementError(tool, path string) error {
 // itself does not exist yet (as for write_file creating a new file), and returns that ancestor's
 // real, symlink-free path. Resolving both the run directory and p this way also makes a difference
 // like macOS's /var vs /private/var a non-issue, since both sides of the comparison go through it.
+//
+// Climbing is only for a component that truly does not exist yet: os.Lstat says so. When Lstat finds
+// something (a dangling symlink, or one that loops) but EvalSymlinks still fails on it, that is a
+// refusal, not a cue to climb past it (ruling P3-R38) - otherwise a dangling link inside the run
+// directory would resolve to the run directory's own (perfectly real) parent and pass, while the
+// tool's own O_CREATE still follows the link and writes wherever it dangles to.
 func evalDeepestAncestor(p string) (string, error) {
 	for {
 		resolved, err := filepath.EvalSymlinks(p)
 		if err == nil {
 			return resolved, nil
+		}
+		if _, statErr := os.Lstat(p); statErr == nil {
+			return "", err
 		}
 		parent := filepath.Dir(p)
 		if parent == p {
@@ -147,13 +158,31 @@ func evalDeepestAncestor(p string) (string, error) {
 
 // terraformSig parses a canonical terraform signature ("terraform <verb> dir=<dir> ..."), produced
 // identically for the terraform tool and for a shell line aliased to it (ruling P3-R11), so the
-// plan-state gate below keys on the call's meaning rather than on which tool the model used.
+// plan-state gate below keys on the call's meaning rather than on which tool the model used. A dir
+// containing whitespace is quoted by terraformSignature (strconv.Quote) precisely because the whole
+// signature is space-joined and later split with strings.Fields; the quoted form is unquoted here
+// (ruling P3-R38), so "my infra" and "my other" key as two directories, not both as "my".
 func terraformSig(sig string) (verb, dir string, ok bool) {
-	fields := strings.Fields(strings.TrimPrefix(sig, "dryrun:"))
+	rest := strings.TrimPrefix(sig, "dryrun:")
+	fields := strings.Fields(rest)
 	if len(fields) < 3 || fields[0] != "terraform" || !strings.HasPrefix(fields[2], "dir=") {
 		return "", "", false
 	}
-	return fields[1], strings.TrimPrefix(fields[2], "dir="), true
+	verb = fields[1]
+	dirField := strings.TrimPrefix(fields[2], "dir=")
+	if !strings.HasPrefix(dirField, `"`) {
+		return verb, dirField, true
+	}
+	afterDirEquals := strings.TrimPrefix(rest, "terraform "+verb+" dir=")
+	quoted, err := strconv.QuotedPrefix(afterDirEquals)
+	if err != nil {
+		return "", "", false
+	}
+	unquoted, err := strconv.Unquote(quoted)
+	if err != nil {
+		return "", "", false
+	}
+	return verb, unquoted, true
 }
 
 // terraformApplyGate refuses an apply with no plan replayed this session for the same directory. The

@@ -280,3 +280,77 @@ func TestReplayReportsACorpusDefectDistinctFromAMiss(t *testing.T) {
 		t.Fatalf("defects: %v", d)
 	}
 }
+
+// TestReplayConfinementRefusesADanglingSymlink covers ruling P3-R38: evalDeepestAncestor must climb
+// past a component only when it does not exist yet, never past one os.Lstat finds (a dangling link
+// or a loop) but filepath.EvalSymlinks still cannot resolve - otherwise the link's own, perfectly
+// real parent (the run directory) resolves fine and the confinement check passes, while the tool's
+// own O_CREATE still follows the link and writes wherever it dangles to.
+func TestReplayConfinementRefusesADanglingSymlink(t *testing.T) {
+	_, reg, runDir := replayRegistry(t)
+	sibling := t.TempDir()
+	target := filepath.Join(sibling, "x")
+	if err := os.Symlink(target, filepath.Join(runDir, "dangling-file")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := reg.Execute(ctx, "write_file", map[string]any{"path": "dangling-file", "content": "x"}, runDir); err == nil {
+		t.Fatal("a dangling symlink must be refused, not followed")
+	}
+	if _, statErr := os.Lstat(target); statErr == nil {
+		t.Fatal("the write followed the dangling link and created the sibling file")
+	}
+}
+
+// TestReplayTerraformPlanStateKeysOnTheQuotedDirNotASharedPrefix covers ruling P3-R38: a dir
+// containing whitespace is quoted in the signature (terraformSignature) and unquoted when parsed
+// back (terraformSig), so "my infra" and "my other" key as two distinct directories instead of both
+// truncating to the shared leading word "my" under a naive strings.Fields split.
+func TestReplayTerraformPlanStateKeysOnTheQuotedDirNotASharedPrefix(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	for sig, text := range map[string]string{
+		`terraform plan dir="my infra"`:  "Plan: 1 to add.",
+		`terraform apply dir="my infra"`: "Apply complete! (my infra)",
+		`terraform apply dir="my other"`: "Apply complete! (my other)",
+	} {
+		if err := s.Save(sig, text, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := NewReplay(s, "t", runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	ctx := context.Background()
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan", "dir": "my infra"}, runDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "apply", "dir": "my other"}, runDir); err == nil ||
+		!strings.Contains(err.Error(), "run terraform plan first") {
+		t.Fatalf("apply in a different quoted dir must not be unlocked by another dir's plan: %v", err)
+	}
+	if out, err := reg.Execute(ctx, "terraform", map[string]any{"command": "apply", "dir": "my infra"}, runDir); err != nil ||
+		!strings.Contains(out, "my infra") {
+		t.Fatalf("apply in the planned quoted dir must succeed: %q %v", out, err)
+	}
+}
+
+// TestReplayCloudProviderNeverAliasesAnotherTool covers ruling P3-R38: a cloud call with a provider
+// outside aws, az and gcloud must key as "cloud <provider> <args>", never as "<provider> <args>",
+// so it cannot collide with a real tool's own signature and, through the plan-state gate, unlock an
+// apply no real terraform call ever earned.
+func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	if err := s.Save("terraform plan dir=.", "Plan: 1 to add.", false); err != nil {
+		t.Fatal(err)
+	}
+	r := NewReplay(s, "t", runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	_, err := reg.Execute(context.Background(), "cloud", map[string]any{"provider": "terraform", "args": "plan dir=."}, runDir)
+	if err == nil || !strings.Contains(err.Error(), "no recorded data") {
+		t.Fatalf("cloud provider=terraform must not hit the terraform plan fixture: %v", err)
+	}
+	if m := r.Misses(); len(m) != 1 || m[0] != "cloud terraform plan dir=." {
+		t.Fatalf("misses %v", m)
+	}
+}

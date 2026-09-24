@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,7 +55,10 @@ func LoadFixtures(taskDir string) (*Store, error) {
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&s.index); err != nil {
+	// An empty or comment-only index.yaml, or a bare "---" document marker, decodes with io.EOF and
+	// no fields set; that is an empty index, exactly as yaml.Unmarshal treated it before this switched
+	// to a KnownFields decoder (ruling P3-R38).
+	if err := dec.Decode(&s.index); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%s: %w", indexPath, err)
 	}
 	for _, f := range s.index.Fixtures {
@@ -68,12 +73,15 @@ func LoadFixtures(taskDir string) (*Store, error) {
 	return s, nil
 }
 
-// validFixtureFileName rejects anything but a plain base name: empty, ".", "..", or a name that
-// changes when cleaned through filepath.Base (an embedded separator or a path), so an index entry
-// can never point outside the fixtures directory (ruling P3-R27). Authored fixtures keep any base
-// name they like; it need not match fixtureFileName's own convention.
+// validFixtureFileName rejects anything but a plain base name: empty, ".", "..", a name that changes
+// when cleaned through filepath.Base (an embedded separator or a path), "index.yaml" itself (whose
+// deletion or overwrite would corrupt the index), or a dotfile (reserved for non-fixture content, the
+// same convention the orphan scan's dotfile exemption relies on) - ruling P3-R27, extended by
+// P3-R38. Authored fixtures keep any other base name they like; it need not match fixtureFileName's
+// own convention.
 func validFixtureFileName(name string) error {
-	if name == "" || name == "." || name == ".." || name != filepath.Base(name) {
+	if name == "" || name == "." || name == ".." || name != filepath.Base(name) ||
+		name == "index.yaml" || strings.HasPrefix(name, ".") {
 		return fmt.Errorf("file %q is not a plain file name", name)
 	}
 	return nil
@@ -117,7 +125,10 @@ func (s *Store) LookupErr(sig string) error {
 
 // Save writes the text under the signature and updates the index; an existing signature is
 // replaced and its old file removed when the name changed. It refuses to reuse a file name already
-// claimed by a different signature rather than overwrite it (ruling P3-R27).
+// claimed by a different signature rather than overwrite it, and refuses to remove its own old file
+// when a different signature still uses it (ruling P3-R27, extended by P3-R38): a hand-authored
+// index can legitimately have two signatures share one file, and replacing one of them must not
+// destroy the fixture the other still needs.
 func (s *Store) Save(sig, output string, isErr bool) error {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil { //nolint:gosec // the fixtures directory is repository content
 		return err
@@ -133,6 +144,11 @@ func (s *Store) Save(sig, output string, isErr bool) error {
 	}
 	if old, ok := s.byKey[sig]; ok {
 		if old.File != f.File {
+			if owner, used := s.fileUsedByAnother(old.File, sig); used {
+				_ = os.Remove(dest)
+				return fmt.Errorf("fixture file %s for signature %q is still used by signature %q; refusing to remove it",
+					old.File, sig, owner)
+			}
 			_ = os.Remove(filepath.Join(s.dir, old.File))
 		}
 		for i := range s.index.Fixtures {
@@ -155,6 +171,16 @@ func (s *Store) Save(sig, output string, isErr bool) error {
 func (s *Store) fileOwner(name string) (string, bool) {
 	for _, f := range s.index.Fixtures {
 		if f.File == name {
+			return f.Signature, true
+		}
+	}
+	return "", false
+}
+
+// fileUsedByAnother reports whether an entry other than sig's own uses file name.
+func (s *Store) fileUsedByAnother(name, sig string) (string, bool) {
+	for _, f := range s.index.Fixtures {
+		if f.File == name && f.Signature != sig {
 			return f.Signature, true
 		}
 	}
