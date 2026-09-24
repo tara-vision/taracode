@@ -88,7 +88,7 @@ func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Exec
 		if err != nil {
 			text, isErr = err.Error(), true
 		}
-		if guardErr := rec.guardAndSave(ctx, sig, text, isErr); guardErr != nil {
+		if _, guardErr := rec.guardAndSave(ctx, sig, text, isErr, replaceExisting); guardErr != nil {
 			return "", guardErr
 		}
 		return out, err
@@ -105,44 +105,80 @@ func (rec *Recorder) matchesPrivateName(s string) bool {
 	return false
 }
 
+// carriesPrivateName reports whether anything a fixture for sig would put on disk carries one of the
+// recorder's private names: its redacted text, its signature (written into the index), or its file
+// name. The file name is a slug of the signature, which can rebuild a hyphenated name the signature
+// only spells with other separators ("kiosk 7" becomes kiosk-7 in the slug), so it is checked on its
+// own (ruling P3-R55 item 2).
+func (rec *Recorder) carriesPrivateName(sig, text string) bool {
+	return rec.matchesPrivateName(text) || rec.matchesPrivateName(sig) ||
+		rec.matchesPrivateName(fixtureFileName(sig))
+}
+
+// existingFixture says what guardAndSave does when the store already holds the signature it saves.
+type existingFixture int
+
+const (
+	// replaceExisting is for a tool's own result: Save's normal replace path overwrites the entry.
+	replaceExisting existingFixture = iota
+	// keepExisting is for the placeholder recordOneCall saves when the registry answered a dry run
+	// with ErrNoDryRun before the middleware ran. The placeholder only says that there was no dry run,
+	// so it never replaces a fixture the store already holds under the same signature, such as the
+	// kubectl tool's real diff, which a shell dry run of the same kubectl apply line aliases (ruling
+	// P3-R55 item 3).
+	keepExisting
+)
+
+// storeHolds reports whether the store's index already has an entry for sig.
+func storeHolds(s *Store, sig string) bool {
+	return slices.ContainsFunc(s.Fixtures(), func(f Fixture) bool { return f.Signature == sig })
+}
+
 // guardAndSave is the one guard-and-save sequence every recorded result goes through, whether
 // Middleware hands it over or recordOneCall saves it directly (a dry run of a tool with no DryRun,
 // which the registry answers before the middleware ever runs, ruling P3-R41 item 7). The two paths
 // once had separate guards, and the direct one skipped the private-name check on the signature (fix
 // round 4); sharing this method keeps them from drifting apart again. In order: text is redacted
 // before anything else sees it; then, under the recorder's mutex, a refusal already latched is
-// returned again without saving (sticky, ruling P3-R35); a private name in the redacted text or in sig
-// latches a refusal and returns it; a call whose context is already done saves nothing and returns
-// nil (ruling P3-R36: a fixture from a call the caller gave up on must not reach disk); otherwise the
-// text is saved, the first save failure is latched for SaveErr (P3-R36), and sig joins Saved() the
-// first time it is saved, so saving one signature twice never lists it twice. Every error this returns
-// leaves Refused or SaveErr non-nil too, for a caller whose error does not survive the registry.
-func (rec *Recorder) guardAndSave(ctx context.Context, sig, text string, isErr bool) error {
+// returned again without saving (sticky, ruling P3-R35); a private name in the redacted text, in sig
+// or in the file name sig would be saved under (see carriesPrivateName) latches a refusal and
+// returns it; a call whose context is already done saves nothing and returns nil (ruling P3-R36: a
+// fixture from a call the caller gave up on must not reach disk); with keepExisting, a signature the
+// store already holds is left as it is and kept is true (ruling P3-R55 item 3); otherwise the text is
+// saved, the first save failure is latched for SaveErr (P3-R36), and sig joins Saved() the first time
+// it is saved, so saving one signature twice never lists it twice. Every error this returns leaves
+// Refused or SaveErr non-nil too, for a caller whose error does not survive the registry.
+func (rec *Recorder) guardAndSave(
+	ctx context.Context, sig, text string, isErr bool, existing existingFixture,
+) (kept bool, err error) {
 	if rec.red != nil {
 		text = rec.red.Redact(text)
 	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	if rec.refused != nil {
-		return rec.refused
+		return false, rec.refused
 	}
-	if rec.matchesPrivateName(text) || rec.matchesPrivateName(sig) {
+	if rec.carriesPrivateName(sig, text) {
 		rec.refused = fmt.Errorf("%w: %s", ErrFixtureHostname, sig)
-		return rec.refused
+		return false, rec.refused
 	}
 	if ctx.Err() != nil {
-		return nil
+		return false, nil
 	}
-	if err := rec.store.Save(sig, text, isErr); err != nil {
+	if existing == keepExisting && storeHolds(rec.store, sig) {
+		return true, nil
+	}
+	if saveErr := rec.store.Save(sig, text, isErr); saveErr != nil {
 		if rec.saveErr == nil {
-			rec.saveErr = err
+			rec.saveErr = saveErr
 		}
-		return err
+		return false, saveErr
 	}
 	if !slices.Contains(rec.saved, sig) {
 		rec.saved = append(rec.saved, sig)
 	}
-	return nil
+	return false, nil
 }
 
 // Saved lists the signatures recorded, in order.
@@ -420,11 +456,17 @@ func isVirtualInterfaceName(name string) bool {
 // RecordTask records one task: it creates the fixture store's temporary directory, copies the
 // workdir to a fresh run directory, runs the scenario's setup there, executes every recorded call
 // through a registry with the record middleware into that temporary store, and runs the teardown
-// whatever happened. scenariosRoot is evals/scenarios; out receives progress. Every error this
-// returns is prefixed with the task's id (ruling P3-R41 item 6).
+// whatever happened. scenariosRoot is evals/scenarios; out receives progress. The task directory and
+// scenariosRoot may be relative, as `make record` passes them: both are made absolute before anything
+// uses them (ruling P3-R55 item 1). Every error this returns is prefixed with the task's id (ruling
+// P3-R41 item 6).
 func RecordTask(ctx context.Context, t Task, scenariosRoot string, resolve Resolver, out io.Writer) error {
 	if t.Record == nil {
 		return fmt.Errorf("%s: no record block", t.ID)
+	}
+	t, scenariosRoot, err := absoluteRoots(t, scenariosRoot)
+	if err != nil {
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	scenario := filepath.Join(scenariosRoot, t.Record.Scenario)
 	if _, err := os.Stat(filepath.Join(scenario, "setup.sh")); err != nil {
@@ -475,6 +517,24 @@ func RecordTask(ctx context.Context, t Task, scenariosRoot string, resolve Resol
 		killProcessGroup(setupPgid)
 	}()
 	return recordCalls(ctx, t, runDir, tempParent, resolve, names, out)
+}
+
+// absoluteRoots returns a copy of t whose Dir is absolute, and scenariosRoot made absolute (ruling
+// P3-R55 item 1): every path RecordTask derives from them (the scripts, which sh runs with their
+// scenario directory as its working directory, EVAL_SCENARIO, copyDir's source and the temporary
+// store) must mean the same place whatever working directory resolves it.
+func absoluteRoots(t Task, scenariosRoot string) (Task, string, error) {
+	dir, err := filepath.Abs(t.Dir)
+	if err != nil {
+		return t, "", err
+	}
+	root, err := filepath.Abs(scenariosRoot)
+	if err != nil {
+		return t, "", err
+	}
+	abs := t
+	abs.Dir = dir
+	return abs, root, nil
 }
 
 // recordCalls executes the task's calls with a recording registry in runDir, into the fresh
@@ -551,11 +611,14 @@ func recordOneCall(
 	// is already saved by it. A tool with no DryRun at all never reaches the middleware (Registry.DryRun
 	// returns ErrNoDryRun before the wrap), so it is saved here instead. Either way this is exactly what
 	// the live model sees as the call's result, so a fixture must exist for it (ruling P3-R41 item 7),
-	// logged as recorded below, never skipped, so the count and the log agree. guardAndSave's error is
-	// dropped on purpose: every one it returns is latched on rec, and the checks below report it.
+	// logged as recorded below, never skipped, so the count and the log agree. The placeholder saved
+	// here never replaces a fixture already recorded under the same signature (keepExisting, ruling
+	// P3-R55 item 3), and is logged as kept instead. guardAndSave's error is dropped on purpose: every
+	// one it returns is latched on rec, and the checks below report it.
+	kept := false
 	if call.DryRun && errors.Is(err, tools.ErrNoDryRun) {
 		if tool, ok := reg.Get(call.Tool); ok && tool.DryRun == nil {
-			_ = rec.guardAndSave(ctx, sig, err.Error(), true)
+			kept, _ = rec.guardAndSave(ctx, sig, err.Error(), true, keepExisting)
 		}
 	}
 	if refused := rec.Refused(); refused != nil {
@@ -569,6 +632,10 @@ func recordOneCall(
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "cancelled", sig)
 		return fmt.Errorf("%s: %w", t.ID, ctxErr)
+	}
+	if kept {
+		_, _ = fmt.Fprintf(out, "   %-14s %s (a dry-run placeholder does not replace a recorded fixture)\n", "kept", sig)
+		return nil
 	}
 	status := "ok"
 	if err != nil {
@@ -618,9 +685,14 @@ func swapFixtures(finalDir, newDir string) error {
 // open long after sh itself exits, so Wait's WaitDelay (scriptWaitDelay after sh exits) fires and Run
 // returns exec.ErrWaitDelay even though sh's own exit status was fine (ruling P3-R41 item 3). That
 // specific case -- ErrWaitDelay with a zero exit status -- is not a failure: sh did what it was asked,
-// so it becomes a warning line on out instead of an error.
+// so it becomes a warning line on out instead of an error. The script's path is made absolute
+// before sh sees it (ruling P3-R55 item 1): sh runs with dir as its working directory, so a relative
+// path would be resolved from inside dir and not be found.
 func runScript(ctx context.Context, dir, name string, env []string, out io.Writer) (pgid int, err error) {
-	path := filepath.Join(dir, name)
+	path, err := filepath.Abs(filepath.Join(dir, name))
+	if err != nil {
+		return 0, err
+	}
 	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 		return 0, nil
 	}
