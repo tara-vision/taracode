@@ -512,7 +512,7 @@ func TestRunnerLogsEveryCallInTheTranscript(t *testing.T) {
 	missed := Signature("kubectl", events)
 	want := []string{
 		"#1 kubectl allowed " + Signature("kubectl", describe),
-		"#2 kubectl allowed " + missed + "  MISS",
+		"#2 kubectl allowed " + missed + "  MISS " + missed,
 		"  error: no recorded data for this call: " + missed,
 		"#3 kubectl DENIED(mode) " + Signature("kubectl", deletePod),
 		"  reason: investigate mode is read-only",
@@ -562,5 +562,36 @@ func TestRunnerCapsNumPredict(t *testing.T) {
 				t.Errorf("NumPredict %d: num_predict %v, want %v", c.set, got, c.want)
 			}
 		}
+	}
+}
+
+// TestRunnerLogsTheSignatureADryRunMissed pins ruling P3-R63: when the gate's mandatory dry run of a
+// helm upgrade finds no fixture, the call is denied (dry_run) and its line ends with the dryrun:
+// signature the replay missed, the one a pasted line must record, not the upgrade's own.
+func TestRunnerLogsTheSignatureADryRunMissed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	scaleTask(t, root, "helm-upgrade", "version: 1\n", mustDenyScale)
+	tasks, err := LoadCorpus(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upgrade := map[string]any{"args": "upgrade web ./chart -n shop"}
+	srv := fakeOllama(t, call("helm", upgrade), ollamatest.Turn{Content: "The upgrade needs a dry run first."})
+	runsDir := t.TempDir()
+	res, err := Run(context.Background(), tasks, runOptions(srv, runsDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(runsDir, "gemma4-12b-2026-09-26", "helm-upgrade.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "#1 helm DENIED(dry_run) " + Signature("helm", upgrade) + "  MISS " + DryRunSignature("helm", upgrade)
+	if !strings.Contains(string(data), want+"\n") {
+		t.Fatalf("the calls block lacks %q:\n%s", want, data)
+	}
+	if notes := strings.Join(res.Tasks[0].Notes, "\n"); !strings.Contains(notes, "fixture miss: "+DryRunSignature("helm", upgrade)) {
+		t.Fatalf("notes %q", res.Tasks[0].Notes)
 	}
 }

@@ -241,7 +241,7 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 	}
 	defer remove()
 	t := Task{ID: "warm-up", Mode: "investigate", Permission: "allow", Expect: Expect{MaxIterations: 1}}
-	replay := NewReplay(&Store{byKey: map[string]Fixture{}}, t.ID, dir)
+	replay := NewReplay(&Store{byKey: map[string]Fixture{}}, dir)
 	a, err := agent.New(assistantOptions(t, opts, dir, replay, nil, io.Discard))
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	if err != nil {
 		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
-	replay := NewReplay(store, t.ID, runDir)
+	replay := NewReplay(store, runDir)
 	events := &eventLog{replay: replay}
 	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
 	if err != nil {
@@ -413,8 +413,9 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 }
 
 // writeCalls appends the transcript's calls block (ruling P3-R58): one line per decided call with its
-// signature, then the denial's reason or the tool's error, and MISS on a call the fixtures lacked,
-// so a transcript alone says which signatures to record.
+// signature, then the denial's reason or the tool's error. A call the fixtures lacked ends with
+// "MISS <signature>", the signature the replay actually missed: the call's own, or for a gate dry run
+// its dryrun: form (ruling P3-R63), so a pasted line records the right fixture.
 func writeCalls(w io.Writer, calls []loggedCall) {
 	_, _ = fmt.Fprint(w, "\n## calls\n\n")
 	if len(calls) == 0 {
@@ -427,8 +428,8 @@ func writeCalls(w io.Writer, calls []loggedCall) {
 			decision = "DENIED(" + e.Rule + ")"
 		}
 		line := fmt.Sprintf("#%d %s %s %s", i+1, e.Tool, decision, Signature(e.Tool, e.Args))
-		if c.missed() {
-			line += "  MISS"
+		for _, sig := range c.missedSignatures() {
+			line += "  MISS " + sig
 		}
 		_, _ = fmt.Fprintln(w, line)
 		if !e.Allowed && e.Reason != "" {
@@ -541,14 +542,15 @@ type loggedCall struct {
 	replayed []ReplayCall
 }
 
-// missed reports a call the fixtures had no recording for.
-func (c loggedCall) missed() bool {
+// missedSignatures are the signatures of the call's replay records that had no fixture.
+func (c loggedCall) missedSignatures() []string {
+	var sigs []string
 	for _, r := range c.replayed {
 		if errors.Is(r.Err, ErrNoFixture) {
-			return true
+			sigs = append(sigs, r.Signature)
 		}
 	}
-	return false
+	return sigs
 }
 
 func (l *eventLog) observe(e agent.ToolEvent) {

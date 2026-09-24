@@ -26,7 +26,6 @@ var ErrNoFixture = errors.New("no recorded data for this call")
 // policy that blocked it, and task ids share words with their own answer patterns.
 type Replay struct {
 	store  *Store
-	taskID string
 	runDir string
 
 	mu      sync.Mutex
@@ -52,9 +51,9 @@ var realTools = map[string]bool{"read_file": true, "list_files": true, "search_f
 var confinedTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true,
 	"write_file": true, "edit_file": true}
 
-// NewReplay returns a replay for one task run.
-func NewReplay(store *Store, taskID, runDir string) *Replay {
-	return &Replay{store: store, taskID: taskID, runDir: runDir, planned: map[string]bool{}}
+// NewReplay returns a replay for one task run in runDir.
+func NewReplay(store *Store, runDir string) *Replay {
+	return &Replay{store: store, runDir: runDir, planned: map[string]bool{}}
 }
 
 // Middleware is the tools.Middleware of this replay.

@@ -32,7 +32,7 @@ func replayRegistry(t *testing.T) (*Replay, *tools.Registry, string) {
 	if err := os.WriteFile(filepath.Join(runDir, "notes.txt"), []byte("real file"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, "crashloop-oomkilled", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	return r, reg, runDir
 }
@@ -87,7 +87,7 @@ func TestReplayErrorsNameNoTask(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, task, runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	calls := []struct {
@@ -215,7 +215,7 @@ func TestReplayApplyRefusedAfterErrorPlan(t *testing.T) {
 	if err := s.Save("terraform plan dir=.", "terraform exited with status 1\nno credentials", true); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, "t", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
@@ -233,7 +233,7 @@ func TestReplayApplyRefusedAfterErrorPlan(t *testing.T) {
 func TestReplayApplyRefusedAfterPlanMiss(t *testing.T) {
 	taskDir, runDir := t.TempDir(), t.TempDir()
 	s, _ := LoadFixtures(taskDir)
-	r := NewReplay(s, "t", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
@@ -263,7 +263,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("shell plan unlocks the tool's apply", func(t *testing.T) {
-		r := NewReplay(s, "t", runDir)
+		r := NewReplay(s, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		if _, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform plan"}, runDir); err != nil {
 			t.Fatal(err)
@@ -273,7 +273,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 		}
 	})
 	t.Run("the tool's plan unlocks a shell apply", func(t *testing.T) {
-		r := NewReplay(s, "t", runDir)
+		r := NewReplay(s, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err != nil {
 			t.Fatal(err)
@@ -283,7 +283,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 		}
 	})
 	t.Run("a shell apply with no plan is refused", func(t *testing.T) {
-		r := NewReplay(s, "t", runDir)
+		r := NewReplay(s, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		_, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform apply"}, runDir)
 		if err == nil || !strings.Contains(err.Error(), "run terraform plan first") {
@@ -307,7 +307,7 @@ func TestReplayReportsACorpusDefectDistinctFromAMiss(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, "t", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	_, err := reg.Execute(context.Background(), "kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}, runDir)
 	if err == nil || !strings.Contains(err.Error(), "corpus defect") {
@@ -358,7 +358,7 @@ func TestReplayTerraformPlanStateKeysOnTheQuotedDirNotASharedPrefix(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, "t", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan", "dir": "my infra"}, runDir); err != nil {
@@ -384,7 +384,7 @@ func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
 	if err := s.Save("terraform plan dir=.", "Plan: 1 to add.", false); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, "t", runDir)
+	r := NewReplay(s, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	_, err := reg.Execute(context.Background(), "cloud", map[string]any{"provider": "terraform", "args": "plan dir=."}, runDir)
 	if err == nil || !strings.Contains(err.Error(), "no recorded data") {
