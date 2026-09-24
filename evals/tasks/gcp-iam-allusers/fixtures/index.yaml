@@ -1,6 +1,10 @@
 fixtures:
   - signature: "gcloud config list"
     file: gcloud-config-list-1cf61c.txt
+  - signature: "gcloud projects list"
+    file: gcloud-projects-list.txt
+  - signature: "gcloud projects list --filter=name:acme-data-prod"
+    file: gcloud-projects-list-filter-name.txt
   - signature: "gcloud projects describe acme-data-prod"
     file: gcloud-projects-describe-acme-data-prod-3d57e8.txt
   - signature: "gcloud projects get-iam-policy acme-data-prod"

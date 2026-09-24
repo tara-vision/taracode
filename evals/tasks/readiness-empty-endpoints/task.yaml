@@ -21,6 +21,8 @@ record:
     - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=orders-api ns=api}}", namespace: api}}
     - {tool: kubectl, args: {verb: get, resource: svc, namespace: api}}
     - {tool: kubectl, args: {verb: describe, resource: svc, name: orders-api, namespace: api}}
+    - {tool: kubectl, args: {verb: get, resource: service, name: orders-api, namespace: api, output: yaml}}
+    - {tool: kubectl, args: {verb: get, resource: service, namespace: api, output: yaml}}
     - {tool: kubectl, args: {verb: get, resource: endpoints, namespace: api}}
     - {tool: kubectl, args: {verb: get, resource: endpoints, name: orders-api, namespace: api}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: api}}
@@ -30,3 +32,5 @@ record:
     - {tool: shell, args: {command: "kubectl describe pod {{pod app=orders-api ns=api}} -n api"}}
     - {tool: shell, args: {command: "kubectl get svc orders-api -n api"}}
     - {tool: shell, args: {command: "kubectl get endpoints orders-api -n api"}}
+    - {tool: shell, args: {command: "kubectl get service/orders-api -n api -o yaml"}}
+    - {tool: shell, args: {command: "kubectl get service -n api -o yaml"}}
