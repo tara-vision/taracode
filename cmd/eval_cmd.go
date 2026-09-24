@@ -2,16 +2,19 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tara-vision/taracode/internal/evals"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/models"
 )
 
@@ -66,11 +69,7 @@ var evalReportCmd = &cobra.Command{
 		outDir, _ := cmd.Flags().GetString("out-dir")
 		corpus, _ := cmd.Flags().GetString("corpus")
 		check, _ := cmd.Flags().GetBool("check-defaults")
-		count, problems := evals.Lint(corpus)
-		if len(problems) > 0 {
-			return fmt.Errorf("the corpus does not lint (%d problem(s)); run taracode eval lint", len(problems))
-		}
-		return runEvalReport(results, outDir, count, check, cmd.OutOrStdout())
+		return runEvalReport(results, outDir, corpus, check, cmd.OutOrStdout())
 	},
 }
 
@@ -113,9 +112,12 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if f.model == "" {
 		return errors.New("set --model: evals run one named model at a time")
 	}
+	if _, ok := llm.ParseThink(f.think); !ok {
+		return fmt.Errorf("--think %q not recognized; use one of: auto, off, on, low, medium, high", f.think)
+	}
 	tasks, err := evals.LoadCorpus(f.corpus, f.tasks)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading the corpus from %s: %w", f.corpus, err)
 	}
 	if len(tasks) == 0 {
 		return fmt.Errorf("no task under %s matches %q", f.corpus, f.tasks)
@@ -124,11 +126,11 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Version: Version,
 		RunsDir: f.runsDir, Out: out})
 	if err != nil {
-		return err
+		return reportStoppedRun(f, tasks, res, err, out)
 	}
 	path, err := evals.WriteResults(f.out, res)
 	if err != nil {
-		return err
+		return fmt.Errorf("writing results to %s: %w", f.out, err)
 	}
 	_, _ = fmt.Fprintf(out, "results written to %s\n", path)
 	if res.Summary.SafetyFailures > 0 {
@@ -138,11 +140,57 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	return nil
 }
 
+// reportStoppedRun handles a Run error (ruling P3-R50). A corpus defect leaves res holding every task
+// completed before the stop; those partial results must never reach the results directory the
+// scoreboard reads (it skips only safety-failure files, so a partial file there would be published as
+// the model's newest run). Instead they go to the runs directory, purely for an operator's own
+// troubleshooting, clearly marked as partial. A hard failure before any task ran (a bad host, an
+// unusable model) leaves res empty and nothing to write.
+func reportStoppedRun(f evalRunFlags, tasks []evals.Task, res evals.Results, runErr error, out io.Writer) error {
+	if len(res.Tasks) == 0 || f.runsDir == "" {
+		return fmt.Errorf("running the corpus against %s: %w", f.model, runErr)
+	}
+	path, writeErr := writePartialResults(f.runsDir, res)
+	if writeErr != nil {
+		return fmt.Errorf("running the corpus against %s: %w (writing partial results to %s: %v)",
+			f.model, runErr, f.runsDir, writeErr)
+	}
+	_, _ = fmt.Fprintf(out, "stopped after %d of %d task(s); partial results in %s\n", len(res.Tasks), len(tasks), path)
+	return fmt.Errorf("running the corpus against %s: %w", f.model, runErr)
+}
+
+// writePartialResults writes a stopped run's partial task results as JSON to
+// <runsDir>/<model-slug>-<date>-partial.json, mirroring evals.WriteResults' file shape.
+func writePartialResults(runsDir string, res evals.Results) (string, error) {
+	//nolint:gosec // runsDir is a git-ignored working directory (evals/runs by default)
+	if err := os.MkdirAll(runsDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating %s: %w", runsDir, err)
+	}
+	data, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encoding partial results for %s: %w", res.Model, err)
+	}
+	path := filepath.Join(runsDir, partialResultsName(res))
+	//nolint:gosec // evals/runs is a git-ignored working directory
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return "", fmt.Errorf("writing %s: %w", path, err)
+	}
+	return path, nil
+}
+
+// partialResultsName mirrors evals.WriteResults' file-naming scheme (its modelSlug helper is
+// unexported) with a "-partial" marker, so the scoreboard - which only ever reads the results
+// directory, never the runs directory - can never mistake this for a committed result.
+func partialResultsName(res evals.Results) string {
+	slug := strings.ToLower(strings.NewReplacer(":", "-", "/", "-").Replace(res.Model))
+	return slug + "-" + res.Date + "-partial.json"
+}
+
 // runEvalRecord records every recorded task matching glob.
 func runEvalRecord(corpus, scenarios, glob string, out io.Writer) error {
 	tasks, err := evals.LoadCorpus(corpus, glob)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading the corpus from %s: %w", corpus, err)
 	}
 	recorded, failed := 0, 0
 	for _, t := range tasks {
@@ -163,32 +211,39 @@ func runEvalRecord(corpus, scenarios, glob string, out io.Writer) error {
 	return nil
 }
 
-// runEvalReport builds the scoreboard files from the results directory.
-func runEvalReport(results, outDir string, corpusTasks int, checkDefaults bool, out io.Writer) error {
+// runEvalReport builds the scoreboard files from the results directory. The corpus-lint gate lives
+// here, not in the cobra command, so the testable core enforces it on its own.
+func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Writer) error {
+	count, problems := evals.Lint(corpus)
+	if len(problems) > 0 {
+		return fmt.Errorf("the corpus does not lint (%d problem(s)); run taracode eval lint", len(problems))
+	}
 	all, err := evals.ReadResults(results)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading results from %s: %w", results, err)
 	}
 	reg, err := models.Load()
 	if err != nil {
-		return err
+		return fmt.Errorf("loading the model registry: %w", err)
 	}
-	sb := evals.BuildScoreboard(all, reg, corpusTasks, Version)
+	sb := evals.BuildScoreboard(all, reg, count, Version)
 	//nolint:gosec // outDir is repository content (docs/evals by default)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("creating %s: %w", outDir, err)
 	}
+	mdPath := filepath.Join(outDir, "scoreboard.md")
 	//nolint:gosec // repository content
-	if err := os.WriteFile(filepath.Join(outDir, "scoreboard.md"), []byte(sb.Markdown()), 0o644); err != nil {
-		return err
+	if err := os.WriteFile(mdPath, []byte(sb.Markdown()), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", mdPath, err)
 	}
 	data, err := sb.JSON()
 	if err != nil {
-		return err
+		return fmt.Errorf("rendering the scoreboard json: %w", err)
 	}
+	jsonPath := filepath.Join(outDir, "scoreboard.json")
 	//nolint:gosec // repository content
-	if err := os.WriteFile(filepath.Join(outDir, "scoreboard.json"), data, 0o644); err != nil {
-		return err
+	if err := os.WriteFile(jsonPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", jsonPath, err)
 	}
 	_, _ = fmt.Fprintf(out, "scoreboard: %d model(s) in %d tier(s), %d result file(s) left out\n",
 		countRows(sb), len(sb.Tiers), len(sb.Skipped))
