@@ -82,16 +82,20 @@ func TestShellDockerVerbsThatTouchNoCluster(t *testing.T) {
 	}
 }
 
+// distroKubectlWrapperReads are the distro-kubectl-wrapper reads TestShellDistroKubectlWrappersClassifyByTheKubectlVerb
+// locks: they reach a cluster through microk8s, k3s, k0s or minikube rather than kubectl itself. The
+// differential harness runs each one through Shell() and, via its shim, cross-checks it against Kubectl too.
+var distroKubectlWrapperReads = []string{
+	"microk8s kubectl get pods", "k3s kubectl get pods -A", "minikube kubectl -- get pods",
+	"k0s kubectl get pods -n kube-system",
+}
+
 // TestShellDistroKubectlWrappersClassifyByTheKubectlVerb (pre-tag round 2, item 6): microk8s, k3s,
 // k0s and minikube run kubectl as a subcommand, so "<distro> kubectl <verb>" is classified by that
 // verb (with "--" for minikube): a read is a read with no target, and a mutation collects its target
 // from the tokens after kubectl.
 func TestShellDistroKubectlWrappersClassifyByTheKubectlVerb(t *testing.T) {
-	reads := []string{
-		"microk8s kubectl get pods", "k3s kubectl get pods -A", "minikube kubectl -- get pods",
-		"k0s kubectl get pods -n kube-system",
-	}
-	for _, cmd := range reads {
+	for _, cmd := range distroKubectlWrapperReads {
 		if r := Shell(cmd); r.Classification != policy.Read {
 			t.Errorf("%q must be a read: %+v", cmd, r)
 		}

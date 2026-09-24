@@ -5,16 +5,20 @@ import (
 	"testing"
 )
 
+// controlWordsReads are the reads TestShellControlWordsAndGrouping checks stay reads; each also
+// runs through the differential harness.
+var controlWordsReads = []string{
+	"for f in a b; do cat $f; done", "if true; then ls; fi", "(ls -la)", "{ ls; }", "! grep -q x f.txt",
+	"while false; do ls; done", "until true; do ls; done", "if ! grep -q x f; then echo no; else echo yes; fi",
+	"for f in *.go; do wc -l $f; done", "case x in a) ls;; esac", "(ls) 2> /dev/null", "(ls | grep x)",
+}
+
 // TestShellControlWordsAndGrouping (pre-tag round B): the program of a segment comes after the shell's
 // reserved words and grouping (do, then, else, elif, if, while, until, !, {, a subshell's
 // parentheses, a case pattern), so a loop or a group is classified by what it runs and its written
 // paths reach the policy. A segment that only opens or closes a construct runs nothing.
 func TestShellControlWordsAndGrouping(t *testing.T) {
-	checkReads(t, []string{
-		"for f in a b; do cat $f; done", "if true; then ls; fi", "(ls -la)", "{ ls; }", "! grep -q x f.txt",
-		"while false; do ls; done", "until true; do ls; done", "if ! grep -q x f; then echo no; else echo yes; fi",
-		"for f in *.go; do wc -l $f; done", "case x in a) ls;; esac", "(ls) 2> /dev/null", "(ls | grep x)",
-	})
+	checkReads(t, controlWordsReads)
 	checkMutations(t, []hardeningCase{
 		{"for p in a b; do kubectl delete pod $p -n kube-system; done", "delete"},
 		{"(kubectl -n kube-system delete pod x)", "delete"},

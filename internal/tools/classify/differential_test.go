@@ -50,7 +50,7 @@ func TestDifferential(t *testing.T) {
 // shimPrograms are replaced on PATH by a script that logs its argv and exits 0.
 var shimPrograms = []string{
 	"kubectl", "helm", "terraform", "tofu", "docker", "podman", "nerdctl", "aws", "az", "gcloud", "gh",
-	"microk8s", "k3s", "minikube", "kubectx", "kubens",
+	"microk8s", "k3s", "k0s", "minikube", "kubectx", "kubens",
 	"curl", "wget", "dig", "nslookup", "host", "ping", "traceroute", "tracepath", "mtr", "ssh", "scp",
 	"brew", "apt", "apt-get", "apt-cache", "yum", "dnf", "pip", "pip3", "npm", "pnpm", "yarn", "cargo",
 	"systemctl", "journalctl", "launchctl", "crontab", "ip", "openssl",
@@ -68,7 +68,13 @@ exit 0
 func differentialCommands() []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, list := range [][]string{shellReadCases, everydayReads, relaxedReads} {
+	tables := [][]string{
+		shellReadCases, everydayReads, relaxedReads, distroKubectlWrapperReads,
+		c1HolesReads, i5CommandsReads, sameClassHolesReads, assignmentOnlySegmentReads,
+		sedBracketsReads, sedScriptFileReads, variableExpansionReads,
+		controlWordsReads, leadingGlobalFlagsReads,
+	}
+	for _, list := range tables {
 		for _, c := range list {
 			if !seen[c] {
 				seen[c] = true
@@ -201,11 +207,12 @@ func checkShimLog(t *testing.T, logPath string) {
 		}
 		var res Result
 		switch prog {
-		case "microk8s", "k3s", "minikube":
-			if len(rest) == 0 || rest[0] != "kubectl" {
+		case "microk8s", "k3s", "k0s", "minikube":
+			args, ok := distroKubectl(prog, rest)
+			if !ok {
 				continue
 			}
-			res = Kubectl(first(rest[1:]), tail(rest[1:]))
+			res = Kubectl(first(args), tail(args))
 		case "kubectl":
 			res = Kubectl(first(rest), tail(rest))
 		case "helm":
