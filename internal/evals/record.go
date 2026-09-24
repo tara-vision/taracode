@@ -26,8 +26,9 @@ type Recorder struct {
 	red      *redact.Redactor
 	hostname string
 
-	mu    sync.Mutex
-	saved []string
+	mu      sync.Mutex
+	saved   []string
+	refused error // the first hostname refusal (ruling P3-R30); nil until one happens
 }
 
 // NewRecorder returns a recorder that redacts with red (nil = no redaction, tests only) and refuses
@@ -37,7 +38,10 @@ func NewRecorder(store *Store, red *redact.Redactor, hostname string) *Recorder 
 }
 
 // Middleware runs the tool for real and saves what came back under the call's signature: the
-// output, or the error text with Error set, redacted before it touches the disk.
+// output, or the error text with Error set, redacted before it touches the disk. A hostname refusal
+// is still returned to the registry unchanged (so the model-facing text and the "nothing saved"
+// behavior are as before), but the registry rebuilds every error as a fresh, unwrappable string on
+// its way out (see Refused), so the refusal is also latched on the recorder itself.
 func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Executor {
 	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 		out, err := next(ctx, args, workingDir)
@@ -53,7 +57,13 @@ func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Exec
 			text = rec.red.Redact(text)
 		}
 		if rec.hostname != "" && strings.Contains(text, rec.hostname) {
-			return "", fmt.Errorf("%w: %s", ErrFixtureHostname, sig)
+			refusal := fmt.Errorf("%w: %s", ErrFixtureHostname, sig)
+			rec.mu.Lock()
+			if rec.refused == nil {
+				rec.refused = refusal
+			}
+			rec.mu.Unlock()
+			return "", refusal
 		}
 		if saveErr := rec.store.Save(sig, text, isErr); saveErr != nil {
 			return "", saveErr
@@ -70,6 +80,16 @@ func (rec *Recorder) Saved() []string {
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	return append([]string(nil), rec.saved...)
+}
+
+// Refused is the first hostname refusal the middleware hit, or nil if none did. A caller driving
+// calls through a registry (tools.Registry.Execute and DryRun redact and rebuild every error as a
+// fresh string on the way out, so a wrapped sentinel like ErrFixtureHostname does not survive them)
+// checks this after each call instead of the error the registry returns.
+func (rec *Recorder) Refused() error {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	return rec.refused
 }
 
 // Resolver answers a placeholder: kind is "pod" or "node", spec the text after it.
@@ -184,8 +204,10 @@ func recordCalls(ctx context.Context, t Task, runDir string, resolve Resolver, o
 		} else {
 			text, err = reg.Execute(ctx, call.Tool, args, runDir)
 		}
-		if errors.Is(err, ErrFixtureHostname) {
-			return fmt.Errorf("%s: %w", t.ID, err)
+		// The registry does not hand back a sentinel errors.Is can see (see Refused), so a hostname
+		// refusal is read from the recorder's own state instead of from err.
+		if refused := rec.Refused(); refused != nil {
+			return fmt.Errorf("%s: %w", t.ID, refused)
 		}
 		status := "ok"
 		if err != nil {
