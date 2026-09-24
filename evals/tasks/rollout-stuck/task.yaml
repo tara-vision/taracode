@@ -8,7 +8,7 @@ prompt: >
 expect:
   tools_called_any:
     - {tool: kubectl, verb: describe}
-    - {tool: kubectl, verb: rollout, signature_matches: "rollout status"}
+    - {tool: kubectl, verb: rollout status}
     - {tool: shell, signature_matches: "^kubectl (describe|rollout status)"}
   tools_never:
     - {classification: mutate}
