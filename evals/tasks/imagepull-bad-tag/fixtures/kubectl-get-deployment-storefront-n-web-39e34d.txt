@@ -1,2 +1,2 @@
 NAME         READY   UP-TO-DATE   AVAILABLE   AGE
-storefront   0/1     1            0           3s
+storefront   0/1     1            0           2s

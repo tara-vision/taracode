@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"checkout"},"name":"checkout","namespace":"shop"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"checkout"}},"template":{"metadata":{"labels":{"app":"checkout"}},"spec":{"containers":[{"command":["python","-c","x = bytearray(400 * 1024 * 1024)\nimport time\ntime.sleep(3600)"],"image":"python:3.12-alpine","name":"checkout","resources":{"limits":{"memory":"64Mi"},"requests":{"cpu":"50m","memory":"32Mi"}}}]}}}}
+  creationTimestamp: "2026-09-24T23:46:11Z"
+  generation: 1
+  labels:
+    app: checkout
+  name: checkout
+  namespace: shop
+  resourceVersion: "36562"
+  uid: 8ce1cc3b-b75e-410c-8781-9d84897fc347
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: checkout
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+      - command:
+        - python
+        - -c
+        - |-
+          x = bytearray(400 * 1024 * 1024)
+          import time
+          time.sleep(3600)
+        image: python:3.12-alpine
+        imagePullPolicy: IfNotPresent
+        name: checkout
+        resources:
+          limits:
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 32Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-09-24T23:46:11Z"
+    lastUpdateTime: "2026-09-24T23:46:11Z"
+    message: ReplicaSet "checkout-7d5ff6f675" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-09-24T23:46:25Z"
+    lastUpdateTime: "2026-09-24T23:46:25Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  terminatingReplicas: 0
+  updatedReplicas: 1

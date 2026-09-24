@@ -1,0 +1,42 @@
+[
+    {
+        "Architecture": "amd64",
+        "Config": {
+            "Entrypoint": [
+                "/api-entrypoint.sh"
+            ],
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ]
+        },
+        "Created": "2026-09-24T23:43:44.87803225Z",
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/60436836a4433d764006bc26f0c42abc6e119eb5c913f10309373a4bda1506eb/diff:/var/lib/docker/overlay2/456999ae4bd394f0855c28670918502f71856d8430959e0add13184d3ea2a6a8/diff",
+                "MergedDir": "/var/lib/docker/overlay2/20569a6b9647100f9c769548ad96cbb3f0692d20a5caf81fba0d99aaf72cb816/merged",
+                "UpperDir": "/var/lib/docker/overlay2/20569a6b9647100f9c769548ad96cbb3f0692d20a5caf81fba0d99aaf72cb816/diff",
+                "WorkDir": "/var/lib/docker/overlay2/20569a6b9647100f9c769548ad96cbb3f0692d20a5caf81fba0d99aaf72cb816/work"
+            },
+            "Name": "overlay2"
+        },
+        "Id": "sha256:906942d7586ee754ffc2ef7593aa977619091592ac2a63d063ee088e8feedc41",
+        "Metadata": {
+            "LastTagTime": "2026-09-24T23:43:44.913844226Z"
+        },
+        "Os": "linux",
+        "Parent": "sha256:6c80223e92765c63431a27a81948a0a0224ab3a5b496292b1b03c0aca207aa0b",
+        "RepoDigests": [],
+        "RepoTags": [
+            "taracode-eval-compose-down-api:latest"
+        ],
+        "RootFS": {
+            "Layers": [
+                "sha256:5a9bfd996c6d49c6c3cb4ddfb76e8d09cf16b6b7cf6601d1f2dffbdbc3edb5d4",
+                "sha256:87c74f123d793b7ba8cb36c0b774c942c5450aee28e91b6285317acafe2d2327",
+                "sha256:87c74f123d793b7ba8cb36c0b774c942c5450aee28e91b6285317acafe2d2327"
+            ],
+            "Type": "layers"
+        },
+        "Size": 4422000
+    }
+]

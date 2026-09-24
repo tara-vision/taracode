@@ -1,0 +1,3 @@
+NAME                           STATUS   ROLES           AGE     VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                       KERNEL-VERSION              CONTAINER-RUNTIME
+taracode-evals-control-plane   Ready    control-plane   6h11m   v1.37.0   172.18.0.3    <none>        Debian GNU/Linux 13 (trixie)   6.8.0-139-generic (amd64)   containerd://2.3.4
+taracode-evals-worker          Ready    <none>          6h10m   v1.37.0   172.18.0.2    <none>        Debian GNU/Linux 13 (trixie)   6.8.0-139-generic (amd64)   containerd://2.3.4

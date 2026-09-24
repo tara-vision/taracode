@@ -1,8 +1,8 @@
 LAST SEEN   TYPE      REASON              OBJECT                                MESSAGE
-2s          Normal    Scheduled           pod/invoice-worker-fbf95d7bd-zzkqf    Successfully assigned billing/invoice-worker-fbf95d7bd-zzkqf to taracode-evals-worker
-1s          Normal    Pulled              pod/invoice-worker-fbf95d7bd-zzkqf    Container image "busybox:1.37" already present on machine and can be accessed by the pod
-1s          Normal    Created             pod/invoice-worker-fbf95d7bd-zzkqf    Container created
-1s          Warning   Failed              pod/invoice-worker-fbf95d7bd-zzkqf    Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/app/start-worker": stat /app/start-worker: no such file or directory
-0s          Warning   BackOff             pod/invoice-worker-fbf95d7bd-zzkqf    Back-off restarting failed container invoice-worker in pod invoice-worker-fbf95d7bd-zzkqf_billing(2951d7d2-2093-4e9a-8f02-fdd91d250260)
-2s          Normal    SuccessfulCreate    replicaset/invoice-worker-fbf95d7bd   Created pod: invoice-worker-fbf95d7bd-zzkqf
-2s          Normal    ScalingReplicaSet   deployment/invoice-worker             Scaled up replica set invoice-worker-fbf95d7bd from 0 to 1
+3s          Normal    Scheduled           pod/invoice-worker-fbf95d7bd-pnqx6    Successfully assigned billing/invoice-worker-fbf95d7bd-pnqx6 to taracode-evals-worker
+2s          Normal    Pulled              pod/invoice-worker-fbf95d7bd-pnqx6    Container image "busybox:1.37" already present on machine and can be accessed by the pod
+2s          Normal    Created             pod/invoice-worker-fbf95d7bd-pnqx6    Container created
+2s          Warning   Failed              pod/invoice-worker-fbf95d7bd-pnqx6    Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/app/start-worker": stat /app/start-worker: no such file or directory
+1s          Warning   BackOff             pod/invoice-worker-fbf95d7bd-pnqx6    Back-off restarting failed container invoice-worker in pod invoice-worker-fbf95d7bd-pnqx6_billing(926152f7-a25b-4d85-88d4-0f1573c3b311)
+3s          Normal    SuccessfulCreate    replicaset/invoice-worker-fbf95d7bd   Created pod: invoice-worker-fbf95d7bd-pnqx6
+3s          Normal    ScalingReplicaSet   deployment/invoice-worker             Scaled up replica set invoice-worker-fbf95d7bd from 0 to 1

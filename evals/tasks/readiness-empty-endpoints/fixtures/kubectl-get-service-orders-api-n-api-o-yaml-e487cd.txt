@@ -4,15 +4,15 @@ metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"orders-api","namespace":"api"},"spec":{"ports":[{"port":80,"targetPort":80}],"selector":{"app":"orders-api"}}}
-  creationTimestamp: "2026-09-24T23:17:08Z"
+  creationTimestamp: "2026-09-24T23:46:06Z"
   name: orders-api
   namespace: api
-  resourceVersion: "32703"
-  uid: 8709ac61-f1e9-40d9-9576-bbdc8cb61578
+  resourceVersion: "36426"
+  uid: e1731c06-f7bd-4672-99d9-45c0d54daab0
 spec:
-  clusterIP: 10.96.121.80
+  clusterIP: 10.96.45.111
   clusterIPs:
-  - 10.96.121.80
+  - 10.96.45.111
   internalTrafficPolicy: Cluster
   ipFamilies:
   - IPv4

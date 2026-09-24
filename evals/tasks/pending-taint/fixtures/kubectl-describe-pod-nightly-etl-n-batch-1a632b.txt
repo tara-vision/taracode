@@ -1,0 +1,37 @@
+Name:             nightly-etl-77d8cf54bf-phhb9
+Namespace:        batch
+Priority:         0
+Service Account:  default
+Node:             <none>
+Labels:           app=nightly-etl
+                  pod-template-hash=77d8cf54bf
+Annotations:      <none>
+Status:           Pending
+IP:               
+IPs:              <none>
+Controlled By:    ReplicaSet/nightly-etl-77d8cf54bf
+Containers:
+  nightly-etl:
+    Image:      busybox:1.37
+    Port:       <none>
+    Host Port:  <none>
+    Command:
+      sleep
+      3600
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-rwdmj (ro)
+Conditions:
+  Type           Status
+  PodScheduled   False 
+Volumes:
+  kube-api-access-rwdmj:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              kubernetes.io/hostname=taracode-evals-worker
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s

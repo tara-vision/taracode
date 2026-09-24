@@ -1,0 +1,2 @@
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES              SELECTOR
+shop-web   2/2     2            2           3s    shop-web     nginx:1.27-alpine   app.kubernetes.io/instance=shop-web,app.kubernetes.io/name=shop-web

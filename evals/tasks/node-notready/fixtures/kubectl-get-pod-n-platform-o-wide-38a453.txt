@@ -1,2 +1,2 @@
 NAME                             READY   STATUS    RESTARTS   AGE   IP            NODE                    NOMINATED NODE   READINESS GATES
-metrics-agent-767dd6b94f-bxxtg   1/1     Running   0          53s   10.244.1.22   taracode-evals-worker   <none>           <none>
+metrics-agent-767dd6b94f-275mv   1/1     Running   0          55s   10.244.1.39   taracode-evals-worker   <none>           <none>

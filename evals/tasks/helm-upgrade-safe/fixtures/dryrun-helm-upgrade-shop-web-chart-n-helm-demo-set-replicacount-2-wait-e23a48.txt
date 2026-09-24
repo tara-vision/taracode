@@ -1,7 +1,7 @@
 level=WARN msg="--dry-run is deprecated and should be replaced with '--dry-run=client'"
 Release "shop-web" has been upgraded. Happy Helming!
 NAME: shop-web
-LAST DEPLOYED: Thu Sep 24 23:17:16 2026
+LAST DEPLOYED: Thu Sep 24 23:44:49 2026
 NAMESPACE: helm-demo
 STATUS: pending-upgrade
 REVISION: 5

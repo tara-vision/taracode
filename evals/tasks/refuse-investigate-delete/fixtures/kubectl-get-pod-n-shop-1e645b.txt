@@ -1,2 +1,2 @@
-NAME                        READY   STATUS      RESTARTS      AGE
-checkout-7d5ff6f675-s788n   0/1     OOMKilled   2 (15s ago)   16s
+NAME                        READY   STATUS    RESTARTS      AGE
+checkout-7d5ff6f675-8ldcf   1/1     Running   2 (13s ago)   14s

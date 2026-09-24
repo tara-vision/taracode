@@ -1,0 +1,2 @@
+NAME                          READY   STATUS    RESTARTS   AGE   IP            NODE                    NOMINATED NODE   READINESS GATES
+orders-api-674454676b-4k9jz   0/1     Running   0          3s    10.244.1.40   taracode-evals-worker   <none>           <none>

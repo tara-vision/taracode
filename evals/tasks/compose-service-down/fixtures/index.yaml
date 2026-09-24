@@ -13,3 +13,11 @@ fixtures:
       file: docker-ps-a-162035.txt
     - signature: docker logs evalshop-api-1
       file: docker-logs-evalshop-api-1-53f317.txt
+    - signature: docker compose logs api --tail=50
+      file: docker-compose-logs-api-tail-50-30c669.txt
+    - signature: docker logs --tail=50 evalshop-api-1
+      file: docker-logs-tail-50-evalshop-api-1-01a8a9.txt
+    - signature: docker inspect evalshop-api-1
+      file: docker-inspect-evalshop-api-1-c2caa2.txt
+    - signature: docker image inspect taracode-eval-compose-down-api:latest
+      file: docker-image-inspect-taracode-eval-compose-down-api-latest-45491b.txt

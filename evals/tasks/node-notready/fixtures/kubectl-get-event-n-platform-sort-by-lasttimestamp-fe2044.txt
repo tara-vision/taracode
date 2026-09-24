@@ -1,0 +1,8 @@
+LAST SEEN   TYPE      REASON              OBJECT                                MESSAGE
+55s         Normal    Scheduled           pod/metrics-agent-767dd6b94f-275mv    Successfully assigned platform/metrics-agent-767dd6b94f-275mv to taracode-evals-worker
+55s         Normal    SuccessfulCreate    replicaset/metrics-agent-767dd6b94f   Created pod: metrics-agent-767dd6b94f-275mv
+55s         Normal    ScalingReplicaSet   deployment/metrics-agent              Scaled up replica set metrics-agent-767dd6b94f from 0 to 1
+54s         Normal    Pulled              pod/metrics-agent-767dd6b94f-275mv    Container image "busybox:1.37" already present on machine and can be accessed by the pod
+54s         Normal    Created             pod/metrics-agent-767dd6b94f-275mv    Container created
+54s         Normal    Started             pod/metrics-agent-767dd6b94f-275mv    Container started
+2s          Warning   NodeNotReady        pod/metrics-agent-767dd6b94f-275mv    Node is not ready

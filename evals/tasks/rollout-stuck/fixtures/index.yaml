@@ -5,18 +5,26 @@ fixtures:
       file: kubectl-get-replicaset-n-shop-v2-81db67.txt
     - signature: kubectl get deployment/cart -n shop-v2
       file: kubectl-get-deployment-cart-n-shop-v2-f3b3f4.txt
+    - signature: kubectl get deployment -n shop-v2
+      file: kubectl-get-deployment-n-shop-v2-66e8af.txt
+    - signature: kubectl get deployment/cart -n shop-v2 -o yaml
+      file: kubectl-get-deployment-cart-n-shop-v2-o-yaml-f16bd1.txt
     - signature: kubectl describe deployment/cart -n shop-v2
       file: kubectl-describe-deployment-cart-n-shop-v2-e254ae.txt
     - signature: kubectl rollout status deployment/cart -n shop-v2
       file: kubectl-rollout-status-deployment-cart-n-shop-v2-77695f.txt
     - signature: kubectl rollout history deployment/cart -n shop-v2
       file: kubectl-rollout-history-deployment-cart-n-shop-v2-fd65b7.txt
-    - signature: kubectl describe pod/cart-f4df567fd-4v964 -n shop-v2
-      file: kubectl-describe-pod-cart-f4df567fd-4v964-n-shop-v2-89d15f.txt
-    - signature: kubectl describe pod/cart-f688b8bd4-4kcg7 -n shop-v2
-      file: kubectl-describe-pod-cart-f688b8bd4-4kcg7-n-shop-v2-3f81d2.txt
-    - signature: kubectl logs cart-f688b8bd4-4kcg7 -n shop-v2
-      file: kubectl-logs-cart-f688b8bd4-4kcg7-n-shop-v2-3fb566.txt
+    - signature: kubectl describe pod/cart-f4df567fd-8pxx8 -n shop-v2
+      file: kubectl-describe-pod-cart-f4df567fd-8pxx8-n-shop-v2-5a5b83.txt
+    - signature: kubectl describe pod/cart-f688b8bd4-tntfx -n shop-v2
+      file: kubectl-describe-pod-cart-f688b8bd4-tntfx-n-shop-v2-6a4366.txt
+    - signature: kubectl logs cart-f688b8bd4-tntfx -n shop-v2
+      file: kubectl-logs-cart-f688b8bd4-tntfx-n-shop-v2-ca2cf1.txt
       error: true
     - signature: kubectl get event -n shop-v2
       file: kubectl-get-event-n-shop-v2-f6e8a8.txt
+    - signature: kubectl get event -n shop-v2 --sort-by=.lastTimestamp
+      file: kubectl-get-event-n-shop-v2-sort-by-lasttimestamp-ead3cd.txt
+    - signature: kubectl get pod -n shop-v2 -l app=cart
+      file: kubectl-get-pod-n-shop-v2-l-app-cart-1decd7.txt

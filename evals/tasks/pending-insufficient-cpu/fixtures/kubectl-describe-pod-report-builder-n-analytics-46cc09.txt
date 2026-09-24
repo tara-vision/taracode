@@ -1,0 +1,39 @@
+Name:             report-builder-5677bcbdd8-z6976
+Namespace:        analytics
+Priority:         0
+Service Account:  default
+Node:             <none>
+Labels:           app=report-builder
+                  pod-template-hash=5677bcbdd8
+Annotations:      <none>
+Status:           Pending
+IP:               
+IPs:              <none>
+Controlled By:    ReplicaSet/report-builder-5677bcbdd8
+Containers:
+  report-builder:
+    Image:      busybox:1.37
+    Port:       <none>
+    Host Port:  <none>
+    Command:
+      sleep
+      3600
+    Requests:
+      cpu:        64
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-d29fr (ro)
+Conditions:
+  Type           Status
+  PodScheduled   False 
+Volumes:
+  kube-api-access-d29fr:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s

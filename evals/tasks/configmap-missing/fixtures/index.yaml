@@ -1,11 +1,15 @@
 fixtures:
     - signature: kubectl get pod -n config-demo
       file: kubectl-get-pod-n-config-demo-53c9ac.txt
-    - signature: kubectl describe pod/settings-loader-6cf6fbc4cf-cpwj5 -n config-demo
-      file: kubectl-describe-pod-settings-loader-6cf6fbc4cf-cpwj5-n-config-demo-783e45.txt
+    - signature: kubectl describe pod/settings-loader-6cf6fbc4cf-74zk4 -n config-demo
+      file: kubectl-describe-pod-settings-loader-6cf6fbc4cf-74zk4-n-config-demo-a3a0d1.txt
     - signature: kubectl get configmap -n config-demo
       file: kubectl-get-configmap-n-config-demo-bd9f36.txt
     - signature: kubectl get event -n config-demo
       file: kubectl-get-event-n-config-demo-5de92f.txt
     - signature: kubectl get deployment/settings-loader -n config-demo -o yaml
       file: kubectl-get-deployment-settings-loader-n-config-demo-o-yaml-fb1f89.txt
+    - signature: kubectl describe pod/settings-loader -n config-demo
+      file: kubectl-describe-pod-settings-loader-n-config-demo-3721e2.txt
+    - signature: kubectl get pod/settings-loader-6cf6fbc4cf-74zk4 -n config-demo -o yaml
+      file: kubectl-get-pod-settings-loader-6cf6fbc4cf-74zk4-n-config-demo-o-yaml-825d1f.txt

@@ -1,0 +1,56 @@
+Name:             orders-api-674454676b-4k9jz
+Namespace:        api
+Priority:         0
+Service Account:  default
+Node:             taracode-evals-worker/172.18.0.2
+Start Time:       Thu, 24 Sep 2026 23:46:06 +0000
+Labels:           app=orders-api
+                  pod-template-hash=674454676b
+Annotations:      <none>
+Status:           Running
+IP:               10.244.1.40
+IPs:
+  IP:           10.244.1.40
+Controlled By:  ReplicaSet/orders-api-674454676b
+Containers:
+  orders-api:
+    Container ID:   containerd://aa997d4d8c81dcce38f756592e8076663f52d3dc51e6b7999223c153bc1f50ac
+    Image:          nginx:1.27-alpine
+    Image ID:       docker.io/library/nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Thu, 24 Sep 2026 23:46:07 +0000
+    Ready:          False
+    Restart Count:  0
+    Readiness:      http-get http://:80/healthz delay=0s timeout=1s period=3s successThreshold=1 failureThreshold=3
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-64ls2 (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-64ls2:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age   From               Message
+  ----     ------     ----  ----               -------
+  Normal   Scheduled  3s    default-scheduler  Successfully assigned api/orders-api-674454676b-4k9jz to taracode-evals-worker
+  Normal   Pulled     2s    kubelet            spec.containers{orders-api}: Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+  Normal   Created    2s    kubelet            spec.containers{orders-api}: Container created
+  Normal   Started    2s    kubelet            spec.containers{orders-api}: Container started
+  Warning  Unhealthy  2s    kubelet            spec.containers{orders-api}: Readiness probe failed: Get "http://10.244.1.40:80/healthz": dial tcp 10.244.1.40:80: connect: connection refused
+  Warning  Unhealthy  2s    kubelet            spec.containers{orders-api}: Readiness probe failed: HTTP probe failed with statuscode: 404

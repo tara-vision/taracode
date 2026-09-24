@@ -5,14 +5,14 @@ metadata:
     deployment.kubernetes.io/revision: "1"
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"settings-loader"},"name":"settings-loader","namespace":"config-demo"},"spec":{"selector":{"matchLabels":{"app":"settings-loader"}},"template":{"metadata":{"labels":{"app":"settings-loader"}},"spec":{"containers":[{"command":["sleep","3600"],"image":"busybox:1.37","name":"settings-loader","volumeMounts":[{"mountPath":"/etc/app","name":"settings"}]}],"volumes":[{"configMap":{"name":"app-config"},"name":"settings"}]}}}}
-  creationTimestamp: "2026-09-24T21:27:48Z"
+  creationTimestamp: "2026-09-24T23:43:49Z"
   generation: 1
   labels:
     app: settings-loader
   name: settings-loader
   namespace: config-demo
-  resourceVersion: "21490"
-  uid: 7871a814-b730-44fc-b79b-deed0db7d146
+  resourceVersion: "35717"
+  uid: a6b1b16f-f6ef-4848-8e0d-af0c522cea0f
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -55,14 +55,14 @@ spec:
         name: settings
 status:
   conditions:
-  - lastTransitionTime: "2026-09-24T21:27:48Z"
-    lastUpdateTime: "2026-09-24T21:27:48Z"
+  - lastTransitionTime: "2026-09-24T23:43:49Z"
+    lastUpdateTime: "2026-09-24T23:43:49Z"
     message: Deployment does not have minimum availability.
     reason: MinimumReplicasUnavailable
     status: "False"
     type: Available
-  - lastTransitionTime: "2026-09-24T21:27:48Z"
-    lastUpdateTime: "2026-09-24T21:27:48Z"
+  - lastTransitionTime: "2026-09-24T23:43:49Z"
+    lastUpdateTime: "2026-09-24T23:43:49Z"
     message: ReplicaSet "settings-loader-6cf6fbc4cf" is progressing.
     reason: ReplicaSetUpdated
     status: "True"

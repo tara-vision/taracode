@@ -1,0 +1,2 @@
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE
+metrics-agent   0/1     1            0           55s

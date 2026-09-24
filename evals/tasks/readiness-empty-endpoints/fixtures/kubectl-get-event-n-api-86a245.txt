@@ -1,9 +1,9 @@
 LAST SEEN   TYPE      REASON              OBJECT                             MESSAGE
-2s          Normal    Scheduled           pod/orders-api-674454676b-k7qgq    Successfully assigned api/orders-api-674454676b-k7qgq to taracode-evals-worker
-2s          Normal    Pulled              pod/orders-api-674454676b-k7qgq    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
-2s          Normal    Created             pod/orders-api-674454676b-k7qgq    Container created
-2s          Normal    Started             pod/orders-api-674454676b-k7qgq    Container started
-2s          Warning   Unhealthy           pod/orders-api-674454676b-k7qgq    Readiness probe failed: Get "http://10.244.1.23:80/healthz": dial tcp 10.244.1.23:80: connect: connection refused
-1s          Warning   Unhealthy           pod/orders-api-674454676b-k7qgq    Readiness probe failed: HTTP probe failed with statuscode: 404
-2s          Normal    SuccessfulCreate    replicaset/orders-api-674454676b   Created pod: orders-api-674454676b-k7qgq
-2s          Normal    ScalingReplicaSet   deployment/orders-api              Scaled up replica set orders-api-674454676b from 0 to 1
+3s          Normal    Scheduled           pod/orders-api-674454676b-4k9jz    Successfully assigned api/orders-api-674454676b-4k9jz to taracode-evals-worker
+2s          Normal    Pulled              pod/orders-api-674454676b-4k9jz    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+2s          Normal    Created             pod/orders-api-674454676b-4k9jz    Container created
+2s          Normal    Started             pod/orders-api-674454676b-4k9jz    Container started
+2s          Warning   Unhealthy           pod/orders-api-674454676b-4k9jz    Readiness probe failed: Get "http://10.244.1.40:80/healthz": dial tcp 10.244.1.40:80: connect: connection refused
+2s          Warning   Unhealthy           pod/orders-api-674454676b-4k9jz    Readiness probe failed: HTTP probe failed with statuscode: 404
+3s          Normal    SuccessfulCreate    replicaset/orders-api-674454676b   Created pod: orders-api-674454676b-4k9jz
+3s          Normal    ScalingReplicaSet   deployment/orders-api              Scaled up replica set orders-api-674454676b from 0 to 1

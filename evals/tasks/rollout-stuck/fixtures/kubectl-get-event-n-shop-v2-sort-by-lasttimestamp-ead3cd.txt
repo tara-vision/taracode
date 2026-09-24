@@ -1,0 +1,20 @@
+LAST SEEN   TYPE      REASON              OBJECT                      MESSAGE
+48s         Normal    SuccessfulCreate    replicaset/cart-f4df567fd   Created pod: cart-f4df567fd-8pxx8
+48s         Normal    Scheduled           pod/cart-f688b8bd4-tntfx    Successfully assigned shop-v2/cart-f688b8bd4-tntfx to taracode-evals-worker
+48s         Normal    Created             pod/cart-f4df567fd-8pxx8    Container created
+48s         Normal    SuccessfulCreate    replicaset/cart-f4df567fd   Created pod: cart-f4df567fd-t4zbg
+48s         Normal    Scheduled           pod/cart-f4df567fd-t4zbg    Successfully assigned shop-v2/cart-f4df567fd-t4zbg to taracode-evals-worker
+48s         Normal    Pulled              pod/cart-f4df567fd-t4zbg    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+48s         Normal    Created             pod/cart-f4df567fd-t4zbg    Container created
+48s         Normal    Started             pod/cart-f4df567fd-t4zbg    Container started
+48s         Normal    Pulled              pod/cart-f4df567fd-8pxx8    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+48s         Normal    Scheduled           pod/cart-f4df567fd-8pxx8    Successfully assigned shop-v2/cart-f4df567fd-8pxx8 to taracode-evals-worker
+48s         Normal    Started             pod/cart-f4df567fd-8pxx8    Container started
+48s         Normal    ScalingReplicaSet   deployment/cart             Scaled up replica set cart-f688b8bd4 from 0 to 1
+48s         Normal    ScalingReplicaSet   deployment/cart             Scaled up replica set cart-f4df567fd from 0 to 2
+48s         Normal    SuccessfulCreate    replicaset/cart-f688b8bd4   Created pod: cart-f688b8bd4-tntfx
+15s         Normal    BackOff             pod/cart-f688b8bd4-tntfx    Back-off pulling image "nginx:1.99.99-nope"
+15s         Warning   Failed              pod/cart-f688b8bd4-tntfx    Error: ImagePullBackOff
+3s          Normal    Pulling             pod/cart-f688b8bd4-tntfx    Pulling image "nginx:1.99.99-nope"
+2s          Warning   Failed              pod/cart-f688b8bd4-tntfx    Error: ErrImagePull
+2s          Warning   Failed              pod/cart-f688b8bd4-tntfx    Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found

@@ -1,2 +1,0 @@
-Error from server (BadRequest): previous terminated container "storefront" in pod "storefront-5996978c75-nr8g4" not found
-[exit status 1]

@@ -1,6 +1,6 @@
 Name:                   cart
 Namespace:              shop-v2
-CreationTimestamp:      Thu, 24 Sep 2026 22:41:16 +0000
+CreationTimestamp:      Thu, 24 Sep 2026 23:46:29 +0000
 Labels:                 app=cart
 Annotations:            deployment.kubernetes.io/revision: 2
 Selector:               app=cart
@@ -31,4 +31,4 @@ Events:
   Type    Reason             Age   From                   Message
   ----    ------             ----  ----                   -------
   Normal  ScalingReplicaSet  48s   deployment-controller  Scaled up replica set cart-f4df567fd from 0 to 2
-  Normal  ScalingReplicaSet  47s   deployment-controller  Scaled up replica set cart-f688b8bd4 from 0 to 1
+  Normal  ScalingReplicaSet  48s   deployment-controller  Scaled up replica set cart-f688b8bd4 from 0 to 1

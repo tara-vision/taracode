@@ -1,0 +1,2 @@
+kubectl exited with status 1
+Error from server: Get "https://172.18.0.2:10250/containerLogs/platform/metrics-agent-767dd6b94f-275mv/metrics-agent?tailLines=50": dial tcp 172.18.0.2:10250: connect: connection refused

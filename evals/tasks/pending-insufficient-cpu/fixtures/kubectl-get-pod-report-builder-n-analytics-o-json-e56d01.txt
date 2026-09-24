@@ -1,0 +1,2 @@
+kubectl exited with status 1
+Error from server (NotFound): pods "report-builder" not found

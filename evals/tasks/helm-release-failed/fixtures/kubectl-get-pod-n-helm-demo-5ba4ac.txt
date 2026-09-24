@@ -1,3 +1,3 @@
 NAME                        READY   STATUS         RESTARTS   AGE
-shop-web-67c45748fb-x675q   0/1     ErrImagePull   0          41s
-shop-web-8f84c974-rps5t     1/1     Running        0          42s
+shop-web-67c45748fb-h4jgc   0/1     ErrImagePull   0          41s
+shop-web-8f84c974-7vtvz     1/1     Running        0          41s

@@ -1,0 +1,11 @@
+NAME                                                   READY   STATUS    RESTARTS   AGE     IP           NODE                           NOMINATED NODE   READINESS GATES
+coredns-559f6c778d-977m4                               1/1     Running   0          6h11m   10.244.0.4   taracode-evals-control-plane   <none>           <none>
+coredns-559f6c778d-n42s4                               1/1     Running   0          6h11m   10.244.0.2   taracode-evals-control-plane   <none>           <none>
+etcd-taracode-evals-control-plane                      1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>
+kindnet-6f57p                                          1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>
+kindnet-nwdkc                                          1/1     Running   0          6h11m   172.18.0.2   taracode-evals-worker          <none>           <none>
+kube-apiserver-taracode-evals-control-plane            1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>
+kube-controller-manager-taracode-evals-control-plane   1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>
+kube-proxy-745bt                                       1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>
+kube-proxy-rdkl9                                       1/1     Running   0          6h11m   172.18.0.2   taracode-evals-worker          <none>           <none>
+kube-scheduler-taracode-evals-control-plane            1/1     Running   0          6h11m   172.18.0.3   taracode-evals-control-plane   <none>           <none>

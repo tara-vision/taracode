@@ -3,8 +3,13 @@ fixtures:
       file: kubectl-get-pod-n-analytics-ad3d57.txt
     - signature: kubectl get pod -n analytics -o wide
       file: kubectl-get-pod-n-analytics-o-wide-3b14ab.txt
-    - signature: kubectl describe pod/report-builder-5677bcbdd8-brm7b -n analytics
-      file: kubectl-describe-pod-report-builder-5677bcbdd8-brm7b-n-analytics-1f9aaa.txt
+    - signature: kubectl describe pod/report-builder-5677bcbdd8-z6976 -n analytics
+      file: kubectl-describe-pod-report-builder-5677bcbdd8-z6976-n-analytics-e09ddc.txt
+    - signature: kubectl describe pod/report-builder -n analytics
+      file: kubectl-describe-pod-report-builder-n-analytics-46cc09.txt
+    - signature: kubectl get pod/report-builder -n analytics -o json
+      file: kubectl-get-pod-report-builder-n-analytics-o-json-e56d01.txt
+      error: true
     - signature: kubectl get event -n analytics
       file: kubectl-get-event-n-analytics-f04f37.txt
     - signature: kubectl get event -n analytics --sort-by=.lastTimestamp
@@ -20,3 +25,5 @@ fixtures:
     - signature: kubectl top node
       file: kubectl-top-node-8a97b9.txt
       error: true
+    - signature: kubectl events -n analytics
+      file: kubectl-events-n-analytics-3eec10.txt

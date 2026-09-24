@@ -9,3 +9,11 @@ fixtures:
       file: docker-logs-crashed-app-tail-50-623961.txt
     - signature: docker inspect crashed-app
       file: docker-inspect-crashed-app-eeceb9.txt
+    - signature: docker ps -a --filter name=crashed-app
+      file: docker-ps-a-filter-name-crashed-app-de31b7.txt
+    - signature: docker inspect crashed-app --format Cmd={{json .Config.Cmd}} Entrypoint={{json .Config.Entrypoint}} Binds={{json .HostConfig.Binds}}
+      file: docker-inspect-crashed-app-format-cmd-json-config-cmd-entrypoint-json-config-ent-c4dcc6.txt
+      error: true
+    - signature: docker inspect crashed-app --format ExitCode={{.State.ExitCode}} OOM={{.State.OOMKilled}} Error={{.State.Error}} RestartCount={{.RestartCount}}
+      file: docker-inspect-crashed-app-format-exitcode-state-exitcode-oom-state-oomkilled-er-c8513a.txt
+      error: true

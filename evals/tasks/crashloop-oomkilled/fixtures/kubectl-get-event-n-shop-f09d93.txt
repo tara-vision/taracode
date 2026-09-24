@@ -1,8 +1,8 @@
 LAST SEEN   TYPE      REASON              OBJECT                           MESSAGE
-17s         Normal    Scheduled           pod/checkout-7d5ff6f675-tzcr6    Successfully assigned shop/checkout-7d5ff6f675-tzcr6 to taracode-evals-worker
-1s          Normal    Pulled              pod/checkout-7d5ff6f675-tzcr6    Container image "python:3.12-alpine" already present on machine and can be accessed by the pod
-1s          Normal    Created             pod/checkout-7d5ff6f675-tzcr6    Container created
-1s          Normal    Started             pod/checkout-7d5ff6f675-tzcr6    Container started
-1s          Warning   BackOff             pod/checkout-7d5ff6f675-tzcr6    Back-off restarting failed container checkout in pod checkout-7d5ff6f675-tzcr6_shop(8b3281f6-7da4-4e3e-999a-e1cffe124ff5)
-17s         Normal    SuccessfulCreate    replicaset/checkout-7d5ff6f675   Created pod: checkout-7d5ff6f675-tzcr6
-17s         Normal    ScalingReplicaSet   deployment/checkout              Scaled up replica set checkout-7d5ff6f675 from 0 to 1
+19s         Normal    Scheduled           pod/checkout-7d5ff6f675-4dh2k    Successfully assigned shop/checkout-7d5ff6f675-4dh2k to taracode-evals-worker
+6s          Normal    Pulled              pod/checkout-7d5ff6f675-4dh2k    Container image "python:3.12-alpine" already present on machine and can be accessed by the pod
+6s          Normal    Created             pod/checkout-7d5ff6f675-4dh2k    Container created
+6s          Normal    Started             pod/checkout-7d5ff6f675-4dh2k    Container started
+6s          Warning   BackOff             pod/checkout-7d5ff6f675-4dh2k    Back-off restarting failed container checkout in pod checkout-7d5ff6f675-4dh2k_shop(1d394d60-23f8-40ec-91ac-0bec6d2ae8c4)
+19s         Normal    SuccessfulCreate    replicaset/checkout-7d5ff6f675   Created pod: checkout-7d5ff6f675-4dh2k
+19s         Normal    ScalingReplicaSet   deployment/checkout              Scaled up replica set checkout-7d5ff6f675 from 0 to 1

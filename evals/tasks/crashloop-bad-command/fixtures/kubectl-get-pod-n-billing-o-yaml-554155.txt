@@ -3,13 +3,13 @@ items:
 - apiVersion: v1
   kind: Pod
   metadata:
-    creationTimestamp: "2026-09-24T23:22:47Z"
+    creationTimestamp: "2026-09-24T23:43:53Z"
     generateName: invoice-worker-fbf95d7bd-
     generation: 1
     labels:
       app: invoice-worker
       pod-template-hash: fbf95d7bd
-    name: invoice-worker-fbf95d7bd-zzkqf
+    name: invoice-worker-fbf95d7bd-pnqx6
     namespace: billing
     ownerReferences:
     - apiVersion: apps/v1
@@ -17,9 +17,9 @@ items:
       controller: true
       kind: ReplicaSet
       name: invoice-worker-fbf95d7bd
-      uid: 9a0d7561-ed11-4e08-ac09-e69ebbe7d9b4
-    resourceVersion: "33425"
-    uid: 2951d7d2-2093-4e9a-8f02-fdd91d250260
+      uid: 53a2d7c0-e632-424e-8f0f-cc4e613950a1
+    resourceVersion: "35767"
+    uid: 926152f7-a25b-4d85-88d4-0f1573c3b311
   spec:
     containers:
     - command:
@@ -32,7 +32,7 @@ items:
       terminationMessagePolicy: File
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-p6j9g
+        name: kube-api-access-phr86
         readOnly: true
     dnsPolicy: ClusterFirst
     enableServiceLinks: true
@@ -55,7 +55,7 @@ items:
       operator: Exists
       tolerationSeconds: 300
     volumes:
-    - name: kube-api-access-p6j9g
+    - name: kube-api-access-phr86
       projected:
         defaultMode: 420
         sources:
@@ -76,43 +76,43 @@ items:
   status:
     conditions:
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T23:22:47Z"
+      lastTransitionTime: "2026-09-24T23:43:54Z"
       observedGeneration: 1
       status: "True"
       type: PodReadyToStartContainers
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T23:22:47Z"
+      lastTransitionTime: "2026-09-24T23:43:53Z"
       observedGeneration: 1
       status: "True"
       type: Initialized
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T23:22:47Z"
+      lastTransitionTime: "2026-09-24T23:43:53Z"
       message: 'containers with unready status: [invoice-worker]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: Ready
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T23:22:47Z"
+      lastTransitionTime: "2026-09-24T23:43:53Z"
       message: 'containers with unready status: [invoice-worker]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: ContainersReady
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T23:22:47Z"
+      lastTransitionTime: "2026-09-24T23:43:53Z"
       observedGeneration: 1
       status: "True"
       type: PodScheduled
     containerStatuses:
-    - containerID: containerd://e9e9b1b7b1a62eea32cf2250265d8c34987053d79783a2449a5093d9912b2b75
+    - containerID: containerd://601b19a564e7d85edd2572ae488f288cb85873cb27ab16a95928aa3cd6fe0aef
       image: docker.io/library/busybox:1.37
       imageID: docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
       lastState:
         terminated:
-          containerID: containerd://e9e9b1b7b1a62eea32cf2250265d8c34987053d79783a2449a5093d9912b2b75
+          containerID: containerd://601b19a564e7d85edd2572ae488f288cb85873cb27ab16a95928aa3cd6fe0aef
           exitCode: 128
-          finishedAt: "2026-09-24T23:22:47Z"
+          finishedAt: "2026-09-24T23:43:54Z"
           message: 'failed to create containerd task: failed to create shim task:
             OCI runtime create failed: runc create failed: unable to start container
             process: error during container init: exec: "/app/start-worker": stat
@@ -122,7 +122,7 @@ items:
       name: invoice-worker
       ready: false
       resources: {}
-      restartCount: 0
+      restartCount: 1
       started: false
       state:
         waiting:
@@ -140,7 +140,7 @@ items:
           uid: 0
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-p6j9g
+        name: kube-api-access-phr86
         readOnly: true
         recursiveReadOnly: Disabled
     hostIP: 172.18.0.2
@@ -148,12 +148,12 @@ items:
     - ip: 172.18.0.2
     observedGeneration: 1
     phase: Running
-    podIP: 10.244.1.26
+    podIP: 10.244.1.33
     podIPs:
-    - ip: 10.244.1.26
+    - ip: 10.244.1.33
     qosClass: BestEffort
     resources: {}
-    startTime: "2026-09-24T23:22:47Z"
+    startTime: "2026-09-24T23:43:53Z"
 kind: List
 metadata:
   resourceVersion: ""

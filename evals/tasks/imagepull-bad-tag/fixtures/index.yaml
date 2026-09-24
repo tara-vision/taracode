@@ -7,17 +7,17 @@ fixtures:
       file: kubectl-get-pod-n-web-o-yaml-98d818.txt
     - signature: kubectl get pod -n web -l app=storefront
       file: kubectl-get-pod-n-web-l-app-storefront-42ef26.txt
-    - signature: kubectl describe pod/storefront-5996978c75-nr8g4 -n web
-      file: kubectl-describe-pod-storefront-5996978c75-nr8g4-n-web-571b0f.txt
+    - signature: kubectl describe pod/storefront-5996978c75-dsqkp -n web
+      file: kubectl-describe-pod-storefront-5996978c75-dsqkp-n-web-e02ab5.txt
     - signature: kubectl describe deployment/storefront -n web
       file: kubectl-describe-deployment-storefront-n-web-d90297.txt
-    - signature: kubectl logs storefront-5996978c75-nr8g4 -n web
-      file: kubectl-logs-storefront-5996978c75-nr8g4-n-web-5678c3.txt
+    - signature: kubectl logs storefront-5996978c75-dsqkp -n web
+      file: kubectl-logs-storefront-5996978c75-dsqkp-n-web-401bed.txt
       error: true
-    - signature: kubectl logs storefront-5996978c75-nr8g4 -n web --previous
-      file: kubectl-logs-storefront-5996978c75-nr8g4-n-web-previous-9e8b4e.txt
-    - signature: kubectl logs storefront-5996978c75-nr8g4 -n web --previous --tail=50
-      file: kubectl-logs-storefront-5996978c75-nr8g4-n-web-previous-tail-50-327fa4.txt
+    - signature: kubectl logs storefront-5996978c75-dsqkp -n web --previous
+      file: kubectl-logs-storefront-5996978c75-dsqkp-n-web-previous-3c5af8.txt
+    - signature: kubectl logs storefront-5996978c75-dsqkp -n web --previous --tail=50
+      file: kubectl-logs-storefront-5996978c75-dsqkp-n-web-previous-tail-50-4ccee1.txt
       error: true
     - signature: kubectl get event -n web
       file: kubectl-get-event-n-web-66929c.txt
@@ -27,6 +27,8 @@ fixtures:
       file: kubectl-get-deployment-storefront-n-web-39e34d.txt
     - signature: kubectl get deployment/storefront -n web -o yaml
       file: kubectl-get-deployment-storefront-n-web-o-yaml-e9158d.txt
+    - signature: kubectl get deployment -n web -o wide
+      file: kubectl-get-deployment-n-web-o-wide-0cab69.txt
     - signature: kubectl top pod -n web
       file: kubectl-top-pod-n-web-65003c.txt
       error: true

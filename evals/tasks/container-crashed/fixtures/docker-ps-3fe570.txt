@@ -1,3 +1,4 @@
-CONTAINER ID   IMAGE                  COMMAND                  CREATED       STATUS       PORTS                       NAMES
-7a17dc33377c   kindest/node:v1.37.0   "/usr/local/bin/entr…"   4 hours ago   Up 4 hours   127.0.0.1:36535->6443/tcp   taracode-evals-control-plane
-0e3d887b8053   kindest/node:v1.37.0   "/usr/local/bin/entr…"   4 hours ago   Up 4 hours                               taracode-evals-worker
+CONTAINER ID   IMAGE                  COMMAND                   CREATED                  STATUS                  PORTS                       NAMES
+ab71cfb28991   busybox:1.37           "sh -c 'echo \"starti…"   Less than a second ago   Up Less than a second                               crashed-app
+7a17dc33377c   kindest/node:v1.37.0   "/usr/local/bin/entr…"    6 hours ago              Up 6 hours              127.0.0.1:36535->6443/tcp   taracode-evals-control-plane
+0e3d887b8053   kindest/node:v1.37.0   "/usr/local/bin/entr…"    6 hours ago              Up 6 hours                                          taracode-evals-worker
