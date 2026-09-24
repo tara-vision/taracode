@@ -7,19 +7,20 @@ import (
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
+var shellReadCases = []string{
+	"ls -la", "cat /etc/hosts", "grep -rn TODO . | head -20", "ps aux | grep nginx | wc -l",
+	"df -h && free -m", "kubectl get pods -A | grep -v Running", "git status; git log -n 3",
+	"curl -s https://example.com/health", "curl -sI https://example.com", "dig +short example.com",
+	"find . -name '*.tf' -type f", "sed -n '1,20p' main.go", "awk '{print $1}' access.log | sort | uniq -c",
+	"tar -tzf release.tgz", "make -n build", "terraform plan -no-color", "docker compose ps",
+	"systemctl status nginx", "journalctl -u nginx --since '1 hour ago'", "gh pr list --state open",
+	"jq '.items[].metadata.name' out.json", "TZ=UTC env | grep TZ", "helm list -A", "echo hello 2>&1",
+	"cat big.log > /dev/null", "python3 --version", "go version", "brew list", "npm ls --depth=0",
+	"cat<x", "wget -O - https://example.com/x",
+}
+
 func TestShell(t *testing.T) {
-	read := []string{
-		"ls -la", "cat /etc/hosts", "grep -rn TODO . | head -20", "ps aux | grep nginx | wc -l",
-		"df -h && free -m", "kubectl get pods -A | grep -v Running", "git status; git log -n 3",
-		"curl -s https://example.com/health", "curl -sI https://example.com", "dig +short example.com",
-		"find . -name '*.tf' -type f", "sed -n '1,20p' main.go", "awk '{print $1}' access.log | sort | uniq -c",
-		"tar -tzf release.tgz", "make -n build", "terraform plan -no-color", "docker compose ps",
-		"systemctl status nginx", "journalctl -u nginx --since '1 hour ago'", "gh pr list --state open",
-		"jq '.items[].metadata.name' out.json", "TZ=UTC env | grep TZ", "helm list -A", "echo hello 2>&1",
-		"cat big.log > /dev/null", "python3 --version", "go version", "brew list", "npm ls --depth=0",
-		"cat<x", "wget -O - https://example.com/x",
-	}
-	for _, c := range read {
+	for _, c := range shellReadCases {
 		if got := Shell(c); got.Classification != policy.Read {
 			t.Errorf("%q should be read: %+v", c, got)
 		}

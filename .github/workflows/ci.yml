@@ -94,6 +94,20 @@ jobs:
       - name: Installer checksum verification
         run: bash scripts/test-install.sh
 
+  classify-diff:
+    name: Classifier differential
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Read-only differential harness
+        run: make classify-diff
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest
