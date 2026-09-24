@@ -332,3 +332,117 @@ func TestAuditWithoutStorageWarns(t *testing.T) {
 		t.Fatalf("a mutation that cannot be audited must say so:\n%s", out)
 	}
 }
+
+// The first shake-out's malformed prod-context scale (ruling P3-R59): args repeats the command with
+// another namespace than the namespace parameter, which the kubectl tool refuses as an argument error.
+var (
+	malformedProdScale = map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout",
+		"namespace": "shop", "context": "prod-cluster", "args": "scale deployment checkout --replicas=3 -n prod-shop"}
+	malformedProdScaleReason = `namespace is given both as a parameter ("shop") and in args ("prod-shop") with ` +
+		`different values; use one`
+)
+
+// checkArgumentRefusal checks the event of a call refused for its arguments: not allowed, rule
+// classifier, the verb the call named and that verb's own classification, the plain reason, no error.
+func checkArgumentRefusal(t *testing.T, ev ToolEvent, verb string, class policy.Classification, reason string) {
+	t.Helper()
+	if ev.Allowed || ev.Rule != "classifier" || ev.Verb != verb || ev.Classification != class || ev.Reason != reason ||
+		ev.Err != nil {
+		t.Errorf("event %+v, want a classifier refusal of %s (%s): %s", ev, verb, class, reason)
+	}
+}
+
+// checkAuditDeny checks one audit record: a deny by rule of the verb, in mode.
+func checkAuditDeny(t *testing.T, rec storage.AuditRecord, rule, verb string, mode policy.Mode) {
+	t.Helper()
+	if rec.Decision != "deny" || rec.Rule != rule || rec.Verb != verb || rec.Classification != "mutate" ||
+		rec.Mode != string(mode) {
+		t.Errorf("audit %+v, want a %s deny of %s in %s mode", rec, rule, verb, mode)
+	}
+}
+
+// TestKubectlArgumentErrorIsRefusedInOperateMode pins ruling P3-R59 (B2, closing F4) through the loop
+// under the built-in policy: the malformed prod-context scale, which the policy used to allow with no
+// verb and no targets, is refused at the gate with rule classifier and the plain reason, audited as a
+// deny of scale, and never runs; the well-formed scale is still denied by the protected context.
+func TestKubectlArgumentErrorIsRefusedInOperateMode(t *testing.T) {
+	ranMarker := fakeKubeTools(t)
+	setProcessKubeconfig(t, false)
+	wellFormed := map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
+		"context": "prod-cluster", "args": "--replicas=3"}
+	a, srv, _ := gateAssistant(t, policy.ModeOperate, toolCall("kubectl", malformedProdScale),
+		toolCall("kubectl", wellFormed), ollamatest.Turn{Content: "ok"})
+	var events []ToolEvent
+	a.observer = func(ev ToolEvent) { events = append(events, ev) }
+	out := captureStdout(t, func() { _ = a.ProcessMessage("scale checkout to 3 on prod") })
+	msgs := toolMessages(t, srv)
+	if len(msgs) != 2 || msgs[0] != "Error: "+malformedProdScaleReason ||
+		!strings.Contains(msgs[1], `Blocked by policy: kube context "prod-cluster"`) {
+		t.Fatalf("tool messages %q", msgs)
+	}
+	if !strings.Contains(out, malformedProdScaleReason) {
+		t.Errorf("the refusal is shown:\n%s", out)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events %+v", events)
+	}
+	checkArgumentRefusal(t, events[0], "scale", policy.Mutate, malformedProdScaleReason)
+	if events[1].Allowed || events[1].Rule != "protected.kube_contexts" || events[1].Verb != "scale" {
+		t.Errorf("the well-formed scale: %+v", events[1])
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 2 {
+		t.Fatalf("audit %+v", recs)
+	}
+	checkAuditDeny(t, recs[0], "classifier", "scale", policy.ModeOperate)
+	if r := recs[0]; r.Reason != malformedProdScaleReason || r.Targets["kube_context"] != "*" ||
+		r.Targets["kube_namespace"] != "*" || !strings.HasSuffix(r.Command, "--replicas=3 -n prod-shop") {
+		t.Errorf("the refusal's audit record %+v", r)
+	}
+	checkAuditDeny(t, recs[1], "protected.kube_contexts", "scale", policy.ModeOperate)
+	if st := a.LastTurn(); st.ToolCalls != 2 || st.Denied != 2 {
+		t.Errorf("turn %+v", st)
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("a refused scale must not run")
+	}
+}
+
+// TestKubectlArgumentErrorIsRefusedInInvestigateMode pins ruling P3-R59 (B2): in investigate mode an
+// argument error reaches the model as the plain reason, never as the mode rule's advice to switch
+// modes; a malformed read is refused the same way without an audit record (the log holds mutations),
+// and the shake-out's repeated command line runs, normalized.
+func TestKubectlArgumentErrorIsRefusedInInvestigateMode(t *testing.T) {
+	ranMarker := fakeKubeTools(t)
+	setProcessKubeconfig(t, false)
+	anotherVerb := map[string]any{"verb": "get", "args": "describe pod x"}
+	repeated := map[string]any{"verb": "get", "resource": "pods", "namespace": "billing", "args": "get pods -n billing"}
+	a, srv, _ := gateAssistant(t, policy.ModeInvestigate, toolCall("kubectl", malformedProdScale),
+		toolCall("kubectl", anotherVerb), toolCall("kubectl", repeated), ollamatest.Turn{Content: "ok"})
+	var events []ToolEvent
+	a.observer = func(ev ToolEvent) { events = append(events, ev) }
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("look at checkout") })
+	verbReason := `args starts with "describe" but verb is "get"; args holds only extra flags ` +
+		`(for example -l app=web --tail=100), never the verb, resource, name, namespace or context`
+	msgs := toolMessages(t, srv)
+	if len(msgs) != 3 || msgs[0] != "Error: "+malformedProdScaleReason || msgs[1] != "Error: "+verbReason ||
+		msgs[2] != "pods" {
+		t.Fatalf("tool messages %q", msgs)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events %+v", events)
+	}
+	checkArgumentRefusal(t, events[0], "scale", policy.Mutate, malformedProdScaleReason)
+	checkArgumentRefusal(t, events[1], "get", policy.Read, verbReason)
+	if !events[2].Allowed || events[2].Rule != "read" {
+		t.Errorf("the normalized read must run: %+v", events[2])
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 1 {
+		t.Fatalf("only the mutating verb is audited: %+v", recs)
+	}
+	checkAuditDeny(t, recs[0], "classifier", "scale", policy.ModeInvestigate)
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("a refused scale must not run")
+	}
+}

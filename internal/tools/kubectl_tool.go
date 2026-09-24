@@ -2,57 +2,14 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/classify"
-	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
 const kubectlTimeout = 120 * time.Second
-
-// kubectlArgv builds the argv from the structured params plus the tokenized args. A structured
-// namespace, context or output that is also spelled out in args (-n, --namespace, --context, -o,
-// --output) is refused rather than silently picking one; a spelling this misses (-nkube-system)
-// still gives classify.KubeTargets two different values, which it reports as "*".
-func kubectlArgv(args map[string]any) ([]string, error) {
-	verb, err := required(args, "verb")
-	if err != nil {
-		return nil, err
-	}
-	extra, err := shellwords.Words(argString(args, "args"))
-	if err != nil {
-		return nil, err
-	}
-	argv := []string{verb}
-	if r := argString(args, "resource"); r != "" {
-		argv = append(argv, r)
-	}
-	if n := argString(args, "name"); n != "" {
-		argv = append(argv, n)
-	}
-	if ns := argString(args, "namespace"); ns != "" {
-		if hasWord(extra, "-n") || hasWord(extra, "--namespace") {
-			return nil, fmt.Errorf("namespace is given both as a parameter and in args; use one")
-		}
-		argv = append(argv, "-n", ns)
-	}
-	if c := argString(args, "context"); c != "" {
-		if hasWord(extra, "--context") {
-			return nil, fmt.Errorf("context is given both as a parameter and in args; use one")
-		}
-		argv = append(argv, "--context", c)
-	}
-	if o := argString(args, "output"); o != "" {
-		if hasWord(extra, "-o") || hasWord(extra, "--output") {
-			return nil, fmt.Errorf("output is given both as a parameter and in args; use one")
-		}
-		argv = append(argv, "-o", o)
-	}
-	return append(argv, extra...), nil
-}
 
 // dropOutputFlag removes a "-o value" pair. kubectl diff, unlike apply, has no output-format flag;
 // passing one through risks kubectl itself exiting 1 for an unrelated reason (an unrecognized flag),
@@ -82,13 +39,14 @@ func KubectlTool() *Tool {
 			{Name: "name", Type: "string", Description: "Resource name"},
 			{Name: "namespace", Type: "string", Description: "Namespace (-n)"},
 			{Name: "context", Type: "string", Description: "kubeconfig context (--context)"},
-			{Name: "args", Type: "string", Description: "Extra flags, for example \"-l app=web --tail=100\""},
+			{Name: "args", Type: "string", Description: "Only extra flags, for example \"-l app=web --tail=100\"; " +
+				"never the verb, resource, name, namespace or context"},
 			{Name: "output", Type: "string", Description: "Output format (-o)", Enum: []string{"json", "yaml", "wide", "name"}},
 		},
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
-			argv, err := kubectlArgv(args)
+			argv, err := KubectlArgv(args)
 			if err != nil {
-				return policy.Invocation{Tool: "kubectl", Classification: policy.Mutate, Reason: err.Error()}
+				return refusedKubectlInvocation(args, err)
 			}
 			res := classify.Kubectl(argv[0], argv[1:])
 			inv := policy.Invocation{Tool: "kubectl", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
@@ -103,7 +61,7 @@ func KubectlTool() *Tool {
 			return inv
 		},
 		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
-			argv, err := kubectlArgv(args)
+			argv, err := KubectlArgv(args)
 			if err != nil {
 				return "", err
 			}
@@ -112,7 +70,7 @@ func KubectlTool() *Tool {
 			return runCommand(ctx, workingDir, "kubectl", argv...)
 		},
 		DryRun: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
-			argv, err := kubectlArgv(args)
+			argv, err := KubectlArgv(args)
 			if err != nil {
 				return "", err
 			}
@@ -136,4 +94,37 @@ func KubectlTool() *Tool {
 			return out, nil
 		},
 	}
+}
+
+// refusedKubectlInvocation classifies a call whose arguments the tool refuses (ruling P3-R59): the verb
+// parameter with its verb-level classification, so a malformed scale is still a mutation and a
+// malformed get a read, the command as the parameters spell it, and "*" targets that carry the error.
+// The gate refuses such a call before the mode or the policy sees it (Registry.ArgumentError); the "*"
+// targets keep the policy's protected lists in force for anything that evaluates it anyway.
+func refusedKubectlInvocation(args map[string]any, err error) policy.Invocation {
+	verb := argString(args, "verb")
+	return policy.Invocation{Tool: "kubectl", Verb: strings.ToLower(verb),
+		Classification: classify.Kubectl(verb, nil).Classification, Reason: err.Error(),
+		Command: kubectlCommandAsGiven(args),
+		Targets: policy.Targets{KubeContext: "*", KubeNamespace: "*", KubeReason: err.Error()}}
+}
+
+// kubectlCommandAsGiven is the command line the parameters spell before any normalization, for the
+// audit record and the deny patterns of a call the tool refuses.
+func kubectlCommandAsGiven(args map[string]any) string {
+	parts := []string{"kubectl"}
+	for _, p := range []string{"verb", "resource", "name"} {
+		if v := argString(args, p); v != "" {
+			parts = append(parts, v)
+		}
+	}
+	for _, f := range kubectlFlagParams {
+		if v := argString(args, f.param); v != "" {
+			parts = append(parts, f.flag(), v)
+		}
+	}
+	if extra := argString(args, "args"); extra != "" {
+		parts = append(parts, extra)
+	}
+	return strings.Join(parts, " ")
 }
