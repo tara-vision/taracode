@@ -1,4 +1,4 @@
-.PHONY: build install test clean run deps build-all lint vuln coverage-gate snapshot lab-smoke
+.PHONY: build install test clean run deps build-all lint vuln coverage-gate classify-diff snapshot lab-smoke
 
 # Binary name
 BINARY=taracode
@@ -35,6 +35,11 @@ vuln:
 
 coverage-gate:
 	bash scripts/coverage-gate.sh
+
+# Read-only differential harness: every read-classified shell command runs in a sentinel tree with
+# shims for the infrastructure and network CLIs; any change or non-read invocation fails.
+classify-diff:
+	go test -tags classifydiff -run TestDifferential -count=1 -v ./internal/tools/classify
 
 clean:
 	rm -f $(BINARY)
