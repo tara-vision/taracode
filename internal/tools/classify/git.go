@@ -45,10 +45,7 @@ func Git(tokens []string) Result {
 		}
 		return mutate(verb, "git remote "+rest[0]+" changes remotes")
 	case "config":
-		if hasFlag(rest, "--get", "--get-all", "--get-regexp", "--list", "-l") {
-			return read(verb)
-		}
-		return mutate(verb, "git config without --get or --list writes configuration")
+		return gitConfigResult(verb, rest)
 	case "stash":
 		if in(first(rest), "list", "show") {
 			return read(verb)
@@ -61,6 +58,24 @@ func Git(tokens []string) Result {
 		return mutate(verb, "git "+verb+" "+first(rest)+" changes the repository")
 	}
 	return mutate(verb, "git "+verb+" changes the repository")
+}
+
+// gitConfigResult classifies "git config": --get, --get-all, --get-regexp, --list, -l or the get and
+// list subcommands read; --unset, --add, --replace-all, --rename-section, --remove-section, -e,
+// --edit or a set, unset, edit, rename-section or remove-section subcommand write; a single
+// remaining positional is the key of a plain read, and anything else (a key and a value) writes it.
+func gitConfigResult(verb string, rest []string) Result {
+	if hasFlag(rest, "--get", "--get-all", "--get-regexp", "--list", "-l") || in(first(rest), "get", "list") {
+		return read(verb)
+	}
+	if hasFlag(rest, "--unset", "--unset-all", "--add", "--replace-all", "--rename-section", "--remove-section",
+		"-e", "--edit") || in(first(rest), "set", "unset", "edit", "rename-section", "remove-section") {
+		return mutate(verb, "git config with --unset, --add, --edit or a set subcommand writes configuration")
+	}
+	if len(positionals(rest, "--file", "-f", "--blob", "--type", "--default", "--worktree")) == 1 {
+		return read(verb) // git config <key> reads the key
+	}
+	return mutate(verb, "git config <key> <value> writes configuration")
 }
 
 // gitReadVerb catches the write forms of the read verbs: reflog expire and delete prune the

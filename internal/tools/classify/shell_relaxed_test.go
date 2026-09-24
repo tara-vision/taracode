@@ -17,6 +17,13 @@ var relaxedReads = []string{
 	// cd as a read; command -v
 	"cd /tmp && ls", "cd infra && terraform plan", "pushd sub && cat inner.txt && popd", "dirs",
 	"command -v kubectl", "command -V ls", "command -p ls",
+	// wave B
+	"awk '$3 > 100 {print $1}' access.log", "awk '{ if ($3 > 100) print $1 }' access.log",
+	"awk '{ x = $1 >= 2; print x }' f", "awk '/err/ {print /a|b/}' app.log",
+	"gcloud run services list", "gcloud run services describe web --region europe-west1",
+	"gcloud deploy releases list --delivery-pipeline web", "gcloud logging read 'severity>=ERROR' --limit 10",
+	"git config user.email", "git config --global user.email", "git config get user.email", "git config list",
+	"ifconfig en0 inet", "ifconfig eth0 inet6",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -26,6 +33,12 @@ var relaxedMutations = map[string]string{
 	"IFS=: cat f": "IFS", "TF_CLI_CONFIG_FILE=x terraform plan": "TF_CLI_CONFIG_FILE", "MY_BIN=/tmp/x ls": "MY_BIN",
 	"opt=-delete; find . $opt": "find", "find . ${OPT:--delete}": "find", "o=-o; sort $o out f": "sort",
 	"ls -la; cat $_": "cat", "command -p rm x": "rm", "echo ${X:=y}": "echo",
+	"awk '{print $1 > \"out\"}' x": "awk", "awk '{printf \"%s\\n\", $1 > \"f\"}' x": "awk", "awk '{print > \"out\"}' x": "awk",
+	"gcloud run deploy web --image x": "deploy", "gcloud run services delete web": "delete",
+	"gcloud logging write mylog hello": "write", "gcloud delete describe-x": "delete",
+	"git config user.email me@example.com": "config", "git config --unset user.email": "config",
+	"git config -e": "config", "git config set user.email me@example.com": "config",
+	"ifconfig en0 inet 10.0.0.2": "ifconfig", "ifconfig en0 down": "ifconfig",
 }
 
 func TestRelaxedReads(t *testing.T) {
