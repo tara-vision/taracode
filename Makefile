@@ -86,7 +86,7 @@ record:
 	rsync -az dist/taracode-linux-amd64 $(RECORD_HOST):$(RECORD_DIR)/taracode
 	rsync -az --delete evals/ $(RECORD_HOST):$(RECORD_DIR)/evals/
 	ssh $(RECORD_HOST) 'cd $(RECORD_DIR) && ./taracode eval record --corpus evals/tasks --scenarios evals/scenarios $(if $(RECORD_TASKS),--tasks "$(RECORD_TASKS)",)'
-	rsync -az --include='*/' --include='fixtures/***' --exclude='*' $(RECORD_HOST):$(RECORD_DIR)/evals/tasks/ evals/tasks/
+	rsync -az --delete --include='*/' --include='fixtures/***' --exclude='*' $(RECORD_HOST):$(RECORD_DIR)/evals/tasks/ evals/tasks/
 
 # Run the corpus against one lab model. Needs LAB_HOST; EVAL_ARGS passes extra flags (--tasks, --runs).
 eval-lab: build

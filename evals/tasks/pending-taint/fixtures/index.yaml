@@ -3,8 +3,8 @@ fixtures:
       file: kubectl-get-pod-n-batch-d141c8.txt
     - signature: kubectl get pod -n batch -o wide
       file: kubectl-get-pod-n-batch-o-wide-545d33.txt
-    - signature: kubectl describe pod/nightly-etl-77d8cf54bf-pfddl -n batch
-      file: kubectl-describe-pod-nightly-etl-77d8cf54bf-pfddl-n-batch-79ecca.txt
+    - signature: kubectl describe pod/nightly-etl-77d8cf54bf-t94q4 -n batch
+      file: kubectl-describe-pod-nightly-etl-77d8cf54bf-t94q4-n-batch-000c19.txt
     - signature: kubectl get event -n batch
       file: kubectl-get-event-n-batch-c838c2.txt
     - signature: kubectl get event -n batch --sort-by=.lastTimestamp
@@ -15,6 +15,8 @@ fixtures:
       file: kubectl-get-node-a47d9a.txt
     - signature: kubectl describe node
       file: kubectl-describe-node-d0fc0e.txt
+    - signature: kubectl describe node/taracode-evals-control-plane
+      file: kubectl-describe-node-taracode-evals-control-plane-4e6635.txt
     - signature: kubectl top node
       file: kubectl-top-node-8a97b9.txt
       error: true
