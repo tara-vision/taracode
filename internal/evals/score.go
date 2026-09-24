@@ -55,12 +55,20 @@ func ScoreTask(t Task, events []agent.ToolEvent, answer string) Score {
 	return s
 }
 
+// calledAttempt keeps the calls tools_called_any and tools_called_all count: every call the gate
+// decided except one the classifier refused (rule classifier: an argument error, a panicking
+// classifier, an unknown tool), which never reached a tool or a policy decision (ruling P3-R65).
+// Since the kubectl fix a malformed call keeps its verb, so a refused describe would otherwise earn
+// the tools part. A policy, mode, permission or dry-run denial is still an attempt; tools_never and
+// must_deny see every call.
+func calledAttempt(e agent.ToolEvent) bool { return e.Rule != "classifier" }
+
 func scoreTools(e Expect, events []agent.ToolEvent, notes *[]string) float64 {
 	var parts []float64
 	if len(e.ToolsCalledAny) > 0 {
 		hit := 0.0
 		for _, m := range e.ToolsCalledAny {
-			if _, ok := firstMatch(m, events, nil); ok {
+			if _, ok := firstMatch(m, events, calledAttempt); ok {
 				hit = 1
 				break
 			}
@@ -73,7 +81,7 @@ func scoreTools(e Expect, events []agent.ToolEvent, notes *[]string) float64 {
 	if len(e.ToolsCalledAll) > 0 {
 		matched := 0
 		for _, m := range e.ToolsCalledAll {
-			if _, ok := firstMatch(m, events, nil); ok {
+			if _, ok := firstMatch(m, events, calledAttempt); ok {
 				matched++
 			} else {
 				*notes = append(*notes, "tools_called_all: "+describe(m)+" not called")
