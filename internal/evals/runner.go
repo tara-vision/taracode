@@ -32,6 +32,7 @@ type RunOptions struct {
 	RunsDir                     string           // where transcripts go; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
+	NumPredict                  int              // tokens per completion; 0 = evalNumPredict, negative = no cap
 
 	scope *runScope // set by Run for its own duration
 }
@@ -50,6 +51,9 @@ const (
 	joinGrace = 30 * time.Second
 	// warmUpTimeout is the warm-up's own limit: model load time, not the task limit.
 	warmUpTimeout = 5 * time.Minute
+	// evalNumPredict caps each completion of an eval run, so a runaway completion ends as a cut-off
+	// answer rather than as a task timeout (ruling P3-R60); the interactive default stays uncapped.
+	evalNumPredict = 4096
 )
 
 func withDefaults(o RunOptions) RunOptions {
@@ -70,6 +74,9 @@ func withDefaults(o RunOptions) RunOptions {
 	}
 	if o.Think == "" {
 		o.Think = "auto"
+	}
+	if o.NumPredict == 0 {
+		o.NumPredict = evalNumPredict
 	}
 	return o
 }
@@ -329,7 +336,7 @@ func averageRuns(runs []taskRun) taskRun {
 		toolCalls:     mean(func(r TaskResult) float64 { return float64(r.ToolCalls) }),
 		fixtureMisses: mean(func(r TaskResult) float64 { return float64(r.FixtureMisses) }),
 	}
-	avg.Notes = nil
+	avg.Notes = missNotesOf(runs)
 	for _, r := range runs[1:] {
 		avg.Truncated = avg.Truncated || r.row.Truncated
 		avg.TimedOut = avg.TimedOut || r.row.TimedOut
@@ -340,6 +347,22 @@ func averageRuns(runs []taskRun) taskRun {
 	}
 	avg.Pass = avg.Score >= passMark && !avg.SafetyFailure
 	return out
+}
+
+// missNotesOf is the union of the runs' "fixture miss" notes, in first-seen order: the scorer's other
+// notes differ from run to run and are dropped, but a signature to record is one in any run.
+func missNotesOf(runs []taskRun) []string {
+	seen := map[string]bool{}
+	var notes []string
+	for _, r := range runs {
+		for _, n := range r.row.Notes {
+			if strings.HasPrefix(n, fixtureMissNote) && !seen[n] {
+				seen[n] = true
+				notes = append(notes, n)
+			}
+		}
+	}
+	return notes
 }
 
 // runTask runs one task once in a throwaway directory (spec 7); run numbers the repetition.
@@ -361,7 +384,7 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
 	replay := NewReplay(store, t.ID, runDir)
-	events := &eventLog{}
+	events := &eventLog{replay: replay}
 	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
 	if err != nil {
 		return setupDefect(tr, t, opts, "the assistant", err, transcript)
@@ -374,6 +397,7 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		tr.TimedOut, tr.WallMs, tr.ToolCalls = true, turn.wall.Milliseconds(), len(events.snapshot())
 		tr.Error = publicError(err, opts, t)
 		_, _ = fmt.Fprintf(transcript, "\n## not joined\n\n%v\n", err)
+		writeCalls(transcript, events.calls())
 		return taskRun{row: tr, raw: err.Error(), stop: err}
 	}
 	out := finishTask(t, tr, turn, events.snapshot(), replay, store, opts)
@@ -384,8 +408,54 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	if out.raw != "" {
 		_, _ = fmt.Fprintf(transcript, "\n## error\n\n%s\n", out.raw)
 	}
+	writeCalls(transcript, events.calls())
 	return out
 }
+
+// writeCalls appends the transcript's calls block (ruling P3-R58): one line per decided call with its
+// signature, then the denial's reason or the tool's error, and MISS on a call the fixtures lacked,
+// so a transcript alone says which signatures to record.
+func writeCalls(w io.Writer, calls []loggedCall) {
+	_, _ = fmt.Fprint(w, "\n## calls\n\n")
+	if len(calls) == 0 {
+		_, _ = fmt.Fprintln(w, "(no tool calls)")
+	}
+	for i, c := range calls {
+		e := c.event
+		decision := "allowed"
+		if !e.Allowed {
+			decision = "DENIED(" + e.Rule + ")"
+		}
+		line := fmt.Sprintf("#%d %s %s %s", i+1, e.Tool, decision, Signature(e.Tool, e.Args))
+		if c.missed() {
+			line += "  MISS"
+		}
+		_, _ = fmt.Fprintln(w, line)
+		if !e.Allowed && e.Reason != "" {
+			_, _ = fmt.Fprintf(w, "  reason: %s\n", e.Reason)
+		}
+		if e.Err != nil {
+			_, _ = fmt.Fprintf(w, "  error: %v\n", e.Err)
+		}
+	}
+}
+
+// missNotes are the "fixture miss: <signature>" notes of a run, one per signature in call order, so
+// the results file alone says which signatures to record (ruling P3-R58).
+func missNotes(replay *Replay) []string {
+	seen := map[string]bool{}
+	var notes []string
+	for _, sig := range replay.Misses() {
+		if !seen[sig] {
+			seen[sig] = true
+			notes = append(notes, fixtureMissNote+sig)
+		}
+	}
+	return notes
+}
+
+// fixtureMissNote starts a note naming a signature the fixtures lacked.
+const fixtureMissNote = "fixture miss: "
 
 // finishTask scores a joined turn into the task's row. A timed-out turn, a turn error and a corpus
 // defect score 0 and keep only the safety invariant; a corpus defect also stops the run (ruling
@@ -420,7 +490,7 @@ func finishTask(
 	tr.PromptTokens, tr.CompletionTokens = turn.stats.PromptTokens, turn.stats.CompletionTokens
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
 	tr.FixtureMisses = len(replay.Misses())
-	tr.Notes = publicNotes(sc.Notes, opts, t)
+	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), missNotes(replay)...), opts, t)
 	out.row = tr
 	return out
 }
@@ -453,22 +523,63 @@ func checkAssistant(a *agent.Assistant, t Task, opts RunOptions) error {
 	return nil
 }
 
-// eventLog collects the observer's events; the observer runs on the turn's goroutine.
+// eventLog collects the observer's events, each with the replay calls made for it. The observer
+// runs on the turn's goroutine right after a call's gates and execution, so the replay calls
+// recorded since the previous event are this event's own (a mutation's dry run and its execution).
+// The registry rebuilds every tool error as a fresh string, so ToolEvent.Err cannot carry
+// ErrNoFixture; the replay's own record of each call still does.
 type eventLog struct {
-	mu     sync.Mutex
-	events []agent.ToolEvent
+	replay  *Replay // nil = no replay calls to attribute
+	mu      sync.Mutex
+	entries []loggedCall
+	seen    int // the replay calls already attributed to an event
+}
+
+// loggedCall is one decided tool call and the replay calls it made.
+type loggedCall struct {
+	event    agent.ToolEvent
+	replayed []ReplayCall
+}
+
+// missed reports a call the fixtures had no recording for.
+func (c loggedCall) missed() bool {
+	for _, r := range c.replayed {
+		if errors.Is(r.Err, ErrNoFixture) {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *eventLog) observe(e agent.ToolEvent) {
+	var replayed []ReplayCall
+	if l.replay != nil {
+		replayed = l.replay.Calls()
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.events = append(l.events, e)
+	entry := loggedCall{event: e}
+	if l.seen < len(replayed) {
+		entry.replayed = replayed[l.seen:]
+		l.seen = len(replayed)
+	}
+	l.entries = append(l.entries, entry)
 }
 
 func (l *eventLog) snapshot() []agent.ToolEvent {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return append([]agent.ToolEvent(nil), l.events...)
+	events := make([]agent.ToolEvent, len(l.entries))
+	for i, c := range l.entries {
+		events[i] = c.event
+	}
+	return events
+}
+
+func (l *eventLog) calls() []loggedCall {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]loggedCall(nil), l.entries...)
 }
 
 // scoredZero is the score of a turn that cannot be scored: zero, with only the safety invariant kept
@@ -623,6 +734,9 @@ func assistantOptions(
 	o.MemoryEnabled = false
 	o.PreviewEdits = false // the preview is a terminal prompt
 	o.Generation.TemperatureZero = true
+	if opts.NumPredict > 0 {
+		o.Generation.NumPredict = opts.NumPredict
+	}
 	o.Output = out
 	o.ToolMiddleware = replay.Middleware
 	o.ToolObserver = observe

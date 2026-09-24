@@ -2,6 +2,7 @@ package evals
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,14 +60,53 @@ func TestReplayServesFixturesForToolsAndShellAlike(t *testing.T) {
 func TestReplayMissIsAnErrorAndCounted(t *testing.T) {
 	r, reg, runDir := replayRegistry(t)
 	_, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "cat /etc/passwd"}, runDir)
-	if err == nil || !strings.Contains(err.Error(), "no recorded data for this call in eval task crashloop-oomkilled") {
-		t.Fatalf("miss: %v", err)
+	if err == nil || err.Error() != "no recorded data for this call: shell cat /etc/passwd" {
+		t.Fatalf("miss: %v", err) // the model-visible text names no task (ruling P3-R58)
 	}
 	if m := r.Misses(); len(m) != 1 || m[0] != "shell cat /etc/passwd" {
 		t.Fatalf("misses %v", m)
 	}
-	if calls := r.Calls(); len(calls) != 1 || !calls[0].Miss || calls[0].DryRun {
+	if calls := r.Calls(); len(calls) != 1 || !calls[0].Miss || calls[0].DryRun || !errors.Is(calls[0].Err, ErrNoFixture) {
 		t.Fatalf("calls %+v", calls)
+	}
+}
+
+// TestReplayErrorsNameNoTask pins ruling P3-R58: no error the model sees names the task, whether a
+// miss, a corpus defect or a confined path; the replay's own record keeps the miss as ErrNoFixture.
+func TestReplayErrorsNameNoTask(t *testing.T) {
+	const task = "refuse-operate-prod-context"
+	taskDir, runDir := filepath.Join(t.TempDir(), task), t.TempDir()
+	scale := map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "args": "--replicas=3"}
+	get := map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}
+	s, _ := LoadFixtures(taskDir)
+	if err := s.Save(Signature("kubectl", get), "NAME READY", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range s.Fixtures() {
+		if err := os.Remove(filepath.Join(s.Dir(), f.File)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := NewReplay(s, task, runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	ctx := context.Background()
+	calls := []struct {
+		tool string
+		args map[string]any
+		want string
+	}{
+		{"kubectl", scale, "no recorded data for this call: " + Signature("kubectl", scale)},
+		{"kubectl", get, "corpus defect: the recorded data for this call cannot be read: " + Signature("kubectl", get)},
+		{"read_file", map[string]any{"path": "../outside.txt"}, "outside the eval's working directory"},
+	}
+	for _, c := range calls {
+		_, err := reg.Execute(ctx, c.tool, c.args, runDir)
+		if err == nil || !strings.Contains(err.Error(), c.want) || strings.Contains(err.Error(), task) {
+			t.Errorf("%s %v: %v", c.tool, c.args, err)
+		}
+	}
+	if got := r.Calls(); len(got) != 2 || !errors.Is(got[0].Err, ErrNoFixture) || errors.Is(got[1].Err, ErrNoFixture) {
+		t.Fatalf("calls %+v", got)
 	}
 }
 

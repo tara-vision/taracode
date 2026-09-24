@@ -291,21 +291,28 @@ func resolveStringPlaceholders(ctx context.Context, s string, resolve Resolver) 
 }
 
 // KubectlResolver resolves placeholders against the live cluster: {{pod app=x ns=y}} is the first
-// pod matching the label selector in the namespace, {{node}} the first node. The label terms join
-// into one repeatable -l flag: kubectl's -l does not combine across repeated flags, so passing them
+// pod matching the label selector in the namespace, {{node}} the first node, and a phase=<value> term
+// keeps only the objects in that status.phase ({{pod app=x ns=y phase=Pending}} picks the pod that
+// failed to start, ruling P3-R61 C2). The label terms join into one -l flag and the phase terms into
+// one --field-selector: kubectl does not combine either across repeated flags, so passing them
 // separately would silently keep only the last one. kubectl's stderr is folded into the error.
 func KubectlResolver(ctx context.Context, kind, spec string) (string, error) {
 	argv := []string{"get", kind, "-o", "jsonpath={.items[0].metadata.name}"}
-	var labels []string
+	var labels, fields []string
 	for _, f := range strings.Fields(spec) {
 		if ns, ok := strings.CutPrefix(f, "ns="); ok {
 			argv = append(argv, "-n", ns)
+		} else if phase, ok := strings.CutPrefix(f, "phase="); ok {
+			fields = append(fields, "status.phase="+phase)
 		} else {
 			labels = append(labels, f)
 		}
 	}
 	if len(labels) > 0 {
 		argv = append(argv, "-l", strings.Join(labels, ","))
+	}
+	if len(fields) > 0 {
+		argv = append(argv, "--field-selector", strings.Join(fields, ","))
 	}
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "kubectl", argv...)

@@ -137,6 +137,41 @@ func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string,
 	a.turn.Truncated = true
 	_, _ = fmt.Fprintf(a.out, "\n%s Stopped after %d tool iterations (context.max_tool_iterations)\n",
 		ui.IconWarning, a.maxIterations)
+	return a.answerAtCap(ctx)
+}
+
+// capNudge asks for the findings so far once a turn has used every tool iteration it may.
+const capNudge = "You have used every tool call this turn allows. Without calling a tool, answer now with " +
+	"what you have found so far, and say what is still unknown."
+
+// answerAtCap makes one final completion at the iteration cap with no tools offered, so the user
+// (and the eval scorer) get the findings so far instead of an empty answer (ruling P3-R60). A tool
+// call the model returns anyway is not run and does not enter the conversation. A failed completion
+// leaves the turn truncated without an answer, as the cap did before, unless the turn's context
+// ended, whose error is returned.
+func (a *Assistant) answerAtCap(ctx gocontext.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	a.conversation = append(a.conversation, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: capNudge,
+	})
+	a.compactIfNeeded(ctx)
+	res, err := a.completeWith(ctx, nil)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("No answer at the iteration cap: %v", err)))
+		return nil
+	}
+	answer := *res
+	answer.ToolCalls = nil
+	_, display := toolCallsOf(&answer)
+	a.appendAssistantTurn(&answer, nil, display)
+	a.printAnswer(display)
+	a.lastResponse = display
 	return nil
 }
 
@@ -234,10 +269,15 @@ func (a *Assistant) requestOptions() llm.Options {
 	return options
 }
 
-// complete sends the conversation once and returns the reply, handling the host failover and the
-// session token accounting.
+// complete sends the conversation once with the tools the mode offers and returns the reply.
 func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
-	req := llm.Request{Model: a.model, Messages: a.conversation, Options: a.requestOptions(), Tools: a.toolDefs}
+	return a.completeWith(ctx, a.toolDefs)
+}
+
+// completeWith sends the conversation once, offering tools (nil offers none), and returns the reply,
+// handling the host failover and the session token accounting.
+func (a *Assistant) completeWith(ctx gocontext.Context, tools []openai.Tool) (*llm.Result, error) {
+	req := llm.Request{Model: a.model, Messages: a.conversation, Options: a.requestOptions(), Tools: tools}
 
 	res, err := a.chat(ctx, req)
 	if err != nil && a.hostPool != nil && isHostRetryableError(err) {
