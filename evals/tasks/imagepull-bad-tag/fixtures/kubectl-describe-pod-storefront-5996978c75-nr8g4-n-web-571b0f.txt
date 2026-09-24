@@ -1,16 +1,16 @@
-Name:             storefront-5996978c75-4pxx5
+Name:             storefront-5996978c75-nr8g4
 Namespace:        web
 Priority:         0
 Service Account:  default
 Node:             taracode-evals-worker/172.18.0.2
-Start Time:       Thu, 24 Sep 2026 21:29:22 +0000
+Start Time:       Thu, 24 Sep 2026 23:23:10 +0000
 Labels:           app=storefront
                   pod-template-hash=5996978c75
 Annotations:      <none>
 Status:           Pending
-IP:               10.244.1.8
+IP:               10.244.1.28
 IPs:
-  IP:           10.244.1.8
+  IP:           10.244.1.28
 Controlled By:  ReplicaSet/storefront-5996978c75
 Containers:
   storefront:
@@ -25,7 +25,7 @@ Containers:
     Restart Count:  0
     Environment:    <none>
     Mounts:
-      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-4x8c4 (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-8dts4 (ro)
 Conditions:
   Type                        Status
   PodReadyToStartContainers   True 
@@ -34,7 +34,7 @@ Conditions:
   ContainersReady             False 
   PodScheduled                True 
 Volumes:
-  kube-api-access-4x8c4:
+  kube-api-access-8dts4:
     Type:                    Projected (a volume that contains injected data from multiple sources)
     TokenExpirationSeconds:  3607
     ConfigMapName:           kube-root-ca.crt
@@ -47,9 +47,9 @@ Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists fo
 Events:
   Type     Reason     Age   From               Message
   ----     ------     ----  ----               -------
-  Normal   Scheduled  4s    default-scheduler  Successfully assigned web/storefront-5996978c75-4pxx5 to taracode-evals-worker
-  Normal   Pulling    4s    kubelet            spec.containers{storefront}: Pulling image "nginx:1.99.99-does-not-exist"
-  Warning  Failed     3s    kubelet            spec.containers{storefront}: Failed to pull image "nginx:1.99.99-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-does-not-exist": failed to resolve reference "docker.io/library/nginx:1.99.99-does-not-exist": docker.io/library/nginx:1.99.99-does-not-exist: not found
-  Warning  Failed     3s    kubelet            spec.containers{storefront}: Error: ErrImagePull
-  Normal   BackOff    2s    kubelet            spec.containers{storefront}: Back-off pulling image "nginx:1.99.99-does-not-exist"
-  Warning  Failed     2s    kubelet            spec.containers{storefront}: Error: ImagePullBackOff
+  Normal   Scheduled  3s    default-scheduler  Successfully assigned web/storefront-5996978c75-nr8g4 to taracode-evals-worker
+  Normal   Pulling    3s    kubelet            spec.containers{storefront}: Pulling image "nginx:1.99.99-does-not-exist"
+  Warning  Failed     2s    kubelet            spec.containers{storefront}: Failed to pull image "nginx:1.99.99-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-does-not-exist": failed to resolve reference "docker.io/library/nginx:1.99.99-does-not-exist": docker.io/library/nginx:1.99.99-does-not-exist: not found
+  Warning  Failed     2s    kubelet            spec.containers{storefront}: Error: ErrImagePull
+  Normal   BackOff    1s    kubelet            spec.containers{storefront}: Back-off pulling image "nginx:1.99.99-does-not-exist"
+  Warning  Failed     1s    kubelet            spec.containers{storefront}: Error: ImagePullBackOff

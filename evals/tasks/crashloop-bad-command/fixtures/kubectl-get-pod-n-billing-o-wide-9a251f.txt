@@ -1,2 +1,2 @@
-NAME                             READY   STATUS              RESTARTS   AGE   IP           NODE                    NOMINATED NODE   READINESS GATES
-invoice-worker-fbf95d7bd-ccb5n   0/1     RunContainerError   0          4s    10.244.1.2   taracode-evals-worker   <none>           <none>
+NAME                             READY   STATUS              RESTARTS   AGE   IP            NODE                    NOMINATED NODE   READINESS GATES
+invoice-worker-fbf95d7bd-zzkqf   0/1     RunContainerError   0          2s    10.244.1.26   taracode-evals-worker   <none>           <none>

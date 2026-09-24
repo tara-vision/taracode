@@ -1,6 +1,6 @@
 Name:                   invoice-worker
 Namespace:              billing
-CreationTimestamp:      Thu, 24 Sep 2026 21:27:53 +0000
+CreationTimestamp:      Thu, 24 Sep 2026 23:22:46 +0000
 Labels:                 app=invoice-worker
 Annotations:            deployment.kubernetes.io/revision: 1
 Selector:               app=invoice-worker
@@ -32,4 +32,4 @@ NewReplicaSet:   invoice-worker-fbf95d7bd (1/1 replicas created)
 Events:
   Type    Reason             Age   From                   Message
   ----    ------             ----  ----                   -------
-  Normal  ScalingReplicaSet  4s    deployment-controller  Scaled up replica set invoice-worker-fbf95d7bd from 0 to 1
+  Normal  ScalingReplicaSet  2s    deployment-controller  Scaled up replica set invoice-worker-fbf95d7bd from 0 to 1

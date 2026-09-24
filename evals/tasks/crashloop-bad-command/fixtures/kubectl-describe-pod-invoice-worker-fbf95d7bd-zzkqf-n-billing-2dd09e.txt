@@ -1,20 +1,20 @@
-Name:             invoice-worker-fbf95d7bd-ccb5n
+Name:             invoice-worker-fbf95d7bd-zzkqf
 Namespace:        billing
 Priority:         0
 Service Account:  default
 Node:             taracode-evals-worker/172.18.0.2
-Start Time:       Thu, 24 Sep 2026 21:27:53 +0000
+Start Time:       Thu, 24 Sep 2026 23:22:47 +0000
 Labels:           app=invoice-worker
                   pod-template-hash=fbf95d7bd
 Annotations:      <none>
 Status:           Running
-IP:               10.244.1.2
+IP:               10.244.1.26
 IPs:
-  IP:           10.244.1.2
+  IP:           10.244.1.26
 Controlled By:  ReplicaSet/invoice-worker-fbf95d7bd
 Containers:
   invoice-worker:
-    Container ID:  containerd://ee4c01f578154948aaeb29ceb83eb061f52527a8638631a2a1cee369897b8c5a
+    Container ID:  containerd://5837007f523879985eba9148eb552e95338d014124956fcfee186137b261c2a9
     Image:         busybox:1.37
     Image ID:      docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
     Port:          <none>
@@ -28,12 +28,12 @@ Containers:
       Message:      failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/app/start-worker": stat /app/start-worker: no such file or directory
       Exit Code:    128
       Started:      Thu, 01 Jan 1970 00:00:00 +0000
-      Finished:     Thu, 24 Sep 2026 21:27:57 +0000
+      Finished:     Thu, 24 Sep 2026 23:22:48 +0000
     Ready:          False
     Restart Count:  1
     Environment:    <none>
     Mounts:
-      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-xsrt9 (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-p6j9g (ro)
 Conditions:
   Type                        Status
   PodReadyToStartContainers   True 
@@ -42,7 +42,7 @@ Conditions:
   ContainersReady             False 
   PodScheduled                True 
 Volumes:
-  kube-api-access-xsrt9:
+  kube-api-access-p6j9g:
     Type:                    Projected (a volume that contains injected data from multiple sources)
     TokenExpirationSeconds:  3607
     ConfigMapName:           kube-root-ca.crt
@@ -55,10 +55,8 @@ Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists fo
 Events:
   Type     Reason     Age              From               Message
   ----     ------     ----             ----               -------
-  Normal   Scheduled  5s               default-scheduler  Successfully assigned billing/invoice-worker-fbf95d7bd-ccb5n to taracode-evals-worker
-  Normal   Pulling    4s               kubelet            spec.containers{invoice-worker}: Pulling image "busybox:1.37"
-  Normal   Pulled     2s               kubelet            spec.containers{invoice-worker}: Successfully pulled image "busybox:1.37" in 2.65s (2.65s including waiting). Image size: 2222118 bytes.
+  Normal   Scheduled  2s               default-scheduler  Successfully assigned billing/invoice-worker-fbf95d7bd-zzkqf to taracode-evals-worker
+  Normal   Pulled     1s (x2 over 2s)  kubelet            spec.containers{invoice-worker}: Container image "busybox:1.37" already present on machine and can be accessed by the pod
   Normal   Created    1s (x2 over 2s)  kubelet            spec.containers{invoice-worker}: Container created
   Warning  Failed     1s (x2 over 2s)  kubelet            spec.containers{invoice-worker}: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/app/start-worker": stat /app/start-worker: no such file or directory
-  Normal   Pulled     1s               kubelet            spec.containers{invoice-worker}: Container image "busybox:1.37" already present on machine and can be accessed by the pod
-  Warning  BackOff    0s               kubelet            spec.containers{invoice-worker}: Back-off restarting failed container invoice-worker in pod invoice-worker-fbf95d7bd-ccb5n_billing(d34599b8-5b57-4f3c-96e3-ca2b931801cc)
+  Warning  BackOff    0s               kubelet            spec.containers{invoice-worker}: Back-off restarting failed container invoice-worker in pod invoice-worker-fbf95d7bd-zzkqf_billing(2951d7d2-2093-4e9a-8f02-fdd91d250260)

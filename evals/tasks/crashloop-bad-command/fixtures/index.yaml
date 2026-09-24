@@ -5,18 +5,18 @@ fixtures:
       file: kubectl-get-pod-n-billing-o-wide-9a251f.txt
     - signature: kubectl get pod -n billing -o yaml
       file: kubectl-get-pod-n-billing-o-yaml-554155.txt
-    - signature: kubectl get pod/app=invoice-worker -n billing -l
-      file: kubectl-get-pod-app-invoice-worker-n-billing-l-4702db.txt
-    - signature: kubectl describe pod/invoice-worker-fbf95d7bd-ccb5n -n billing
-      file: kubectl-describe-pod-invoice-worker-fbf95d7bd-ccb5n-n-billing-658c34.txt
+    - signature: kubectl get pod -n billing -l app=invoice-worker
+      file: kubectl-get-pod-n-billing-l-app-invoice-worker-901510.txt
+    - signature: kubectl describe pod/invoice-worker-fbf95d7bd-zzkqf -n billing
+      file: kubectl-describe-pod-invoice-worker-fbf95d7bd-zzkqf-n-billing-2dd09e.txt
     - signature: kubectl describe deployment/invoice-worker -n billing
       file: kubectl-describe-deployment-invoice-worker-n-billing-5da448.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-ccb5n -n billing
-      file: kubectl-logs-invoice-worker-fbf95d7bd-ccb5n-n-billing-e8af8a.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-ccb5n -n billing --previous
-      file: kubectl-logs-invoice-worker-fbf95d7bd-ccb5n-n-billing-previous-ebbd0e.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-ccb5n -n billing --previous --tail=50
-      file: kubectl-logs-invoice-worker-fbf95d7bd-ccb5n-n-billing-previous-tail-50-7ff318.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing
+      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-f5bd58.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing --previous
+      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-previous-13ccec.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing --previous --tail=50
+      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-previous-tail-50-b13239.txt
     - signature: kubectl get event -n billing
       file: kubectl-get-event-n-billing-a57a8a.txt
     - signature: kubectl get event -n billing --sort-by=.lastTimestamp

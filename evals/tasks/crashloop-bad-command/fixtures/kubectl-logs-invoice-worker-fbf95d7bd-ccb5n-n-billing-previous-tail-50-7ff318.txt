@@ -1,1 +1,0 @@
-kubectl logs invoice-worker-fbf95d7bd-ccb5n -n billing --previous --tail=50 completed with no output

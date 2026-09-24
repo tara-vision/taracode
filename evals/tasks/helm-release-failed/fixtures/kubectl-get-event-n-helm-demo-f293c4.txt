@@ -1,16 +1,16 @@
 LAST SEEN   TYPE      REASON              OBJECT                           MESSAGE
-41s         Normal    Scheduled           pod/shop-web-67c45748fb-v4s7c    Successfully assigned helm-demo/shop-web-67c45748fb-v4s7c to taracode-evals-worker
-1s          Normal    Pulling             pod/shop-web-67c45748fb-v4s7c    Pulling image "nginx:1.99.99-nope"
-23s         Warning   Failed              pod/shop-web-67c45748fb-v4s7c    Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
-23s         Warning   Failed              pod/shop-web-67c45748fb-v4s7c    Error: ErrImagePull
-13s         Normal    BackOff             pod/shop-web-67c45748fb-v4s7c    Back-off pulling image "nginx:1.99.99-nope"
-13s         Warning   Failed              pod/shop-web-67c45748fb-v4s7c    Error: ImagePullBackOff
-41s         Normal    SuccessfulCreate    replicaset/shop-web-67c45748fb   Created pod: shop-web-67c45748fb-v4s7c
-42s         Normal    Scheduled           pod/shop-web-8f84c974-nptt4      Successfully assigned helm-demo/shop-web-8f84c974-nptt4 to taracode-evals-worker
-42s         Normal    Pulled              pod/shop-web-8f84c974-nptt4      Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
-42s         Normal    Created             pod/shop-web-8f84c974-nptt4      Container created
-42s         Normal    Started             pod/shop-web-8f84c974-nptt4      Container started
-42s         Warning   Unhealthy           pod/shop-web-8f84c974-nptt4      Readiness probe failed: Get "http://10.244.1.20:80/": dial tcp 10.244.1.20:80: connect: connection refused
-42s         Normal    SuccessfulCreate    replicaset/shop-web-8f84c974     Created pod: shop-web-8f84c974-nptt4
-42s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-8f84c974 from 0 to 1
-41s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-67c45748fb from 0 to 1
+40s         Normal    Scheduled           pod/shop-web-67c45748fb-x675q    Successfully assigned helm-demo/shop-web-67c45748fb-x675q to taracode-evals-worker
+25s         Normal    Pulling             pod/shop-web-67c45748fb-x675q    Pulling image "nginx:1.99.99-nope"
+25s         Warning   Failed              pod/shop-web-67c45748fb-x675q    Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
+25s         Warning   Failed              pod/shop-web-67c45748fb-x675q    Error: ErrImagePull
+11s         Normal    BackOff             pod/shop-web-67c45748fb-x675q    Back-off pulling image "nginx:1.99.99-nope"
+11s         Warning   Failed              pod/shop-web-67c45748fb-x675q    Error: ImagePullBackOff
+40s         Normal    SuccessfulCreate    replicaset/shop-web-67c45748fb   Created pod: shop-web-67c45748fb-x675q
+41s         Normal    Scheduled           pod/shop-web-8f84c974-rps5t      Successfully assigned helm-demo/shop-web-8f84c974-rps5t to taracode-evals-worker
+41s         Normal    Pulled              pod/shop-web-8f84c974-rps5t      Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+41s         Normal    Created             pod/shop-web-8f84c974-rps5t      Container created
+41s         Normal    Started             pod/shop-web-8f84c974-rps5t      Container started
+41s         Warning   Unhealthy           pod/shop-web-8f84c974-rps5t      Readiness probe failed: Get "http://10.244.1.29:80/": dial tcp 10.244.1.29:80: connect: connection refused
+41s         Normal    SuccessfulCreate    replicaset/shop-web-8f84c974     Created pod: shop-web-8f84c974-rps5t
+41s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-8f84c974 from 0 to 1
+40s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-67c45748fb from 0 to 1
