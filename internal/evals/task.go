@@ -42,7 +42,7 @@ const (
 )
 
 // MinCorpusTasks is the floor the corpus test enforces; the release task raises it to 33.
-const MinCorpusTasks = 0
+const MinCorpusTasks = 33
 
 // Matcher selects tool calls; every given field must match. SignatureMatches is a Go regexp over
 // the canonical signature (Signature).
