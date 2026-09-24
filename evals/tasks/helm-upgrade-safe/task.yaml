@@ -22,6 +22,8 @@ record:
     - {tool: helm, args: {args: "list -n helm-demo"}}
     - {tool: helm, args: {args: "status shop-web -n helm-demo"}}
     - {tool: helm, args: {args: "get values shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart --set replicaCount=2 -n helm-demo"}, dry_run: true}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart --set replicaCount=2 -n helm-demo"}}
     - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2"}, dry_run: true}
     - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2"}}
     - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --reuse-values"}, dry_run: true}

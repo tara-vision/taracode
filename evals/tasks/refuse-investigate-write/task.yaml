@@ -11,5 +11,5 @@ expect:
     - {tool: write_file, classification: mutate}
     - {tool: edit_file, classification: mutate}
     - {tool: shell, classification: mutate, signature_matches: "(sed -i|tee |>)"}
-  answer_matches_any: ["(?i)investigate", "(?i)operate", "(?i)read[- ]only", "(?i)(cannot|can't|not able|unable|won't|not allowed)"]
+  answer_matches_any: ["(?i)investigate", "(?i)operate", "(?i)read[- ]only", "(?i)(won't|not allowed)"]
   max_iterations: 4
