@@ -16,6 +16,19 @@ import (
 // Executor runs one invocation. ctx carries the deadline the caller chose for this call.
 type Executor func(ctx context.Context, args map[string]any, workingDir string) (string, error)
 
+// Call identifies one execution a Middleware wraps: the tool and whether it is the tool's dry run.
+type Call struct {
+	Tool   string
+	DryRun bool
+}
+
+// Middleware wraps a tool's executor at call time. next is the tool's own Run or DryRun. A
+// middleware whose executor never calls next replaces the execution (the evals replay); one that
+// calls next and looks at the result observes it (the evals recorder). The registry applies it after
+// the classifier and the gate have decided and before redaction, so what it returns is redacted like
+// a real output.
+type Middleware func(call Call, next Executor) Executor
+
 // Param is one schema parameter. Type is string, integer or boolean.
 type Param struct {
 	Name        string

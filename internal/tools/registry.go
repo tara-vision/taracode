@@ -19,27 +19,29 @@ var ErrNoDryRun = errors.New("this tool has no dry run")
 
 // Options configures a registry.
 type Options struct {
-	Offline  bool             // hide tools that talk to the internet
-	Redactor *redact.Redactor // nil = no redaction
-	History  *history.Manager // nil = no backups and no operation history
+	Offline    bool             // hide tools that talk to the internet
+	Redactor   *redact.Redactor // nil = no redaction
+	History    *history.Manager // nil = no backups and no operation history
+	Middleware Middleware       // nil = the tools execute themselves
 }
 
 // Registry holds the tools in registration order.
 type Registry struct {
-	mu       sync.RWMutex
-	tools    map[string]*Tool
-	order    []string
-	mcp      map[string]string // tool name -> server
-	offline  bool
-	redactor *redact.Redactor
-	history  *history.Manager
+	mu         sync.RWMutex
+	tools      map[string]*Tool
+	order      []string
+	mcp        map[string]string // tool name -> server
+	offline    bool
+	redactor   *redact.Redactor
+	history    *history.Manager
+	middleware Middleware
 }
 
 // NewRegistry returns an empty registry.
 func NewRegistry(opts Options) *Registry {
 	return &Registry{
 		tools: map[string]*Tool{}, mcp: map[string]string{},
-		offline: opts.Offline, redactor: opts.Redactor, history: opts.History,
+		offline: opts.Offline, redactor: opts.Redactor, history: opts.History, middleware: opts.Middleware,
 	}
 }
 
@@ -124,6 +126,14 @@ func (r *Registry) SetHistory(h *history.Manager) {
 	r.history = h
 }
 
+// wrap applies the middleware to one executor.
+func (r *Registry) wrap(call Call, next Executor) Executor {
+	if r.middleware == nil {
+		return next
+	}
+	return r.middleware(call, next)
+}
+
 // Redactions is the number of secret spans redacted so far.
 func (r *Registry) Redactions() int64 {
 	if r.redactor == nil {
@@ -193,7 +203,7 @@ func (r *Registry) Execute(ctx context.Context, name string, args map[string]any
 		return "", errors.New(r.redact(err.Error()))
 	}
 	start := time.Now()
-	out, err := t.Run(ctx, args, workingDir)
+	out, err := r.wrap(Call{Tool: name}, t.Run)(ctx, args, workingDir)
 	out = r.redact(out)
 	if err != nil {
 		err = errors.New(r.redact(err.Error()))
@@ -213,7 +223,7 @@ func (r *Registry) DryRun(ctx context.Context, name string, args map[string]any,
 	if t.DryRun == nil {
 		return "", ErrNoDryRun
 	}
-	out, err := t.DryRun(ctx, args, workingDir)
+	out, err := r.wrap(Call{Tool: name, DryRun: true}, t.DryRun)(ctx, args, workingDir)
 	if err != nil && !errors.Is(err, ErrNoDryRun) {
 		err = errors.New(r.redact(err.Error()))
 	}
