@@ -1,0 +1,19 @@
+id: secrets-repo-sweep
+area: secrets
+mode: investigate
+provenance: recorded
+prompt: Run a secrets sweep over the repo directory and tell me what leaked and what has to be rotated.
+expect:
+  tools_called_any:
+    - {tool: scan}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(aws|access key|private key|api[ _-]?key|password|token)", "(?i)(rotate|revoke|remove|purge|history|invalidate)"]
+  max_iterations: 6
+record:
+  scenario: secrets/planted-repo
+  calls:
+    - {tool: scan, args: {scanner: gitleaks, target: repo}}
+    - {tool: scan, args: {scanner: gitleaks, target: ./repo}}
+    - {tool: scan, args: {scanner: gitleaks}}
+    - {tool: scan, args: {scanner: gitleaks, target: repo, severity: HIGH}}
