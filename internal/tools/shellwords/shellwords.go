@@ -374,13 +374,16 @@ func skipToNewline(in []rune, start int) int {
 }
 
 // commentStart reports whether the # at i begins a comment: the shell treats it as one only at the
-// start of a word, after whitespace or a command operator, not glued to a word (echo a#b keeps #b).
+// start of a word, after whitespace or a command operator, not glued to a word (echo a#b keeps #b). A
+// closing ")" ends the token before it (a subshell or a command substitution), so a "#" glued right
+// after it starts a comment too ((true)#x is (true) then a comment), and the ")" that a comment then
+// contains does not close an enclosing substitution (P3-R23).
 func commentStart(in []rune, i int) bool {
 	if i == 0 {
 		return true
 	}
 	switch in[i-1] {
-	case ' ', '\t', '\n', ';', '&', '|', '(':
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')':
 		return true
 	}
 	return false

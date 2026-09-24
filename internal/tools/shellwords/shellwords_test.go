@@ -332,3 +332,17 @@ func TestSplitCaseSubstitutionCapturesToEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitCommentAfterParenCaptureSubstitution (Task 6 fix round 2, ruling P3-R23): a "#" glued
+// right after a subshell's ")" starts a comment, and the ")" that the comment then contains must not
+// close an enclosing substitution early. The scanner skips the comment to the newline and captures
+// past it to the real closing paren, so a command hidden after the comment reaches the classifier.
+func TestSplitCommentAfterParenCaptureSubstitution(t *testing.T) {
+	res, err := Split("echo \"$( (true)#x )\nls)\"")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Substitutions) != 1 || res.Substitutions[0] != " (true)#x )\nls" {
+		t.Fatalf("body must capture past the glued comment: %q", res.Substitutions)
+	}
+}
