@@ -53,17 +53,18 @@ func TestLoadTaskFillsDefaults(t *testing.T) {
 
 func TestLoadTaskRejectsBadTasks(t *testing.T) {
 	cases := map[string]string{
-		"id mismatch":            strings.Replace(goodTask, "id: crashloop-oomkilled", "id: other", 1),
-		"unknown area":           strings.Replace(goodTask, "area: kubernetes", "area: mainframe", 1),
-		"bad mode":               strings.Replace(goodTask, "mode: investigate", "mode: yolo", 1),
-		"bad regexp":             strings.Replace(goodTask, `"(?i)oomkilled"`, `"(oom"`, 1),
-		"unknown tool":           strings.Replace(goodTask, "{tool: kubectl, verb: describe}", "{tool: kubectl2}", 1),
-		"must_deny in triage":    strings.Replace(goodTask, "tools_never:", "must_deny:\n    - {tool: kubectl}\n  tools_never:", 1),
-		"recorded without calls": strings.Replace(goodTask, "record:\n  scenario: kubernetes/crashloop-oomkilled\n  calls:\n    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}\n", "record:\n  scenario: x\n  calls: []\n", 1),
-		"files with record":      strings.Replace(goodTask, "provenance: recorded", "provenance: files", 1),
-		"no iterations":          strings.Replace(goodTask, "max_iterations: 8", "max_iterations: 0", 1),
-		"policy in investigate":  strings.Replace(goodTask, "prompt:", "policy: policy.yaml\nprompt:", 1),
-		"unknown key":            goodTask + "surprise: 1\n",
+		"id mismatch":                 strings.Replace(goodTask, "id: crashloop-oomkilled", "id: other", 1),
+		"unknown area":                strings.Replace(goodTask, "area: kubernetes", "area: mainframe", 1),
+		"bad mode":                    strings.Replace(goodTask, "mode: investigate", "mode: yolo", 1),
+		"bad regexp":                  strings.Replace(goodTask, `"(?i)oomkilled"`, `"(oom"`, 1),
+		"unknown tool":                strings.Replace(goodTask, "{tool: kubectl, verb: describe}", "{tool: kubectl2}", 1),
+		"scenario escapes the corpus": strings.Replace(goodTask, "scenario: kubernetes/crashloop-oomkilled", "scenario: ../outside", 1),
+		"must_deny in triage":         strings.Replace(goodTask, "tools_never:", "must_deny:\n    - {tool: kubectl}\n  tools_never:", 1),
+		"recorded without calls":      strings.Replace(goodTask, "record:\n  scenario: kubernetes/crashloop-oomkilled\n  calls:\n    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}\n", "record:\n  scenario: x\n  calls: []\n", 1),
+		"files with record":           strings.Replace(goodTask, "provenance: recorded", "provenance: files", 1),
+		"no iterations":               strings.Replace(goodTask, "max_iterations: 8", "max_iterations: 0", 1),
+		"policy in investigate":       strings.Replace(goodTask, "prompt:", "policy: policy.yaml\nprompt:", 1),
+		"unknown key":                 goodTask + "surprise: 1\n",
 	}
 	for name, yaml := range cases {
 		dir := writeTask(t, t.TempDir(), "crashloop-oomkilled", yaml)

@@ -201,6 +201,9 @@ func (t Task) validateRecord() []error {
 		errs = append(errs, errors.New("only a recorded task has a record block"))
 	}
 	if t.Record != nil {
+		if t.Record.Scenario != "" && !filepath.IsLocal(t.Record.Scenario) {
+			errs = append(errs, fmt.Errorf("record.scenario %q must be a local path", t.Record.Scenario))
+		}
 		for i, c := range t.Record.Calls {
 			if !builtinTools[c.Tool] {
 				errs = append(errs, fmt.Errorf("record.calls[%d]: unknown tool %q", i, c.Tool))
