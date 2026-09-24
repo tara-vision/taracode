@@ -27,7 +27,9 @@ func (a *Assistant) gateAndRun(run toolRun) (policy.Invocation, toolOutcome) {
 	call := run.call
 	inv, panicked, err := a.classify(call)
 	if err != nil {
-		return inv, toolOutcome{result: "Error: " + err.Error(), isError: true, rule: "classifier", reason: err.Error()}
+		return inv, toolOutcome{
+			result: "Error: " + err.Error(), isError: true, rule: "classifier", reason: err.Error(), err: err,
+		}
 	}
 	if panicked {
 		a.audit(inv, "deny", "classifier", inv.Reason, false)

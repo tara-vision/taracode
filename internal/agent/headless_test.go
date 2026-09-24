@@ -236,3 +236,37 @@ func TestPermissionDeciderReachesTheGateThroughNew(t *testing.T) {
 		t.Fatal("the file was written although the decider refused")
 	}
 }
+
+// TestAnUnknownToolIsARefusalInTheObserver pins the observer contract for a tool the registry does
+// not know: nothing ran, so the event is a refusal (rule classifier) and the turn counts it as
+// denied, while the model still gets the classifier's error and the screen still shows a failed call.
+func TestAnUnknownToolIsARefusalInTheObserver(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	var buf bytes.Buffer
+	a.out = &buf
+	var events []ToolEvent
+	a.observer = func(ev ToolEvent) { events = append(events, ev) }
+	srv.Turns = []ollamatest.Turn{
+		{ToolCalls: []ollamatest.ToolCall{{Name: "bash", Args: map[string]any{"command": "echo hi"}}}},
+		{Content: "done"},
+	}
+	if err := a.ProcessMessage("say hi"); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Tool != "bash" || events[0].Allowed || events[0].Rule != "classifier" ||
+		events[0].Err == nil {
+		t.Fatalf("events %+v", events)
+	}
+	if st := a.LastTurn(); st.ToolCalls != 1 || st.Denied != 1 {
+		t.Errorf("turn %+v", st)
+	}
+	var result string
+	for _, m := range a.conversation {
+		if m.Role == openai.ChatMessageRoleTool {
+			result = m.Content
+		}
+	}
+	if result != `Error: unknown tool "bash"` || !strings.Contains(buf.String(), "bash failed") {
+		t.Errorf("tool result %q, output %q", result, buf.String())
+	}
+}
