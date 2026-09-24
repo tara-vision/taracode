@@ -96,9 +96,7 @@ func (p *parser) step() error {
 	case c == '"':
 		return p.quoted('"')
 	case c == '\\' && p.pos+1 < len(p.in):
-		p.word.WriteRune(p.in[p.pos+1])
-		p.hasWord = true
-		p.pos += 2
+		p.backslash()
 	case c == '#' && !p.hasWord:
 		p.skipComment()
 	case p.substitutionStart(c):
@@ -124,6 +122,19 @@ func (p *parser) step() error {
 		p.pos++
 	}
 	return nil
+}
+
+// backslash handles an unquoted backslash escape at the current position (the next rune exists): a
+// backslash immediately followed by a newline is a line continuation, so both characters are removed
+// and the word continues; any other escaped character joins the word literally (P3-R34).
+func (p *parser) backslash() {
+	if p.in[p.pos+1] == '\n' {
+		p.pos += 2
+		return
+	}
+	p.word.WriteRune(p.in[p.pos+1])
+	p.hasWord = true
+	p.pos += 2
 }
 
 // shellStep handles what only a shell reads: the grouping operators ( and ), bash's $'...' and the
@@ -398,6 +409,8 @@ func (p *parser) quoted(q rune) error {
 			p.hasWord = true
 			p.pos++
 			return nil
+		case q == '"' && c == '\\' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '\n':
+			p.pos += 2 // a backslash-newline line continuation inside double quotes: both are removed
 		case q == '"' && c == '\\' && p.pos+1 < len(p.in):
 			p.word.WriteRune(p.in[p.pos+1])
 			p.pos += 2

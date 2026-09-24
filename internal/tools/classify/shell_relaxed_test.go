@@ -32,6 +32,8 @@ var relaxedReads = []string{
 	// Task 6 fix round 2, ruling P3-R23: a # glued after a subshell's ) is a comment, so at top level
 	// (true)#rm ... runs only (true) and the comment hides rm; verified a read on bash 3.2/5.3, dash, zsh
 	"(true)#rm -rf /tmp/x",
+	// Task 6 fix round 3, ruling P3-R34: a backslash-newline continuation glues -la back to ls (a read)
+	"ls \\\n-la",
 	// fix round 2, P3-R14(a): literal text in front of a reference means the word can never start
 	// with "-", however the reference resolves; a plain brace expansion with no $ stays a read too
 	"kubectl get pods -l app=$APP-api", "echo {a,b}-x",
@@ -111,6 +113,10 @@ var relaxedMutations = map[string]string{
 	// Task 6 fix round 2, minor: pin the unquoted case forms too (both gates catch the tail here)
 	"echo $(case a in a) rm x;; esac)":       "rm",
 	"x=$(case a in a) rm x;; esac); echo $x": "rm",
+	// Task 6 fix round 3, ruling P3-R34: a backslash-newline is a line continuation (both removed), so a
+	// continued option is glued back to its command and seen; before the fix the kept newline hid it
+	"find . -name '*.tmp' \\\n-delete": "find", "find . $X\\\n-delete": "find",
+	"find . \"\\\n-delete\"": "find", "sort \\\n-o out f": "sort",
 	// fix round 2, C2/P3-R14(b): bash brace-expands textually before $X is read, so an alternative
 	// with a reference (checked leaf by leaf in braceOption, not injects: see leafDanger) can still
 	// become an option if the reference resolves to nothing
