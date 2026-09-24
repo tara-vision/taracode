@@ -1,0 +1,33 @@
+id: helm-release-failed
+area: helm
+mode: investigate
+provenance: recorded
+prompt: "The last helm upgrade of shop-web in namespace helm-demo failed. Find out why and tell me how to recover."
+expect:
+  tools_called_any:
+    - {tool: helm, verb: history}
+    - {tool: helm, verb: status}
+    - {tool: shell, signature_matches: "^helm (history|status)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(failed|timed out|timeout)", "(?i)(image|tag|1\\.99|pull)"]
+  answer_matches_any: ["(?i)rollback", "(?i)revision", "(?i)set image|--set"]
+  max_iterations: 8
+record:
+  scenario: helm/release-failed
+  calls:
+    - {tool: helm, args: {args: "list -n helm-demo"}}
+    - {tool: helm, args: {args: "list -A"}}
+    - {tool: helm, args: {args: "status shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "history shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "get values shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "get values shop-web -n helm-demo --revision 1"}}
+    - {tool: helm, args: {args: "get manifest shop-web -n helm-demo"}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app.kubernetes.io/name=shop-web ns=helm-demo}}", namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: helm-demo}}
+    - {tool: shell, args: {command: "helm list -n helm-demo"}}
+    - {tool: shell, args: {command: "helm status shop-web -n helm-demo"}}
+    - {tool: shell, args: {command: "helm history shop-web -n helm-demo"}}
+    - {tool: shell, args: {command: "helm get values shop-web -n helm-demo"}}
+    - {tool: shell, args: {command: "kubectl get pods -n helm-demo"}}

@@ -1,0 +1,24 @@
+id: helm-chart-lint
+area: helm
+mode: investigate
+provenance: recorded
+prompt: "Run a lint over the chart in ./chart and explain what is broken before I install it."
+expect:
+  tools_called_any:
+    - {tool: helm, verb: lint}
+    - {tool: helm, verb: template}
+    - {tool: shell, signature_matches: "^helm (lint|template)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(nil pointer|limits|undefined|missing|no value)", "(?i)(values|deployment\\.yaml|template)"]
+  max_iterations: 8
+record:
+  scenario: helm/lint-only
+  calls:
+    - {tool: helm, args: {args: "lint ./chart"}}
+    - {tool: helm, args: {args: "lint chart"}}
+    - {tool: helm, args: {args: "template shop-web ./chart"}}
+    - {tool: helm, args: {args: "template ./chart"}}
+    - {tool: helm, args: {args: "show values ./chart"}}
+    - {tool: shell, args: {command: "helm lint ./chart"}}
+    - {tool: shell, args: {command: "helm template shop-web ./chart"}}
