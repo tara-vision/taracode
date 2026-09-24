@@ -24,6 +24,8 @@ var relaxedReads = []string{
 	"gcloud deploy releases list --delivery-pipeline web", "gcloud logging read 'severity>=ERROR' --limit 10",
 	"git config user.email", "git config --global user.email", "git config get user.email", "git config list",
 	"ifconfig en0 inet", "ifconfig eth0 inet6",
+	// fix round 1: $_ still tracks across a line of plain commands (P3-R6)
+	"ls /tmp; cat $_",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -39,6 +41,22 @@ var relaxedMutations = map[string]string{
 	"git config user.email me@example.com": "config", "git config --unset user.email": "config",
 	"git config -e": "config", "git config set user.email me@example.com": "config",
 	"ifconfig en0 inet 10.0.0.2": "ifconfig", "ifconfig en0 down": "ifconfig",
+	// fix round 1, C1: a control word, a case head, a brace group or a parenthesis poisons $_
+	"for x in 1; do echo -delete; done; find . $_": "find", "if true; then echo -delete; fi; find . $_": "find",
+	"{ echo -delete; }; find . $_": "find", "case a in a) echo -delete;; esac; find . $_": "find",
+	"echo -delete; (true); find . $_": "find", "echo -delete; case a in *) find . $_;; esac": "find",
+	// fix round 1, C2: a reference immediately followed by "-" injects, since it can expand to nothing
+	"find . ${X:-}-delete": "find", "find . ${X-}-delete": "find", "find . ${X:+}-delete": "find",
+	"find . ${X:+a}-delete": "find", "find . $X-delete": "find",
+	// fix round 1, C3: an assignment-only segment's own value is checked too; caught at the assignment
+	// (x=...) before "find" is even reached, so the neighbour names x, the assignment's program
+	"x=${y:=-delete}; find . $y": "x", "x=${y=-delete}; find . $y": "x",
+	// fix round 1, C4: note never downgrades a variable to a less dangerous kind
+	"x=-delete; x=1 true; find . $x": "find", "x=-delete; for x in; do true; done; find . $x": "find",
+	"x=-delete; for x; do true; done; find . $x": "find",
+	// fix round 1, I2: more variables that smuggle an option into an allowlisted reader
+	"echo x | LESS=-O/tmp/x less": "LESS", "PYTHONUSERBASE=/tmp/x aws s3 ls": "PYTHONUSERBASE",
+	"GNUPGHOME=/tmp/x git log --show-signature": "GNUPGHOME", "WGETRC=/tmp/x wget -qO- https://example.com": "WGETRC",
 }
 
 func TestRelaxedReads(t *testing.T) {

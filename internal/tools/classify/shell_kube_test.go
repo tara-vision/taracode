@@ -165,6 +165,9 @@ func TestShellKubeTargetsBehindKeywordsAndGrouping(t *testing.T) {
 		{"grep kubectl notes.txt > found.txt", ""},
 		{"chmod +x kubectl && sudo mv kubectl /usr/local/bin/", ""},
 		{"for p in a b; do kubectl get pod $p; done > pods.txt", ""},
+		// fix round 1, I1 (P3-R10): a substitution operator on a literal for-loop variable is still
+		// run time, since the operator can swap in its own word instead of that value.
+		{"for c in a; do kubectl delete pod p ${c:+--context=prod}; done", "{* * }"},
 	}
 	for _, c := range kube {
 		if got := kubeOf(c.cmd); got != c.want {
