@@ -1,0 +1,31 @@
+id: tf-drift
+area: terraform
+mode: investigate
+provenance: recorded
+prompt: Someone edited app.conf on the box by hand. Confirm whether Terraform sees drift in this directory and what it would do.
+expect:
+  tools_called_any:
+    - {signature_matches: "^terraform plan"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(drift|outside of terraform|changed outside|modified)", "(?i)(app\\.conf|local_file)"]
+  max_iterations: 8
+record:
+  scenario: terraform/drift
+  calls:
+    - {tool: terraform, args: {command: plan}}
+    - {tool: shell, args: {command: "terraform plan"}}
+    - {tool: terraform, args: {command: plan, args: "-no-color"}}
+    - {tool: shell, args: {command: "terraform plan -no-color"}}
+    - {tool: terraform, args: {command: show}}
+    - {tool: shell, args: {command: "terraform show"}}
+    - {tool: terraform, args: {command: state, args: "list"}}
+    - {tool: shell, args: {command: "terraform state list"}}
+    - {tool: terraform, args: {command: validate}}
+    - {tool: shell, args: {command: "terraform validate"}}
+    - {tool: terraform, args: {command: output}}
+    - {tool: shell, args: {command: "terraform output"}}
+    - {tool: terraform, args: {command: state, args: "show local_file.config"}}
+    - {tool: shell, args: {command: "terraform state show local_file.config"}}
+    - {tool: terraform, args: {command: plan, args: "-refresh-only"}}
+    - {tool: shell, args: {command: "terraform plan -refresh-only"}}
