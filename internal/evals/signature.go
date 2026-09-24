@@ -136,11 +136,18 @@ func kubectlSignature(argv []string) string {
 	return strings.Join(append(parts, extra...), " ")
 }
 
-// parseKubectlArgs extracts fields, flags, and positional arguments from kubectl arguments.
+// parseKubectlArgs extracts fields, flags, and positional arguments from kubectl arguments. A label or
+// field selector stays with its value among the extra flags (ruling P3-R64), so its value is never
+// read as a positional.
 func parseKubectlArgs(argv []string) (positional, extra []string, fields map[string]string) {
 	fields = map[string]string{}
 	for i := 0; i < len(argv); i++ {
 		t := argv[i]
+		if unit, width := kubectlSelector(argv, i); width > 0 {
+			extra = append(extra, unit...)
+			i += width - 1
+			continue
+		}
 		if name, value, ok := strings.Cut(t, "="); ok && kubectlValueFlags[name] != "" {
 			fields[kubectlValueFlags[name]] = value
 			continue
@@ -160,6 +167,31 @@ func parseKubectlArgs(argv []string) (positional, extra []string, fields map[str
 		}
 	}
 	return
+}
+
+// kubectlSelectorFlags are the selector flags whose value the signature keeps with the flag, each in
+// one spelling: --selector is -l.
+var kubectlSelectorFlags = map[string]string{"-l": "-l", "--selector": "-l", "--field-selector": "--field-selector"}
+
+// kubectlSelector reads a label or field selector at argv[i] in any spelling (-l x, -l=x, -lx,
+// --selector x, --selector=x, --field-selector x, --field-selector=x) and returns it as its flag and
+// value in one spelling, with the number of words it took; width is 0 when argv[i] is none. A flag
+// that ends argv with no value is not one.
+func kubectlSelector(argv []string, i int) (unit []string, width int) {
+	t := argv[i]
+	if flag, ok := kubectlSelectorFlags[t]; ok {
+		if i+1 < len(argv) {
+			return []string{flag, argv[i+1]}, 2
+		}
+		return nil, 0
+	}
+	if name, value, ok := strings.Cut(t, "="); ok && kubectlSelectorFlags[name] != "" {
+		return []string{kubectlSelectorFlags[name], value}, 1
+	}
+	if value, ok := strings.CutPrefix(t, "-l"); ok && value != "" && !strings.HasPrefix(t, "--") {
+		return []string{"-l", value}, 1
+	}
+	return nil, 0
 }
 
 // parseKubectlShortFlag handles short flags with values like -nshop and -owide.
@@ -185,15 +217,28 @@ func appendKubectlResourceAndName(parts []string, verb string, positional []stri
 	if name == "" && resourceVerbs[verb] && len(rest) > 0 {
 		name, rest = rest[0], rest[1:]
 	}
-	item := resource
-	if resourceVerbs[verb] || name != "" {
-		item = canonicalResource(resource)
+	return append(append(parts, kubectlObject(verb, resource, name)), rest...)
+}
+
+// podVerbs take a pod first, as NAME or as pod/NAME, which kubectl reads alike: the signature keys the
+// bare name, as the structured call {verb: logs, name: NAME} runs it.
+var podVerbs = map[string]bool{"logs": true, "exec": true, "attach": true, "port-forward": true}
+
+// kubectlObject renders the object a kubectl command names: the resource canonical (always for a verb
+// that takes a resource type first, and in any type/name), with /name when it has one, and a pod of a
+// verb in podVerbs as its bare name.
+func kubectlObject(verb, resource, name string) string {
+	if name == "" && !resourceVerbs[verb] {
+		return resource
 	}
-	if name != "" {
-		item += "/" + name
+	kind := canonicalResource(resource)
+	switch {
+	case name == "":
+		return kind
+	case podVerbs[verb] && kind == "pod":
+		return name
 	}
-	parts = append(parts, item)
-	return append(parts, rest...)
+	return kind + "/" + name
 }
 
 // appendKubectlFields adds flags and their values to parts and returns the extended slice.
