@@ -1,0 +1,5 @@
+[core]
+account = ops@acme.example
+project = acme-data-prod
+
+Your active configuration is: [default]

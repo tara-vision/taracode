@@ -1,0 +1,13 @@
+id: aws-iam-wildcard-policy
+area: cloud
+mode: investigate
+provenance: authored
+prompt: Review the IAM policy attached to the ci-deployer role in our AWS account and flag anything too permissive.
+expect:
+  tools_called_any:
+    - {tool: cloud}
+    - {tool: shell, signature_matches: "^aws iam"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(\\*|wildcard|all actions|full access|administrator)", "(?i)(least privilege|restrict|scope|narrow|specific)"]
+  max_iterations: 8

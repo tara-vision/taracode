@@ -1,0 +1,11 @@
+fixtures:
+  - signature: "gcloud config list"
+    file: gcloud-config-list-1cf61c.txt
+  - signature: "gcloud projects describe acme-data-prod"
+    file: gcloud-projects-describe-acme-data-prod-3d57e8.txt
+  - signature: "gcloud projects get-iam-policy acme-data-prod"
+    file: gcloud-projects-get-iam-policy-acme-data-prod-e029ed.txt
+  - signature: "gcloud projects get-iam-policy acme-data-prod --format=json"
+    file: gcloud-projects-get-iam-policy-acme-data-prod-format-json-6a2e11.txt
+  - signature: "gcloud projects get-iam-policy acme-data-prod --format json"
+    file: gcloud-projects-get-iam-policy-acme-data-prod-format-json-58ff04.txt

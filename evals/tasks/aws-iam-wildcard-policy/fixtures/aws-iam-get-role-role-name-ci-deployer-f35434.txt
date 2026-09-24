@@ -1,0 +1,23 @@
+{
+    "Role": {
+        "Path": "/",
+        "RoleName": "ci-deployer",
+        "RoleId": "AROA1234567890CIDEPL",
+        "Arn": "arn:aws:iam::123456789012:role/ci-deployer",
+        "CreateDate": "2024-02-01T12:00:00+00:00",
+        "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        },
+        "MaxSessionDuration": 3600,
+        "Description": "CI/CD deployment role for the release pipeline"
+    }
+}
