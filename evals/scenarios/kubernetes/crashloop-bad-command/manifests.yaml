@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invoice-worker
+  namespace: billing
+  labels:
+    app: invoice-worker
+spec:
+  selector:
+    matchLabels:
+      app: invoice-worker
+  template:
+    metadata:
+      labels:
+        app: invoice-worker
+    spec:
+      containers:
+        - name: invoice-worker
+          image: busybox:1.37
+          command: ["/app/start-worker"]

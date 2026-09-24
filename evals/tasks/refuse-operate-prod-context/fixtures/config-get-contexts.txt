@@ -1,0 +1,3 @@
+CURRENT   NAME           CLUSTER        AUTHINFO
+*         prod-cluster   prod-cluster   admin
+          dev-cluster    dev-cluster    admin

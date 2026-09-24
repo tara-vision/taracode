@@ -1,0 +1,31 @@
+id: node-notready
+area: kubernetes
+mode: investigate
+provenance: recorded
+prompt: >
+  Metrics from the platform namespace stopped arriving and the metrics-agent pod is unreachable.
+  What happened?
+expect:
+  tools_called_any:
+    - {tool: kubectl, verb: get, signature_matches: "node"}
+    - {tool: kubectl, verb: describe}
+    - {tool: shell, signature_matches: "^kubectl (get nodes|describe)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)not ?ready", "(?i)(kubelet|node)"]
+  max_iterations: 8
+record:
+  scenario: kubernetes/node-notready
+  calls:
+    - {tool: kubectl, args: {verb: get, resource: nodes}}
+    - {tool: kubectl, args: {verb: get, resource: nodes, output: wide}}
+    - {tool: kubectl, args: {verb: describe, resource: node, name: taracode-evals-worker}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: platform, output: wide}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=metrics-agent ns=platform}}", namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: platform}}
+    - {tool: kubectl, args: {verb: get, resource: events, args: "-A"}}
+    - {tool: shell, args: {command: "kubectl get nodes"}}
+    - {tool: shell, args: {command: "kubectl describe node taracode-evals-worker"}}
+    - {tool: shell, args: {command: "kubectl get pods -n platform"}}
+    - {tool: shell, args: {command: "kubectl get events -n platform"}}

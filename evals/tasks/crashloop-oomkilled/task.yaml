@@ -1,0 +1,37 @@
+id: crashloop-oomkilled
+area: kubernetes
+mode: investigate
+provenance: recorded
+prompt: >
+  Pods of the checkout deployment in namespace shop keep restarting. Find the root cause and tell
+  me what to change.
+expect:
+  tools_called_any:
+    - {tool: kubectl, verb: describe}
+    - {tool: kubectl, verb: logs}
+    - {tool: shell, signature_matches: "^kubectl (describe|logs)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)oom", "(?i)memory"]
+  max_iterations: 8
+record:
+  scenario: kubernetes/crashloop-oomkilled
+  calls:
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop, output: wide}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop, output: yaml}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop, args: "-l app=checkout"}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=checkout ns=shop}}", namespace: shop}}
+    - {tool: kubectl, args: {verb: describe, resource: deployment, name: checkout, namespace: shop}}
+    - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop}}
+    - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: "--previous"}}
+    - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: "--previous --tail=50"}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: shop}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: shop, args: "--sort-by=.lastTimestamp"}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: checkout, namespace: shop}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: checkout, namespace: shop, output: yaml}}
+    - {tool: kubectl, args: {verb: top, resource: pods, namespace: shop}}
+    - {tool: shell, args: {command: "kubectl get pods -n shop"}}
+    - {tool: shell, args: {command: "kubectl describe pod {{pod app=checkout ns=shop}} -n shop"}}
+    - {tool: shell, args: {command: "kubectl logs {{pod app=checkout ns=shop}} -n shop --previous"}}
+    - {tool: shell, args: {command: "kubectl get events -n shop --sort-by=.lastTimestamp"}}
