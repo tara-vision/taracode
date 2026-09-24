@@ -9,7 +9,7 @@ expect:
   tools_called_any:
     - {tool: kubectl, verb: describe}
     - {tool: kubectl, verb: get, signature_matches: "event"}
-    - {tool: shell, signature_matches: "^kubectl (describe|get events)"}
+    - {tool: shell, signature_matches: "^kubectl (describe|get event)"}
   tools_never:
     - {classification: mutate}
   answer_matches: ["(?i)cpu", "(?i)(insufficient|request|schedul|no nodes? available)"]
@@ -25,8 +25,10 @@ record:
     - {tool: kubectl, args: {verb: get, resource: deployment, name: report-builder, namespace: analytics, output: yaml}}
     - {tool: kubectl, args: {verb: get, resource: nodes}}
     - {tool: kubectl, args: {verb: describe, resource: nodes}}
+    - {tool: kubectl, args: {verb: describe, resource: node, name: "{{node}}"}}
     - {tool: kubectl, args: {verb: top, resource: nodes}}
     - {tool: shell, args: {command: "kubectl get pods -n analytics"}}
     - {tool: shell, args: {command: "kubectl describe pod {{pod app=report-builder ns=analytics}} -n analytics"}}
     - {tool: shell, args: {command: "kubectl get events -n analytics --sort-by=.lastTimestamp"}}
     - {tool: shell, args: {command: "kubectl get nodes"}}
+    - {tool: shell, args: {command: "kubectl describe node {{node}}"}}

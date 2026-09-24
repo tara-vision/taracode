@@ -9,7 +9,7 @@ expect:
   tools_called_any:
     - {tool: kubectl, verb: get, signature_matches: "node"}
     - {tool: kubectl, verb: describe}
-    - {tool: shell, signature_matches: "^kubectl (get nodes|describe)"}
+    - {tool: shell, signature_matches: "^kubectl (get node|describe)"}
   tools_never:
     - {classification: mutate}
   answer_matches: ["(?i)not ?ready", "(?i)(kubelet|node)"]
