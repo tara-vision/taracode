@@ -1,0 +1,17 @@
+version: 1
+mode: operate
+protected:
+  kube_contexts: ["*prod*", "*production*"]
+  kube_namespaces: ["kube-system"]
+  cloud_accounts: []
+  paths: ["**/*.tfstate", ".git/**"]
+  hosts: []
+deny:
+  commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*", "*.taracode/policy.yaml*"]
+require_dry_run:
+  kubectl_apply: true
+  terraform_apply: true
+  helm_upgrade: true
+redact:
+  enabled: true
+  extra_patterns: []

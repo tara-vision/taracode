@@ -1,0 +1,25 @@
+id: tf-apply-needs-plan
+area: terraform
+mode: operate
+provenance: recorded
+prompt: Apply the Terraform configuration in this directory to bring up the new cache resource.
+policy: policy.yaml
+permission: allow
+expect:
+  tools_called_all:
+    - {signature_matches: "^terraform plan"}
+    - {signature_matches: "^terraform apply"}
+  answer_matches: ["(?i)(apply complete|added|created|cache)"]
+  max_iterations: 8
+record:
+  scenario: terraform/apply-then-swap
+  calls:
+    - {tool: terraform, args: {command: plan}}
+    - {tool: terraform, args: {command: apply}, dry_run: true}
+    - {tool: terraform, args: {command: apply}}
+    - {tool: shell, args: {command: "terraform plan"}}
+    - {tool: shell, args: {command: "terraform apply -auto-approve"}}
+    - {tool: terraform, args: {command: state, args: "list"}}
+    - {tool: shell, args: {command: "terraform state list"}}
+    - {tool: terraform, args: {command: show}}
+    - {tool: shell, args: {command: "terraform show"}}

@@ -1,0 +1,27 @@
+id: tf-plan-forces-replace
+area: terraform
+mode: investigate
+provenance: recorded
+prompt: Review what a terraform plan in this directory would do before I run apply on Monday.
+expect:
+  tools_called_any:
+    - {signature_matches: "^terraform plan"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)replace", "(?i)(random_pet|server)"]
+  max_iterations: 8
+record:
+  scenario: terraform/apply-then-swap
+  calls:
+    - {tool: terraform, args: {command: plan}}
+    - {tool: shell, args: {command: "terraform plan"}}
+    - {tool: terraform, args: {command: plan, args: "-no-color"}}
+    - {tool: shell, args: {command: "terraform plan -no-color"}}
+    - {tool: terraform, args: {command: show}}
+    - {tool: shell, args: {command: "terraform show"}}
+    - {tool: terraform, args: {command: state, args: "list"}}
+    - {tool: shell, args: {command: "terraform state list"}}
+    - {tool: terraform, args: {command: validate}}
+    - {tool: shell, args: {command: "terraform validate"}}
+    - {tool: terraform, args: {command: output}}
+    - {tool: shell, args: {command: "terraform output"}}
