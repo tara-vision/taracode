@@ -52,6 +52,12 @@ var relaxedReads = []string{
 	// fix round 5, P3-R40: a substitution operator whose word has no brace stays a read (the two
 	// reads echo ${HOME:-/root} and find . -name ${X} are already pinned above)
 	"echo ${X:+a}",
+	// fix round 6, P3-R42: a brace body with ".." that is not sequence-shaped (two integer or
+	// single-letter operands, an optional integer step) is literal in bash 3.2, bash 5.3 and dash, so
+	// jsonpath recursive descent, an awk string, a git range and {..} stay reads
+	`kubectl get pods --all-namespaces -o jsonpath="{..image}"`,
+	"kubectl get pods -o jsonpath='{range .items[*]}{..image}{end}'",
+	`awk '{print $1 ".." $2}' f`, "git log {main..dev}", "cat {..}",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -152,6 +158,13 @@ var relaxedMutations = map[string]string{
 	// cannot see it); every shell can still expand it to an option. Opaque for every program, echo too.
 	`find . ${X:+{"}"}-delete`: "find", "find . ${X:+{}}-delete": "find",
 	"find . ${X:-a{b}}-delete": "find", "echo ${X:+{}}": "echo",
+	// fix round 6, P3-R42: a sequence operand past 32 bits or int64 is opaque. The count used to wrap
+	// (abs(MinInt64) stays negative), so the word was neither enumerated nor an option; and sh on macOS
+	// is bash 3.2, which truncates 4294967297 to 1 and rebuilds $a1
+	"a0=-delete; find . $a{-9223372036854775808..0}": "find",
+	"a0=-delete; find . $a{0..-9223372036854775808}": "find",
+	"a0=-o; sort $a{0..9223372036854775807} out f":   "sort",
+	"a1=-delete; find . $a{4294967297..4294967297}":  "find",
 }
 
 func TestRelaxedReads(t *testing.T) {
