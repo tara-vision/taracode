@@ -73,6 +73,12 @@ func TestKubectlArgvUndoesACommandRepeatedInArgs(t *testing.T) {
 		{"a config subcommand that shares a command's name",
 			map[string]any{"verb": "config", "args": "set users.dev.token x"}, "config set users.dev.token x"},
 		{"a lone kubectl word is a name", map[string]any{"verb": "logs", "args": "kubectl"}, "logs kubectl"},
+		// Ruling P3-R65: once args repeated the verb or the resource, the model already wrote its verb, so
+		// a command word left after the copies is an object or container name, not another verb.
+		{"an object named like a command after the repeated verb and resource",
+			map[string]any{"verb": "get", "resource": "configmap", "args": "get configmap config"}, "get configmap config"},
+		{"a container named like a command after the repeated verb",
+			map[string]any{"verb": "logs", "name": "web", "args": "logs web proxy"}, "logs web proxy"},
 		{"flags only, untouched", map[string]any{"verb": "get", "resource": "pods", "namespace": "apps",
 			"output": "wide", "args": "-l app=web"}, "get pods -n apps -o wide -l app=web"},
 	}
@@ -100,6 +106,8 @@ func TestKubectlArgvRefusesWhatItCannotMerge(t *testing.T) {
 			[]string{anotherVerb}},
 		{"another verb before the repeated resource",
 			map[string]any{"verb": "get", "resource": "pods", "args": "describe pods x"}, []string{anotherVerb}},
+		{"another verb with no copy before it", map[string]any{"verb": "get", "args": "describe pods"},
+			[]string{anotherVerb}},
 		{"a different namespace", map[string]any{"verb": "get", "resource": "pods", "namespace": "billing",
 			"args": "get pods -n other"}, []string{"namespace", `"billing"`, `"other"`}},
 		{"a different namespace, = form", map[string]any{"verb": "apply", "namespace": "sandbox",

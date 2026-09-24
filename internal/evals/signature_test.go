@@ -122,6 +122,10 @@ func TestSignatures(t *testing.T) {
 		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "args": "--sort-by=.metadata.name -l app=web"},
 			"kubectl get pod --sort-by=.metadata.name -l app=web"},
 		{"shell", map[string]any{"command": "kubectl get pods -l"}, "kubectl get pod -l"},
+		// Ruling P3-R65: a command word left after the repeated verb and resource is the object's name.
+		{"kubectl", map[string]any{"verb": "get", "resource": "configmap", "args": "get configmap config"},
+			"kubectl get configmap/config"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "configmap", "name": "config"}, "kubectl get configmap/config"},
 	}
 	for _, c := range cases {
 		if got := Signature(c.tool, c.args); got != c.want {
@@ -178,6 +182,7 @@ func TestKubectlSignatureKeysTheArgvTheToolRuns(t *testing.T) {
 		{"verb": "get", "resource": "pods,services", "namespace": "platform"},
 		{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "--selector=app=shop-web"},
 		{"verb": "get", "resource": "pods", "namespace": "batch", "args": "--field-selector status.phase=Pending -o wide"},
+		{"verb": "get", "resource": "configmap", "args": "get configmap config"},
 	}
 	tool := tools.KubectlTool()
 	for _, params := range inputs {
@@ -199,6 +204,14 @@ func TestKubectlSignatureKeysTheArgvTheToolRuns(t *testing.T) {
 		t.Fatal("the kubectl tool must refuse a namespace given twice with different values")
 	}
 	if got := Signature("kubectl", refused); !strings.HasPrefix(got, "kubectl scale deployment/checkout ") {
+		t.Errorf("refused call signature %q", got)
+	}
+	// Another verb with no copy of the verb or the resource before it stays refused (ruling P3-R65).
+	anotherVerb := map[string]any{"verb": "get", "args": "describe pods"}
+	if _, err := tool.Run(context.Background(), anotherVerb, ""); err == nil {
+		t.Fatal("the kubectl tool must refuse args that start with another verb")
+	}
+	if got := Signature("kubectl", anotherVerb); !strings.HasPrefix(got, "kubectl get ") {
 		t.Errorf("refused call signature %q", got)
 	}
 }

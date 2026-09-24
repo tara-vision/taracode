@@ -111,8 +111,10 @@ func typeName(w string) string {
 // dropRepeatedCommand takes off args the command line a model repeats there: a leading kubectl that
 // more words follow, then the verb, then the resource and the name when those parameters are set.
 // Args that then start with another kubectl command are an argument error, since args holds only
-// extra flags. A verb given as a global flag (verb "-n", args "kube-system delete pod x") makes args
-// the rest of a command line of its own, which is left as written.
+// extra flags, unless args repeated the verb or the resource: the model already wrote its verb, so a
+// command word after the copies is a name (get configmap config, ruling P3-R65). A verb given as a
+// global flag (verb "-n", args "kube-system delete pod x") makes args the rest of a command line of
+// its own, which is left as written.
 func dropRepeatedCommand(words []string, verb, resource, name string) ([]string, error) {
 	if strings.HasPrefix(verb, "-") {
 		return words, nil
@@ -120,48 +122,51 @@ func dropRepeatedCommand(words []string, verb, resource, name string) ([]string,
 	if len(words) > 1 && words[0] == "kubectl" {
 		words = words[1:]
 	}
-	if len(words) > 0 && words[0] == verb {
+	repeated := len(words) > 0 && words[0] == verb
+	if repeated {
 		words = words[1:]
 	}
-	words = dropRepeatedObject(words, resource, name)
-	if len(words) > 0 && words[0] != verb && kubectlCommands[words[0]] && !kubectlSubcommandVerbs[verb] {
+	words, droppedResource := dropRepeatedObject(words, resource, name)
+	if !repeated && !droppedResource && len(words) > 0 && kubectlCommands[words[0]] && !kubectlSubcommandVerbs[verb] {
 		return nil, fmt.Errorf("args starts with %q but verb is %q; args holds only extra flags "+
 			"(for example -l app=web --tail=100), never the verb, resource, name, namespace or context", words[0], verb)
 	}
 	return words, nil
 }
 
-// dropRepeatedObject takes off a leading copy of the resource parameter, then one of the name. A
-// type/name resource parameter (deploy/web) names the object as well.
-func dropRepeatedObject(words []string, resource, name string) []string {
+// dropRepeatedObject takes off a leading copy of the resource parameter, then one of the name, and
+// reports whether it took off a resource copy. A type/name resource parameter (deploy/web) names the
+// object as well.
+func dropRepeatedObject(words []string, resource, name string) ([]string, bool) {
 	kind, objectName, _ := strings.Cut(resource, "/")
 	if name == "" {
 		name = objectName
 	}
+	dropped := false
 	if len(words) > 0 && resource != "" {
-		words = dropRepeatedResource(words, kind, name)
+		words, dropped = dropRepeatedResource(words, kind, name)
 	}
 	if len(words) > 0 && name != "" && words[0] == name {
 		words = words[1:]
 	}
-	return words
+	return words, dropped
 }
 
 // dropRepeatedResource takes off words[0] when it repeats the resource type kind, alone or as
 // type/name: pods repeats pod, and pod/x repeats pod with the name x. When no parameter names the
 // object, the x of pod/x stays as the name kubectl reads; a type/name with another name than the
-// parameters give is left for kubectl to refuse.
-func dropRepeatedResource(words []string, kind, name string) []string {
+// parameters give is left for kubectl to refuse. It reports whether words[0] was a copy.
+func dropRepeatedResource(words []string, kind, name string) ([]string, bool) {
 	wordKind, wordName, slashed := strings.Cut(words[0], "/")
 	switch {
 	case !sameKubeResource(wordKind, kind):
-		return words
+		return words, false
 	case !slashed || wordName == name:
-		return words[1:]
+		return words[1:], true
 	case name == "":
-		return append([]string{wordName}, words[1:]...)
+		return append([]string{wordName}, words[1:]...), true
 	}
-	return words
+	return words, false
 }
 
 // kubectlFlagParam is a parameter the kubectl tool passes as a flag, with the spellings args can
