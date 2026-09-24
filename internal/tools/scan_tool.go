@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -31,10 +32,10 @@ func ScanTool(defaultSeverity string) *Tool {
 			if err != nil {
 				return "", err
 			}
-			target := argString(args, "target")
-			severity := strings.ToUpper(argString(args, "severity"))
+			target := ScanTarget(argString(args, "target"), workingDir)
+			severity := ScanSeverity(argString(args, "severity"))
 			if severity == "" {
-				severity = strings.ToUpper(defaultSeverity)
+				severity = ScanSeverity(defaultSeverity)
 			}
 			ctx, cancel := withTimeout(ctx, scanTimeout)
 			defer cancel()
@@ -61,6 +62,57 @@ func ScanTool(defaultSeverity string) *Tool {
 			return "", fmt.Errorf("unknown scanner %q (trivy, gitleaks, tfsec, kubesec, dependency)", scanner)
 		},
 	}
+}
+
+// ScanTarget is the target of a scan call as the scan tool reads it against the working directory
+// (ruling P3-R66): "" for the working directory itself, which is the default target (no target, ".",
+// or its own absolute path), the path relative to it for an absolute path inside it, and any other
+// target (an image, a relative path, a path outside the working directory) as given. The eval
+// signature keys the same form, so a call that names the working directory by its path meets the
+// fixture of the call that names none.
+func ScanTarget(target, workingDir string) string {
+	if !filepath.IsAbs(target) {
+		if filepath.Clean(target) == "." {
+			return ""
+		}
+		return target
+	}
+	if workingDir == "" {
+		return target
+	}
+	rel, err := filepath.Rel(filepath.Clean(workingDir), filepath.Clean(target))
+	switch {
+	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
+		return target
+	case rel == ".":
+		return ""
+	}
+	return rel
+}
+
+// ScanSeverity is a severity filter in one form: upper case, each level once, in rising order (LOW
+// before HIGH before CRITICAL), with levels it does not know after the known ones in the order given.
+// Scanners read the levels as a set, so CRITICAL,HIGH and HIGH,CRITICAL scan alike and key alike.
+func ScanSeverity(list string) string {
+	var levels []string
+	seen := map[string]bool{}
+	for _, level := range strings.Split(list, ",") {
+		level = strings.ToUpper(strings.TrimSpace(level))
+		if level != "" && !seen[level] {
+			seen[level] = true
+			levels = append(levels, level)
+		}
+	}
+	sort.SliceStable(levels, func(i, j int) bool { return severityOrder(levels[i]) < severityOrder(levels[j]) })
+	return strings.Join(levels, ",")
+}
+
+// severityOrder ranks a level for ScanSeverity; a level severityRank does not know ranks after all.
+func severityOrder(level string) int {
+	if r, ok := severityRank[level]; ok {
+		return r
+	}
+	return len(severityRank)
 }
 
 func trivy(ctx context.Context, workingDir, target, severity string) (string, error) {

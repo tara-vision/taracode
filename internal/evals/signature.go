@@ -3,6 +3,8 @@ package evals
 import (
 	"fmt"
 	"path"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,14 +22,13 @@ func Signature(tool string, args map[string]any) string {
 	case "kubectl":
 		return kubectlSignature(kubectlArgv(args))
 	case "terraform":
-		return terraformSignature(str(args, "command"), str(args, "dir"), words(str(args, "args")))
+		return terraformToolSignature(args)
 	case "helm", "git", "docker":
 		return strings.TrimSpace(tool + " " + strings.Join(words(str(args, "args")), " "))
 	case "cloud":
 		return cloudSignature(str(args, "provider"), words(str(args, "args")))
 	case "scan":
-		return strings.TrimSpace(strings.Join([]string{"scan", str(args, "scanner"), str(args, "target"),
-			strings.ToUpper(str(args, "severity"))}, " "))
+		return scanSignature(args)
 	case "shell":
 		return shellSignature(str(args, "command"))
 	}
@@ -41,6 +42,48 @@ func Signature(tool string, args map[string]any) string {
 		parts = append(parts, k+"="+strings.TrimSpace(fmt.Sprint(args[k])))
 	}
 	return strings.Join(parts, " ")
+}
+
+// terraformToolSignature keys the terraform tool's command and arguments as the tool splits them
+// (tools.TerraformCommand, ruling P3-R66): a command parameter of several words ("state list") keys
+// like the command with args ("state" and "list"). A call the tool refuses for its arguments keys its
+// parameters as given.
+func terraformToolSignature(args map[string]any) string {
+	if command, rest, err := tools.TerraformCommand(args); err == nil {
+		return terraformSignature(command, str(args, "dir"), rest)
+	}
+	return terraformSignature(str(args, "command"), str(args, "dir"), words(str(args, "args")))
+}
+
+// scanSignature keys a scan call by its scanner, its target and its severity list as the scan tool
+// reads them (tools.ScanTarget and tools.ScanSeverity, ruling P3-R66): the working directory itself is
+// the default target, a path inside it is relative to it, and the levels are in one order.
+func scanSignature(args map[string]any) string {
+	target := str(args, "target")
+	target = tools.ScanTarget(target, evalRunDir(target))
+	return strings.TrimSpace(strings.Join([]string{"scan", str(args, "scanner"), target,
+		tools.ScanSeverity(str(args, "severity"))}, " "))
+}
+
+// evalRunDirName is the name makeRunDir gives an eval run directory: its pattern taracode-eval-* with
+// the random part os.MkdirTemp puts in the star, always digits.
+var evalRunDirName = regexp.MustCompile(`^taracode-eval-[0-9]+$`)
+
+// evalRunDir is the eval run directory an absolute path lies in, the working directory the model was
+// given, or "" when the path is relative or lies in none. The replay does not hand the signature its
+// working directory, so the run directory is read from the path itself; the other temporary
+// directories an eval makes (taracode-eval-env-*, taracode-eval-warmup-*) do not match.
+func evalRunDir(p string) string {
+	if !filepath.IsAbs(p) {
+		return ""
+	}
+	parts := strings.Split(filepath.Clean(p), string(filepath.Separator))
+	for i, part := range parts {
+		if evalRunDirName.MatchString(part) {
+			return strings.Join(parts[:i+1], string(filepath.Separator))
+		}
+	}
+	return ""
 }
 
 // DryRunSignature keys a tool's dry run.

@@ -51,23 +51,17 @@ func TerraformTool() *Tool {
 				Description: "Extra arguments, for example \"-var-file=prod.tfvars\" or \"list\" for state"},
 		},
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
-			command, raw := argString(args, "command"), argString(args, "args")
-			words, err := shellwords.Words(raw)
+			line := strings.TrimSpace("terraform " + argString(args, "command") + " " + argString(args, "args"))
+			command, words, err := TerraformCommand(args)
 			if err != nil {
-				return policy.Invocation{Tool: "terraform", Classification: policy.Mutate, Reason: err.Error(),
-					Command: strings.TrimSpace("terraform " + command + " " + raw)}
+				return policy.Invocation{Tool: "terraform", Classification: policy.Mutate, Reason: err.Error(), Command: line}
 			}
 			res := classify.Terraform(command, words)
 			return policy.Invocation{Tool: "terraform", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: strings.TrimSpace("terraform " + command + " " + raw),
-				Targets: policy.Targets{Paths: []string{resolvePath(argString(args, "dir"), workingDir)}}}
+				Command: line, Targets: policy.Targets{Paths: []string{resolvePath(argString(args, "dir"), workingDir)}}}
 		},
 		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
-			command, err := required(args, "command")
-			if err != nil {
-				return "", err
-			}
-			words, err := shellwords.Words(argString(args, "args"))
+			command, words, err := TerraformCommand(args)
 			if err != nil {
 				return "", err
 			}
@@ -87,7 +81,7 @@ func TerraformTool() *Tool {
 			return runCommand(ctx, dir, "terraform", argv...)
 		},
 		DryRun: func(_ context.Context, args map[string]any, workingDir string) (string, error) {
-			if argString(args, "command") != "apply" {
+			if command, _, err := TerraformCommand(args); err != nil || command != "apply" {
 				return "", ErrNoDryRun
 			}
 			rec, ok := st.get(resolvePath(argString(args, "dir"), workingDir))
@@ -97,6 +91,26 @@ func TerraformTool() *Tool {
 			return fmt.Sprintf("Plan from %s:\n%s", rec.at.Format(time.Kitchen), rec.summary), nil
 		},
 	}
+}
+
+// TerraformCommand is the terraform command and the arguments the terraform tool runs for its
+// parameters (ruling P3-R66): a command parameter that holds several words (command "state list") is
+// its first word, and the other words lead the arguments of args, the way terraform reads them on a
+// command line, since "state list" as one argument is a command terraform does not have. The eval
+// signature keys the same split, so both forms of a call meet one fixture.
+func TerraformCommand(params map[string]any) (command string, args []string, err error) {
+	words, err := shellwords.Words(argString(params, "command"))
+	if err != nil {
+		return "", nil, err
+	}
+	if len(words) == 0 {
+		return "", nil, fmt.Errorf("command is required")
+	}
+	extra, err := shellwords.Words(argString(params, "args"))
+	if err != nil {
+		return "", nil, err
+	}
+	return words[0], append(append([]string{}, words[1:]...), extra...), nil
 }
 
 func (st *terraformState) get(dir string) (planRecord, bool) {
