@@ -5,18 +5,18 @@ fixtures:
       file: kubectl-get-pod-n-shop-o-wide-b514ad.txt
     - signature: kubectl get pod -n shop -o yaml
       file: kubectl-get-pod-n-shop-o-yaml-a1a938.txt
-    - signature: kubectl get pod/app=checkout -n shop -l
-      file: kubectl-get-pod-app-checkout-n-shop-l-a9b9ee.txt
-    - signature: kubectl describe pod/checkout-7d5ff6f675-mfz76 -n shop
-      file: kubectl-describe-pod-checkout-7d5ff6f675-mfz76-n-shop-970ebb.txt
+    - signature: kubectl get pod -n shop -l app=checkout
+      file: kubectl-get-pod-n-shop-l-app-checkout-5f1cce.txt
+    - signature: kubectl describe pod/checkout-7d5ff6f675-tzcr6 -n shop
+      file: kubectl-describe-pod-checkout-7d5ff6f675-tzcr6-n-shop-1934b1.txt
     - signature: kubectl describe deployment/checkout -n shop
       file: kubectl-describe-deployment-checkout-n-shop-e73de0.txt
-    - signature: kubectl logs checkout-7d5ff6f675-mfz76 -n shop
-      file: kubectl-logs-checkout-7d5ff6f675-mfz76-n-shop-92bc7f.txt
-    - signature: kubectl logs checkout-7d5ff6f675-mfz76 -n shop --previous
-      file: kubectl-logs-checkout-7d5ff6f675-mfz76-n-shop-previous-75456b.txt
-    - signature: kubectl logs checkout-7d5ff6f675-mfz76 -n shop --previous --tail=50
-      file: kubectl-logs-checkout-7d5ff6f675-mfz76-n-shop-previous-tail-50-ef3d26.txt
+    - signature: kubectl logs checkout-7d5ff6f675-tzcr6 -n shop
+      file: kubectl-logs-checkout-7d5ff6f675-tzcr6-n-shop-2c90aa.txt
+    - signature: kubectl logs checkout-7d5ff6f675-tzcr6 -n shop --previous
+      file: kubectl-logs-checkout-7d5ff6f675-tzcr6-n-shop-previous-b92f95.txt
+    - signature: kubectl logs checkout-7d5ff6f675-tzcr6 -n shop --previous --tail=50
+      file: kubectl-logs-checkout-7d5ff6f675-tzcr6-n-shop-previous-tail-50-c088ef.txt
     - signature: kubectl get event -n shop
       file: kubectl-get-event-n-shop-f09d93.txt
     - signature: kubectl get event -n shop --sort-by=.lastTimestamp

@@ -5,14 +5,14 @@ metadata:
     deployment.kubernetes.io/revision: "1"
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"checkout"},"name":"checkout","namespace":"shop"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"checkout"}},"template":{"metadata":{"labels":{"app":"checkout"}},"spec":{"containers":[{"command":["python","-c","x = bytearray(400 * 1024 * 1024)\nimport time\ntime.sleep(3600)"],"image":"python:3.12-alpine","name":"checkout","resources":{"limits":{"memory":"64Mi"},"requests":{"cpu":"50m","memory":"32Mi"}}}]}}}}
-  creationTimestamp: "2026-09-24T21:27:58Z"
+  creationTimestamp: "2026-09-24T23:22:51Z"
   generation: 1
   labels:
     app: checkout
   name: checkout
   namespace: shop
-  resourceVersion: "21664"
-  uid: 92c8fc4c-03b4-461f-96d6-cb58e28b8ba5
+  resourceVersion: "33528"
+  uid: 4bd4e9ba-e960-4182-b1bf-2ae8e182a8f3
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -56,14 +56,14 @@ spec:
       terminationGracePeriodSeconds: 30
 status:
   conditions:
-  - lastTransitionTime: "2026-09-24T21:27:58Z"
-    lastUpdateTime: "2026-09-24T21:28:02Z"
+  - lastTransitionTime: "2026-09-24T23:22:51Z"
+    lastUpdateTime: "2026-09-24T23:22:51Z"
     message: ReplicaSet "checkout-7d5ff6f675" has successfully progressed.
     reason: NewReplicaSetAvailable
     status: "True"
     type: Progressing
-  - lastTransitionTime: "2026-09-24T21:28:18Z"
-    lastUpdateTime: "2026-09-24T21:28:18Z"
+  - lastTransitionTime: "2026-09-24T23:23:07Z"
+    lastUpdateTime: "2026-09-24T23:23:07Z"
     message: Deployment does not have minimum availability.
     reason: MinimumReplicasUnavailable
     status: "False"

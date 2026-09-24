@@ -3,13 +3,13 @@ items:
 - apiVersion: v1
   kind: Pod
   metadata:
-    creationTimestamp: "2026-09-24T21:27:53Z"
+    creationTimestamp: "2026-09-24T23:22:47Z"
     generateName: invoice-worker-fbf95d7bd-
     generation: 1
     labels:
       app: invoice-worker
       pod-template-hash: fbf95d7bd
-    name: invoice-worker-fbf95d7bd-ccb5n
+    name: invoice-worker-fbf95d7bd-zzkqf
     namespace: billing
     ownerReferences:
     - apiVersion: apps/v1
@@ -17,9 +17,9 @@ items:
       controller: true
       kind: ReplicaSet
       name: invoice-worker-fbf95d7bd
-      uid: eced3260-96e2-4c6a-b370-10bf28a1621e
-    resourceVersion: "21537"
-    uid: d34599b8-5b57-4f3c-96e3-ca2b931801cc
+      uid: 9a0d7561-ed11-4e08-ac09-e69ebbe7d9b4
+    resourceVersion: "33425"
+    uid: 2951d7d2-2093-4e9a-8f02-fdd91d250260
   spec:
     containers:
     - command:
@@ -32,7 +32,7 @@ items:
       terminationMessagePolicy: File
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-xsrt9
+        name: kube-api-access-p6j9g
         readOnly: true
     dnsPolicy: ClusterFirst
     enableServiceLinks: true
@@ -55,7 +55,7 @@ items:
       operator: Exists
       tolerationSeconds: 300
     volumes:
-    - name: kube-api-access-xsrt9
+    - name: kube-api-access-p6j9g
       projected:
         defaultMode: 420
         sources:
@@ -76,43 +76,43 @@ items:
   status:
     conditions:
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:54Z"
+      lastTransitionTime: "2026-09-24T23:22:47Z"
       observedGeneration: 1
       status: "True"
       type: PodReadyToStartContainers
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:53Z"
+      lastTransitionTime: "2026-09-24T23:22:47Z"
       observedGeneration: 1
       status: "True"
       type: Initialized
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:53Z"
+      lastTransitionTime: "2026-09-24T23:22:47Z"
       message: 'containers with unready status: [invoice-worker]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: Ready
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:53Z"
+      lastTransitionTime: "2026-09-24T23:22:47Z"
       message: 'containers with unready status: [invoice-worker]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: ContainersReady
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:53Z"
+      lastTransitionTime: "2026-09-24T23:22:47Z"
       observedGeneration: 1
       status: "True"
       type: PodScheduled
     containerStatuses:
-    - containerID: containerd://a4cdba39043c3713c844f23260ac2e81454099c59e91705da03ec811181b6d66
+    - containerID: containerd://e9e9b1b7b1a62eea32cf2250265d8c34987053d79783a2449a5093d9912b2b75
       image: docker.io/library/busybox:1.37
       imageID: docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
       lastState:
         terminated:
-          containerID: containerd://a4cdba39043c3713c844f23260ac2e81454099c59e91705da03ec811181b6d66
+          containerID: containerd://e9e9b1b7b1a62eea32cf2250265d8c34987053d79783a2449a5093d9912b2b75
           exitCode: 128
-          finishedAt: "2026-09-24T21:27:56Z"
+          finishedAt: "2026-09-24T23:22:47Z"
           message: 'failed to create containerd task: failed to create shim task:
             OCI runtime create failed: runc create failed: unable to start container
             process: error during container init: exec: "/app/start-worker": stat
@@ -140,7 +140,7 @@ items:
           uid: 0
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-xsrt9
+        name: kube-api-access-p6j9g
         readOnly: true
         recursiveReadOnly: Disabled
     hostIP: 172.18.0.2
@@ -148,12 +148,12 @@ items:
     - ip: 172.18.0.2
     observedGeneration: 1
     phase: Running
-    podIP: 10.244.1.2
+    podIP: 10.244.1.26
     podIPs:
-    - ip: 10.244.1.2
+    - ip: 10.244.1.26
     qosClass: BestEffort
     resources: {}
-    startTime: "2026-09-24T21:27:53Z"
+    startTime: "2026-09-24T23:22:47Z"
 kind: List
 metadata:
   resourceVersion: ""

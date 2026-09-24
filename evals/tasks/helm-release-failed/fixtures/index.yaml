@@ -15,7 +15,11 @@ fixtures:
       file: helm-get-manifest-shop-web-n-helm-demo-08b144.txt
     - signature: kubectl get pod -n helm-demo
       file: kubectl-get-pod-n-helm-demo-5ba4ac.txt
-    - signature: kubectl describe pod/shop-web-67c45748fb-v4s7c -n helm-demo
-      file: kubectl-describe-pod-shop-web-67c45748fb-v4s7c-n-helm-demo-f11aba.txt
+    - signature: kubectl get deployment/shop-web -n helm-demo
+      file: kubectl-get-deployment-shop-web-n-helm-demo-70a83a.txt
+    - signature: kubectl get pod -n helm-demo -l app=shop-web
+      file: kubectl-get-pod-n-helm-demo-l-app-shop-web-aeca85.txt
+    - signature: kubectl describe pod/shop-web-67c45748fb-x675q -n helm-demo
+      file: kubectl-describe-pod-shop-web-67c45748fb-x675q-n-helm-demo-445cd3.txt
     - signature: kubectl get event -n helm-demo
       file: kubectl-get-event-n-helm-demo-f293c4.txt

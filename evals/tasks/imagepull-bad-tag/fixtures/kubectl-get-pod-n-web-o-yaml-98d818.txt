@@ -3,13 +3,13 @@ items:
 - apiVersion: v1
   kind: Pod
   metadata:
-    creationTimestamp: "2026-09-24T21:29:21Z"
+    creationTimestamp: "2026-09-24T23:23:10Z"
     generateName: storefront-5996978c75-
     generation: 1
     labels:
       app: storefront
       pod-template-hash: 5996978c75
-    name: storefront-5996978c75-4pxx5
+    name: storefront-5996978c75-nr8g4
     namespace: web
     ownerReferences:
     - apiVersion: apps/v1
@@ -17,9 +17,9 @@ items:
       controller: true
       kind: ReplicaSet
       name: storefront-5996978c75
-      uid: ecfb75ee-b36f-47e1-a215-85d4038da08f
-    resourceVersion: "22040"
-    uid: fd7f73da-2bc2-49c8-a4bd-d1a7d0ea3b0e
+      uid: b1468263-d96a-411f-bcfb-f9dfd675269f
+    resourceVersion: "33560"
+    uid: 3ba9bf76-8b91-4e39-86f8-7d0eaa7787d0
   spec:
     containers:
     - image: nginx:1.99.99-does-not-exist
@@ -30,7 +30,7 @@ items:
       terminationMessagePolicy: File
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-4x8c4
+        name: kube-api-access-8dts4
         readOnly: true
     dnsPolicy: ClusterFirst
     enableServiceLinks: true
@@ -53,7 +53,7 @@ items:
       operator: Exists
       tolerationSeconds: 300
     volumes:
-    - name: kube-api-access-4x8c4
+    - name: kube-api-access-8dts4
       projected:
         defaultMode: 420
         sources:
@@ -74,31 +74,31 @@ items:
   status:
     conditions:
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:29:22Z"
+      lastTransitionTime: "2026-09-24T23:23:10Z"
       observedGeneration: 1
       status: "True"
       type: PodReadyToStartContainers
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:29:22Z"
+      lastTransitionTime: "2026-09-24T23:23:10Z"
       observedGeneration: 1
       status: "True"
       type: Initialized
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:29:22Z"
+      lastTransitionTime: "2026-09-24T23:23:10Z"
       message: 'containers with unready status: [storefront]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: Ready
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:29:22Z"
+      lastTransitionTime: "2026-09-24T23:23:10Z"
       message: 'containers with unready status: [storefront]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: ContainersReady
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:29:21Z"
+      lastTransitionTime: "2026-09-24T23:23:10Z"
       observedGeneration: 1
       status: "True"
       type: PodScheduled
@@ -119,7 +119,7 @@ items:
           reason: ErrImagePull
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-4x8c4
+        name: kube-api-access-8dts4
         readOnly: true
         recursiveReadOnly: Disabled
     hostIP: 172.18.0.2
@@ -127,12 +127,12 @@ items:
     - ip: 172.18.0.2
     observedGeneration: 1
     phase: Pending
-    podIP: 10.244.1.8
+    podIP: 10.244.1.28
     podIPs:
-    - ip: 10.244.1.8
+    - ip: 10.244.1.28
     qosClass: BestEffort
     resources: {}
-    startTime: "2026-09-24T21:29:22Z"
+    startTime: "2026-09-24T23:23:10Z"
 kind: List
 metadata:
   resourceVersion: ""

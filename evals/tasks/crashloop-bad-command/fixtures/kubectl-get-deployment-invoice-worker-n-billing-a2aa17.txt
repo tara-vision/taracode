@@ -1,2 +1,2 @@
 NAME             READY   UP-TO-DATE   AVAILABLE   AGE
-invoice-worker   0/1     1            0           5s
+invoice-worker   0/1     1            0           3s

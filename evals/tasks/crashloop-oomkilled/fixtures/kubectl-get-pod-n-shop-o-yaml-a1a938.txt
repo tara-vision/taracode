@@ -3,13 +3,13 @@ items:
 - apiVersion: v1
   kind: Pod
   metadata:
-    creationTimestamp: "2026-09-24T21:27:58Z"
+    creationTimestamp: "2026-09-24T23:22:51Z"
     generateName: checkout-7d5ff6f675-
     generation: 1
     labels:
       app: checkout
       pod-template-hash: 7d5ff6f675
-    name: checkout-7d5ff6f675-mfz76
+    name: checkout-7d5ff6f675-tzcr6
     namespace: shop
     ownerReferences:
     - apiVersion: apps/v1
@@ -17,9 +17,9 @@ items:
       controller: true
       kind: ReplicaSet
       name: checkout-7d5ff6f675
-      uid: 50c6a519-c5b4-4d73-a4a9-74054f8d5e18
-    resourceVersion: "21662"
-    uid: cee7a60e-3b44-44e6-87c6-1821523f71e0
+      uid: 0b166c80-a70f-4841-b296-8278b700d1c8
+    resourceVersion: "33526"
+    uid: 8b3281f6-7da4-4e3e-999a-e1cffe124ff5
   spec:
     containers:
     - command:
@@ -42,7 +42,7 @@ items:
       terminationMessagePolicy: File
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-b5qrp
+        name: kube-api-access-v6vlh
         readOnly: true
     dnsPolicy: ClusterFirst
     enableServiceLinks: true
@@ -65,7 +65,7 @@ items:
       operator: Exists
       tolerationSeconds: 300
     volumes:
-    - name: kube-api-access-b5qrp
+    - name: kube-api-access-v6vlh
       projected:
         defaultMode: 420
         sources:
@@ -89,31 +89,31 @@ items:
       memory: 32Mi
     conditions:
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:58Z"
+      lastTransitionTime: "2026-09-24T23:22:51Z"
       observedGeneration: 1
       status: "True"
       type: PodReadyToStartContainers
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:58Z"
+      lastTransitionTime: "2026-09-24T23:22:51Z"
       observedGeneration: 1
       status: "True"
       type: Initialized
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:28:18Z"
+      lastTransitionTime: "2026-09-24T23:23:07Z"
       message: 'containers with unready status: [checkout]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: Ready
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:28:18Z"
+      lastTransitionTime: "2026-09-24T23:23:07Z"
       message: 'containers with unready status: [checkout]'
       observedGeneration: 1
       reason: ContainersNotReady
       status: "False"
       type: ContainersReady
     - lastProbeTime: null
-      lastTransitionTime: "2026-09-24T21:27:58Z"
+      lastTransitionTime: "2026-09-24T23:22:51Z"
       observedGeneration: 1
       status: "True"
       type: PodScheduled
@@ -121,16 +121,16 @@ items:
     - allocatedResources:
         cpu: 50m
         memory: 32Mi
-      containerID: containerd://aac41f74753d27218c76dc10b4509853f55111cd161de0f43a8fd90b398e6317
+      containerID: containerd://847516b57e568a46dd3ecf1066ecac4f6fcaae46c0df775f8eed0ba217ed9d9a
       image: docker.io/library/python:3.12-alpine
       imageID: docker.io/library/python@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111
       lastState:
         terminated:
-          containerID: containerd://2ea146782f52150d173fc3197dbf918bb810d88d1eaeaef92801d0d9c81ba706
+          containerID: containerd://b42dfe07bb7fb1a3383d90f09665060e490514b49eadff9ef2d5575864aca8be
           exitCode: 137
-          finishedAt: "2026-09-24T21:28:03Z"
+          finishedAt: "2026-09-24T23:22:52Z"
           reason: OOMKilled
-          startedAt: "2026-09-24T21:28:03Z"
+          startedAt: "2026-09-24T23:22:52Z"
       name: checkout
       ready: false
       resources:
@@ -143,11 +143,11 @@ items:
       started: false
       state:
         terminated:
-          containerID: containerd://aac41f74753d27218c76dc10b4509853f55111cd161de0f43a8fd90b398e6317
+          containerID: containerd://847516b57e568a46dd3ecf1066ecac4f6fcaae46c0df775f8eed0ba217ed9d9a
           exitCode: 137
-          finishedAt: "2026-09-24T21:28:18Z"
+          finishedAt: "2026-09-24T23:23:07Z"
           reason: OOMKilled
-          startedAt: "2026-09-24T21:28:18Z"
+          startedAt: "2026-09-24T23:23:07Z"
       user:
         linux:
           gid: 0
@@ -166,7 +166,7 @@ items:
           uid: 0
       volumeMounts:
       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-        name: kube-api-access-b5qrp
+        name: kube-api-access-v6vlh
         readOnly: true
         recursiveReadOnly: Disabled
     hostIP: 172.18.0.2
@@ -174,9 +174,9 @@ items:
     - ip: 172.18.0.2
     observedGeneration: 1
     phase: Running
-    podIP: 10.244.1.3
+    podIP: 10.244.1.27
     podIPs:
-    - ip: 10.244.1.3
+    - ip: 10.244.1.27
     qosClass: Burstable
     resources:
       limits:
@@ -184,7 +184,7 @@ items:
       requests:
         cpu: 28m
         memory: 32Mi
-    startTime: "2026-09-24T21:27:58Z"
+    startTime: "2026-09-24T23:22:51Z"
 kind: List
 metadata:
   resourceVersion: ""

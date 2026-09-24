@@ -1,2 +1,2 @@
 NAME                          READY   STATUS         RESTARTS   AGE
-storefront-5996978c75-4pxx5   0/1     ErrImagePull   0          5s
+storefront-5996978c75-nr8g4   0/1     ErrImagePull   0          2s
