@@ -1,0 +1,21 @@
+# local_file.config:
+resource "local_file" "config" {
+    content              = <<-EOT
+        listen=8080
+    EOT
+    content_base64sha256 = "cYip4qY76r1NZ7Fkj1uLa2V17SIJm6PNV+eZXO413QM="
+    content_base64sha512 = "8YIsaQJrLhprG/vViz96LwRwACqH7fbUK3wKyE6fqHg6aMZyKsAv7OEfh8RclK2y3nOYsmLf/IogObD0s6zQVw=="
+    content_md5          = "de7c1b3b7c611aed7f6c006e66b03d1e"
+    content_sha1         = "5d54098470458257525a27f6f0b6de89e278569d"
+    content_sha256       = "7188a9e2a63beabd4d67b1648f5b8b6b6575ed22099ba3cd57e7995cee35dd03"
+    content_sha512       = "f1822c69026b2e1a6b1bfbd58b3f7a2f0470002a87edf6d42b7c0ac84e9fa8783a68c6722ac02fece11f87c45c94adb2de7398b262dffc8a2039b0f4b3acd057"
+    directory_permission = "0777"
+    file_permission      = "0777"
+    filename             = "./app.conf"
+    id                   = "5d54098470458257525a27f6f0b6de89e278569d"
+}
+
+# null_resource.app:
+resource "null_resource" "app" {
+    id = "2097799178714673205"
+}

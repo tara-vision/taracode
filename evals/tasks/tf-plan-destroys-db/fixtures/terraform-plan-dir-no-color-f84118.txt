@@ -1,0 +1,25 @@
+null_resource.database: Refreshing state... [id=6563168065643315536]
+null_resource.app: Refreshing state... [id=8010725748673159476]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  - destroy
+
+Terraform will perform the following actions:
+
+  # null_resource.database will be destroyed
+  # (because null_resource.database is not in configuration)
+  - resource "null_resource" "database" {
+      - id       = "6563168065643315536" -> null
+      - triggers = {
+          - "name" = "orders-db"
+          - "tier" = "database"
+        } -> null
+    }
+
+Plan: 0 to add, 0 to change, 1 to destroy.
+
+─────────────────────────────────────────────────────────────────────────────
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.

@@ -1,0 +1,2 @@
+kubectl exited with status 1
+error: Metrics API not available

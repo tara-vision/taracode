@@ -1,0 +1,5 @@
+[90m9:33PM[0m [31mERR[0m [1m[git] fatal: not a git repository (or any of the parent directories): .git[0m
+[90m9:33PM[0m [31mERR[0m [36merror=[0m[31m[1m"stderr is not empty"[0m[0m
+[90m9:33PM[0m [32mINF[0m [1m0 commits scanned.[0m
+[90m9:33PM[0m [32mINF[0m [1mscanned ~0 bytes (0) in 85.1ms[0m
+[90m9:33PM[0m [32mINF[0m [1mno leaks found[0m

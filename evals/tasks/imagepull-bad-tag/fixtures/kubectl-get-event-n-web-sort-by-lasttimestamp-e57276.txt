@@ -1,0 +1,9 @@
+LAST SEEN   TYPE      REASON              OBJECT                             MESSAGE
+5s          Normal    SuccessfulCreate    replicaset/storefront-5996978c75   Created pod: storefront-5996978c75-4pxx5
+5s          Normal    ScalingReplicaSet   deployment/storefront              Scaled up replica set storefront-5996978c75 from 0 to 1
+4s          Normal    Scheduled           pod/storefront-5996978c75-4pxx5    Successfully assigned web/storefront-5996978c75-4pxx5 to taracode-evals-worker
+4s          Normal    Pulling             pod/storefront-5996978c75-4pxx5    Pulling image "nginx:1.99.99-does-not-exist"
+3s          Warning   Failed              pod/storefront-5996978c75-4pxx5    Failed to pull image "nginx:1.99.99-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-does-not-exist": failed to resolve reference "docker.io/library/nginx:1.99.99-does-not-exist": docker.io/library/nginx:1.99.99-does-not-exist: not found
+3s          Warning   Failed              pod/storefront-5996978c75-4pxx5    Error: ErrImagePull
+2s          Normal    BackOff             pod/storefront-5996978c75-4pxx5    Back-off pulling image "nginx:1.99.99-does-not-exist"
+2s          Warning   Failed              pod/storefront-5996978c75-4pxx5    Error: ImagePullBackOff

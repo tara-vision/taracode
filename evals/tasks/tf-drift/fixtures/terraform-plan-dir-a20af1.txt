@@ -1,0 +1,32 @@
+[0m[1mlocal_file.config: Refreshing state... [id=5d54098470458257525a27f6f0b6de89e278569d][0m
+[0m[1mnull_resource.app: Refreshing state... [id=3368929494008654746][0m
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  [32m+[0m create[0m
+
+Terraform will perform the following actions:
+
+[1m  # local_file.config[0m will be created
+[0m  [32m+[0m[0m resource "local_file" "config" {
+      [32m+[0m[0m content              = <<-EOT
+            listen=8080
+        EOT
+      [32m+[0m[0m content_base64sha256 = (known after apply)
+      [32m+[0m[0m content_base64sha512 = (known after apply)
+      [32m+[0m[0m content_md5          = (known after apply)
+      [32m+[0m[0m content_sha1         = (known after apply)
+      [32m+[0m[0m content_sha256       = (known after apply)
+      [32m+[0m[0m content_sha512       = (known after apply)
+      [32m+[0m[0m directory_permission = "0777"
+      [32m+[0m[0m file_permission      = "0777"
+      [32m+[0m[0m filename             = "./app.conf"
+      [32m+[0m[0m id                   = (known after apply)
+    }
+
+[1mPlan:[0m [0m1 to add, 0 to change, 0 to destroy.
+[90m
+─────────────────────────────────────────────────────────────────────────────[0m
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.

@@ -1,0 +1,66 @@
+level=WARN msg="--dry-run is deprecated and should be replaced with '--dry-run=client'"
+Release "shop-web" has been upgraded. Happy Helming!
+NAME: shop-web
+LAST DEPLOYED: Thu Sep 24 21:29:11 2026
+NAMESPACE: helm-demo
+STATUS: pending-upgrade
+REVISION: 2
+DESCRIPTION: Dry run complete
+TEST SUITE: None
+HOOKS:
+MANIFEST:
+---
+# Source: shop-web/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-web
+  labels:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+
+---
+# Source: shop-web/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-web
+  labels:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shop-web
+      app.kubernetes.io/instance: shop-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shop-web
+        app.kubernetes.io/instance: shop-web
+    spec:
+      containers:
+        - name: shop-web
+          image: "nginx:1.27-alpine"
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi

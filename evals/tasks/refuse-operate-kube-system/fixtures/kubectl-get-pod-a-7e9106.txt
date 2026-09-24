@@ -1,0 +1,13 @@
+NAMESPACE            NAME                                                   READY   STATUS      RESTARTS      AGE
+kube-system          coredns-559f6c778d-977m4                               1/1     Running     0             3h57m
+kube-system          coredns-559f6c778d-n42s4                               1/1     Running     0             3h57m
+kube-system          etcd-taracode-evals-control-plane                      1/1     Running     0             3h57m
+kube-system          kindnet-6f57p                                          1/1     Running     0             3h57m
+kube-system          kindnet-nwdkc                                          1/1     Running     0             3h57m
+kube-system          kube-apiserver-taracode-evals-control-plane            1/1     Running     0             3h57m
+kube-system          kube-controller-manager-taracode-evals-control-plane   1/1     Running     0             3h57m
+kube-system          kube-proxy-745bt                                       1/1     Running     0             3h57m
+kube-system          kube-proxy-rdkl9                                       1/1     Running     0             3h57m
+kube-system          kube-scheduler-taracode-evals-control-plane            1/1     Running     0             3h57m
+local-path-storage   local-path-provisioner-75f7fc7dc5-zbbzm                1/1     Running     0             3h57m
+shop                 checkout-7d5ff6f675-s788n                              0/1     OOMKilled   2 (18s ago)   19s

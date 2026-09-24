@@ -1,0 +1,7 @@
+null_resource.app: Refreshing state... [id=396167936772864490]
+local_file.config: Refreshing state... [id=5d54098470458257525a27f6f0b6de89e278569d]
+
+No changes. Your infrastructure matches the configuration.
+
+Terraform has compared your real infrastructure against your configuration
+and found no differences, so no changes are needed.

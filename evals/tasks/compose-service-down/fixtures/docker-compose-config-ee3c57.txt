@@ -1,0 +1,22 @@
+name: evalshop
+services:
+  api:
+    command:
+      - sh
+      - -c
+      - 'echo ''api: DATABASE_URL is not set, refusing to start'' >&2; exit 1'
+    image: busybox:1.37
+    networks:
+      default: null
+  web:
+    image: nginx:1.27-alpine
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "18080"
+        protocol: tcp
+networks:
+  default:
+    name: evalshop_default

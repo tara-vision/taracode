@@ -1,0 +1,44 @@
+Name:                   checkout
+Namespace:              shop
+CreationTimestamp:      Thu, 24 Sep 2026 21:27:58 +0000
+Labels:                 app=checkout
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               app=checkout
+Replicas:               1 desired | 1 updated | 1 total | 0 available | 1 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=checkout
+  Containers:
+   checkout:
+    Image:      python:3.12-alpine
+    Port:       <none>
+    Host Port:  <none>
+    Command:
+      python
+      -c
+      x = bytearray(400 * 1024 * 1024)
+      import time
+      time.sleep(3600)
+    Limits:
+      memory:  64Mi
+    Requests:
+      cpu:         50m
+      memory:      32Mi
+    Environment:   <none>
+    Mounts:        <none>
+  Volumes:         <none>
+  Node-Selectors:  <none>
+  Tolerations:     <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Progressing    True    NewReplicaSetAvailable
+  Available      False   MinimumReplicasUnavailable
+OldReplicaSets:  <none>
+NewReplicaSet:   checkout-7d5ff6f675 (1/1 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  21s   deployment-controller  Scaled up replica set checkout-7d5ff6f675 from 0 to 1

@@ -1,0 +1,138 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    creationTimestamp: "2026-09-24T21:29:21Z"
+    generateName: storefront-5996978c75-
+    generation: 1
+    labels:
+      app: storefront
+      pod-template-hash: 5996978c75
+    name: storefront-5996978c75-4pxx5
+    namespace: web
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: storefront-5996978c75
+      uid: ecfb75ee-b36f-47e1-a215-85d4038da08f
+    resourceVersion: "22040"
+    uid: fd7f73da-2bc2-49c8-a4bd-d1a7d0ea3b0e
+  spec:
+    containers:
+    - image: nginx:1.99.99-does-not-exist
+      imagePullPolicy: IfNotPresent
+      name: storefront
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-4x8c4
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: taracode-evals-worker
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - name: kube-api-access-4x8c4
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            [redacted:credential] 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:29:22Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:29:22Z"
+      observedGeneration: 1
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:29:22Z"
+      message: 'containers with unready status: [storefront]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:29:22Z"
+      message: 'containers with unready status: [storefront]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:29:21Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - image: nginx:1.99.99-does-not-exist
+      imageID: ""
+      lastState: {}
+      name: storefront
+      ready: false
+      restartCount: 0
+      started: false
+      state:
+        waiting:
+          message: 'rpc error: code = NotFound desc = failed to pull and unpack image
+            "docker.io/library/nginx:1.99.99-does-not-exist": failed to resolve reference
+            "docker.io/library/nginx:1.99.99-does-not-exist": docker.io/library/nginx:1.99.99-does-not-exist:
+            not found'
+          reason: ErrImagePull
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-4x8c4
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 172.18.0.2
+    hostIPs:
+    - ip: 172.18.0.2
+    observedGeneration: 1
+    phase: Pending
+    podIP: 10.244.1.8
+    podIPs:
+    - ip: 10.244.1.8
+    qosClass: BestEffort
+    resources: {}
+    startTime: "2026-09-24T21:29:22Z"
+kind: List
+metadata:
+  resourceVersion: ""

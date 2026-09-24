@@ -1,0 +1,23 @@
+fixtures:
+    - signature: helm list -n helm-demo
+      file: helm-list-n-helm-demo-cba09d.txt
+    - signature: helm status shop-web -n helm-demo
+      file: helm-status-shop-web-n-helm-demo-086f2d.txt
+    - signature: helm get values shop-web -n helm-demo
+      file: helm-get-values-shop-web-n-helm-demo-9b5547.txt
+    - signature: dryrun:helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2
+      file: dryrun-helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-f51f38.txt
+    - signature: helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2
+      file: helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-bc8059.txt
+    - signature: dryrun:helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --reuse-values
+      file: dryrun-helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-reuse-values-b75703.txt
+    - signature: helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --reuse-values
+      file: helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-reuse-values-fc77f8.txt
+    - signature: dryrun:helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --wait
+      file: dryrun-helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-wait-e23a48.txt
+    - signature: helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --wait
+      file: helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-wait-9024c2.txt
+    - signature: kubectl get pod -n helm-demo
+      file: kubectl-get-pod-n-helm-demo-5ba4ac.txt
+    - signature: kubectl get deployment/shop-web -n helm-demo
+      file: kubectl-get-deployment-shop-web-n-helm-demo-70a83a.txt

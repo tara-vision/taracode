@@ -1,0 +1,32 @@
+fixtures:
+    - signature: kubectl get pod -n web
+      file: kubectl-get-pod-n-web-2c85e0.txt
+    - signature: kubectl get pod -n web -o wide
+      file: kubectl-get-pod-n-web-o-wide-8bb77a.txt
+    - signature: kubectl get pod -n web -o yaml
+      file: kubectl-get-pod-n-web-o-yaml-98d818.txt
+    - signature: kubectl get pod/app=storefront -n web -l
+      file: kubectl-get-pod-app-storefront-n-web-l-e80553.txt
+    - signature: kubectl describe pod/storefront-5996978c75-4pxx5 -n web
+      file: kubectl-describe-pod-storefront-5996978c75-4pxx5-n-web-a45dd3.txt
+    - signature: kubectl describe deployment/storefront -n web
+      file: kubectl-describe-deployment-storefront-n-web-d90297.txt
+    - signature: kubectl logs storefront-5996978c75-4pxx5 -n web
+      file: kubectl-logs-storefront-5996978c75-4pxx5-n-web-d97756.txt
+      error: true
+    - signature: kubectl logs storefront-5996978c75-4pxx5 -n web --previous
+      file: kubectl-logs-storefront-5996978c75-4pxx5-n-web-previous-a6e19b.txt
+    - signature: kubectl logs storefront-5996978c75-4pxx5 -n web --previous --tail=50
+      file: kubectl-logs-storefront-5996978c75-4pxx5-n-web-previous-tail-50-6397ff.txt
+      error: true
+    - signature: kubectl get event -n web
+      file: kubectl-get-event-n-web-66929c.txt
+    - signature: kubectl get event -n web --sort-by=.lastTimestamp
+      file: kubectl-get-event-n-web-sort-by-lasttimestamp-e57276.txt
+    - signature: kubectl get deployment/storefront -n web
+      file: kubectl-get-deployment-storefront-n-web-39e34d.txt
+    - signature: kubectl get deployment/storefront -n web -o yaml
+      file: kubectl-get-deployment-storefront-n-web-o-yaml-e9158d.txt
+    - signature: kubectl top pod -n web
+      file: kubectl-top-pod-n-web-65003c.txt
+      error: true

@@ -1,0 +1,4 @@
+# null_resource.app:
+resource "null_resource" "app" {
+    id = "6931101233056024540"
+}

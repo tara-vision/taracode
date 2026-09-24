@@ -1,0 +1,6 @@
+# random_pet.server:
+resource "random_pet" "server" {
+    id        = "causal-hen"
+    length    = 2
+    separator = "-"
+}

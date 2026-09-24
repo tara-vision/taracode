@@ -1,0 +1,13 @@
+fixtures:
+    - signature: terraform plan dir=.
+      file: terraform-plan-dir-a20af1.txt
+    - signature: terraform plan dir=. -no-color
+      file: terraform-plan-dir-no-color-f84118.txt
+    - signature: terraform show dir=.
+      file: terraform-show-dir-d8a699.txt
+    - signature: terraform state dir=. list
+      file: terraform-state-dir-list-5116cd.txt
+    - signature: terraform validate dir=.
+      file: terraform-validate-dir-2226ac.txt
+    - signature: terraform output dir=.
+      file: terraform-output-dir-b73e5b.txt

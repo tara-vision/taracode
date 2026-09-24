@@ -1,0 +1,2 @@
+kubectl exited with status 1
+Error from server (BadRequest): previous terminated container "storefront" in pod "storefront-5996978c75-4pxx5" not found

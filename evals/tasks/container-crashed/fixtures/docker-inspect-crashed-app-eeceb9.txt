@@ -1,0 +1,189 @@
+[
+    {
+        "Id": "73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6",
+        "Created": "2026-09-24T21:27:53.247282112Z",
+        "Path": "sh",
+        "Args": [
+            "-c",
+            "echo \"starting api\"; echo \"fatal: config file /etc/app/config.yaml not found\" >&2; exit 3"
+        ],
+        "State": {
+            "Status": "exited",
+            "Running": false,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 0,
+            "ExitCode": 3,
+            "Error": "",
+            "StartedAt": "2026-09-24T21:27:53.311981338Z",
+            "FinishedAt": "2026-09-24T21:27:53.403712789Z"
+        },
+        "Image": "sha256:30ecbe1509090b38ef3260f3609d64d8261230464eaa4d235901db496e9647fb",
+        "ResolvConfPath": "/var/lib/docker/containers/73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6/hostname",
+        "HostsPath": "/var/lib/docker/containers/73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6/hosts",
+        "LogPath": "/var/lib/docker/containers/73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6/73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6-json.log",
+        "Name": "/crashed-app",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "docker-default",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "73ae1ba6c03f63888c0a87439bb0af6e20c2a916017c9620e901192a4b84a2b6",
+                "LowerDir": "/var/lib/docker/overlay2/64be926832eeba6291df8dc3225f9d27b4057da0478fe0c82dc507e51f11bdc5-init/diff:/var/lib/docker/overlay2/456999ae4bd394f0855c28670918502f71856d8430959e0add13184d3ea2a6a8/diff",
+                "MergedDir": "/var/lib/docker/overlay2/64be926832eeba6291df8dc3225f9d27b4057da0478fe0c82dc507e51f11bdc5/merged",
+                "UpperDir": "/var/lib/docker/overlay2/64be926832eeba6291df8dc3225f9d27b4057da0478fe0c82dc507e51f11bdc5/diff",
+                "WorkDir": "/var/lib/docker/overlay2/64be926832eeba6291df8dc3225f9d27b4057da0478fe0c82dc507e51f11bdc5/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "73ae1ba6c03f",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": [
+                "sh",
+                "-c",
+                "echo \"starting api\"; echo \"fatal: config file /etc/app/config.yaml not found\" >&2; exit 3"
+            ],
+            "Image": "busybox:1.37",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "Labels": {}
+        },
+        "NetworkSettings": {
+            "SandboxID": "",
+            "SandboxKey": "",
+            "Ports": {},
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "efd3625f6521fd5ca568f53766612e0804166fb9ba8d8d31d7ca4269f7e32883",
+                    "EndpointID": "",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        }
+    }
+]

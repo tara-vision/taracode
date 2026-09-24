@@ -1,0 +1,55 @@
+---
+# Source: shop-web/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-web
+  labels:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+
+---
+# Source: shop-web/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-web
+  labels:
+    app.kubernetes.io/name: shop-web
+    app.kubernetes.io/instance: shop-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: shop-web
+      app.kubernetes.io/instance: shop-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: shop-web
+        app.kubernetes.io/instance: shop-web
+    spec:
+      containers:
+        - name: shop-web
+          image: "nginx:1.99.99-nope"
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi

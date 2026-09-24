@@ -1,0 +1,2 @@
+NAME               DATA   AGE
+kube-root-ca.crt   1      2s

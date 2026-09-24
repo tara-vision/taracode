@@ -1,0 +1,10 @@
+LAST SEEN   TYPE      REASON              OBJECT                                MESSAGE
+5s          Normal    Scheduled           pod/invoice-worker-fbf95d7bd-ccb5n    Successfully assigned billing/invoice-worker-fbf95d7bd-ccb5n to taracode-evals-worker
+4s          Normal    Pulling             pod/invoice-worker-fbf95d7bd-ccb5n    Pulling image "busybox:1.37"
+2s          Normal    Pulled              pod/invoice-worker-fbf95d7bd-ccb5n    Successfully pulled image "busybox:1.37" in 2.65s (2.65s including waiting). Image size: 2222118 bytes.
+1s          Normal    Created             pod/invoice-worker-fbf95d7bd-ccb5n    Container created
+1s          Warning   Failed              pod/invoice-worker-fbf95d7bd-ccb5n    Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/app/start-worker": stat /app/start-worker: no such file or directory
+1s          Normal    Pulled              pod/invoice-worker-fbf95d7bd-ccb5n    Container image "busybox:1.37" already present on machine and can be accessed by the pod
+0s          Warning   BackOff             pod/invoice-worker-fbf95d7bd-ccb5n    Back-off restarting failed container invoice-worker in pod invoice-worker-fbf95d7bd-ccb5n_billing(d34599b8-5b57-4f3c-96e3-ca2b931801cc)
+5s          Normal    SuccessfulCreate    replicaset/invoice-worker-fbf95d7bd   Created pod: invoice-worker-fbf95d7bd-ccb5n
+5s          Normal    ScalingReplicaSet   deployment/invoice-worker             Scaled up replica set invoice-worker-fbf95d7bd from 0 to 1

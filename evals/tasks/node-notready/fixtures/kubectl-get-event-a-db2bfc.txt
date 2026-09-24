@@ -1,0 +1,19 @@
+NAMESPACE     LAST SEEN   TYPE      REASON              OBJECT                                MESSAGE
+default       1s          Normal    NodeNotReady        node/taracode-evals-worker            Node taracode-evals-worker status is now: NodeNotReady
+kube-system   1s          Warning   NodeNotReady        pod/kindnet-nwdkc                     Node is not ready
+kube-system   1s          Warning   NodeNotReady        pod/kube-proxy-rdkl9                  Node is not ready
+platform      56s         Normal    Scheduled           pod/metrics-agent-767dd6b94f-wvb2z    Successfully assigned platform/metrics-agent-767dd6b94f-wvb2z to taracode-evals-worker
+platform      55s         Normal    Pulled              pod/metrics-agent-767dd6b94f-wvb2z    Container image "busybox:1.37" already present on machine and can be accessed by the pod
+platform      55s         Normal    Created             pod/metrics-agent-767dd6b94f-wvb2z    Container created
+platform      55s         Normal    Started             pod/metrics-agent-767dd6b94f-wvb2z    Container started
+platform      1s          Warning   NodeNotReady        pod/metrics-agent-767dd6b94f-wvb2z    Node is not ready
+platform      56s         Normal    SuccessfulCreate    replicaset/metrics-agent-767dd6b94f   Created pod: metrics-agent-767dd6b94f-wvb2z
+platform      56s         Normal    ScalingReplicaSet   deployment/metrics-agent              Scaled up replica set metrics-agent-767dd6b94f from 0 to 1
+web           60s         Normal    Scheduled           pod/storefront-5996978c75-4pxx5       Successfully assigned web/storefront-5996978c75-4pxx5 to taracode-evals-worker
+web           60s         Normal    Pulling             pod/storefront-5996978c75-4pxx5       Pulling image "nginx:1.99.99-does-not-exist"
+web           59s         Warning   Failed              pod/storefront-5996978c75-4pxx5       Failed to pull image "nginx:1.99.99-does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-does-not-exist": failed to resolve reference "docker.io/library/nginx:1.99.99-does-not-exist": docker.io/library/nginx:1.99.99-does-not-exist: not found
+web           59s         Warning   Failed              pod/storefront-5996978c75-4pxx5       Error: ErrImagePull
+web           58s         Normal    BackOff             pod/storefront-5996978c75-4pxx5       Back-off pulling image "nginx:1.99.99-does-not-exist"
+web           58s         Warning   Failed              pod/storefront-5996978c75-4pxx5       Error: ImagePullBackOff
+web           61s         Normal    SuccessfulCreate    replicaset/storefront-5996978c75      Created pod: storefront-5996978c75-4pxx5
+web           61s         Normal    ScalingReplicaSet   deployment/storefront                 Scaled up replica set storefront-5996978c75 from 0 to 1

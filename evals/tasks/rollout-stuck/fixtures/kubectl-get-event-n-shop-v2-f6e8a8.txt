@@ -1,0 +1,20 @@
+LAST SEEN   TYPE      REASON              OBJECT                      MESSAGE
+47s         Normal    Scheduled           pod/cart-f4df567fd-cmltk    Successfully assigned shop-v2/cart-f4df567fd-cmltk to taracode-evals-worker
+47s         Normal    Pulled              pod/cart-f4df567fd-cmltk    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+47s         Normal    Created             pod/cart-f4df567fd-cmltk    Container created
+47s         Normal    Started             pod/cart-f4df567fd-cmltk    Container started
+47s         Normal    Scheduled           pod/cart-f4df567fd-l2kjm    Successfully assigned shop-v2/cart-f4df567fd-l2kjm to taracode-evals-worker
+47s         Normal    Pulled              pod/cart-f4df567fd-l2kjm    Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+47s         Normal    Created             pod/cart-f4df567fd-l2kjm    Container created
+47s         Normal    Started             pod/cart-f4df567fd-l2kjm    Container started
+47s         Normal    SuccessfulCreate    replicaset/cart-f4df567fd   Created pod: cart-f4df567fd-l2kjm
+47s         Normal    SuccessfulCreate    replicaset/cart-f4df567fd   Created pod: cart-f4df567fd-cmltk
+47s         Normal    Scheduled           pod/cart-f688b8bd4-76vbq    Successfully assigned shop-v2/cart-f688b8bd4-76vbq to taracode-evals-worker
+2s          Normal    Pulling             pod/cart-f688b8bd4-76vbq    Pulling image "nginx:1.99.99-nope"
+1s          Warning   Failed              pod/cart-f688b8bd4-76vbq    Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
+1s          Warning   Failed              pod/cart-f688b8bd4-76vbq    Error: ErrImagePull
+13s         Normal    BackOff             pod/cart-f688b8bd4-76vbq    Back-off pulling image "nginx:1.99.99-nope"
+13s         Warning   Failed              pod/cart-f688b8bd4-76vbq    Error: ImagePullBackOff
+47s         Normal    SuccessfulCreate    replicaset/cart-f688b8bd4   Created pod: cart-f688b8bd4-76vbq
+47s         Normal    ScalingReplicaSet   deployment/cart             Scaled up replica set cart-f4df567fd from 0 to 2
+47s         Normal    ScalingReplicaSet   deployment/cart             Scaled up replica set cart-f688b8bd4 from 0 to 1

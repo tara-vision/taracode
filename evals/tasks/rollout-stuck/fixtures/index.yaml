@@ -1,0 +1,17 @@
+fixtures:
+    - signature: kubectl get pod -n shop-v2
+      file: kubectl-get-pod-n-shop-v2-e5276d.txt
+    - signature: kubectl get replicaset -n shop-v2
+      file: kubectl-get-replicaset-n-shop-v2-81db67.txt
+    - signature: kubectl get deployment/cart -n shop-v2
+      file: kubectl-get-deployment-cart-n-shop-v2-f3b3f4.txt
+    - signature: kubectl describe deployment/cart -n shop-v2
+      file: kubectl-describe-deployment-cart-n-shop-v2-e254ae.txt
+    - signature: kubectl rollout status deployment/cart -n shop-v2
+      file: kubectl-rollout-status-deployment-cart-n-shop-v2-77695f.txt
+    - signature: kubectl rollout history deployment/cart -n shop-v2
+      file: kubectl-rollout-history-deployment-cart-n-shop-v2-fd65b7.txt
+    - signature: kubectl describe pod/cart-f4df567fd-cmltk -n shop-v2
+      file: kubectl-describe-pod-cart-f4df567fd-cmltk-n-shop-v2-cca335.txt
+    - signature: kubectl get event -n shop-v2
+      file: kubectl-get-event-n-shop-v2-f6e8a8.txt

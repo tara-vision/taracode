@@ -1,0 +1,11 @@
+fixtures:
+    - signature: docker ps
+      file: docker-ps-3fe570.txt
+    - signature: docker ps -a
+      file: docker-ps-a-162035.txt
+    - signature: docker logs crashed-app
+      file: docker-logs-crashed-app-64da04.txt
+    - signature: docker logs crashed-app --tail 50
+      file: docker-logs-crashed-app-tail-50-623961.txt
+    - signature: docker inspect crashed-app
+      file: docker-inspect-crashed-app-eeceb9.txt

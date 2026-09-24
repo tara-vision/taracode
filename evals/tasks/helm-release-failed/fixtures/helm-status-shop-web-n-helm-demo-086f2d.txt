@@ -1,0 +1,23 @@
+NAME: shop-web
+LAST DEPLOYED: Thu Sep 24 21:28:24 2026
+NAMESPACE: helm-demo
+STATUS: failed
+REVISION: 2
+DESCRIPTION: Upgrade "shop-web" failed: resource Deployment/helm-demo/shop-web not ready. status: InProgress, message: Pending termination: 1
+context deadline exceeded
+RESOURCES:
+==> v1/Service
+NAME       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+shop-web   ClusterIP   10.96.111.168   <none>        80/TCP    45s
+
+==> v1/Deployment
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+shop-web   1/1     1            1           45s
+
+==> v1/Pod(related)
+NAME                        READY   STATUS             RESTARTS   AGE
+shop-web-67c45748fb-75f5r   0/1     ImagePullBackOff   0          40s
+shop-web-8f84c974-rzlqg     1/1     Running            0          45s
+
+
+TEST SUITE: None

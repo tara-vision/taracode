@@ -1,0 +1,17 @@
+LAST SEEN   TYPE      REASON              OBJECT                           MESSAGE
+40s         Normal    Scheduled           pod/shop-web-67c45748fb-75f5r    Successfully assigned helm-demo/shop-web-67c45748fb-75f5r to taracode-evals-worker
+3s          Normal    Pulling             pod/shop-web-67c45748fb-75f5r    Pulling image "nginx:1.99.99-nope"
+2s          Warning   Failed              pod/shop-web-67c45748fb-75f5r    Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
+2s          Warning   Failed              pod/shop-web-67c45748fb-75f5r    Error: ErrImagePull
+14s         Normal    BackOff             pod/shop-web-67c45748fb-75f5r    Back-off pulling image "nginx:1.99.99-nope"
+14s         Warning   Failed              pod/shop-web-67c45748fb-75f5r    Error: ImagePullBackOff
+40s         Normal    SuccessfulCreate    replicaset/shop-web-67c45748fb   Created pod: shop-web-67c45748fb-75f5r
+45s         Normal    Scheduled           pod/shop-web-8f84c974-rzlqg      Successfully assigned helm-demo/shop-web-8f84c974-rzlqg to taracode-evals-worker
+44s         Normal    Pulling             pod/shop-web-8f84c974-rzlqg      Pulling image "nginx:1.27-alpine"
+41s         Normal    Pulled              pod/shop-web-8f84c974-rzlqg      Successfully pulled image "nginx:1.27-alpine" in 3.343s (3.343s including waiting). Image size: 20984244 bytes.
+41s         Normal    Created             pod/shop-web-8f84c974-rzlqg      Container created
+41s         Normal    Started             pod/shop-web-8f84c974-rzlqg      Container started
+41s         Warning   Unhealthy           pod/shop-web-8f84c974-rzlqg      Readiness probe failed: Get "http://10.244.1.4:80/": dial tcp 10.244.1.4:80: connect: connection refused
+45s         Normal    SuccessfulCreate    replicaset/shop-web-8f84c974     Created pod: shop-web-8f84c974-rzlqg
+45s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-8f84c974 from 0 to 1
+40s         Normal    ScalingReplicaSet   deployment/shop-web              Scaled up replica set shop-web-67c45748fb from 0 to 1

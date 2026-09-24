@@ -1,0 +1,22 @@
+fixtures:
+    - signature: kubectl get pod -n batch
+      file: kubectl-get-pod-n-batch-d141c8.txt
+    - signature: kubectl get pod -n batch -o wide
+      file: kubectl-get-pod-n-batch-o-wide-545d33.txt
+    - signature: kubectl describe pod/nightly-etl-77d8cf54bf-pfddl -n batch
+      file: kubectl-describe-pod-nightly-etl-77d8cf54bf-pfddl-n-batch-79ecca.txt
+    - signature: kubectl get event -n batch
+      file: kubectl-get-event-n-batch-c838c2.txt
+    - signature: kubectl get event -n batch --sort-by=.lastTimestamp
+      file: kubectl-get-event-n-batch-sort-by-lasttimestamp-41241e.txt
+    - signature: kubectl get deployment/nightly-etl -n batch -o yaml
+      file: kubectl-get-deployment-nightly-etl-n-batch-o-yaml-5e8918.txt
+    - signature: kubectl get node
+      file: kubectl-get-node-a47d9a.txt
+    - signature: kubectl describe node
+      file: kubectl-describe-node-d0fc0e.txt
+    - signature: kubectl top node
+      file: kubectl-top-node-8a97b9.txt
+      error: true
+    - signature: kubectl describe node/taracode-evals-worker
+      file: kubectl-describe-node-taracode-evals-worker-1f6bd4.txt
