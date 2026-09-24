@@ -1,8 +1,21 @@
 package evals
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 )
 
 func TestWriteAndReadResults(t *testing.T) {
@@ -41,5 +54,134 @@ func TestSummarizeWeightsTheScoreAndCountsAreas(t *testing.T) {
 	}
 	if empty := summarize(nil, nil); empty.ByArea == nil || empty.PassRate != 0 || empty.MeanScore != 0 {
 		t.Errorf("empty %+v", empty)
+	}
+}
+
+// TestPublicErrorScrubsAddressesAndPaths covers ruling P3-R45 on its own: a URL error loses its
+// operation and URL, the engine-side causes become fixed phrases, and the engine, IP addresses and
+// host paths are scrubbed, while text with no address in it stays as it was.
+func TestPublicErrorScrubsAddressesAndPaths(t *testing.T) {
+	opts := RunOptions{Host: "http://engine.example.internal:11434", scope: &runScope{home: "/home/operator"}}
+	task := Task{ID: "crashloop-oomkilled", Dir: "/home/operator/src/taracode/evals/tasks/crashloop-oomkilled"}
+	chat := func(cause error) error {
+		return fmt.Errorf("ollama: /api/chat: %w",
+			&url.Error{Op: "Post", URL: "http://engine.example.internal:11434/api/chat", Err: cause})
+	}
+	dns := &net.DNSError{Err: "no such host", Name: "engine.example.internal"}
+	tmp := filepath.Join(os.TempDir(), "taracode-eval-1")
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{chat(io.EOF), "ollama: /api/chat: EOF"},
+		{chat(context.DeadlineExceeded), "ollama: /api/chat: the turn timed out"},
+		{chat(&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connect: connection refused")}),
+			"ollama: /api/chat: the engine connection failed"},
+		{chat(&net.OpError{Op: "dial", Net: "tcp", Err: dns}), "ollama: /api/chat: the engine name did not resolve"},
+		{fmt.Errorf("chat: %w", context.DeadlineExceeded), "chat: the turn timed out"},
+		{errors.New("read tcp 203.0.113.7:52100->203.0.113.9:11434: read: connection reset by peer"),
+			"read tcp <addr>-><addr>: read: connection reset by peer"},
+		{errors.New("dial tcp [2001:db8::1]:11434: connect: no route to host"), "dial tcp <addr>: connect: no route to host"},
+		{errors.New("peer fe80::1 and ::1 went away"), "peer <addr> and <addr> went away"},
+		{errors.New(`Post "http://engine.example.internal:11434/api/chat": EOF`), `Post "<engine>/api/chat": EOF`},
+		{errors.New("engine.example.internal:11434 refused, engine.example.internal is down"), "<engine> refused, <engine> is down"},
+		{errors.New("open " + task.Dir + "/policy.yaml: denied"), "open evals/tasks/crashloop-oomkilled/policy.yaml: denied"},
+		{errors.New("read /home/operator/.kube/config: denied"), "read ~/.kube/config: denied"},
+		{errors.New("read /home/operatorx/file: denied"), "read /home/operatorx/file: denied"},
+		{errors.New("mkdir " + tmp + ": exists"), "mkdir <tmp>/taracode-eval-1: exists"},
+		{errors.New("version 0.34.2 at 10:00:00, replicas=3"), "version 0.34.2 at 10:00:00, replicas=3"},
+	}
+	for _, c := range cases {
+		if got := publicError(c.err, opts, task); got != c.want {
+			t.Errorf("publicError(%q)\n got %q\nwant %q", c.err, got, c.want)
+		}
+	}
+	if got := publicNotes([]string{"forbidden: read_file path=" + tmp + "/x"}, opts, task); got[0] !=
+		"forbidden: read_file path=<tmp>/taracode-eval-1/x" {
+		t.Errorf("notes %q", got)
+	}
+}
+
+// hostPort matches a host:port pair, the shape no results file may carry (ruling P3-R45).
+var hostPort = regexp.MustCompile(`[A-Za-z0-9.-]+:[0-9]{2,5}\b`)
+
+// TestRunnerResultsCarryNoEngineAddress is the review's probe of ruling P3-R45: the engine drops the
+// task's first model request, whose error text names the engine's URL and the loopback address. The
+// results file written from the run carries none of it; the terminal keeps the raw text.
+func TestRunnerResultsCarryNoEngineAddress(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeOllama(t, ollamatest.Turn{Content: "unused"})
+	proxy := newEngineProxy(t, srv.URL, func(w http.ResponseWriter, _ *http.Request, _ string, n int) bool {
+		if n != 2 { // the warm-up passes; the task's first request is dropped
+			return false
+		}
+		if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+		return true
+	})
+	opts := runOptions(srv, "")
+	opts.Host = proxy.URL
+	var out bytes.Buffer
+	opts.Out = &out
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Tasks[0].Error == "" {
+		t.Fatalf("the dropped request left no error: %+v", res.Tasks[0])
+	}
+	path, err := WriteResults(t.TempDir(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(data); strings.Contains(text, proxy.URL) || strings.Contains(text, "127.0.0.1") ||
+		hostPort.MatchString(text) {
+		t.Fatalf("the results carry an engine address:\n%s", text)
+	}
+	if !strings.Contains(out.String(), proxy.URL) {
+		t.Errorf("the terminal lost the raw error: %q", out.String())
+	}
+}
+
+// TestRunnerResultsCarryNoHostPath: a setup failure whose error names host paths (copyDir refuses a
+// symlink under the task's workdir) reaches the results without the task directory or the
+// temporary directory (ruling P3-R45).
+func TestRunnerResultsCarryNoHostPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root, tasks := corpusWithTriage(t)
+	dir := filepath.Join(root, "crashloop-oomkilled")
+	if err := os.MkdirAll(filepath.Join(dir, "workdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "task.yaml"), filepath.Join(dir, "workdir", "task-link.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), tasks, runOptions(fakeOllama(t), ""))
+	if err == nil || !strings.Contains(err.Error(), "setup defect") {
+		t.Fatalf("err=%v", err)
+	}
+	path, err := WriteResults(t.TempDir(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	tmp := filepath.Clean(os.TempDir())
+	realTmp, _ := filepath.EvalSymlinks(tmp)
+	for _, hostPath := range []string{dir, root, tmp, realTmp} {
+		if hostPath != "" && strings.Contains(text, hostPath) {
+			t.Fatalf("the results carry %s:\n%s", hostPath, text)
+		}
+	}
+	if !strings.Contains(text, "evals/tasks/crashloop-oomkilled/workdir/task-link.yaml") {
+		t.Fatalf("the scrubbed path is missing:\n%s", text)
 	}
 }

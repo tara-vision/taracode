@@ -3,11 +3,17 @@ package ui
 import (
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/glamour"
 )
 
-var markdownRenderer *glamour.TermRenderer
+var (
+	// markdownMu serializes every use of markdownRenderer: a glamour renderer keeps its block stack
+	// in the renderer itself, so two renders at once corrupt each other (ruling P3-R47).
+	markdownMu       sync.Mutex
+	markdownRenderer *glamour.TermRenderer
+)
 
 func init() {
 	initMarkdownRenderer()
@@ -15,6 +21,8 @@ func init() {
 
 // initMarkdownRenderer initializes the Glamour markdown renderer
 func initMarkdownRenderer() {
+	markdownMu.Lock()
+	defer markdownMu.Unlock()
 	var err error
 
 	// Detect terminal width for word wrapping
@@ -34,8 +42,10 @@ func initMarkdownRenderer() {
 	}
 }
 
-// RenderMarkdown renders markdown content with syntax highlighting
+// RenderMarkdown renders markdown content with syntax highlighting. It is safe for concurrent use.
 func RenderMarkdown(content string) string {
+	markdownMu.Lock()
+	defer markdownMu.Unlock()
 	if markdownRenderer == nil {
 		return content
 	}
@@ -63,6 +73,8 @@ func HasCodeBlocks(content string) bool {
 
 // SetWordWrap reinitializes the renderer with a new word wrap width
 func SetWordWrap(width int) {
+	markdownMu.Lock()
+	defer markdownMu.Unlock()
 	var err error
 	markdownRenderer, err = glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
@@ -76,6 +88,8 @@ func SetWordWrap(width int) {
 
 // DisableMarkdown disables markdown rendering (returns plain text)
 func DisableMarkdown() {
+	markdownMu.Lock()
+	defer markdownMu.Unlock()
 	markdownRenderer = nil
 }
 
@@ -86,5 +100,7 @@ func EnableMarkdown() {
 
 // IsMarkdownEnabled returns whether markdown rendering is available
 func IsMarkdownEnabled() bool {
+	markdownMu.Lock()
+	defer markdownMu.Unlock()
 	return markdownRenderer != nil
 }

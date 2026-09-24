@@ -13,9 +13,10 @@ import (
 )
 
 // executeOne runs the gates and then the tool, and reports the decision to the observer. Every
-// outcome, including a refusal, comes back as text so the model learns what happened.
-func (a *Assistant) executeOne(run toolRun) toolOutcome {
-	inv, outcome := a.gateAndRun(run)
+// outcome, including a refusal, comes back as text so the model learns what happened. ctx reaches
+// the dry run and the tool (ruling P3-R47).
+func (a *Assistant) executeOne(ctx gocontext.Context, run toolRun) toolOutcome {
+	inv, outcome := a.gateAndRun(ctx, run)
 	a.observe(run.call, inv, outcome)
 	return outcome
 }
@@ -23,7 +24,7 @@ func (a *Assistant) executeOne(run toolRun) toolOutcome {
 // gateAndRun is the order of the gates: classify (a classifier that panics is a refusal), exposure
 // (a tool the model was not offered does not run), policy (mode, protected targets, deny patterns),
 // audit, dry run, permission, edit preview, execute.
-func (a *Assistant) gateAndRun(run toolRun) (policy.Invocation, toolOutcome) {
+func (a *Assistant) gateAndRun(ctx gocontext.Context, run toolRun) (policy.Invocation, toolOutcome) {
 	call := run.call
 	inv, panicked, err := a.classify(call)
 	if err != nil {
@@ -43,7 +44,7 @@ func (a *Assistant) gateAndRun(run toolRun) (policy.Invocation, toolOutcome) {
 		inv = operateOnly(inv)
 	}
 	if inv.Classification == policy.Mutate {
-		if outcome, ok := a.gateMutation(inv, call); !ok {
+		if outcome, ok := a.gateMutation(ctx, inv, call); !ok {
 			return inv, outcome
 		}
 	}
@@ -56,7 +57,7 @@ func (a *Assistant) gateAndRun(run toolRun) (policy.Invocation, toolOutcome) {
 			return inv, toolOutcome{result: message, denied: true, rule: "preview", reason: message}
 		}
 	}
-	outcome := a.runTool(run)
+	outcome := a.runTool(ctx, run)
 	outcome.rule, outcome.reason = "read", inv.Reason
 	if inv.Classification == policy.Mutate {
 		outcome.rule = "policy"
@@ -125,7 +126,7 @@ func operateOnly(inv policy.Invocation) policy.Invocation {
 
 // gateMutation applies the policy, the dry run and the permission store to a mutate invocation and
 // writes the audit line. ok is false when the call must not run; the outcome then carries the text.
-func (a *Assistant) gateMutation(inv policy.Invocation, call *ToolCall) (toolOutcome, bool) {
+func (a *Assistant) gateMutation(ctx gocontext.Context, inv policy.Invocation, call *ToolCall) (toolOutcome, bool) {
 	verdict := a.pol.Evaluate(a.mode, inv)
 	if !verdict.Allow {
 		a.audit(inv, "deny", verdict.Rule, verdict.Reason, false)
@@ -135,7 +136,7 @@ func (a *Assistant) gateMutation(inv policy.Invocation, call *ToolCall) (toolOut
 		return toolOutcome{result: message, denied: true, rule: verdict.Rule, reason: verdict.Reason}, false
 	}
 	if verdict.DryRun != "" {
-		out, err := a.toolRegistry.DryRun(gocontext.Background(), call.Tool, call.Params, a.workingDir)
+		out, err := a.toolRegistry.DryRun(ctx, call.Tool, call.Params, a.workingDir)
 		if err != nil {
 			a.audit(inv, "deny", "dry_run", err.Error(), true)
 			message := fmt.Sprintf("Dry run (%s) failed: %v", verdict.DryRun, err)
@@ -233,14 +234,14 @@ func (a *Assistant) audit(inv policy.Invocation, decision, rule, reason string, 
 }
 
 // runTool executes the tool with its spinner and applies the output truncation budget. The tool
-// gets its own context: every tool carries its own timeout.
-func (a *Assistant) runTool(run toolRun) toolOutcome {
+// runs under ctx, the turn's caller context, and still carries its own timeout.
+func (a *Assistant) runTool(ctx gocontext.Context, run toolRun) toolOutcome {
 	call := run.call
 	if spinner := a.startToolSpinner(run); spinner != nil {
 		defer spinner.Stop()
 	}
 	start := time.Now()
-	output, err := a.toolRegistry.Execute(gocontext.Background(), call.Tool, call.Params, a.workingDir)
+	output, err := a.toolRegistry.Execute(ctx, call.Tool, call.Params, a.workingDir)
 	durationMs := time.Since(start).Milliseconds()
 	if err != nil {
 		return toolOutcome{result: fmt.Sprintf("Error: %v", err), isError: true, durationMs: durationMs, err: err}

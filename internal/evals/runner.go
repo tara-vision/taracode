@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,25 @@ type RunOptions struct {
 	RunsDir                     string           // where transcripts go; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
+
+	scope *runScope // set by Run for its own duration
 }
+
+// runScope is what one Run keeps across its tasks: the real home directory, read before HOME is
+// isolated, so the results can be scrubbed of it (ruling P3-R45), and the once-only transcript warning.
+type runScope struct {
+	home       string
+	transcript sync.Once
+}
+
+const (
+	// engineCallTimeout bounds each check Run makes on the engine before the first task.
+	engineCallTimeout = 30 * time.Second
+	// joinGrace is how long a cancelled turn may take to return (ruling P3-R47).
+	joinGrace = 30 * time.Second
+	// warmUpTimeout is the warm-up's own limit: model load time, not the task limit.
+	warmUpTimeout = 5 * time.Minute
+)
 
 func withDefaults(o RunOptions) RunOptions {
 	if o.Runs <= 0 {
@@ -56,76 +75,95 @@ func withDefaults(o RunOptions) RunOptions {
 }
 
 // Run runs every task against one model and returns the results. The caller exits non-zero when
-// Summary.SafetyFailures is not zero. Run itself fails when the model cannot be used or the kube
-// environment cannot be isolated (isolateKubeEnv), and after a task that hit a corpus defect, a
-// fixture the repository indexes but the replay cannot read: it then stops, returning the results
-// so far with the error, since a broken fixture is a bug in the repository (ruling P3-R39).
+// Summary.SafetyFailures is not zero. Run itself fails when the environment cannot be isolated, when
+// the engine does not serve the model with native tool calls, when the warm-up fails, and after a
+// task whose failure is not the model's: a corpus or setup defect (rulings P3-R39, P3-R46), a model
+// other than the one asked for (P3-R49), or a turn that did not return when cancelled (P3-R47). It
+// then stops, returning the results so far with the error. A cancelled ctx also stops it, with the
+// tasks finished before the cancellation and ctx's error.
 func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
-	restore, err := isolateKubeEnv()
+	home, _ := os.UserHomeDir()
+	opts.scope = &runScope{home: home}
+	restore, err := isolateEnv()
 	if err != nil {
-		return Results{}, fmt.Errorf("isolating the kube environment: %w", err)
+		return Results{}, fmt.Errorf("isolating the environment: %w", err)
 	}
 	defer restore()
-	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
+	res, err := checkEngine(ctx, opts)
 	if err != nil {
 		return Results{}, err
 	}
-	client := prov.LLM()
-	details, err := client.Show(ctx, opts.Model)
-	if err != nil {
-		return Results{}, fmt.Errorf("model %s: %w", opts.Model, err)
-	}
-	if !details.Has("tools") {
-		return Results{}, fmt.Errorf("model %s has no tools capability; evals need native tool calls", opts.Model)
-	}
-	version, _ := client.Version(ctx)
-	res := Results{Taracode: opts.Version, Ollama: version, Model: opts.Model, Tier: tierOf(opts.Model), Think: opts.Think,
-		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel}
 	_, _ = fmt.Fprintf(opts.Out, "model %s (tier %s), %d tasks, %d run(s), think %s\n",
 		opts.Model, res.Tier, len(tasks), opts.Runs, opts.Think)
 	if err := warmUp(ctx, opts); err != nil {
 		return Results{}, fmt.Errorf("warm-up: %w", err)
 	}
 	for _, t := range tasks {
-		tr := runTaskRepeated(ctx, t, opts)
-		res.Tasks = append(res.Tasks, tr)
-		flags := ""
-		for _, f := range []struct {
-			on   bool
-			name string
-		}{{tr.TimedOut, "TIMED OUT"}, {tr.Truncated, "truncated"}, {tr.SafetyFailure, "SAFETY FAILURE"},
-			{tr.Error != "", tr.Error}} {
-			if f.on {
-				flags += " " + f.name
-			}
+		if err := ctx.Err(); err != nil {
+			return withSummary(res, tasks), err
 		}
-		_, _ = fmt.Fprintf(opts.Out, "%-32s %s %.2f  iter=%d calls=%d denied=%d misses=%d %dms%s\n",
-			tr.ID, passMark3(tr.Pass), tr.Score, tr.Iterations, tr.ToolCalls, tr.Denied, tr.FixtureMisses, tr.WallMs, flags)
-		if isCorpusDefect(tr) {
-			res.Summary = summarize(tasks, res.Tasks)
-			return res, fmt.Errorf("stopped after task %s: %s", tr.ID, tr.Error)
+		run := runTaskRepeated(ctx, t, opts)
+		if err := ctx.Err(); err != nil {
+			return withSummary(res, tasks), err // the interrupted task is not recorded
+		}
+		res.Tasks = append(res.Tasks, run.row)
+		printRow(opts.Out, run)
+		if run.stop != nil {
+			return withSummary(res, tasks), fmt.Errorf("stopped after task %s: %w", t.ID, run.stop)
 		}
 	}
-	res.Summary = summarize(tasks, res.Tasks)
+	res = withSummary(res, tasks)
 	_, _ = fmt.Fprintf(opts.Out, "pass rate %.0f%%, mean score %.2f, misses %.0f%%, safety failures %d\n",
 		res.Summary.PassRate*100, res.Summary.MeanScore, res.Summary.FixtureMissRate*100, res.Summary.SafetyFailures)
 	return res, nil
 }
 
-// kubeEnv are the variables through which the kubectl, helm and shell classifiers find the context
-// and namespace a mutation does not name: kubectl config reads KUBECONFIG, and a helm command falls
-// back to HELM_KUBECONTEXT and HELM_NAMESPACE (ruling P3-R29).
-var kubeEnv = []string{"KUBECONFIG", "HELM_KUBECONTEXT", "HELM_NAMESPACE"}
+// withSummary is res with the summary of the tasks it holds.
+func withSummary(res Results, tasks []Task) Results {
+	res.Summary = summarize(tasks, res.Tasks)
+	return res
+}
 
-// isolateKubeEnv makes kube target resolution independent of the host for the duration of a run
-// (ruling P3-R29): KUBECONFIG names a file that does not exist inside a fresh temporary directory,
-// and HELM_KUBECONTEXT and HELM_NAMESPACE are cleared, so no eval reads the host's kubeconfig. An
-// unnamed context or namespace then resolves to "*" on every host, which the policy denies only
-// when it protects contexts or namespaces. restore puts the three variables back as they were and
-// removes the directory; Run is not concurrent with anything that reads them.
-func isolateKubeEnv() (restore func(), err error) {
-	dir, err := os.MkdirTemp("", "taracode-eval-kube-*")
+// checkEngine verifies that the engine serves the model with native tool calls, each call bounded by
+// engineCallTimeout, and returns the results header.
+func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
+	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
+	if err != nil {
+		return Results{}, err
+	}
+	client := prov.LLM()
+	showCtx, cancelShow := context.WithTimeout(ctx, engineCallTimeout)
+	details, err := client.Show(showCtx, opts.Model)
+	cancelShow()
+	if err != nil {
+		return Results{}, fmt.Errorf("model %s: %w", opts.Model, err)
+	}
+	if !details.Has("tools") {
+		return Results{}, fmt.Errorf("model %s has no tools capability; evals need native tool calls", opts.Model)
+	}
+	versionCtx, cancelVersion := context.WithTimeout(ctx, engineCallTimeout)
+	version, _ := client.Version(versionCtx)
+	cancelVersion()
+	return Results{Taracode: opts.Version, Ollama: version, Model: opts.Model, Tier: tierOf(opts.Model),
+		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
+		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel}, nil
+}
+
+// isolatedEnv are the variables Run replaces for its own duration. The kubectl, helm and shell
+// classifiers resolve a context or namespace a mutation does not name through KUBECONFIG and the
+// helm variables (ruling P3-R29); HOME holds the global policy, the default kubeconfig and what a
+// leading ~ expands to (ruling P3-R46).
+var isolatedEnv = []string{"KUBECONFIG", "HELM_KUBECONTEXT", "HELM_NAMESPACE", "HOME"}
+
+// isolateEnv makes a run independent of the host: KUBECONFIG names a file that does not exist
+// inside a fresh temporary directory, HOME is an empty directory beside it, and HELM_KUBECONTEXT and
+// HELM_NAMESPACE are cleared. An unnamed context or namespace then resolves to "*" on every host,
+// which the policy denies only when it protects contexts or namespaces, and no eval reads the
+// host's global policy or kubeconfig. restore puts the variables back as they were and removes the
+// directory; Run is not concurrent with anything that reads them.
+func isolateEnv() (restore func(), err error) {
+	dir, err := os.MkdirTemp("", "taracode-eval-env-*")
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +171,13 @@ func isolateKubeEnv() (restore func(), err error) {
 		value string
 		set   bool
 	}
-	before := make(map[string]saved, len(kubeEnv))
-	for _, name := range kubeEnv {
+	before := make(map[string]saved, len(isolatedEnv))
+	for _, name := range isolatedEnv {
 		value, set := os.LookupEnv(name)
 		before[name] = saved{value: value, set: set}
 	}
 	restore = func() {
-		for _, name := range kubeEnv {
+		for _, name := range isolatedEnv {
 			if s := before[name]; s.set {
 				_ = os.Setenv(name, s.value)
 			} else {
@@ -148,7 +186,14 @@ func isolateKubeEnv() (restore func(), err error) {
 		}
 		_ = os.RemoveAll(dir)
 	}
-	err = os.Setenv("KUBECONFIG", filepath.Join(dir, "kubeconfig")) // never created
+	home := filepath.Join(dir, "home")
+	err = os.Mkdir(home, 0o700)
+	if err == nil {
+		err = os.Setenv("KUBECONFIG", filepath.Join(dir, "kubeconfig")) // never created
+	}
+	if err == nil {
+		err = os.Setenv("HOME", home)
+	}
 	if err == nil {
 		err = os.Unsetenv("HELM_KUBECONTEXT")
 	}
@@ -194,121 +239,230 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
-	// Its own limit: model load time, not the task limit.
-	_, _, err = runTurn(ctx, a, "Reply with the single word ready.", 5*time.Minute)
-	return err
+	if err := checkAssistant(a, t, opts); err != nil {
+		return err
+	}
+	turn, err := runTurn(ctx, a, "Reply with the single word ready.", warmUpTimeout)
+	if err != nil {
+		return err
+	}
+	return turn.err
 }
 
-// runTaskRepeated runs a task opts.Runs times and averages the numbers; flags are true when any
-// run set them, the error is the first one seen. A run that hits a corpus defect ends the
-// repetitions and is the task's result as it is: a broken fixture is not averaged (ruling P3-R39).
-func runTaskRepeated(ctx context.Context, t Task, opts RunOptions) TaskResult {
-	var runs []TaskResult
-	for i := 0; i < opts.Runs; i++ {
-		tr := runTask(ctx, t, opts)
-		if isCorpusDefect(tr) {
-			return tr
+// taskRun is one task's outcome for Run: the row the results carry, the raw error for the terminal
+// (the row carries it scrubbed, ruling P3-R45), and stop, set when the run must not go on after this
+// task because its failure is not the model's.
+type taskRun struct {
+	row  TaskResult
+	raw  string
+	stop error
+}
+
+// printRow prints a task's line on the terminal, with the raw error.
+func printRow(out io.Writer, run taskRun) {
+	tr := run.row
+	errText := run.raw
+	if errText == "" {
+		errText = tr.Error
+	}
+	flags := ""
+	for _, f := range []struct {
+		on   bool
+		name string
+	}{{tr.TimedOut, "TIMED OUT"}, {tr.Truncated, "truncated"}, {tr.SafetyFailure, "SAFETY FAILURE"},
+		{errText != "", errText}} {
+		if f.on {
+			flags += " " + f.name
 		}
-		runs = append(runs, tr)
+	}
+	_, _ = fmt.Fprintf(out, "%-32s %s %.2f  iter=%d calls=%d denied=%d misses=%d %dms%s\n",
+		tr.ID, passMark3(tr.Pass), tr.Score, tr.Iterations, tr.ToolCalls, tr.Denied, tr.FixtureMisses, tr.WallMs, flags)
+}
+
+// runTaskRepeated runs a task opts.Runs times and folds the runs into one row (averageRuns). A run
+// that must stop the run, or a cancelled ctx, ends the repetitions and is returned as it is.
+func runTaskRepeated(ctx context.Context, t Task, opts RunOptions) taskRun {
+	var runs []taskRun
+	for i := 1; i <= opts.Runs; i++ {
+		run := runTask(ctx, t, opts, i)
+		if run.stop != nil || ctx.Err() != nil {
+			return run
+		}
+		runs = append(runs, run)
 	}
 	if len(runs) == 1 {
 		return runs[0]
 	}
-	avg := runs[0]
-	n := float64(len(runs))
-	sum := func(f func(TaskResult) float64) float64 {
+	return averageRuns(runs)
+}
+
+// averageRuns folds the runs of one task into one row: the scores and every count are per-run means,
+// the counts rounded, so the rates the summary derives from them stay per-run rates (ruling P3-R48);
+// a flag is set when any run set it, and the error is the first one seen.
+func averageRuns(runs []taskRun) taskRun {
+	mean := func(f func(TaskResult) float64) float64 {
 		s := 0.0
 		for _, r := range runs {
-			s += f(r)
+			s += f(r.row)
 		}
-		return round3(s / n)
+		return s / float64(len(runs))
 	}
-	avg.Score = sum(func(r TaskResult) float64 { return r.Score })
-	avg.Tools = sum(func(r TaskResult) float64 { return r.Tools })
-	avg.Answer = sum(func(r TaskResult) float64 { return r.Answer })
-	avg.Forbidden = sum(func(r TaskResult) float64 { return r.Forbidden })
-	avg.Iterations = int(sum(func(r TaskResult) float64 { return float64(r.Iterations) }) + 0.5)
-	avg.ToolCalls = int(sum(func(r TaskResult) float64 { return float64(r.ToolCalls) }) + 0.5)
-	avg.WallMs = int64(sum(func(r TaskResult) float64 { return float64(r.WallMs) }))
+	count := func(f func(TaskResult) int) int {
+		return int(math.Round(mean(func(r TaskResult) float64 { return float64(f(r)) })))
+	}
+	out := runs[0]
+	avg := &out.row
+	avg.Score = round3(mean(func(r TaskResult) float64 { return r.Score }))
+	avg.Tools = round3(mean(func(r TaskResult) float64 { return r.Tools }))
+	avg.Answer = round3(mean(func(r TaskResult) float64 { return r.Answer }))
+	avg.Forbidden = round3(mean(func(r TaskResult) float64 { return r.Forbidden }))
+	avg.Iterations = count(func(r TaskResult) int { return r.Iterations })
+	avg.ToolCalls = count(func(r TaskResult) int { return r.ToolCalls })
+	avg.Denied = count(func(r TaskResult) int { return r.Denied })
+	avg.FixtureMisses = count(func(r TaskResult) int { return r.FixtureMisses })
+	avg.PromptTokens = count(func(r TaskResult) int { return r.PromptTokens })
+	avg.CompletionTokens = count(func(r TaskResult) int { return r.CompletionTokens })
+	avg.WallMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.WallMs) })))
 	avg.Notes = nil
 	for _, r := range runs[1:] {
-		avg.Denied += r.Denied
-		avg.FixtureMisses += r.FixtureMisses
-		avg.PromptTokens += r.PromptTokens
-		avg.CompletionTokens += r.CompletionTokens
-		avg.Truncated = avg.Truncated || r.Truncated
-		avg.TimedOut = avg.TimedOut || r.TimedOut
-		avg.SafetyFailure = avg.SafetyFailure || r.SafetyFailure
+		avg.Truncated = avg.Truncated || r.row.Truncated
+		avg.TimedOut = avg.TimedOut || r.row.TimedOut
+		avg.SafetyFailure = avg.SafetyFailure || r.row.SafetyFailure
 		if avg.Error == "" {
-			avg.Error = r.Error
+			avg.Error, out.raw = r.row.Error, r.raw
 		}
 	}
 	avg.Pass = avg.Score >= passMark && !avg.SafetyFailure
-	return avg
+	return out
 }
 
-// runTask runs one task once in a throwaway directory (spec 7).
-func runTask(ctx context.Context, t Task, opts RunOptions) TaskResult {
+// runTask runs one task once in a throwaway directory (spec 7); run numbers the repetition.
+func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	tr := TaskResult{ID: t.ID, Area: string(t.Area)}
+	transcript, closeTranscript := transcriptWriter(opts, t.ID, run)
+	defer closeTranscript()
+	_, _ = fmt.Fprintf(transcript, "# %s (%s, %s)\n\n%s\n\n", t.ID, t.Area, t.Mode, t.Prompt)
 	runDir, remove, err := makeRunDir("taracode-eval-*")
 	if err != nil {
-		tr.Error = err.Error()
-		return tr
+		return setupDefect(tr, t, opts, "the run directory", err, transcript)
 	}
 	defer remove()
 	if err := prepareRunDir(t, runDir); err != nil {
-		tr.Error = err.Error()
-		return tr
+		return setupDefect(tr, t, opts, "the run directory", err, transcript)
 	}
 	store, err := LoadFixtures(t.Dir)
 	if err != nil {
-		tr.Error = err.Error()
-		return tr
+		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
 	replay := NewReplay(store, t.ID, runDir)
-	var mu sync.Mutex
-	var events []agent.ToolEvent
-	observe := func(e agent.ToolEvent) {
-		mu.Lock()
-		events = append(events, e)
-		mu.Unlock()
-	}
-	transcript, closeTranscript := transcriptWriter(opts, t.ID)
-	defer closeTranscript()
-	_, _ = fmt.Fprintf(transcript, "# %s (%s, %s)\n\n%s\n\n", t.ID, t.Area, t.Mode, t.Prompt)
-	a, err := agent.New(assistantOptions(t, opts, runDir, replay, observe, transcript))
+	events := &eventLog{}
+	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
 	if err != nil {
-		tr.Error = "assistant: " + err.Error()
-		return tr
+		return setupDefect(tr, t, opts, "the assistant", err, transcript)
 	}
-	answer, stats, turnErr := runTurn(ctx, a, t.Prompt, opts.Timeout)
-	mu.Lock()
-	seen := append([]agent.ToolEvent(nil), events...)
-	mu.Unlock()
-	sc := ScoreTask(t, seen, answer)
+	if err := checkAssistant(a, t, opts); err != nil {
+		return setupDefect(tr, t, opts, "the assistant", err, transcript)
+	}
+	turn, err := runTurn(ctx, a, t.Prompt, opts.Timeout)
+	if err != nil { // the turn is still running: nothing else may start next to it
+		tr.TimedOut, tr.WallMs, tr.ToolCalls = true, turn.wall.Milliseconds(), len(events.snapshot())
+		tr.Error = publicError(err, opts, t)
+		_, _ = fmt.Fprintf(transcript, "\n## not joined\n\n%v\n", err)
+		return taskRun{row: tr, raw: err.Error(), stop: err}
+	}
+	out := finishTask(t, tr, turn, events.snapshot(), replay, store, opts)
+	_, _ = fmt.Fprintf(transcript,
+		"\n## answer\n\n%s\n\n## score %.2f (tools %.2f, answer %.2f, forbidden %.2f) pass=%v\n%s\n",
+		turn.answer, out.row.Score, out.row.Tools, out.row.Answer, out.row.Forbidden, out.row.Pass,
+		strings.Join(out.row.Notes, "\n"))
+	if out.raw != "" {
+		_, _ = fmt.Fprintf(transcript, "\n## error\n\n%s\n", out.raw)
+	}
+	return out
+}
+
+// finishTask scores a joined turn into the task's row. A timed-out turn, a turn error and a corpus
+// defect score 0 and keep only the safety invariant; a corpus defect also stops the run (ruling
+// P3-R39). ToolCalls and Denied come from the observed events and WallMs from the runner's clock, so
+// a timed-out row still shows what happened before the limit (ruling P3-R47).
+func finishTask(
+	t Task, tr TaskResult, turn turnResult, events []agent.ToolEvent, replay *Replay, store *Store, opts RunOptions,
+) taskRun {
+	var out taskRun
+	sc := ScoreTask(t, events, turn.answer)
 	switch {
-	case turnErr == errTimedOut:
+	case turn.timedOut:
 		tr.TimedOut = true
 		sc = scoredZero(sc, "timed out: scored 0")
-	case turnErr != nil:
-		tr.Error = turnErr.Error()
+	case turn.err != nil:
+		tr.Error, out.raw = publicError(turn.err, opts, t), turn.err.Error()
 		sc = scoredZero(sc, "turn error: scored 0")
 	}
 	if defects := replay.Defects(); len(defects) > 0 { // a repository bug, never a model miss (P3-R39)
 		tr.Error = corpusDefect(store, defects)
+		out.raw, out.stop = tr.Error, errors.New(tr.Error)
 		sc = scoredZero(sc, "corpus defect: scored 0")
 	}
 	tr.Score, tr.Tools, tr.Answer, tr.Forbidden = sc.Total, sc.Tools, sc.Answer, sc.Forbidden
 	tr.Pass, tr.SafetyFailure = sc.Pass, sc.SafetyFailure
-	tr.Iterations, tr.ToolCalls, tr.Denied = stats.Completions, stats.ToolCalls, stats.Denied
-	tr.PromptTokens, tr.CompletionTokens = stats.PromptTokens, stats.CompletionTokens
-	tr.WallMs, tr.Truncated = stats.Wall.Milliseconds(), stats.Truncated
+	tr.Iterations, tr.ToolCalls = turn.stats.Completions, len(events)
+	for _, e := range events {
+		if !e.Allowed {
+			tr.Denied++
+		}
+	}
+	tr.PromptTokens, tr.CompletionTokens = turn.stats.PromptTokens, turn.stats.CompletionTokens
+	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
 	tr.FixtureMisses = len(replay.Misses())
-	tr.Notes = sc.Notes
-	_, _ = fmt.Fprintf(transcript,
-		"\n## answer\n\n%s\n\n## score %.2f (tools %.2f, answer %.2f, forbidden %.2f) pass=%v\n%s\n",
-		answer, sc.Total, sc.Tools, sc.Answer, sc.Forbidden, sc.Pass, strings.Join(sc.Notes, "\n"))
-	return tr
+	tr.Notes = publicNotes(sc.Notes, opts, t)
+	out.row = tr
+	return out
+}
+
+// setupDefect is a task whose run directory, fixtures or assistant could not be set up as the task
+// asks: a bug in the corpus or the environment, never the model's, so the run stops after it (the
+// Task 13 fix round, extending ruling P3-R39). The row carries the scrubbed cause.
+func setupDefect(tr TaskResult, t Task, opts RunOptions, what string, err error, transcript io.Writer) taskRun {
+	tr.Error = "setup defect: " + what + ": " + publicError(err, opts, t)
+	_, _ = fmt.Fprintf(transcript, "\n## setup defect\n\n%s: %v\n", what, err)
+	return taskRun{row: tr, raw: fmt.Sprintf("setup defect: %s: %v", what, err),
+		stop: fmt.Errorf("setup defect: %s: %w", what, err)}
+}
+
+// checkAssistant refuses an assistant that would not run the task as written: a policy that did not
+// load (the session is then locked to investigate mode, so a must_deny would pass vacuously), a mode
+// other than the task's (ruling P3-R46), or a model other than the one asked for, which the
+// assistant falls back to when the engine does not list the name as given (ruling P3-R49).
+func checkAssistant(a *agent.Assistant, t Task, opts RunOptions) error {
+	if err := a.PolicyError(); err != nil {
+		return fmt.Errorf("the policy did not load: %w", err)
+	}
+	if a.Mode() != policy.Mode(t.Mode) {
+		return fmt.Errorf("the assistant runs in %s mode, the task wants %s", a.Mode(), t.Mode)
+	}
+	if got := a.GetCurrentModel(); got != opts.Model {
+		return fmt.Errorf("the engine serves %s instead of %s; pass the model name exactly as the engine lists it",
+			got, opts.Model)
+	}
+	return nil
+}
+
+// eventLog collects the observer's events; the observer runs on the turn's goroutine.
+type eventLog struct {
+	mu     sync.Mutex
+	events []agent.ToolEvent
+}
+
+func (l *eventLog) observe(e agent.ToolEvent) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, e)
+}
+
+func (l *eventLog) snapshot() []agent.ToolEvent {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]agent.ToolEvent(nil), l.events...)
 }
 
 // scoredZero is the score of a turn that cannot be scored: zero, with only the safety invariant kept
@@ -320,9 +474,6 @@ func scoredZero(sc Score, note string) Score {
 // corpusDefectPrefix starts the error of a task that hit a corpus defect: a fixture its index names
 // but the replay could not read (ruling P3-R39).
 const corpusDefectPrefix = "corpus defect: "
-
-// isCorpusDefect reports whether a task result carries a corpus defect.
-func isCorpusDefect(tr TaskResult) bool { return strings.HasPrefix(tr.Error, corpusDefectPrefix) }
 
 // corpusDefect is the task error for the signatures whose indexed fixture could not be read: each
 // signature with its file under the task's fixtures directory and the cause. The host path of the
@@ -349,27 +500,58 @@ func corpusDefect(store *Store, sigs []string) string {
 	return corpusDefectPrefix + strings.Join(parts, "; ")
 }
 
-// errTimedOut marks a turn that exceeded the task limit.
-var errTimedOut = fmt.Errorf("the task exceeded its wall-clock limit")
+// turnResult is a joined turn: the answer, the loop's statistics read after the join, the turn's
+// own error, whether the task limit ended it, and its wall time on the runner's clock.
+type turnResult struct {
+	answer   string
+	stats    agent.TurnStats
+	err      error
+	timedOut bool
+	wall     time.Duration
+}
 
-// runTurn runs one ProcessMessage under the limit. A turn that overruns is abandoned: its goroutine
-// ends when the loop's own request deadline fires, and its later events are ignored.
-func runTurn(
-	ctx context.Context, a *agent.Assistant, prompt string, timeout time.Duration,
-) (string, agent.TurnStats, error) {
-	done := make(chan error, 1)
-	go func() { done <- a.ProcessMessage(prompt) }()
-	select {
-	case err := <-done:
-		if err != nil {
-			return "", a.LastTurn(), err
-		}
-		return a.GetLastResponse(), a.LastTurn(), nil
-	case <-time.After(timeout):
-		return "", agent.TurnStats{}, errTimedOut
-	case <-ctx.Done():
-		return "", agent.TurnStats{}, ctx.Err()
+// runTurn runs one turn under the limit through joinTurn and reads the assistant only once the turn
+// has returned. The error is joinTurn's: the turn did not return, and the run must stop.
+func runTurn(ctx context.Context, a *agent.Assistant, prompt string, timeout time.Duration) (turnResult, error) {
+	turn, err := joinTurn(ctx, timeout, joinGrace, func(turnCtx context.Context) error {
+		return a.ProcessMessageContext(turnCtx, prompt)
+	})
+	if err != nil {
+		return turn, err
 	}
+	turn.stats = a.LastTurn()
+	if turn.err == nil {
+		turn.answer = a.GetLastResponse()
+	}
+	return turn, nil
+}
+
+// joinTurn runs turn under a context that ends with the limit or with ctx, and waits for it to
+// return (ruling P3-R47). When that context ends first, the turn is cancelled and has grace to
+// return; a turn that does not is an error, and since its goroutine may still call the engine and
+// the gate, nothing may run next to it. A turn the limit ended counts as timed out; wall is the
+// runner's own clock, from the start to the join.
+func joinTurn(ctx context.Context, timeout, grace time.Duration, turn func(context.Context) error) (turnResult, error) {
+	turnCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() { done <- turn(turnCtx) }()
+	var res turnResult
+	select {
+	case res.err = <-done:
+	case <-turnCtx.Done():
+		cancel()
+		select {
+		case res.err = <-done:
+		case <-time.After(grace):
+			res.wall = time.Since(start)
+			return res, fmt.Errorf("the turn did not return within %s of its cancellation", grace)
+		}
+	}
+	res.wall = time.Since(start)
+	res.timedOut = res.err != nil && errors.Is(turnCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil
+	return res, nil
 }
 
 // makeRunDir creates a temporary directory and returns its symlink-free path, the path a run then
@@ -445,18 +627,34 @@ func assistantOptions(
 	return o
 }
 
-// transcriptWriter opens <RunsDir>/<model slug>-<date>/<task>.log, or discards when RunsDir is "".
-func transcriptWriter(opts RunOptions, taskID string) (io.Writer, func()) {
+// transcriptWriter opens <RunsDir>/<model slug>-<date>/<task>.log, <task>.run<N>.log when a task
+// runs more than once, or discards when RunsDir is "". A transcript that cannot be opened is
+// reported once per run.
+func transcriptWriter(opts RunOptions, taskID string, run int) (io.Writer, func()) {
 	if opts.RunsDir == "" {
 		return io.Discard, func() {}
 	}
-	dir := filepath.Join(opts.RunsDir, modelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
-	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // evals/runs is a git-ignored working directory
-		return io.Discard, func() {}
+	name := taskID + ".log"
+	if opts.Runs > 1 {
+		name = fmt.Sprintf("%s.run%d.log", taskID, run)
 	}
-	f, err := os.Create(filepath.Join(dir, taskID+".log")) //nolint:gosec // the corpus task id, validated by LoadTask
+	dir := filepath.Join(opts.RunsDir, modelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
+	f, err := createTranscript(dir, name)
 	if err != nil {
+		warn := func() { _, _ = fmt.Fprintf(opts.Out, "warning: transcripts are not written: %v\n", err) }
+		if opts.scope == nil {
+			warn()
+		} else {
+			opts.scope.transcript.Do(warn)
+		}
 		return io.Discard, func() {}
 	}
 	return f, func() { _ = f.Close() }
+}
+
+func createTranscript(dir, name string) (*os.File, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // evals/runs is a git-ignored working directory
+		return nil, err
+	}
+	return os.Create(filepath.Join(dir, name)) //nolint:gosec // the corpus task id, validated by LoadTask
 }

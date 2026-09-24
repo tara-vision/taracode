@@ -51,29 +51,60 @@ func (a *Assistant) switchToFallbackProvider() (string, error) {
 
 // ProcessMessage sends userMessage through the assistant with no images attached.
 func (a *Assistant) ProcessMessage(userMessage string) error {
-	return a.ProcessMessageWithImages(userMessage, nil)
+	return a.ProcessMessageContext(gocontext.Background(), userMessage)
+}
+
+// ProcessMessageContext is ProcessMessage under the caller's context (ruling P3-R47). Cancelling ctx,
+// or reaching its deadline, stops the turn before its next model request and before its next tool
+// call, and cancels the model request and the tool in flight; the turn then returns ctx's error.
+func (a *Assistant) ProcessMessageContext(ctx gocontext.Context, userMessage string) error {
+	return a.processTurn(ctx, userMessage, nil)
 }
 
 // ProcessMessageWithImages runs one user turn: request, tool calls, tool results, repeat, until
 // the model answers without asking for a tool or the iteration budget runs out. Both streaming
 // settings take this path; only how the answer reaches the screen differs.
 func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*ImageData) error {
+	return a.processTurn(gocontext.Background(), userMessage, images)
+}
+
+// turnContext bounds a turn's model requests: the caller's context, with the apiResponseTimeout
+// default only when the caller set no deadline of its own.
+func turnContext(ctx gocontext.Context) (gocontext.Context, gocontext.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return gocontext.WithCancel(ctx)
+	}
+	return gocontext.WithTimeout(ctx, apiResponseTimeout)
+}
+
+// processTurn is one turn under callerCtx. The model requests run under turnContext(callerCtx); the
+// tool calls follow callerCtx itself, so the apiResponseTimeout default of an interactive turn never
+// cancels a tool mid-run (an apply cut off halfway is worse than a late answer), while a caller's
+// own cancellation or deadline reaches the tools too.
+func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string, images []*ImageData) error {
 	a.turn = TurnStats{}
 	turnStart := time.Now()
 	defer func() { a.turn.Wall = time.Since(turnStart) }()
-	defer a.checkServerContextOnce()
+	defer func() {
+		if callerCtx.Err() == nil { // a cancelled turn makes no further request to the server
+			a.checkServerContextOnce()
+		}
+	}()
 	// Auto-inject datetime for date/time questions so the LLM has the answer
 	userMessage = a.injectDatetimeIfNeeded(userMessage)
 
 	a.recordMessage(storage.ConversationMessage{Role: "user", Content: userMessage, Timestamp: time.Now()})
 	a.conversation = append(a.conversation, buildUserMessage(userMessage, images))
 
-	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), apiResponseTimeout)
+	ctx, cancel := turnContext(callerCtx)
 	defer cancel()
 
 	a.lastResponse = ""
 	nudged := false
 	for i := 0; i < a.maxIterations; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		a.compactIfNeeded(ctx)
 
 		res, err := a.complete(ctx)
@@ -98,7 +129,9 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 			a.lastResponse = display
 			return nil
 		}
-		a.runToolCalls(calls)
+		if err := a.runToolCalls(callerCtx, calls); err != nil {
+			return err
+		}
 	}
 
 	a.turn.Truncated = true
@@ -370,16 +403,37 @@ type toolRun struct {
 }
 
 // runToolCalls executes every call of one reply and appends one tool message per call. Every call
-// gets a result, including the ones a gate refused, so the model is never left waiting.
-func (a *Assistant) runToolCalls(calls []*ToolCall) {
+// gets a result, including the ones a gate refused, so the model is never left waiting. ctx is
+// checked before each call: once it is done the remaining calls are not run, each gets a tool
+// message saying so (the conversation stays well formed), and ctx's error is returned.
+func (a *Assistant) runToolCalls(ctx gocontext.Context, calls []*ToolCall) error {
 	for idx, call := range calls {
-		outcome := a.executeOne(toolRun{call: call, index: idx, total: len(calls)})
+		if err := ctx.Err(); err != nil {
+			a.skipToolCalls(calls[idx:], err)
+			return err
+		}
+		outcome := a.executeOne(ctx, toolRun{call: call, index: idx, total: len(calls)})
 		if !outcome.denied {
 			// A gate that refused already said so on its own; a status line here would claim the
 			// operation happened.
 			_, _ = fmt.Fprintln(a.out, a.renderer.FormatToolStatusWithDuration(
 				call.Tool, call.Params, outcome.result, outcome.isError, outcome.durationMs))
 		}
+		a.conversation = append(a.conversation, openai.ChatCompletionMessage{
+			Role:       openai.ChatMessageRoleTool,
+			Content:    outcome.result,
+			ToolCallID: call.ID,
+		})
+		a.recordToolResult(call, outcome)
+	}
+	return nil
+}
+
+// skipToolCalls answers each call a cancelled turn will not run, without running or gating it, so
+// every tool call in the conversation keeps its tool message.
+func (a *Assistant) skipToolCalls(calls []*ToolCall, cause error) {
+	for _, call := range calls {
+		outcome := toolOutcome{result: fmt.Sprintf("Not run: the turn was cancelled (%v)", cause), isError: true}
 		a.conversation = append(a.conversation, openai.ChatCompletionMessage{
 			Role:       openai.ChatMessageRoleTool,
 			Content:    outcome.result,
