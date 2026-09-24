@@ -5,8 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
@@ -246,6 +249,10 @@ func TestRecordTaskAbortsOnHostnameRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pinned explicitly (ruling P3-R41 item 4): if the sandbox this runs in already exports
+	// TARACODE_EVALS_PRIVATE_NAMES, relying on defaultPrivateNames would deny list something other
+	// than this real hostname, and the refusal this test expects would never trigger.
+	t.Setenv(privateNamesEnvVar, hostname)
 	t.Setenv("TARACODE_TEST_HOSTNAME_ECHO", hostname)
 	root := t.TempDir()
 	scenarios := filepath.Join(root, "scenarios")
@@ -317,6 +324,9 @@ func TestRecordTaskAbortsOnContextCancellationMidRun(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "ok             shell echo first") {
 		t.Fatalf("the call before the cancellation must still have run\n%s", log.String())
+	}
+	if !strings.Contains(log.String(), "cancelled") || !strings.Contains(log.String(), "shell echo second") {
+		t.Fatalf("the aborting call must be named in the log (ruling P3-R41 item 6)\n%s", log.String())
 	}
 	// recordCalls records into a fresh store and only swaps it into fixtures/ once every call
 	// succeeds (ruling P3-R36): an abort must never mix that call's fixture with the cancelled
@@ -456,5 +466,160 @@ func TestRecordTaskReRecordingReplacesStaleFixtures(t *testing.T) {
 	}
 	if _, _, ok := s2.Lookup("shell echo first"); ok {
 		t.Fatal("the first recording's fixture must not survive a re-record")
+	}
+}
+
+func TestNamesFromHostAddsTheLabelBeforeTheFirstDot(t *testing.T) {
+	if got := namesFromHost("mymac.local"); len(got) != 2 || got[0] != "mymac.local" || got[1] != "mymac" {
+		t.Fatalf("%v", got)
+	}
+	if got := namesFromHost("bare"); len(got) != 1 || got[0] != "bare" {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestParseResolvConfTrimsTrailingDots(t *testing.T) {
+	got := parseResolvConf("search example.com. corp.internal\ndomain example.net.\n")
+	if len(got) != 3 || got[0] != "example.com" || got[1] != "corp.internal" || got[2] != "example.net" {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestSwapFixturesRollsBackWhenTheSecondRenameFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses file permissions")
+	}
+	dir := t.TempDir()
+	finalDir := filepath.Join(dir, "fixtures")
+	if err := os.MkdirAll(finalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(finalDir, "old.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// newDir's own parent, not finalDir's, is locked: renaming finalDir aside touches only finalDir's
+	// parent and must still succeed, while renaming newDir in requires removing its entry from this
+	// now-read-only parent and fails, exercising exactly the rollback path.
+	newParent := filepath.Join(dir, "locked")
+	if err := os.MkdirAll(newParent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newDir := filepath.Join(newParent, "fixtures")
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newDir, "new.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(newParent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(newParent, 0o755) }) // so t.TempDir()'s own cleanup can remove it
+
+	if err := swapFixtures(finalDir, newDir); err == nil {
+		t.Fatal("expected the second rename to fail")
+	}
+	data, err := os.ReadFile(filepath.Join(finalDir, "old.txt"))
+	if err != nil || string(data) != "old" {
+		t.Fatalf("the previous fixtures must be restored: %v %q", err, data)
+	}
+	if _, err := os.Stat(finalDir + ".replaced"); err == nil {
+		t.Fatal("the aside copy must not remain after a successful rollback")
+	}
+}
+
+func TestRecordTaskToleratesABackgroundedSetupProcess(t *testing.T) {
+	t.Setenv(privateNamesEnvVar, "not-a-real-name")
+	root := t.TempDir()
+	scenarios := filepath.Join(root, "scenarios")
+	scenario := filepath.Join(scenarios, "kubernetes", "backgrounded")
+	if err := os.MkdirAll(scenario, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setup := "#!/bin/sh\nsleep 30 &\necho $! > \"$EVAL_SCENARIO/bg.pid\"\n"
+	if err := os.WriteFile(filepath.Join(scenario, "setup.sh"), []byte(setup), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scenario, "teardown.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	taskYAML := strings.NewReplacer("kubernetes/crashloop-oomkilled", "kubernetes/backgrounded",
+		"- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}",
+		"- {tool: shell, args: {command: \"true\"}}").Replace(goodTask)
+	dir := writeTask(t, filepath.Join(root, "tasks"), "crashloop-oomkilled", taskYAML)
+	task, err := LoadTask(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log strings.Builder
+	if err := RecordTask(context.Background(), task, scenarios, nil, &log); err != nil {
+		t.Fatalf("%v\n%s", err, log.String())
+	}
+	if !strings.Contains(log.String(), "background process running") {
+		t.Fatalf("expected a warning about the background process, not a failure\n%s", log.String())
+	}
+	pidBytes, err := os.ReadFile(filepath.Join(scenario, "bg.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if killErr := syscall.Kill(pid, 0); errors.Is(killErr, syscall.ESRCH) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("the backgrounded sleep (pid %d) is still running after RecordTask returned", pid)
+}
+
+func TestRecordTaskSavesADryRunWithNoDryRunAsAnErrorFixture(t *testing.T) {
+	t.Setenv(privateNamesEnvVar, "not-a-real-name")
+	root := t.TempDir()
+	scenarios := filepath.Join(root, "scenarios")
+	scenario := filepath.Join(scenarios, "kubernetes", "no-dry-run")
+	if err := os.MkdirAll(scenario, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scenario, "setup.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scenario, "teardown.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// kubectl has a DryRun function that itself refuses any verb but apply (so this goes through the
+	// middleware, which already saves it); shell has no DryRun at all (Registry.DryRun returns
+	// ErrNoDryRun before the middleware ever runs, so recordOneCall must save it directly). Both must
+	// end up as error fixtures, logged the same way.
+	taskYAML := strings.NewReplacer("kubernetes/crashloop-oomkilled", "kubernetes/no-dry-run",
+		"- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}",
+		"- {tool: kubectl, dry_run: true, args: {verb: get, resource: pods, namespace: shop}}\n"+
+			"    - {tool: shell, dry_run: true, args: {command: \"true\"}}").Replace(goodTask)
+	dir := writeTask(t, filepath.Join(root, "tasks"), "crashloop-oomkilled", taskYAML)
+	task, err := LoadTask(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log strings.Builder
+	if err := RecordTask(context.Background(), task, scenarios, nil, &log); err != nil {
+		t.Fatalf("%v\n%s", err, log.String())
+	}
+	s, _ := LoadFixtures(dir)
+	kubectlArgs := map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}
+	if out, isErr, ok := s.Lookup(DryRunSignature("kubectl", kubectlArgs)); !ok || !isErr || out != "this tool has no dry run" {
+		t.Fatalf("kubectl (has DryRun, refuses this verb) fixture %q %v %v\n%s", out, isErr, ok, log.String())
+	}
+	shellArgs := map[string]any{"command": "true"}
+	if out, isErr, ok := s.Lookup(DryRunSignature("shell", shellArgs)); !ok || !isErr || out != "this tool has no dry run" {
+		t.Fatalf("shell (no DryRun at all) fixture %q %v %v\n%s", out, isErr, ok, log.String())
+	}
+	if strings.Count(log.String(), "error recorded") < 2 {
+		t.Fatalf("expected both no-dry-run calls logged as \"error recorded\"\n%s", log.String())
+	}
+	if strings.Contains(log.String(), "skipped") {
+		t.Fatalf("no call should be logged as skipped\n%s", log.String())
 	}
 }
