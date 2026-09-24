@@ -3,6 +3,7 @@ package evals
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // Lint loads every task under root and checks what LoadTask cannot see alone: unique ids, the
@@ -31,6 +32,7 @@ func Lint(root string) (int, []string) {
 			problems = append(problems, t.ID+": duplicate id")
 		}
 		seen[t.ID] = true
+		problems = append(problems, lintFixtures(t)...)
 		if t.Policy != "" {
 			if _, err := os.Stat(filepath.Join(dir, t.Policy)); err != nil {
 				problems = append(problems, t.ID+": policy file "+t.Policy+" missing")
@@ -43,4 +45,46 @@ func Lint(root string) (int, []string) {
 		}
 	}
 	return count, problems
+}
+
+// rawSecret patterns must never appear in a fixture: the recorder stores redacted text.
+var rawSecret = regexp.MustCompile(`AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----\n[A-Za-z0-9+/=]{20,}|` +
+	`ghp_[A-Za-z0-9]{36}|xox[abp]-[0-9A-Za-z-]{10,}`)
+
+// lintFixtures checks a task's fixtures: recorded and authored tasks need a non-empty index whose
+// files all exist, with no orphan file and no raw secret; a files task has none.
+func lintFixtures(t Task) []string {
+	store, err := LoadFixtures(t.Dir)
+	if err != nil {
+		return []string{t.ID + ": fixtures: " + err.Error()}
+	}
+	if t.Provenance == ProvenanceFiles {
+		if store.Len() > 0 {
+			return []string{t.ID + ": a files task has fixtures; set provenance"}
+		}
+		return nil
+	}
+	if store.Len() == 0 {
+		return []string{t.ID + ": fixtures index is empty (run make record, or author them)"}
+	}
+	var problems []string
+	referenced := map[string]bool{"index.yaml": true}
+	for _, f := range store.Fixtures() {
+		referenced[f.File] = true
+		data, err := os.ReadFile(filepath.Join(store.Dir(), f.File))
+		if err != nil {
+			problems = append(problems, t.ID+": fixture file "+f.File+" missing")
+			continue
+		}
+		if rawSecret.Match(data) {
+			problems = append(problems, t.ID+": fixture "+f.File+" carries a raw secret pattern")
+		}
+	}
+	files, _ := os.ReadDir(store.Dir())
+	for _, f := range files {
+		if !referenced[f.Name()] {
+			problems = append(problems, t.ID+": fixture file "+f.Name()+" is not in the index")
+		}
+	}
+	return problems
 }
