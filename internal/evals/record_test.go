@@ -3,8 +3,11 @@ package evals
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -621,5 +624,251 @@ func TestRecordTaskSavesADryRunWithNoDryRunAsAnErrorFixture(t *testing.T) {
 	}
 	if strings.Contains(log.String(), "skipped") {
 		t.Fatalf("no call should be logged as skipped\n%s", log.String())
+	}
+}
+
+// newRecordingTask writes a scenario whose setup.sh does nothing and whose teardown.sh leaves a
+// teardown-ran marker in the scenario directory, plus a task recording calls against it (YAML list
+// items, each one after the first indented four spaces), and returns the loaded task, the scenarios
+// root and the scenario directory.
+func newRecordingTask(t *testing.T, scenarioName, calls string) (task Task, scenarios, scenario string) {
+	t.Helper()
+	root := t.TempDir()
+	scenarios = filepath.Join(root, "scenarios")
+	scenario = filepath.Join(scenarios, "kubernetes", scenarioName)
+	if err := os.MkdirAll(scenario, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scripts := map[string]string{
+		"setup.sh":    "#!/bin/sh\nexit 0\n",
+		"teardown.sh": "#!/bin/sh\nprintf 'ran' > \"$EVAL_SCENARIO/teardown-ran\"\n",
+	}
+	for name, body := range scripts {
+		if err := os.WriteFile(filepath.Join(scenario, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	taskYAML := strings.NewReplacer("kubernetes/crashloop-oomkilled", "kubernetes/"+scenarioName,
+		"- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}", calls).Replace(goodTask)
+	task, err := LoadTask(writeTask(t, filepath.Join(root, "tasks"), "crashloop-oomkilled", taskYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task, scenarios, scenario
+}
+
+// TestRecordTaskRefusesAPrivateNameInTheSignatureOfADirectSave is fix round 4's regression test: a
+// dry run of a tool with no DryRun (shell) never reaches the middleware, so recordOneCall saves its
+// result itself, and that save once skipped the private-name check on the call's signature, writing
+// "dryrun:shell warehouse-42-probe" into the fixtures. It must refuse exactly as the middleware does
+// for an ordinary call (the control row): an ErrFixtureHostname, no fixtures/index.yaml and no
+// temporary store left behind, the refused call named in the log, and the teardown still run.
+func TestRecordTaskRefusesAPrivateNameInTheSignatureOfADirectSave(t *testing.T) {
+	cases := []struct{ name, call, sig string }{
+		{"dry run of a tool with no DryRun", `- {tool: shell, dry_run: true, args: {command: "warehouse-42-probe"}}`,
+			"dryrun:shell warehouse-42-probe"},
+		{"ordinary call", `- {tool: shell, args: {command: "echo warehouse-42-probe"}}`,
+			"shell echo warehouse-42-probe"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(privateNamesEnvVar, "warehouse-42-probe")
+			task, scenarios, scenario := newRecordingTask(t, "probe", tc.call)
+			var log strings.Builder
+			err := RecordTask(context.Background(), task, scenarios, nil, &log)
+			if !errors.Is(err, ErrFixtureHostname) {
+				t.Fatalf("expected an ErrFixtureHostname, got %v\n%s", err, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(task.Dir, "fixtures", "index.yaml")); !os.IsNotExist(statErr) {
+				t.Fatalf("a refused recording must leave no fixtures/index.yaml behind: %v\n%s", statErr, log.String())
+			}
+			if leftovers, _ := filepath.Glob(filepath.Join(task.Dir, "fixtures-recording-*")); len(leftovers) != 0 {
+				t.Fatalf("a refused recording must not leave its temporary store behind: %v", leftovers)
+			}
+			if !regexp.MustCompile(`refused\s+` + regexp.QuoteMeta(tc.sig) + `\n`).MatchString(log.String()) {
+				t.Fatalf("the log must name the refused call %q\n%s", tc.sig, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+				t.Fatalf("teardown did not run\n%s", log.String())
+			}
+		})
+	}
+}
+
+// TestRecorderGuardAndSaveGuardsADirectSaveLikeTheMiddleware pins the guards the RecordTask tests
+// cannot reach on the direct path (fix round 4), calling guardAndSave the way recordOneCall does for a
+// dry run of a tool with no DryRun: a call whose context is already done saves nothing, a private
+// name in the text is refused and latched, and the refusal stays sticky for a later, clean save.
+func TestRecorderGuardAndSaveGuardsADirectSaveLikeTheMiddleware(t *testing.T) {
+	s, _ := LoadFixtures(t.TempDir())
+	rec := NewRecorder(s, nil, []string{"kiosk-7"})
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := rec.guardAndSave(done, "dryrun:shell true", "this tool has no dry run", true); err != nil || s.Len() != 0 {
+		t.Fatalf("a call whose context is done must save nothing: err=%v len=%d", err, s.Len())
+	}
+	err := rec.guardAndSave(context.Background(), "dryrun:shell true", "reached kiosk-7", true)
+	if !errors.Is(err, ErrFixtureHostname) || !errors.Is(rec.Refused(), ErrFixtureHostname) || s.Len() != 0 {
+		t.Fatalf("a private name in the text must be refused and latched: err=%v refused=%v len=%d",
+			err, rec.Refused(), s.Len())
+	}
+	err = rec.guardAndSave(context.Background(), "dryrun:shell echo clean", "clean", true)
+	if !errors.Is(err, ErrFixtureHostname) || s.Len() != 0 {
+		t.Fatalf("the refusal must stay sticky for a later, clean save: err=%v len=%d", err, s.Len())
+	}
+}
+
+// TestRecordTaskKeepsTheRecordingWhenTheFinalSwapFails drives a whole recording (fix round 4) with
+// the swap's second rename forced to fail: the second call's resolver makes the temporary store's
+// parent read-only once the first call has created the store's fixtures directory in it, so every
+// save still works and moving the previous fixtures aside does too, but the recorded set cannot leave
+// its locked parent. RecordTask must fail with that rename's error, the previous fixtures must be back
+// in place, and the temporary store must survive with the whole recording in it.
+func TestRecordTaskKeepsTheRecordingWhenTheFinalSwapFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses file permissions")
+	}
+	t.Setenv(privateNamesEnvVar, "not-a-real-name")
+	task, scenarios, scenario := newRecordingTask(t, "swap-fails",
+		"- {tool: shell, args: {command: \"echo first\"}}\n    - {tool: shell, args: {command: \"echo {{node}}\"}}")
+	previous, err := LoadFixtures(task.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := previous.Save("shell echo previous", "previous", false); err != nil {
+		t.Fatal(err)
+	}
+	var tempParent string
+	resolve := func(context.Context, string, string) (string, error) {
+		matches, err := filepath.Glob(filepath.Join(task.Dir, "fixtures-recording-*"))
+		if err != nil || len(matches) != 1 {
+			return "", fmt.Errorf("expected one temporary store, got %v (%v)", matches, err)
+		}
+		tempParent = matches[0]
+		if err := os.Chmod(tempParent, 0o500); err != nil {
+			return "", err
+		}
+		t.Cleanup(func() { _ = os.Chmod(tempParent, 0o755) }) // so t.TempDir()'s own cleanup can remove it
+		return "second", nil
+	}
+	var log strings.Builder
+	err = RecordTask(context.Background(), task, scenarios, resolve, &log)
+	if !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "move the recorded fixtures into place") {
+		t.Fatalf("expected the second rename's permission error, got %v\n%s", err, log.String())
+	}
+	restored, err := LoadFixtures(task.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _, ok := restored.Lookup("shell echo previous"); !ok || out != "previous" || restored.Len() != 1 {
+		t.Fatalf("the previous fixtures must be back in place: %q %v len=%d", out, ok, restored.Len())
+	}
+	if _, statErr := os.Stat(filepath.Join(task.Dir, "fixtures.replaced")); !os.IsNotExist(statErr) {
+		t.Fatalf("the aside copy must not remain after the rollback: %v", statErr)
+	}
+	kept, err := LoadFixtures(tempParent)
+	if err != nil || kept.Len() != 2 {
+		t.Fatalf("the temporary store must survive a failed swap with the whole recording: %v len=%d",
+			err, kept.Len())
+	}
+	for _, sig := range []string{"shell echo first", "shell echo second"} {
+		if _, _, ok := kept.Lookup(sig); !ok {
+			t.Fatalf("the kept recording is missing %q\n%s", sig, log.String())
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+		t.Fatalf("teardown did not run\n%s", log.String())
+	}
+}
+
+// TestRecordTaskNamesTheCallWhoseSaveFails covers recordOneCall's "save failed" branch (fix round 4),
+// for a result the middleware saves and for one recordOneCall saves directly: the second call's
+// resolver makes the temporary store's fixtures directory read-only once the first call has saved
+// into it, so the second call's own save fails. The log must name that call's signature, and
+// RecordTask must return an error wrapping the save failure.
+func TestRecordTaskNamesTheCallWhoseSaveFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses file permissions")
+	}
+	cases := []struct{ name, call, sig string }{
+		{"saved by the middleware", `- {tool: shell, args: {command: "echo {{node}}"}}`, "shell echo second"},
+		{"saved directly", `- {tool: shell, dry_run: true, args: {command: "echo {{node}}"}}`,
+			"dryrun:shell echo second"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(privateNamesEnvVar, "not-a-real-name")
+			task, scenarios, scenario := newRecordingTask(t, "save-fails",
+				"- {tool: shell, args: {command: \"echo first\"}}\n    "+tc.call)
+			var storeDir string
+			resolve := func(context.Context, string, string) (string, error) {
+				matches, err := filepath.Glob(filepath.Join(task.Dir, "fixtures-recording-*", "fixtures"))
+				if err != nil || len(matches) != 1 {
+					return "", fmt.Errorf("expected one temporary fixtures directory, got %v (%v)", matches, err)
+				}
+				storeDir = matches[0]
+				if err := os.Chmod(storeDir, 0o500); err != nil {
+					return "", err
+				}
+				t.Cleanup(func() { _ = os.Chmod(storeDir, 0o755) }) // so t.TempDir()'s own cleanup can remove it
+				return "second", nil
+			}
+			var log strings.Builder
+			err := RecordTask(context.Background(), task, scenarios, resolve, &log)
+			var pathErr *fs.PathError
+			if !errors.Is(err, fs.ErrPermission) || !errors.As(err, &pathErr) || filepath.Dir(pathErr.Path) != storeDir {
+				t.Fatalf("expected an error wrapping the save failure in %s, got %v\n%s", storeDir, err, log.String())
+			}
+			if !regexp.MustCompile(`save failed\s+` + regexp.QuoteMeta(tc.sig) + `\n`).MatchString(log.String()) {
+				t.Fatalf("the log must name the call whose save failed, %q\n%s", tc.sig, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(task.Dir, "fixtures")); !os.IsNotExist(statErr) {
+				t.Fatalf("an aborted recording must not create the real fixtures: %v", statErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+				t.Fatalf("teardown did not run\n%s", log.String())
+			}
+		})
+	}
+}
+
+// TestRecordTaskAbortsANoDryRunCallWhoseContextEnded pins what recordOneCall's fall-through gives a
+// dry run answered with ErrNoDryRun (fix round 4): its branch no longer returns early, so a context
+// that ends during the call aborts the run as cancelled. That holds whether the middleware skipped the
+// save (kubectl, whose own DryRun refuses a get) or guardAndSave skipped the direct save (shell, with
+// no DryRun at all). The call is no longer logged as recorded, and the final swap never runs.
+func TestRecordTaskAbortsANoDryRunCallWhoseContextEnded(t *testing.T) {
+	cases := []struct{ name, call, sig string }{
+		{"save skipped by the middleware",
+			`- {tool: kubectl, dry_run: true, args: {verb: get, resource: pods, namespace: "{{node}}"}}`,
+			DryRunSignature("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "second"})},
+		{"direct save skipped", `- {tool: shell, dry_run: true, args: {command: "echo {{node}}"}}`,
+			"dryrun:shell echo second"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(privateNamesEnvVar, "not-a-real-name")
+			task, scenarios, scenario := newRecordingTask(t, "cut-short", tc.call)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			resolve := func(context.Context, string, string) (string, error) {
+				cancel() // the caller gives up while this call is under way
+				return "second", nil
+			}
+			var log strings.Builder
+			err := RecordTask(ctx, task, scenarios, resolve, &log)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("expected a context.Canceled error, got %v\n%s", err, log.String())
+			}
+			if !regexp.MustCompile(`cancelled\s+` + regexp.QuoteMeta(tc.sig) + `\n`).MatchString(log.String()) {
+				t.Fatalf("the log must name the cancelled call %q\n%s", tc.sig, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(task.Dir, "fixtures")); !os.IsNotExist(statErr) {
+				t.Fatalf("a cancelled recording must not create the real fixtures: %v", statErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+				t.Fatalf("teardown did not run\n%s", log.String())
+			}
+		})
 	}
 }

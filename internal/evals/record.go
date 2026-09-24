@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -66,15 +67,13 @@ func NewRecorder(store *Store, red *redact.Redactor, names []string) *Recorder {
 	return &Recorder{store: store, red: red, patterns: patterns}
 }
 
-// Middleware runs the tool for real and saves what came back under the call's signature: the
-// output, or the error text with Error set, redacted before it touches the disk. A private-name
-// refusal or a save error is still returned to the registry unchanged, so the model-facing text and
-// the "nothing saved" behavior are as before, but the registry rebuilds every error as a fresh,
-// unwrappable string on its way out, so both are also latched on the recorder itself (see Refused and
-// SaveErr) for a caller to check directly. The refusal is sticky (ruling P3-R35): once one happens,
-// every later call refuses immediately, without running or saving anything. Nothing is saved once the
-// call's context is already done (ruling P3-R36): a fixture from a call the caller gave up on must
-// not reach disk.
+// Middleware runs the tool for real and hands what came back, the output or the error text with
+// Error set, to guardAndSave under the call's signature. A private-name refusal or a save error is
+// still returned to the registry unchanged, so the model-facing text and the "nothing saved"
+// behavior are as before, but the registry rebuilds every error as a fresh, unwrappable string on its
+// way out, so both are also latched on the recorder itself (see Refused and SaveErr) for a caller to
+// check directly. The refusal is sticky (ruling P3-R35): once one happens, every later call refuses
+// immediately, without running or saving anything.
 func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Executor {
 	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 		if refused := rec.Refused(); refused != nil {
@@ -89,23 +88,8 @@ func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Exec
 		if err != nil {
 			text, isErr = err.Error(), true
 		}
-		if rec.red != nil {
-			text = rec.red.Redact(text)
-		}
-		if rec.matchesPrivateName(text) || rec.matchesPrivateName(sig) {
-			refusal := fmt.Errorf("%w: %s", ErrFixtureHostname, sig)
-			rec.mu.Lock()
-			if rec.refused == nil {
-				rec.refused = refusal
-			}
-			rec.mu.Unlock()
-			return "", refusal
-		}
-		if ctx.Err() != nil {
-			return out, err
-		}
-		if saveErr := rec.saveDirect(sig, text, isErr); saveErr != nil {
-			return "", saveErr
+		if guardErr := rec.guardAndSave(ctx, sig, text, isErr); guardErr != nil {
+			return "", guardErr
 		}
 		return out, err
 	}
@@ -121,23 +105,41 @@ func (rec *Recorder) matchesPrivateName(s string) bool {
 	return false
 }
 
-// saveDirect saves sig/text/isErr under the recorder's mutex, appending to Saved() on success and
-// latching the first failure into SaveErr on failure. Middleware uses it for every ordinary save;
-// recordOneCall also calls it directly for a tools.ErrNoDryRun result that never reaches Middleware
-// at all (ruling P3-R41 item 7), sharing the same bookkeeping either way. Saving the same signature
-// twice (Middleware already saved it, and a caller saves it again) updates the store idempotently and
-// does not add a second entry to Saved().
-func (rec *Recorder) saveDirect(sig, text string, isErr bool) error {
+// guardAndSave is the one guard-and-save sequence every recorded result goes through, whether
+// Middleware hands it over or recordOneCall saves it directly (a dry run of a tool with no DryRun,
+// which the registry answers before the middleware ever runs, ruling P3-R41 item 7). The two paths
+// once had separate guards, and the direct one skipped the private-name check on the signature (fix
+// round 4); sharing this method keeps them from drifting apart again. In order: text is redacted
+// before anything else sees it; then, under the recorder's mutex, a refusal already latched is
+// returned again without saving (sticky, ruling P3-R35); a private name in the redacted text or in sig
+// latches a refusal and returns it; a call whose context is already done saves nothing and returns
+// nil (ruling P3-R36: a fixture from a call the caller gave up on must not reach disk); otherwise the
+// text is saved, the first save failure is latched for SaveErr (P3-R36), and sig joins Saved() the
+// first time it is saved, so saving one signature twice never lists it twice. Every error this returns
+// leaves Refused or SaveErr non-nil too, for a caller whose error does not survive the registry.
+func (rec *Recorder) guardAndSave(ctx context.Context, sig, text string, isErr bool) error {
+	if rec.red != nil {
+		text = rec.red.Redact(text)
+	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	_, _, alreadyKnown := rec.store.Lookup(sig)
+	if rec.refused != nil {
+		return rec.refused
+	}
+	if rec.matchesPrivateName(text) || rec.matchesPrivateName(sig) {
+		rec.refused = fmt.Errorf("%w: %s", ErrFixtureHostname, sig)
+		return rec.refused
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
 	if err := rec.store.Save(sig, text, isErr); err != nil {
 		if rec.saveErr == nil {
 			rec.saveErr = err
 		}
 		return err
 	}
-	if !alreadyKnown {
+	if !slices.Contains(rec.saved, sig) {
 		rec.saved = append(rec.saved, sig)
 	}
 	return nil
@@ -150,19 +152,21 @@ func (rec *Recorder) Saved() []string {
 	return append([]string(nil), rec.saved...)
 }
 
-// Refused is the first private-name refusal the middleware hit, or nil if none did. A caller driving
-// calls through a registry (tools.Registry.Execute and DryRun redact and rebuild every error as a
-// fresh string on the way out, so a wrapped sentinel like ErrFixtureHostname does not survive them)
-// checks this after each call instead of the error the registry returns.
+// Refused is the first private-name refusal guardAndSave hit, through the middleware or a direct
+// save, or nil if none did. A caller driving calls through a registry (tools.Registry.Execute and
+// DryRun redact and rebuild every error as a fresh string on the way out, so a wrapped sentinel like
+// ErrFixtureHostname does not survive them) checks this after each call instead of the error the
+// registry returns.
 func (rec *Recorder) Refused() error {
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	return rec.refused
 }
 
-// SaveErr is the first error saving a fixture the middleware hit, or nil if none did. Checked the
-// same way, and for the same reason, as Refused (ruling P3-R36): a failure writing a fixture must
-// abort the recording, not be logged as an ordinary recorded tool error.
+// SaveErr is the first error saving a fixture guardAndSave hit, through the middleware or a direct
+// save, or nil if none did. Checked the same way, and for the same reason, as Refused (ruling
+// P3-R36): a failure writing a fixture must abort the recording, not be logged as an ordinary
+// recorded tool error.
 func (rec *Recorder) SaveErr() error {
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
@@ -521,7 +525,9 @@ func recordCalls(
 // error, or the call's context ending mid-run. All are checked after every call (ruling P3-R36),
 // since the registry does not hand back a sentinel errors.Is can see for any of them; each aborting
 // path logs the call's signature before returning (ruling P3-R41 item 6), so the log names exactly
-// which call ended the run.
+// which call ended the run. A result saved here directly goes through the same guardAndSave as the
+// middleware's and then through these same checks, so its refusal, save failure or cancellation
+// aborts the run exactly as the middleware's would (fix round 4).
 func recordOneCall(
 	ctx context.Context, reg *tools.Registry, rec *Recorder, t Task, i int, call RecordCall,
 	resolve Resolver, runDir string, out io.Writer,
@@ -540,25 +546,21 @@ func recordOneCall(
 	} else {
 		text, err = reg.Execute(ctx, call.Tool, args, runDir)
 	}
-	if refused := rec.Refused(); refused != nil {
-		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "refused", sig)
-		return fmt.Errorf("%s: %w", t.ID, refused)
-	}
 	// A dry run's own tool can decide it has none for this call (kubectl/helm/terraform, for a verb
 	// other than apply/upgrade/install): that runs through the middleware like any other dry run and
 	// is already saved by it. A tool with no DryRun at all never reaches the middleware (Registry.DryRun
-	// returns ErrNoDryRun before the wrap), so nothing was saved automatically. Either way this is
-	// exactly what the live model sees as the call's result, so a fixture must exist for it (ruling
-	// P3-R41 item 7), logged as recorded, never skipped, so the count and the log agree.
+	// returns ErrNoDryRun before the wrap), so it is saved here instead. Either way this is exactly what
+	// the live model sees as the call's result, so a fixture must exist for it (ruling P3-R41 item 7),
+	// logged as recorded below, never skipped, so the count and the log agree. guardAndSave's error is
+	// dropped on purpose: every one it returns is latched on rec, and the checks below report it.
 	if call.DryRun && errors.Is(err, tools.ErrNoDryRun) {
 		if tool, ok := reg.Get(call.Tool); ok && tool.DryRun == nil {
-			if saveErr := rec.saveDirect(sig, err.Error(), true); saveErr != nil {
-				_, _ = fmt.Fprintf(out, "   %-14s %s\n", "save failed", sig)
-				return fmt.Errorf("%s: %w", t.ID, saveErr)
-			}
+			_ = rec.guardAndSave(ctx, sig, err.Error(), true)
 		}
-		_, _ = fmt.Fprintf(out, "   %-14s %s (%d bytes)\n", "error recorded", sig, len(err.Error()))
-		return nil
+	}
+	if refused := rec.Refused(); refused != nil {
+		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "refused", sig)
+		return fmt.Errorf("%s: %w", t.ID, refused)
 	}
 	if saveErr := rec.SaveErr(); saveErr != nil {
 		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "save failed", sig)
