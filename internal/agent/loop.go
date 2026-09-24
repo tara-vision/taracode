@@ -58,6 +58,9 @@ func (a *Assistant) ProcessMessage(userMessage string) error {
 // the model answers without asking for a tool or the iteration budget runs out. Both streaming
 // settings take this path; only how the answer reaches the screen differs.
 func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*ImageData) error {
+	a.turn = TurnStats{}
+	turnStart := time.Now()
+	defer func() { a.turn.Wall = time.Since(turnStart) }()
 	defer a.checkServerContextOnce()
 	// Auto-inject datetime for date/time questions so the LLM has the answer
 	userMessage = a.injectDatetimeIfNeeded(userMessage)
@@ -98,7 +101,8 @@ func (a *Assistant) ProcessMessageWithImages(userMessage string, images []*Image
 		a.runToolCalls(calls)
 	}
 
-	fmt.Printf("\n%s Stopped after %d tool iterations (context.max_tool_iterations)\n",
+	a.turn.Truncated = true
+	_, _ = fmt.Fprintf(a.out, "\n%s Stopped after %d tool iterations (context.max_tool_iterations)\n",
 		ui.IconWarning, a.maxIterations)
 	return nil
 }
@@ -213,6 +217,9 @@ func (a *Assistant) complete(ctx gocontext.Context) (*llm.Result, error) {
 	a.sessionUsage.PromptTokens += res.Usage.PromptTokens
 	a.sessionUsage.CompletionTokens += res.Usage.CompletionTokens
 	a.sessionUsage.TotalTokens += res.Usage.PromptTokens + res.Usage.CompletionTokens
+	a.turn.Completions++
+	a.turn.PromptTokens += res.Usage.PromptTokens
+	a.turn.CompletionTokens += res.Usage.CompletionTokens
 	return res, nil
 }
 
@@ -223,10 +230,10 @@ func (a *Assistant) retryOnFallbackHost(
 ) (*llm.Result, error) {
 	hostName, err := a.switchToFallbackProvider()
 	if err != nil {
-		fmt.Printf("\n%s Primary host unavailable, no fallback available: %v\n", ui.IconWarning, err)
+		_, _ = fmt.Fprintf(a.out, "\n%s Primary host unavailable, no fallback available: %v\n", ui.IconWarning, err)
 		return nil, cause
 	}
-	fmt.Printf("\n%s Primary host unavailable, switched to: %s\n", ui.IconWarning, hostName)
+	_, _ = fmt.Fprintf(a.out, "\n%s Primary host unavailable, switched to: %s\n", ui.IconWarning, hostName)
 	return a.chat(ctx, req)
 }
 
@@ -256,7 +263,7 @@ func (a *Assistant) chat(ctx gocontext.Context, req llm.Request) (*llm.Result, e
 			// Reasoning is printed as it arrives, so the status line has to go first or the two
 			// overwrite each other on the same line.
 			stopSpinner()
-			fmt.Print(a.renderer.Dim(event.Text))
+			_, _ = fmt.Fprint(a.out, a.renderer.Dim(event.Text))
 			reasoned = true
 		case llm.EventText:
 			// Buffer the answer while the spinner runs (Claude Code style, as in v2); the filter
@@ -274,7 +281,7 @@ func (a *Assistant) chat(ctx gocontext.Context, req llm.Request) (*llm.Result, e
 	answer.WriteString(filter.Flush())
 	stopSpinner()
 	if reasoned {
-		fmt.Println()
+		_, _ = fmt.Fprintln(a.out)
 	}
 	if res == nil {
 		return nil, err
@@ -338,15 +345,18 @@ func (a *Assistant) printAnswer(display string) {
 	if display == "" {
 		return
 	}
-	fmt.Println(ui.RenderMarkdown(display))
+	_, _ = fmt.Fprintln(a.out, ui.RenderMarkdown(display))
 }
 
 // toolOutcome is what one tool call produced, including the gates it had to pass.
 type toolOutcome struct {
 	result     string
-	isError    bool  // the tool failed, or a gate could not complete (a failed dry run or backup)
-	denied     bool  // a gate (policy, dry run, permission, edit preview) refused the call
-	durationMs int64 // time spent in the tool itself, 0 when it never ran
+	isError    bool   // the tool failed, or a gate could not complete (a failed dry run or backup)
+	denied     bool   // a gate (policy, dry run, permission, edit preview) refused the call
+	durationMs int64  // time spent in the tool itself, 0 when it never ran
+	rule       string // which gate decided (ToolEvent.Rule)
+	reason     string // why (ToolEvent.Reason)
+	err        error  // the tool's error when it ran and failed
 }
 
 // success reports whether the tool actually ran and returned a result.
@@ -367,7 +377,7 @@ func (a *Assistant) runToolCalls(calls []*ToolCall) {
 		if !outcome.denied {
 			// A gate that refused already said so on its own; a status line here would claim the
 			// operation happened.
-			fmt.Println(a.renderer.FormatToolStatusWithDuration(
+			_, _ = fmt.Fprintln(a.out, a.renderer.FormatToolStatusWithDuration(
 				call.Tool, call.Params, outcome.result, outcome.isError, outcome.durationMs))
 		}
 		a.conversation = append(a.conversation, openai.ChatCompletionMessage{
@@ -417,7 +427,7 @@ func (a *Assistant) recordMessage(msg storage.ConversationMessage) {
 		return
 	}
 	if err := a.storage.AddMessage(a.session.ID, msg); err != nil {
-		fmt.Printf("  %s Could not save the %s message to the session: %v\n", ui.IconWarning, msg.Role, err)
+		_, _ = fmt.Fprintf(a.out, "  %s Could not save the %s message to the session: %v\n", ui.IconWarning, msg.Role, err)
 	}
 }
 
@@ -439,7 +449,7 @@ func (a *Assistant) compactIfNeeded(ctx gocontext.Context) {
 	a.conversation = compacted
 	a.compactionState.Events = append(a.compactionState.Events, *event)
 	a.compactionState.TotalCompacted += event.MessagesBefore - event.MessagesAfter
-	fmt.Printf("  %s Context compacted: %dk -> %dk tokens (%d messages summarized)\n",
+	_, _ = fmt.Fprintf(a.out, "  %s Context compacted: %dk -> %dk tokens (%d messages summarized)\n",
 		ui.IconInfo,
 		event.TokensBefore/1000,
 		event.TokensAfter/1000,

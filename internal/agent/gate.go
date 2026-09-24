@@ -12,42 +12,54 @@ import (
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// executeOne runs the gate and then the tool. Every outcome, including a refusal, comes back as
-// text so the model learns what happened. Order: classify (a classifier that panics is a refusal),
-// exposure (a tool the model was not offered does not run), policy (mode, protected targets, deny
-// patterns), audit, dry run, permission, edit preview, execute.
+// executeOne runs the gates and then the tool, and reports the decision to the observer. Every
+// outcome, including a refusal, comes back as text so the model learns what happened.
 func (a *Assistant) executeOne(run toolRun) toolOutcome {
+	inv, outcome := a.gateAndRun(run)
+	a.observe(run.call, inv, outcome)
+	return outcome
+}
+
+// gateAndRun is the order of the gates: classify (a classifier that panics is a refusal), exposure
+// (a tool the model was not offered does not run), policy (mode, protected targets, deny patterns),
+// audit, dry run, permission, edit preview, execute.
+func (a *Assistant) gateAndRun(run toolRun) (policy.Invocation, toolOutcome) {
 	call := run.call
 	inv, panicked, err := a.classify(call)
 	if err != nil {
-		return toolOutcome{result: "Error: " + err.Error(), isError: true}
+		return inv, toolOutcome{result: "Error: " + err.Error(), isError: true, rule: "classifier", reason: err.Error()}
 	}
 	if panicked {
 		a.audit(inv, "deny", "classifier", inv.Reason, false)
-		fmt.Println(a.renderer.WarningMessage("Blocked: " + inv.Reason))
-		return toolOutcome{result: "Blocked: " + inv.Reason, denied: true}
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage("Blocked: "+inv.Reason))
+		return inv, toolOutcome{result: "Blocked: " + inv.Reason, denied: true, rule: "classifier", reason: inv.Reason}
 	}
 	if !a.toolRegistry.Exposed(call.Tool, a.mode) {
 		if !a.toolRegistry.Exposed(call.Tool, policy.ModeOperate) {
-			return a.refuseUnavailable(call.Tool)
+			return inv, a.refuseUnavailable(call.Tool)
 		}
 		inv = operateOnly(inv)
 	}
 	if inv.Classification == policy.Mutate {
 		if outcome, ok := a.gateMutation(inv, call); !ok {
-			return outcome
+			return inv, outcome
 		}
 	}
 	if call.Tool == "edit_file" && inv.Classification == policy.Mutate {
 		proceed, message, err := a.handleEditPreview(call.Params)
 		if err != nil {
-			return toolOutcome{result: message, isError: true, denied: true}
+			return inv, toolOutcome{result: message, isError: true, denied: true, rule: "preview", reason: message}
 		}
 		if !proceed {
-			return toolOutcome{result: message, denied: true}
+			return inv, toolOutcome{result: message, denied: true, rule: "preview", reason: message}
 		}
 	}
-	return a.runTool(run)
+	outcome := a.runTool(run)
+	outcome.rule, outcome.reason = "read", inv.Reason
+	if inv.Classification == policy.Mutate {
+		outcome.rule = "policy"
+	}
+	return inv, outcome
 }
 
 // classify runs the tool's classifier. A classifier that panics must never take the session down:
@@ -95,8 +107,8 @@ func truncateSummary(s string) string {
 func (a *Assistant) refuseUnavailable(tool string) toolOutcome {
 	message := fmt.Sprintf("Tool '%s' is not available in this session: offline is set, "+
 		"so the tools that reach the internet are hidden", tool)
-	fmt.Println(a.renderer.WarningMessage(message))
-	return toolOutcome{result: message, denied: true}
+	_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(message))
+	return toolOutcome{result: message, denied: true, rule: "unavailable", reason: message}
 }
 
 // operateOnly marks a call to a tool investigate mode does not offer as a mutation whatever its
@@ -115,32 +127,37 @@ func (a *Assistant) gateMutation(inv policy.Invocation, call *ToolCall) (toolOut
 	verdict := a.pol.Evaluate(a.mode, inv)
 	if !verdict.Allow {
 		a.audit(inv, "deny", verdict.Rule, verdict.Reason, false)
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("Blocked by policy (%s): %s", verdict.Rule, verdict.Reason)))
-		return toolOutcome{result: "Blocked by policy: " + verdict.Reason, denied: true}, false
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(
+			fmt.Sprintf("Blocked by policy (%s): %s", verdict.Rule, verdict.Reason)))
+		message := "Blocked by policy: " + verdict.Reason
+		return toolOutcome{result: message, denied: true, rule: verdict.Rule, reason: verdict.Reason}, false
 	}
 	if verdict.DryRun != "" {
 		out, err := a.toolRegistry.DryRun(gocontext.Background(), call.Tool, call.Params, a.workingDir)
 		if err != nil {
 			a.audit(inv, "deny", "dry_run", err.Error(), true)
 			message := fmt.Sprintf("Dry run (%s) failed: %v", verdict.DryRun, err)
-			return toolOutcome{result: message, isError: true, denied: true}, false
+			return toolOutcome{result: message, isError: true, denied: true, rule: "dry_run", reason: err.Error()}, false
 		}
-		fmt.Printf("\n%s Dry run (%s):\n%s\n\n", ui.IconInfo, verdict.DryRun, out)
+		_, _ = fmt.Fprintf(a.out, "\n%s Dry run (%s):\n%s\n\n", ui.IconInfo, verdict.DryRun, out)
 	}
 	switch a.permissionFor(call.Tool) {
 	case policy.Deny:
-		a.audit(inv, "deny", "permission", "denied by the saved permission rule", verdict.DryRun != "")
+		reason := "denied by the saved permission rule"
+		a.audit(inv, "deny", "permission", reason, verdict.DryRun != "")
 		ui.DisplayPermissionDenied(call.Tool)
 		message := fmt.Sprintf("Tool '%s' is denied by the saved permission rule", call.Tool)
-		return toolOutcome{result: message, denied: true}, false
+		return toolOutcome{result: message, denied: true, rule: "permission", reason: reason}, false
 	case policy.Ask:
 		choice := a.confirmPermission(inv, call.Params)
 		if choice.Remember {
 			a.rememberPermission(call.Tool, choice.Allowed)
 		}
 		if !choice.Allowed {
-			a.audit(inv, "deny", "user", "denied at the prompt", verdict.DryRun != "")
-			return toolOutcome{result: fmt.Sprintf("Tool '%s' denied by the user", call.Tool), denied: true}, false
+			reason := "denied at the prompt"
+			a.audit(inv, "deny", "user", reason, verdict.DryRun != "")
+			message := fmt.Sprintf("Tool '%s' denied by the user", call.Tool)
+			return toolOutcome{result: message, denied: true, rule: "user", reason: reason}, false
 		}
 	}
 	a.audit(inv, "allow", verdict.Rule, "", verdict.DryRun != "")
@@ -163,12 +180,12 @@ func (a *Assistant) rememberPermission(tool string, allowed bool) {
 		perm = policy.Allow
 	}
 	if a.permissions == nil {
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf(
 			"The %s answer for %s is not remembered: no permission store (run /init)", perm, tool)))
 		return
 	}
 	if err := a.permissions.Set(tool, perm); err != nil {
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf(
 			"Could not save the %s rule for %s (it applies until you exit): %v", perm, tool, err)))
 		return
 	}
@@ -179,7 +196,7 @@ func (a *Assistant) rememberPermission(tool string, allowed bool) {
 // failure is shown, never hidden, and does not stop the call.
 func (a *Assistant) audit(inv policy.Invocation, decision, rule, reason string, dryRun bool) {
 	if a.storage == nil {
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf(
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf(
 			"Audit log unavailable (no project storage): the %s decision for %s was not recorded", decision, inv.Tool)))
 		return
 	}
@@ -209,7 +226,7 @@ func (a *Assistant) audit(inv policy.Invocation, decision, rule, reason string, 
 		Decision: decision, Rule: rule, Reason: reason, DryRun: dryRun,
 	})
 	if err != nil {
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("Audit log write failed: %v", err)))
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("Audit log write failed: %v", err)))
 	}
 }
 
@@ -224,7 +241,7 @@ func (a *Assistant) runTool(run toolRun) toolOutcome {
 	output, err := a.toolRegistry.Execute(gocontext.Background(), call.Tool, call.Params, a.workingDir)
 	durationMs := time.Since(start).Milliseconds()
 	if err != nil {
-		return toolOutcome{result: fmt.Sprintf("Error: %v", err), isError: true, durationMs: durationMs}
+		return toolOutcome{result: fmt.Sprintf("Error: %v", err), isError: true, durationMs: durationMs, err: err}
 	}
 	truncated := TruncateToolOutput(output, call.Tool, a.truncationCfg)
 	if truncated.WasTruncated {
