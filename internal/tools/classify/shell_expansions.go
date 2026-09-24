@@ -2,6 +2,7 @@ package classify
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -145,18 +146,21 @@ func reference(rest string) (expansionRef, int) {
 // nothing, whatever it reads, so the "-" would then start the word instead of following a value.
 // Literal text in front of the run (app=$APP-api) means the word can never start with "-" however the
 // run resolves, so the rule only ever looks at byte 0; the same danger for a brace alternative
-// ({a,$X}-delete) is caught in braceOption instead, leaf by leaf. It rescans word itself (rather than
-// calling references) so it can see the byte after each reference ends.
+// ({a,$X}-delete) is caught by braceInjects instead, leaf by leaf. A ${...} reference in a word that
+// also holds an unmatched "}" is opaque and injects (strippedBrace, ruling P3-R32): the stray "}" is
+// the trace of a quoted or escaped brace shellwords removed, so reference() closed the ${ at the wrong
+// "}". It rescans word itself (rather than calling references) so it can see the byte after each
+// reference ends.
 //
 // harmless is true when the program that receives the word only prints its arguments (echo, :, true,
 // false, or a for-list, which runs nothing): ruling R3. It relaxes the two shapes that are dangerous
 // only because an extra option changes what the program does - a command-substitution marker (a bare
 // "$" the parser left when it split the word at the substitution's "(") and a variable set to an
 // option value. The other shapes stay a mutation whatever the program: $_, the leading-run dash rule,
-// an assigning or otherwise opaque ${...} form (it can change shell state or hide any output), and a
-// substitution operator whose literal word is an option.
+// a stripped brace, an assigning or otherwise opaque ${...} form (it can change shell state or hide
+// any output), and a substitution operator whose literal word is an option.
 func (v lineVars) injects(word string, harmless bool) bool {
-	if leadingRunEndsInDash(word) {
+	if leadingRunEndsInDash(word) || strippedBrace(word) {
 		return true
 	}
 	for i := 0; i < len(word); i++ {
@@ -186,12 +190,13 @@ func (v lineVars) injects(word string, harmless bool) bool {
 
 // leadingRunEndsInDash reports whether word, with its whole leading run of $ references removed one
 // after another from byte 0, is left with the run followed immediately by "-" (P3-R20, amending
-// P3-R14a). A run can be more than one reference ($@$@-delete, $X$Y-delete): bash brace-expands and
-// command-substitutes before parameter expansion, but every reference in the run, whatever it reads -
-// a name, a ${...} form, a special parameter or a bare "$" substitution marker, each consumed with
-// reference() - can still expand to nothing, so the whole run can vanish and leave the "-" to start
-// the word. Literal text before the run, or anywhere the run stops (word[pos] is not "$"), ends the
-// check there: only a run starting at byte 0 can expose a leading "-".
+// P3-R14a). A run can be more than one reference ($@$@-delete, $X$Y-delete): every reference in the
+// run can expand to nothing, whatever it reads, so the whole run can vanish and leave the "-" to start
+// the word. reference() consumes each one - a name, a ${...} form, or a special or positional
+// parameter; a "$" it does not recognize (a bare "$", or the marker shellwords leaves where it split a
+// $(...) off into its own word) returns n == 0, and the walk still steps one byte past it so a run of
+// them does not stall. Literal text before the run, or anywhere the run stops (word[pos] is not "$"),
+// ends the check there: only a run starting at byte 0 can expose a leading "-".
 func leadingRunEndsInDash(word string) bool {
 	pos := 0
 	for pos < len(word) && word[pos] == '$' {
@@ -199,6 +204,32 @@ func leadingRunEndsInDash(word string) bool {
 		pos += 1 + n
 	}
 	return pos > 0 && pos < len(word) && word[pos] == '-'
+}
+
+// strippedBrace reports a word that holds both a ${...} reference and an unmatched "}" - one that
+// closes no "{" or "${" opened earlier in the same word (ruling P3-R32). shellwords removes quotes and
+// escapes, so find . ${X:+"}"}-delete, find . ${X:+\}}-delete and find . ${X:+'}'}-delete all reach
+// the classifier as ${X:+}}-delete: reference() then closes the ${ at the first "}" and reads the rest
+// as a literal, while every shell closes it at the second and the word expands to an option (-delete).
+// The stray "}" is the trace of the brace a quote hid, so the ${...} form is opaque and injects for
+// every program, harmless or not, the same as any other opaque ${...} form.
+func strippedBrace(word string) bool {
+	if !strings.Contains(word, "${") {
+		return false
+	}
+	depth := 0
+	for i := 0; i < len(word); i++ {
+		switch word[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth == 0 {
+				return true
+			}
+			depth--
+		}
+	}
+	return false
 }
 
 // expansionResult is the mutation for a command whose word expands a value the line controls.
@@ -228,7 +259,11 @@ func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool)
 		}
 	}
 	for _, w := range tail(args) {
-		if leaf, ok := v.braceInjects(w, harmless); ok {
+		leaf, whole, ok := v.braceInjects(w, harmless)
+		switch {
+		case ok && whole: // more members than braceLimit, or a sequence the classifier cannot enumerate
+			return mutate(program, "the brace expansion "+w+" gives "+program+" an option"), true
+		case ok:
 			return mutate(program, "the brace expansion "+w+" can become "+leaf+", which unquoted can add "+
 				"options to "+program), true
 		}
@@ -245,42 +280,52 @@ const braceLimit = 64
 // {a,$X}-delete: bash brace-expands textually, before $X is read, so the alternative becomes
 // $X-delete, and $X can expand to nothing and leave -delete) (P3-R14, P3-R20). The literal word never
 // shows either danger. It does not know about the line's variables, so valueKind (which classifies a
-// literal value in isolation) uses it; expansionCheck uses braceInjects instead.
+// literal value in isolation) uses it; expansionCheck uses braceInjects instead. It keeps a sequence's
+// two ends (endsOnly), since only the low bound of {x..y} can start with "-" (P3-R31 leaves this test
+// as it is).
 func braceOption(word string) bool {
-	_, found := braceLeaves(word, leafDanger)
+	_, _, found := braceLeaves(word, endsOnly, leafDanger)
 	return found
 }
 
 // braceInjects is braceOption plus ruling P3-R21: a brace alternative can rebuild the name of a
 // variable the line set (bash brace-expands before parameter expansion, so $a{b,x} becomes $ab and
 // $ax as words, not $a followed by b or x), so each leaf is also checked the way injects checks a
-// plain word, with the same harmless flag expansionCheck computed for the word itself. leaf is the
-// first dangerous leaf found, named in the mutation reason so it reads more like "$ab" than "-".
-func (v lineVars) braceInjects(word string, harmless bool) (leaf string, found bool) {
-	return braceLeaves(word, func(w string) bool {
+// plain word, with the same harmless flag expansionCheck computed for the word itself. It enumerates
+// every member of a {x..y} sequence (braceSequence, ruling P3-R31), since $a{1..9} rebuilds $a5 too,
+// not only its ends. leaf is the first dangerous leaf found, named in the mutation reason so it reads
+// more like "$ab" than "-". whole is true when the word is dangerous as a unit rather than through one
+// leaf: more members than braceLimit, or a sequence the classifier cannot enumerate (fail closed).
+func (v lineVars) braceInjects(word string, harmless bool) (leaf string, whole, found bool) {
+	return braceLeaves(word, braceSequence, func(w string) bool {
 		return leafDanger(w) || v.injects(w, harmless)
 	})
 }
 
 // braceLeaves follows every alternative of word's brace expansion, nested up to braceLimit levels
-// (past it, word itself counts as its own dangerous leaf), and returns the first fully expanded leaf
-// dangerous reports true for. found is false when word has no brace expansion, or none of its leaves
-// are dangerous.
-func braceLeaves(word string, dangerous func(string) bool) (leaf string, found bool) {
-	if _, _, _, ok := braceSplit(word); !ok {
-		return "", false
+// (past it, word itself counts as one dangerous unit), and returns the first fully expanded leaf
+// dangerous reports true for. seq expands a sequence's body ({x..y}); when it cannot (an opaque
+// sequence) the word is one dangerous unit too. found is false when word has no brace expansion, or
+// none of its leaves are dangerous. whole is true when the word is dangerous as a unit (over the limit
+// or an opaque sequence), so the caller reports it as a single option rather than naming a leaf.
+func braceLeaves(word string, seq sequencer, dangerous func(string) bool) (leaf string, whole, found bool) {
+	if _, _, _, _, ok := braceSplit(word, seq); !ok {
+		return "", false, false
 	}
 	queue := []string{word}
 	for n := 0; len(queue) > 0; n++ {
 		if n > braceLimit {
-			return word, true
+			return word, true, true
 		}
 		w := queue[0]
 		queue = queue[1:]
-		prefix, alternatives, suffix, ok := braceSplit(w)
-		if !ok {
+		prefix, alternatives, suffix, opaque, ok := braceSplit(w, seq)
+		switch {
+		case opaque:
+			return w, true, true
+		case !ok:
 			if dangerous(w) {
-				return w, true
+				return w, false, true
 			}
 			continue
 		}
@@ -288,7 +333,7 @@ func braceLeaves(word string, dangerous func(string) bool) (leaf string, found b
 			queue = append(queue, prefix+a+suffix)
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 // leafDanger reports a fully brace-expanded leaf that starts with "-", or whose own leading run of $
@@ -298,10 +343,155 @@ func leafDanger(w string) bool {
 	return strings.HasPrefix(w, "-") || leadingRunEndsInDash(w)
 }
 
+// sequencer turns a brace sequence body ("x..y" or "x..y..step") into the words it expands to. opaque
+// is true when the sequence cannot be followed (a mixed or malformed range, a bad step, or more
+// members than braceLimit): the caller then treats the whole word as one option and fails closed.
+type sequencer func(body string) (members []string, opaque bool)
+
+// endsOnly keeps a sequence's two ends, enough for the leading-dash test braceOption applies: only the
+// low bound, or a negative one, can start with "-". It never reports opaque, matching the pre-P3-R31
+// behavior braceOption keeps.
+func endsOnly(body string) ([]string, bool) {
+	lo, hi, _ := strings.Cut(body, "..")
+	return []string{lo, hi}, false
+}
+
+// braceSequence enumerates the words a brace sequence body expands to, the way bash does, so
+// braceInjects sees the name each leaf rebuilds ($a{1..9} rebuilds $a1..$a9, not just $a1 and $a9). It
+// follows a numeric range (with an optional step, and both the plain and, when the operands are
+// zero-padded, the padded form of each member, since sh and bash pad differently) and a
+// single-character letter range within one case. opaque is true (fail closed) for a range it cannot
+// follow - mixed or malformed bounds, a letter range that would cross out of the letters, a zero or
+// unparsable step - or one with more than braceLimit members (ruling P3-R31).
+func braceSequence(body string) ([]string, bool) {
+	parts := strings.Split(body, "..")
+	if len(parts) < 2 || len(parts) > 3 {
+		return nil, true
+	}
+	step := 1
+	if len(parts) == 3 {
+		s, err := strconv.Atoi(parts[2])
+		if err != nil || s == 0 {
+			return nil, true
+		}
+		if step = s; step < 0 {
+			step = -step
+		}
+	}
+	lo, hi := parts[0], parts[1]
+	if a, erra := strconv.Atoi(lo); erra == nil {
+		b, errb := strconv.Atoi(hi)
+		if errb != nil {
+			return nil, true // 1..a: a mixed range no shell expands to members
+		}
+		return numericMembers(a, b, step, padWidth(lo, hi))
+	}
+	if isLetter(lo) && isLetter(hi) && sameLetterCase(lo[0], hi[0]) {
+		return letterMembers(lo[0], hi[0], step)
+	}
+	return nil, true
+}
+
+// numericMembers lists the integers from a to b inclusive at step, each as its plain decimal form and,
+// when width > 0 (the operands are zero-padded), its zero-padded form too, so both the sh and the bash
+// name a leaf could rebuild are checked. members is empty with opaque true when the count exceeds
+// braceLimit.
+func numericMembers(a, b, step, width int) (members []string, opaque bool) {
+	dir := 1
+	if b < a {
+		dir = -1
+	}
+	count := abs(b-a)/step + 1
+	if count > braceLimit {
+		return nil, true
+	}
+	v := a
+	for n := 0; n < count; n++ {
+		members = append(members, strconv.Itoa(v))
+		if width > 0 {
+			members = append(members, padNumber(v, width))
+		}
+		v += dir * step
+	}
+	return members, false
+}
+
+const (
+	lowerLetters = "abcdefghijklmnopqrstuvwxyz"
+	upperLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+
+// letterMembers lists the characters from lo to hi inclusive at step, indexing into the one-case
+// alphabet so no arithmetic narrows to a byte. lo and hi are same-case letters (the caller checked),
+// so both are found. members is empty with opaque true when the count exceeds braceLimit.
+func letterMembers(lo, hi byte, step int) (members []string, opaque bool) {
+	alpha := lowerLetters
+	if lo >= 'A' && lo <= 'Z' {
+		alpha = upperLetters
+	}
+	loi, hii := strings.IndexByte(alpha, lo), strings.IndexByte(alpha, hi)
+	dir := 1
+	if hii < loi {
+		dir = -1
+	}
+	count := abs(hii-loi)/step + 1
+	if count > braceLimit {
+		return nil, true
+	}
+	for i, n := loi, 0; n < count; n, i = n+1, i+dir*step {
+		members = append(members, alpha[i:i+1])
+	}
+	return members, false
+}
+
+// padWidth is the zero-pad width a numeric range uses: the longer operand's length when either operand
+// is written with a leading zero, else 0 (no padding).
+func padWidth(lo, hi string) int {
+	if !zeroPadded(lo) && !zeroPadded(hi) {
+		return 0
+	}
+	return max(len(lo), len(hi))
+}
+
+// zeroPadded reports a number written with a leading zero (01, -007), which asks bash to pad the range.
+func zeroPadded(s string) bool {
+	s = strings.TrimLeft(s, "+-")
+	return len(s) > 1 && s[0] == '0'
+}
+
+// padNumber writes v zero-padded to width, keeping a leading "-" outside the padding.
+func padNumber(v, width int) string {
+	sign := ""
+	if v < 0 {
+		sign, v = "-", -v
+	}
+	digits := strconv.Itoa(v)
+	for len(sign)+len(digits) < width {
+		digits = "0" + digits
+	}
+	return sign + digits
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+func isLetter(s string) bool {
+	return len(s) == 1 && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z')
+}
+
+func sameLetterCase(a, b byte) bool {
+	return (a >= 'a' && a <= 'z') == (b >= 'a' && b <= 'z')
+}
+
 // braceSplit finds the first brace expansion of a word: a { (not ${) whose matching } encloses a
 // comma at its own level or a sequence x..y. It returns what comes before and after it and its
-// alternatives; of a sequence only its two ends, since only they can start with "-".
-func braceSplit(w string) (prefix string, alternatives []string, suffix string, ok bool) {
+// alternatives. seq expands a sequence's body; opaque is true when seq cannot follow the sequence, so
+// the caller treats the whole word as one dangerous unit and fails closed.
+func braceSplit(w string, seq sequencer) (prefix string, alternatives []string, suffix string, opaque, ok bool) {
 	for i := 0; i < len(w); i++ {
 		if w[i] != '{' || i > 0 && w[i-1] == '$' {
 			continue
@@ -318,14 +508,17 @@ func braceSplit(w string) (prefix string, alternatives []string, suffix string, 
 			}
 			alternatives = append(alternatives, w[start:end])
 		case strings.Contains(w[i+1:end], ".."):
-			lo, hi, _ := strings.Cut(w[i+1:end], "..")
-			alternatives = []string{lo, hi}
+			members, seqOpaque := seq(w[i+1 : end])
+			if seqOpaque {
+				return w[:i], nil, w[end+1:], true, true
+			}
+			alternatives = members
 		default:
 			continue
 		}
-		return w[:i], alternatives, w[end+1:], true
+		return w[:i], alternatives, w[end+1:], false, true
 	}
-	return "", nil, "", false
+	return "", nil, "", false, false
 }
 
 // braceEnd returns the index of the } that closes the { at start, and the commas at its level; -1

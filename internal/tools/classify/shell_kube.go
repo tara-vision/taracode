@@ -214,11 +214,18 @@ func (l *kubeLine) opaqueCause(w wrapped, envUnknown bool) string {
 	}
 }
 
-// runTimeArguments reports an argument before "--" whose value the shell computes, or whose brace
-// expansion yields an option.
+// runTimeArguments reports an argument before "--" whose value the shell computes. The kube-target
+// path applies the same rules as the argument path (ruling P3-R33): a word whose value the classifier
+// cannot read (runTime), whose leading run of references lands on "-" (leadingRunEndsInDash, so $X
+// vanishing leaves $X--namespace=prod as --namespace=prod), or a brace word with a dangerous leaf or a
+// rebuilt line variable (braceInjects, so $c{t,x} rebuilds $ct) can split into -n, --context or
+// --kubeconfig and override the target read, so it makes the context and namespace "*", never "".
 func (l *kubeLine) runTimeArguments(tokens []string) bool {
 	for _, t := range beforeDoubleDash(tokens) {
-		if l.vars.runTime(t) || braceOption(t) {
+		if l.vars.runTime(t) || leadingRunEndsInDash(t) {
+			return true
+		}
+		if _, _, found := l.vars.braceInjects(t, false); found {
 			return true
 		}
 	}
