@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -205,5 +206,75 @@ func TestRegistryArgumentErrorIsTheToolsOwnCheck(t *testing.T) {
 	}
 	if err := r.ArgumentError("no_such_tool", map[string]any{"verb": "get", "args": "describe pod x"}); err != nil {
 		t.Errorf("an unknown tool has no argument check: %v", err)
+	}
+}
+
+// TestKubectlArgvReadsParametersAsKubectlWould pins ruling P3-R64: a verb, resource or name parameter
+// that holds several words runs as those words (kubectl refuses "pod x" as one argument), and a
+// type,name word at the head of the command, which kubectl reads as two resource types and refuses,
+// runs as type/name. A real list of resource types stays as written.
+func TestKubectlArgvReadsParametersAsKubectlWould(t *testing.T) {
+	cases := []struct {
+		name   string
+		params map[string]any
+		want   string
+	}{
+		{"a resource that holds the name",
+			map[string]any{"verb": "describe", "resource": "pod invoice-worker-fbf95d7bd-ccb5n", "namespace": "billing"},
+			"describe pod invoice-worker-fbf95d7bd-ccb5n -n billing"},
+		{"a name that holds the resource",
+			map[string]any{"verb": "describe", "name": "pod storefront-5996978c75-4pxx5", "namespace": "web"},
+			"describe pod storefront-5996978c75-4pxx5 -n web"},
+		{"a verb that holds the resource",
+			map[string]any{"verb": "describe pod", "name": "orders-api-674454676b-dmf7d", "namespace": "api"},
+			"describe pod orders-api-674454676b-dmf7d -n api"},
+		{"a verb that holds its subcommand",
+			map[string]any{"verb": "rollout status", "resource": "deployment/cart", "namespace": "shop-v2"},
+			"rollout status deployment/cart -n shop-v2"},
+		{"several words and the command repeated in args",
+			map[string]any{"verb": "describe", "resource": "pod x", "namespace": "shop", "args": "describe pod x -n shop"},
+			"describe pod x -n shop"},
+		{"a global flag with its value as the verb", map[string]any{"verb": "-n kube-system", "args": "delete pod x"},
+			"-n kube-system delete pod x"},
+		{"type,name as the resource",
+			map[string]any{"verb": "describe", "resource": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+			"describe pod/metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"type,name as the name of logs",
+			map[string]any{"verb": "logs", "name": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+			"logs pod/metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"type,name of a deployment", map[string]any{"verb": "get", "resource": "deploy,metrics-agent", "namespace": "platform"},
+			"get deploy/metrics-agent -n platform"},
+		{"type,name at the head of args", map[string]any{"verb": "describe", "args": "describe pod,x -n platform"},
+			"describe pod/x -n platform"},
+		{"a list of resource types", map[string]any{"verb": "get", "resource": "pods,services", "namespace": "platform"},
+			"get pods,services -n platform"},
+		{"a list with a built-in type the aliases lack", map[string]any{"verb": "get", "resource": "pods,roles"},
+			"get pods,roles"},
+		{"a list of three", map[string]any{"verb": "get", "resource": "pod,a,b"}, "get pod,a,b"},
+		{"a first part that is not a type", map[string]any{"verb": "get", "resource": "x,pod"}, "get x,pod"},
+		{"a comma after a flag is not the head", map[string]any{"verb": "get", "args": "-n platform pod,x"},
+			"get -n platform pod,x"},
+	}
+	for _, c := range cases {
+		// Word by word: "pod x" as one argument is exactly what kubectl refuses.
+		argv, err := KubectlArgv(c.params)
+		if err != nil || !slices.Equal(argv, strings.Fields(c.want)) {
+			t.Errorf("%s: argv %q, err %v; want %q", c.name, argv, err, strings.Fields(c.want))
+		}
+	}
+}
+
+// TestKubectlClassifiesTheWordsItRuns: the classifier reads the argv the tool runs, so a verb parameter
+// that holds several words is classified by its first word, the way kubectl runs it.
+func TestKubectlClassifiesTheWordsItRuns(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubectl)
+	tool := KubectlTool()
+	if inv := tool.Classify(map[string]any{"verb": "rollout status", "resource": "deployment/cart"}, "/w"); inv.Classification != policy.Read ||
+		inv.Verb != "rollout status" || inv.Command != "kubectl rollout status deployment/cart" {
+		t.Errorf("rollout status is a read: %+v", inv)
+	}
+	if inv := tool.Classify(map[string]any{"verb": "delete pod", "name": "x", "namespace": "kube-system"}, "/w"); inv.Classification != policy.Mutate ||
+		inv.Verb != "delete" || inv.Targets.KubeNamespace != "kube-system" {
+		t.Errorf("delete pod x is a mutation in kube-system: %+v", inv)
 	}
 }

@@ -64,6 +64,64 @@ func TestSignatures(t *testing.T) {
 			"kubectl get deployment/checkout -n shop --context prod-cluster"},
 		{"kubectl", map[string]any{"verb": "get", "args": "get pod report-builder -n analytics"},
 			"kubectl get pod/report-builder -n analytics"},
+		// The second shake-out's shapes (ruling P3-R64). A describe whose resource and name arrive in one
+		// parameter keys as the recorded structured call; kubectl itself refuses the one-word form, so
+		// the kubectl tool runs the words apart and the signature follows it.
+		{"kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "invoice-worker-fbf95d7bd-ccb5n",
+			"namespace": "billing"}, "kubectl describe pod/invoice-worker-fbf95d7bd-ccb5n -n billing"},
+		{"kubectl", map[string]any{"verb": "describe", "resource": "pod invoice-worker-fbf95d7bd-ccb5n", "namespace": "billing"},
+			"kubectl describe pod/invoice-worker-fbf95d7bd-ccb5n -n billing"},
+		{"kubectl", map[string]any{"verb": "describe", "name": "pod storefront-5996978c75-4pxx5", "namespace": "web"},
+			"kubectl describe pod/storefront-5996978c75-4pxx5 -n web"},
+		{"shell", map[string]any{"command": "kubectl describe pod storefront-5996978c75-4pxx5 -n web"},
+			"kubectl describe pod/storefront-5996978c75-4pxx5 -n web"},
+		{"kubectl", map[string]any{"verb": "describe pod", "name": "orders-api-674454676b-dmf7d", "namespace": "api"},
+			"kubectl describe pod/orders-api-674454676b-dmf7d -n api"},
+		{"kubectl", map[string]any{"verb": "describe", "args": "pod orders-api-674454676b-dmf7d -n api"},
+			"kubectl describe pod/orders-api-674454676b-dmf7d -n api"},
+		// type,name, which kubectl reads as two resource types and refuses: the kubectl tool runs
+		// type/name, so it keys as the structured call. logs takes pod/NAME and NAME alike and keys the
+		// bare name. A shell line runs as written and fails in kubectl, so it keeps its comma.
+		{"kubectl", map[string]any{"verb": "describe", "resource": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+			"kubectl describe pod/metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "metrics-agent-767dd6b94f-wvb2z",
+			"namespace": "platform"}, "kubectl describe pod/metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"kubectl", map[string]any{"verb": "logs", "name": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+			"kubectl logs metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"kubectl", map[string]any{"verb": "logs", "name": "metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+			"kubectl logs metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"shell", map[string]any{"command": "kubectl logs pod/metrics-agent-767dd6b94f-wvb2z -n platform"},
+			"kubectl logs metrics-agent-767dd6b94f-wvb2z -n platform"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "deploy,metrics-agent", "namespace": "platform"},
+			"kubectl get deployment/metrics-agent -n platform"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "deployment", "name": "metrics-agent", "namespace": "platform"},
+			"kubectl get deployment/metrics-agent -n platform"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods,services", "namespace": "platform"},
+			"kubectl get pods,services -n platform"},
+		{"shell", map[string]any{"command": "kubectl describe pod,metrics-agent-767dd6b94f-wvb2z -n platform"},
+			"kubectl describe pod,metrics-agent-767dd6b94f-wvb2z -n platform"},
+		// A selector keeps its value, in one spelling per flag, with the other extra flags.
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "-l app=shop-web"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "-l=app=shop-web"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "-lapp=shop-web"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "--selector app=shop-web"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "--selector=app=shop-web"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"shell", map[string]any{"command": "kubectl get pods -l app=shop-web -n helm-demo"},
+			"kubectl get pod -n helm-demo -l app=shop-web"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "batch",
+			"args": "--field-selector status.phase=Pending"}, "kubectl get pod -n batch --field-selector status.phase=Pending"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "batch",
+			"args": "--field-selector=status.phase=Pending"}, "kubectl get pod -n batch --field-selector status.phase=Pending"},
+		{"kubectl", map[string]any{"verb": "logs", "namespace": "shop", "args": "-l app=checkout --tail=20"},
+			"kubectl logs -n shop -l app=checkout --tail=20"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "args": "--sort-by=.metadata.name -l app=web"},
+			"kubectl get pod --sort-by=.metadata.name -l app=web"},
+		{"shell", map[string]any{"command": "kubectl get pods -l"}, "kubectl get pod -l"},
 	}
 	for _, c := range cases {
 		if got := Signature(c.tool, c.args); got != c.want {
@@ -109,6 +167,17 @@ func TestKubectlSignatureKeysTheArgvTheToolRuns(t *testing.T) {
 		{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
 			"args": "scale deployment checkout --replicas=3 -n shop"},
 		{"verb": "get", "resource": "pods", "namespace": "apps", "output": "wide", "args": "-l app=web"},
+		// The second shake-out's shapes (ruling P3-R64).
+		{"verb": "describe", "resource": "pod invoice-worker-fbf95d7bd-ccb5n", "namespace": "billing"},
+		{"verb": "describe", "name": "pod storefront-5996978c75-4pxx5", "namespace": "web"},
+		{"verb": "describe pod", "name": "orders-api-674454676b-dmf7d", "namespace": "api"},
+		{"verb": "rollout status", "resource": "deployment/cart", "namespace": "shop-v2"},
+		{"verb": "describe", "resource": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+		{"verb": "logs", "name": "pod,metrics-agent-767dd6b94f-wvb2z", "namespace": "platform"},
+		{"verb": "get", "resource": "deploy,metrics-agent", "namespace": "platform"},
+		{"verb": "get", "resource": "pods,services", "namespace": "platform"},
+		{"verb": "get", "resource": "pods", "namespace": "helm-demo", "args": "--selector=app=shop-web"},
+		{"verb": "get", "resource": "pods", "namespace": "batch", "args": "--field-selector status.phase=Pending -o wide"},
 	}
 	tool := tools.KubectlTool()
 	for _, params := range inputs {

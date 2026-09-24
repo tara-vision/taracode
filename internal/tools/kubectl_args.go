@@ -8,33 +8,30 @@ import (
 )
 
 // KubectlArgv is the argv the kubectl tool runs for its parameters: the verb, the resource and the
-// name, then -n, --context and -o from their parameters, then the extra flags of args. A model that
-// repeats the command line in args while it also fills the parameters (verb get, resource pods,
-// namespace billing, args "get pods -n billing") is normalized first (ruling P3-R59): a leading kubectl
-// and the leading copies of the verb, the resource and the name come off args, and a namespace, context
-// or output that args repeats with the parameter's value is merged. What is still wrong is an argument
-// error, the text the tool refuses the call with: args that start with another kubectl command, or a
-// namespace, context or output given twice with different values. The eval signature keys this argv,
-// so a replayed call meets the fixture of the command it would run.
+// name, then -n, --context and -o from their parameters, then the extra flags of args. The parameters
+// are read the way kubectl reads its arguments (ruling P3-R64): one that holds several words (resource
+// "pod x") is those words, and a type,name word at the head of the command (pod,x, which kubectl reads
+// as two resource types and refuses) is type/name. A model that repeats the command line in args while
+// it also fills the parameters (verb get, resource pods, namespace billing, args "get pods -n billing")
+// is normalized first (ruling P3-R59): a leading kubectl and the leading copies of the verb, the
+// resource and the name come off args, and a namespace, context or output that args repeats with the
+// parameter's value is merged. What is still wrong is an argument error, the text the tool refuses the
+// call with: args that start with another kubectl command, or a namespace, context or output given
+// twice with different values. The eval signature keys this argv, so a replayed call meets the fixture
+// of the command it would run.
 func KubectlArgv(params map[string]any) ([]string, error) {
-	verb, err := required(params, "verb")
-	if err != nil {
+	if _, err := required(params, "verb"); err != nil {
 		return nil, err
 	}
 	extra, err := shellwords.Words(argString(params, "args"))
 	if err != nil {
 		return nil, err
 	}
-	resource, name := argString(params, "resource"), argString(params, "name")
-	if extra, err = dropRepeatedCommand(extra, verb, resource, name); err != nil {
+	head := readKubectlHead(params)
+	if extra, err = dropRepeatedCommand(extra, head.verb, head.resource, head.name); err != nil {
 		return nil, err
 	}
-	argv := []string{verb}
-	for _, v := range []string{resource, name} {
-		if v != "" {
-			argv = append(argv, v)
-		}
-	}
+	argv, extra := typeNameAtHead(head, extra)
 	for _, f := range kubectlFlagParams {
 		value := argString(params, f.param)
 		if value == "" {
@@ -46,6 +43,69 @@ func KubectlArgv(params map[string]any) ([]string, error) {
 		argv = append(argv, f.flag(), value)
 	}
 	return append(argv, extra...), nil
+}
+
+// kubectlHead is the start of the command the verb, resource and name parameters spell: their words in
+// that order, and the verb, resource and name the copies in args are matched against.
+type kubectlHead struct {
+	words                []string
+	verb, resource, name string
+}
+
+// readKubectlHead reads the verb, resource and name parameters the way kubectl reads its arguments. A
+// parameter that holds several words (resource "pod x", verb "describe pod") is those words as
+// separate arguments, since kubectl refuses "pod x" as one; the words then fill the verb, the resource
+// and the name in order. With one word per parameter each stays in its own slot.
+func readKubectlHead(params map[string]any) kubectlHead {
+	verb, resource, name := argString(params, "verb"), argString(params, "resource"), argString(params, "name")
+	var words []string
+	slots := 0
+	for _, p := range []string{verb, resource, name} {
+		if p != "" {
+			slots++
+			words = append(words, strings.Fields(p)...)
+		}
+	}
+	if len(words) == slots {
+		return kubectlHead{words: words, verb: verb, resource: resource, name: name}
+	}
+	return kubectlHead{words: words, verb: words[0], resource: wordAt(words, 1), name: wordAt(words, 2)}
+}
+
+// wordAt is words[i], or "" past the end.
+func wordAt(words []string, i int) string {
+	if i < len(words) {
+		return words[i]
+	}
+	return ""
+}
+
+// typeNameAtHead starts the argv with the head's words and rewrites a type,name word at the head of the
+// command, the first word after the verb or, when no parameter names the object, the first word of
+// args, to type/name (typeName). A verb given as a global flag heads a command line of its own, which
+// is left as written.
+func typeNameAtHead(head kubectlHead, extra []string) (argv, rest []string) {
+	argv = append([]string{}, head.words...)
+	switch {
+	case strings.HasPrefix(head.verb, "-"):
+	case len(argv) > 1:
+		argv[1] = typeName(argv[1])
+	case len(extra) > 0 && !strings.HasPrefix(extra[0], "-"):
+		extra = append([]string{typeName(extra[0])}, extra[1:]...)
+	}
+	return argv, extra
+}
+
+// typeName is type/name for a type,name word whose first part is a resource type and whose second is
+// not: kubectl reads pod,x as a list of two resource types and refuses x, so the model meant the pod
+// named x. Any other word, a list of resource types (pods,services) included, stays as it is.
+func typeName(w string) string {
+	kind, name, ok := strings.Cut(w, ",")
+	if !ok || name == "" || strings.ContainsAny(name, ",/") || strings.Contains(kind, "/") ||
+		!isKubeResourceWord(kind) || isKubeResourceWord(name) {
+		return w
+	}
+	return kind + "/" + name
 }
 
 // dropRepeatedCommand takes off args the command line a model repeats there: a leading kubectl that
@@ -220,6 +280,30 @@ func CanonicalKubeResource(r string) string {
 		return c
 	}
 	return lower
+}
+
+// kubeKinds are the resource type words kubectl knows without custom resources: the canonical names of
+// the alias table and the other built-in types, with the short names the table lacks.
+var kubeKinds = func() map[string]bool {
+	kinds := map[string]bool{}
+	for _, c := range kubeResourceAliases {
+		kinds[c] = true
+	}
+	for _, k := range []string{"all", "role", "rolebinding", "clusterrole", "clusterrolebinding", "limitrange",
+		"limits", "resourcequota", "quota", "poddisruptionbudget", "pdb", "lease", "priorityclass", "pc",
+		"certificatesigningrequest", "csr", "replicationcontroller", "rc", "endpointslice", "ingressclass",
+		"runtimeclass", "podtemplate", "controllerrevision", "apiservice", "mutatingwebhookconfiguration",
+		"validatingwebhookconfiguration", "volumeattachment", "csidriver", "csinode", "componentstatus", "cs"} {
+		kinds[k] = true
+	}
+	return kinds
+}()
+
+// isKubeResourceWord reports whether w names a resource type kubectl knows without custom resources:
+// a word of the alias table, another built-in type, or the plural of one.
+func isKubeResourceWord(w string) bool {
+	c := CanonicalKubeResource(w)
+	return kubeKinds[c] || kubeKinds[strings.TrimSuffix(c, "s")] || kubeKinds[strings.TrimSuffix(c, "es")]
 }
 
 // sameKubeResource reports whether two resource type words name the same type: the same canonical
