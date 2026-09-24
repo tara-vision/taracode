@@ -4,7 +4,7 @@ NAME: shop-web
 LAST DEPLOYED: Thu Sep 24 23:17:15 2026
 NAMESPACE: helm-demo
 STATUS: pending-upgrade
-REVISION: 4
+REVISION: 2
 DESCRIPTION: Dry run complete
 TEST SUITE: None
 HOOKS:
