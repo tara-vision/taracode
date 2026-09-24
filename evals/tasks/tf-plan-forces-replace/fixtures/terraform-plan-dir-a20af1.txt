@@ -1,0 +1,21 @@
+[0m[1mrandom_pet.server: Refreshing state... [id=causal-hen][0m
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+[31m-[0m/[32m+[0m destroy and then create replacement[0m
+
+Terraform will perform the following actions:
+
+[1m  # random_pet.server[0m must be [1m[31mreplaced[0m
+[0m[31m-[0m/[32m+[0m[0m resource "random_pet" "server" {
+      [33m~[0m[0m id        = "causal-hen" -> (known after apply)
+      [33m~[0m[0m length    = 2 [33m->[0m[0m 3 [31m# forces replacement[0m[0m
+        [90m# (1 unchanged attribute hidden)[0m[0m
+    }
+
+[1mPlan:[0m [0m1 to add, 0 to change, 1 to destroy.
+[90m
+─────────────────────────────────────────────────────────────────────────────[0m
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.

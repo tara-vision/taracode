@@ -1,0 +1,4 @@
+NAME                   READY   STATUS             RESTARTS   AGE
+cart-f4df567fd-cmltk   1/1     Running            0          47s
+cart-f4df567fd-l2kjm   1/1     Running            0          47s
+cart-f688b8bd4-76vbq   0/1     ImagePullBackOff   0          47s

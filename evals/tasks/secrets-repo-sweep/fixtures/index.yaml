@@ -1,0 +1,9 @@
+fixtures:
+    - signature: scan gitleaks repo
+      file: scan-gitleaks-repo-caab8d.txt
+    - signature: scan gitleaks ./repo
+      file: scan-gitleaks-repo-28c98c.txt
+    - signature: scan gitleaks
+      file: scan-gitleaks-392b8f.txt
+    - signature: scan gitleaks repo HIGH
+      file: scan-gitleaks-repo-high-d31e19.txt

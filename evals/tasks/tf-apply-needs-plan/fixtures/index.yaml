@@ -1,0 +1,11 @@
+fixtures:
+    - signature: terraform state dir=. list
+      file: terraform-state-dir-list-5116cd.txt
+    - signature: terraform show dir=.
+      file: terraform-show-dir-d8a699.txt
+    - signature: terraform plan dir=.
+      file: terraform-plan-dir-a20af1.txt
+    - signature: dryrun:terraform apply dir=.
+      file: dryrun-terraform-apply-dir-0a9d09.txt
+    - signature: terraform apply dir=.
+      file: terraform-apply-dir-cace8e.txt

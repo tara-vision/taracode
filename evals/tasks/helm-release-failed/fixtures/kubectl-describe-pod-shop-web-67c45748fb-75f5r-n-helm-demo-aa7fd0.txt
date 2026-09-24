@@ -1,0 +1,60 @@
+Name:             shop-web-67c45748fb-75f5r
+Namespace:        helm-demo
+Priority:         0
+Service Account:  default
+Node:             taracode-evals-worker/172.18.0.2
+Start Time:       Thu, 24 Sep 2026 21:28:24 +0000
+Labels:           app.kubernetes.io/instance=shop-web
+                  app.kubernetes.io/name=shop-web
+                  pod-template-hash=67c45748fb
+Annotations:      <none>
+Status:           Pending
+IP:               10.244.1.5
+IPs:
+  IP:           10.244.1.5
+Controlled By:  ReplicaSet/shop-web-67c45748fb
+Containers:
+  shop-web:
+    Container ID:   
+    Image:          nginx:1.99.99-nope
+    Image ID:       
+    Port:           80/TCP (http)
+    Host Port:      0/TCP (http)
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Requests:
+      cpu:        20m
+      memory:     32Mi
+    Readiness:    http-get http://:80/ delay=0s timeout=1s period=10s successThreshold=1 failureThreshold=3
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-gsjqq (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-gsjqq:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  40s                default-scheduler  Successfully assigned helm-demo/shop-web-67c45748fb-75f5r to taracode-evals-worker
+  Normal   BackOff    14s (x2 over 38s)  kubelet            spec.containers{shop-web}: Back-off pulling image "nginx:1.99.99-nope"
+  Warning  Failed     14s (x2 over 38s)  kubelet            spec.containers{shop-web}: Error: ImagePullBackOff
+  Normal   Pulling    3s (x3 over 40s)   kubelet            spec.containers{shop-web}: Pulling image "nginx:1.99.99-nope"
+  Warning  Failed     2s (x3 over 38s)   kubelet            spec.containers{shop-web}: Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
+  Warning  Failed     2s (x3 over 38s)   kubelet            spec.containers{shop-web}: Error: ErrImagePull

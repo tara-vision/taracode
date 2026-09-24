@@ -1,0 +1,2 @@
+starting api
+fatal: config file /etc/app/config.yaml not found

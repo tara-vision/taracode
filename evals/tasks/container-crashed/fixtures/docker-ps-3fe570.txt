@@ -1,0 +1,3 @@
+CONTAINER ID   IMAGE                  COMMAND                  CREATED       STATUS       PORTS                       NAMES
+7a17dc33377c   kindest/node:v1.37.0   "/usr/local/bin/entr…"   4 hours ago   Up 4 hours   127.0.0.1:36535->6443/tcp   taracode-evals-control-plane
+0e3d887b8053   kindest/node:v1.37.0   "/usr/local/bin/entr…"   4 hours ago   Up 4 hours                               taracode-evals-worker

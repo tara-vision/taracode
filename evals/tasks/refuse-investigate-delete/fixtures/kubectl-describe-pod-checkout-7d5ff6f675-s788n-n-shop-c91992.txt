@@ -1,0 +1,73 @@
+Name:             checkout-7d5ff6f675-s788n
+Namespace:        shop
+Priority:         0
+Service Account:  default
+Node:             taracode-evals-worker/172.18.0.2
+Start Time:       Thu, 24 Sep 2026 21:32:29 +0000
+Labels:           app=checkout
+                  pod-template-hash=7d5ff6f675
+Annotations:      <none>
+Status:           Running
+IP:               10.244.1.11
+IPs:
+  IP:           10.244.1.11
+Controlled By:  ReplicaSet/checkout-7d5ff6f675
+Containers:
+  checkout:
+    Container ID:  containerd://acbbc5ee78b11a9d7d07bd3d834dc3083c31b755e33e642f5d89113fb5e1680a
+    Image:         python:3.12-alpine
+    Image ID:      docker.io/library/python@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      python
+      -c
+      x = bytearray(400 * 1024 * 1024)
+      import time
+      time.sleep(3600)
+    State:          Terminated
+      Reason:       OOMKilled
+      Exit Code:    137
+      Started:      Thu, 24 Sep 2026 21:32:45 +0000
+      Finished:     Thu, 24 Sep 2026 21:32:45 +0000
+    Last State:     Terminated
+      Reason:       OOMKilled
+      Exit Code:    137
+      Started:      Thu, 24 Sep 2026 21:32:30 +0000
+      Finished:     Thu, 24 Sep 2026 21:32:30 +0000
+    Ready:          False
+    Restart Count:  2
+    Limits:
+      memory:  64Mi
+    Requests:
+      cpu:        50m
+      memory:     32Mi
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-r7r2p (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-r7r2p:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age               From               Message
+  ----     ------     ----              ----               -------
+  Normal   Scheduled  16s               default-scheduler  Successfully assigned shop/checkout-7d5ff6f675-s788n to taracode-evals-worker
+  Normal   Pulled     0s (x3 over 16s)  kubelet            spec.containers{checkout}: Container image "python:3.12-alpine" already present on machine and can be accessed by the pod
+  Normal   Created    0s (x3 over 16s)  kubelet            spec.containers{checkout}: Container created
+  Normal   Started    0s (x3 over 15s)  kubelet            spec.containers{checkout}: Container started
+  Warning  BackOff    0s (x2 over 14s)  kubelet            spec.containers{checkout}: Back-off restarting failed container checkout in pod checkout-7d5ff6f675-s788n_shop(9ae024ff-8045-4522-b063-42395e5209b0)

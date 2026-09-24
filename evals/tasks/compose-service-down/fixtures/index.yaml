@@ -1,0 +1,15 @@
+fixtures:
+    - signature: docker compose ps
+      file: docker-compose-ps-19e98e.txt
+    - signature: docker compose ps -a
+      file: docker-compose-ps-a-e0c51c.txt
+    - signature: docker compose logs
+      file: docker-compose-logs-8c9ab1.txt
+    - signature: docker compose logs api
+      file: docker-compose-logs-api-39f37a.txt
+    - signature: docker compose config
+      file: docker-compose-config-ee3c57.txt
+    - signature: docker ps -a
+      file: docker-ps-a-162035.txt
+    - signature: docker logs evalshop-api-1
+      file: docker-logs-evalshop-api-1-53f317.txt

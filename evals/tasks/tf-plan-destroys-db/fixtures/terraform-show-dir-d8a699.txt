@@ -1,0 +1,13 @@
+# null_resource.app:
+resource "null_resource" "app" {
+    id = "8010725748673159476"
+}
+
+# null_resource.database:
+resource "null_resource" "database" {
+    id       = "6563168065643315536"
+    triggers = {
+        "name" = "orders-db"
+        "tier" = "database"
+    }
+}

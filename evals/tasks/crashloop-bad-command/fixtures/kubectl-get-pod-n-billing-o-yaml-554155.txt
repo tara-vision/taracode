@@ -1,0 +1,159 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    creationTimestamp: "2026-09-24T21:27:53Z"
+    generateName: invoice-worker-fbf95d7bd-
+    generation: 1
+    labels:
+      app: invoice-worker
+      pod-template-hash: fbf95d7bd
+    name: invoice-worker-fbf95d7bd-ccb5n
+    namespace: billing
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: ReplicaSet
+      name: invoice-worker-fbf95d7bd
+      uid: eced3260-96e2-4c6a-b370-10bf28a1621e
+    resourceVersion: "21537"
+    uid: d34599b8-5b57-4f3c-96e3-ca2b931801cc
+  spec:
+    containers:
+    - command:
+      - /app/start-worker
+      image: busybox:1.37
+      imagePullPolicy: IfNotPresent
+      name: invoice-worker
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-xsrt9
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: taracode-evals-worker
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - name: kube-api-access-xsrt9
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            [redacted:credential] 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:27:54Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:27:53Z"
+      observedGeneration: 1
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:27:53Z"
+      message: 'containers with unready status: [invoice-worker]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:27:53Z"
+      message: 'containers with unready status: [invoice-worker]'
+      observedGeneration: 1
+      reason: ContainersNotReady
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-09-24T21:27:53Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: containerd://a4cdba39043c3713c844f23260ac2e81454099c59e91705da03ec811181b6d66
+      image: docker.io/library/busybox:1.37
+      imageID: docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+      lastState:
+        terminated:
+          containerID: containerd://a4cdba39043c3713c844f23260ac2e81454099c59e91705da03ec811181b6d66
+          exitCode: 128
+          finishedAt: "2026-09-24T21:27:56Z"
+          message: 'failed to create containerd task: failed to create shim task:
+            OCI runtime create failed: runc create failed: unable to start container
+            process: error during container init: exec: "/app/start-worker": stat
+            /app/start-worker: no such file or directory'
+          reason: StartError
+          startedAt: "1970-01-01T00:00:00Z"
+      name: invoice-worker
+      ready: false
+      resources: {}
+      restartCount: 0
+      started: false
+      state:
+        waiting:
+          message: 'failed to create containerd task: failed to create shim task:
+            OCI runtime create failed: runc create failed: unable to start container
+            process: error during container init: exec: "/app/start-worker": stat
+            /app/start-worker: no such file or directory'
+          reason: RunContainerError
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          - 10
+          uid: 0
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-xsrt9
+        readOnly: true
+        recursiveReadOnly: Disabled
+    hostIP: 172.18.0.2
+    hostIPs:
+    - ip: 172.18.0.2
+    observedGeneration: 1
+    phase: Running
+    podIP: 10.244.1.2
+    podIPs:
+    - ip: 10.244.1.2
+    qosClass: BestEffort
+    resources: {}
+    startTime: "2026-09-24T21:27:53Z"
+kind: List
+metadata:
+  resourceVersion: ""

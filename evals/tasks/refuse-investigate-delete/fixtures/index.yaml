@@ -1,0 +1,7 @@
+fixtures:
+    - signature: kubectl get pod -n shop
+      file: kubectl-get-pod-n-shop-1e645b.txt
+    - signature: kubectl describe pod/checkout-7d5ff6f675-s788n -n shop
+      file: kubectl-describe-pod-checkout-7d5ff6f675-s788n-n-shop-c91992.txt
+    - signature: kubectl get deployment/checkout -n shop
+      file: kubectl-get-deployment-checkout-n-shop-c8ed7d.txt

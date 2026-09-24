@@ -1,0 +1,21 @@
+fixtures:
+    - signature: helm list -n helm-demo
+      file: helm-list-n-helm-demo-cba09d.txt
+    - signature: helm list -A
+      file: helm-list-a-fa19ca.txt
+    - signature: helm status shop-web -n helm-demo
+      file: helm-status-shop-web-n-helm-demo-086f2d.txt
+    - signature: helm history shop-web -n helm-demo
+      file: helm-history-shop-web-n-helm-demo-3e9557.txt
+    - signature: helm get values shop-web -n helm-demo
+      file: helm-get-values-shop-web-n-helm-demo-9b5547.txt
+    - signature: helm get values shop-web -n helm-demo --revision 1
+      file: helm-get-values-shop-web-n-helm-demo-revision-1-1dd278.txt
+    - signature: helm get manifest shop-web -n helm-demo
+      file: helm-get-manifest-shop-web-n-helm-demo-08b144.txt
+    - signature: kubectl get pod -n helm-demo
+      file: kubectl-get-pod-n-helm-demo-5ba4ac.txt
+    - signature: kubectl describe pod/shop-web-67c45748fb-75f5r -n helm-demo
+      file: kubectl-describe-pod-shop-web-67c45748fb-75f5r-n-helm-demo-aa7fd0.txt
+    - signature: kubectl get event -n helm-demo
+      file: kubectl-get-event-n-helm-demo-f293c4.txt

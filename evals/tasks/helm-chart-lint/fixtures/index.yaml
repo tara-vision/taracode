@@ -1,0 +1,13 @@
+fixtures:
+    - signature: helm lint ./chart
+      file: helm-lint-chart-3fb550.txt
+    - signature: helm lint chart
+      file: helm-lint-chart-17da83.txt
+      error: true
+    - signature: helm template shop-web ./chart
+      file: helm-template-shop-web-chart-f19fc7.txt
+    - signature: helm template ./chart
+      file: helm-template-chart-179b5d.txt
+      error: true
+    - signature: helm show values ./chart
+      file: helm-show-values-chart-0bdfdb.txt

@@ -1,0 +1,6 @@
+Error: shop-web/templates/deployment.yaml:35:32
+  executing "shop-web/templates/deployment.yaml" at <.Values.resources.limits.memory>:
+    nil pointer evaluating interface {}.memory
+
+Use --debug flag to render out invalid YAML
+[exit status 1]

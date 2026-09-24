@@ -1,0 +1,5 @@
+LAST SEEN   TYPE      REASON              OBJECT                                  MESSAGE
+2s          Normal    Scheduled           pod/settings-loader-6cf6fbc4cf-cpwj5    Successfully assigned config-demo/settings-loader-6cf6fbc4cf-cpwj5 to taracode-evals-worker
+1s          Warning   FailedMount         pod/settings-loader-6cf6fbc4cf-cpwj5    MountVolume.SetUp failed for volume "settings" : configmap "app-config" not found
+2s          Normal    SuccessfulCreate    replicaset/settings-loader-6cf6fbc4cf   Created pod: settings-loader-6cf6fbc4cf-cpwj5
+2s          Normal    ScalingReplicaSet   deployment/settings-loader              Scaled up replica set settings-loader-6cf6fbc4cf from 0 to 1

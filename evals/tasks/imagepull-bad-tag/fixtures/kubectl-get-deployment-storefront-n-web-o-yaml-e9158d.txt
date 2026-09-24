@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"storefront"},"name":"storefront","namespace":"web"},"spec":{"selector":{"matchLabels":{"app":"storefront"}},"template":{"metadata":{"labels":{"app":"storefront"}},"spec":{"containers":[{"image":"nginx:1.99.99-does-not-exist","name":"storefront"}]}}}}
+  creationTimestamp: "2026-09-24T21:29:21Z"
+  generation: 1
+  labels:
+    app: storefront
+  name: storefront
+  namespace: web
+  resourceVersion: "22031"
+  uid: e4204133-7938-4372-a8cb-65fdbdbf240a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: storefront
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: storefront
+    spec:
+      containers:
+      - image: nginx:1.99.99-does-not-exist
+        imagePullPolicy: IfNotPresent
+        name: storefront
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  conditions:
+  - lastTransitionTime: "2026-09-24T21:29:21Z"
+    lastUpdateTime: "2026-09-24T21:29:21Z"
+    message: Deployment does not have minimum availability.
+    reason: MinimumReplicasUnavailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2026-09-24T21:29:21Z"
+    lastUpdateTime: "2026-09-24T21:29:22Z"
+    message: ReplicaSet "storefront-5996978c75" is progressing.
+    reason: ReplicaSetUpdated
+    status: "True"
+    type: Progressing
+  observedGeneration: 1
+  replicas: 1
+  terminatingReplicas: 0
+  unavailableReplicas: 1
+  updatedReplicas: 1

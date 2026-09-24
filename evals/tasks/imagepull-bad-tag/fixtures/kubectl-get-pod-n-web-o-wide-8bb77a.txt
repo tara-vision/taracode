@@ -1,0 +1,2 @@
+NAME                          READY   STATUS         RESTARTS   AGE   IP           NODE                    NOMINATED NODE   READINESS GATES
+storefront-5996978c75-4pxx5   0/1     ErrImagePull   0          5s    10.244.1.8   taracode-evals-worker   <none>           <none>

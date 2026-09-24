@@ -1,0 +1,2 @@
+NAME                        READY   STATUS      RESTARTS      AGE   IP           NODE                    NOMINATED NODE   READINESS GATES
+checkout-7d5ff6f675-mfz76   0/1     OOMKilled   2 (15s ago)   20s   10.244.1.3   taracode-evals-worker   <none>           <none>
