@@ -47,6 +47,9 @@ var relaxedReads = []string{
 	// (under an option-harmless program) an option-valued line variable, stay reads
 	"ls $X", "cat $HOME/x", "find . -name $X",
 	"ab=x; sort $a{b,x} out f", "a=1; sort $a{b,x} out f", "ab=-o; echo $a{b,x}",
+	// fix round 5, P3-R40: a substitution operator whose word has no brace stays a read (the two
+	// reads echo ${HOME:-/root} and find . -name ${X} are already pinned above)
+	"echo ${X:+a}",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -137,6 +140,12 @@ var relaxedMutations = map[string]string{
 	`find . ${X:+"}"}-delete`: "find", `find . ${X:+\}}-delete`: "find",
 	`find . ${X:+'}'}-delete`: "find", `find . ${X:+"a}b"}-delete`: "find",
 	`echo ${X:+"}"}`: "echo",
+	// fix round 5, P3-R40: a ${...} whose operator word holds a brace after quote stripping is opaque,
+	// since a stripped quote may have hidden the real end of the expansion, so reference() closed it at
+	// the wrong "}". find . ${X:+{"}"}-delete reduces to the balanced ${X:+{}}-delete (strippedBrace
+	// cannot see it); every shell can still expand it to an option. Opaque for every program, echo too.
+	`find . ${X:+{"}"}-delete`: "find", "find . ${X:+{}}-delete": "find",
+	"find . ${X:-a{b}}-delete": "find", "echo ${X:+{}}": "echo",
 }
 
 func TestRelaxedReads(t *testing.T) {
