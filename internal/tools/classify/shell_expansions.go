@@ -140,32 +140,30 @@ func reference(rest string) (expansionRef, int) {
 // literal word is an option, ${...} with an assigning operator, a command substitution, or $_ (P3-R13:
 // never tracked, since bash's real $_ depends on control flow, pipelines and even the shell in ways
 // this classifier cannot follow, so every $_ reference is unknown). A variable the line does not set
-// is taracode's environment, which the user controls. A reference at the very start of the word
-// (nothing before the $) immediately followed by "-" injects too (P3-R14): the substitution operators
-// can expand to nothing (${X:+w} and ${X+w} when X is unset, ${X:-} and ${X-} when X is unset or
-// empty), and a plain $X can itself be an empty variable, so the "-" would then start the word instead
-// of following a value. Literal text in front of the reference (app=$APP-api) means the word can never
-// start with "-" however the reference resolves, so the rule does not apply there; the same danger for
-// a brace alternative ({a,$X}-delete) is caught in braceOption instead, leaf by leaf. It rescans word
-// itself (rather than calling references) so it can see the byte after each reference ends.
+// is taracode's environment, which the user controls. The word's leading run of references (P3-R20;
+// see leadingRunEndsInDash) landing on "-" injects too: every reference in the run can expand to
+// nothing, whatever it reads, so the "-" would then start the word instead of following a value.
+// Literal text in front of the run (app=$APP-api) means the word can never start with "-" however the
+// run resolves, so the rule only ever looks at byte 0; the same danger for a brace alternative
+// ({a,$X}-delete) is caught in braceOption instead, leaf by leaf. It rescans word itself (rather than
+// calling references) so it can see the byte after each reference ends.
 //
 // harmless is true when the program that receives the word only prints its arguments (echo, :, true,
 // false, or a for-list, which runs nothing): ruling R3. It relaxes the two shapes that are dangerous
 // only because an extra option changes what the program does - a command-substitution marker (a bare
 // "$" the parser left when it split the word at the substitution's "(") and a variable set to an
-// option value. The other shapes stay a mutation whatever the program: $_, a reference followed by
-// "-", an assigning or otherwise opaque ${...} form (it can change shell state or hide any output),
-// and a substitution operator whose literal word is an option.
+// option value. The other shapes stay a mutation whatever the program: $_, the leading-run dash rule,
+// an assigning or otherwise opaque ${...} form (it can change shell state or hide any output), and a
+// substitution operator whose literal word is an option.
 func (v lineVars) injects(word string, harmless bool) bool {
+	if leadingRunEndsInDash(word) {
+		return true
+	}
 	for i := 0; i < len(word); i++ {
 		if word[i] != '$' {
 			continue
 		}
 		r, n := reference(word[i+1:])
-		end := i + 1 + n
-		if i == 0 && end < len(word) && word[end] == '-' {
-			return true
-		}
 		if r.Name == "_" {
 			return true
 		}
@@ -186,6 +184,23 @@ func (v lineVars) injects(word string, harmless bool) bool {
 	return false
 }
 
+// leadingRunEndsInDash reports whether word, with its whole leading run of $ references removed one
+// after another from byte 0, is left with the run followed immediately by "-" (P3-R20, amending
+// P3-R14a). A run can be more than one reference ($@$@-delete, $X$Y-delete): bash brace-expands and
+// command-substitutes before parameter expansion, but every reference in the run, whatever it reads -
+// a name, a ${...} form, a special parameter or a bare "$" substitution marker, each consumed with
+// reference() - can still expand to nothing, so the whole run can vanish and leave the "-" to start
+// the word. Literal text before the run, or anywhere the run stops (word[pos] is not "$"), ends the
+// check there: only a run starting at byte 0 can expose a leading "-".
+func leadingRunEndsInDash(word string) bool {
+	pos := 0
+	for pos < len(word) && word[pos] == '$' {
+		_, n := reference(word[pos+1:])
+		pos += 1 + n
+	}
+	return pos > 0 && pos < len(word) && word[pos] == '-'
+}
+
 // expansionResult is the mutation for a command whose word expands a value the line controls.
 func expansionResult(program, word string) Result {
 	return mutate(program, "the word "+word+" expands a value this line sets or can set, which unquoted can add "+
@@ -194,8 +209,11 @@ func expansionResult(program, word string) Result {
 
 // expansionCheck finds the first word of a segment (its words, assignments included, and its
 // redirect targets) that expands a value the line controls, and the first argument whose brace
-// expansion yields an option. ok is false when there is none. The program is option-harmless when it
-// only prints its arguments; a for-header has no args, so its list may hold a substitution (R3).
+// expansion yields a dangerous leaf. ok is false when there is none. The program is option-harmless
+// when it only prints its arguments; a for-header has no args, so its list may hold a substitution
+// (R3). A brace leaf is checked the same way a plain word is (braceInjects, ruling P3-R21), since
+// bash brace-expands before parameter expansion: {a,$X} can rebuild the name of a variable the line
+// set (sort $a{b,x} reads $ab, not $a), not only the literal shape of a leaf (leafDanger).
 func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool) {
 	program := first(args)
 	harmless := args == nil || optionHarmless[program]
@@ -210,8 +228,9 @@ func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool)
 		}
 	}
 	for _, w := range tail(args) {
-		if braceOption(w) {
-			return mutate(program, "the brace expansion "+w+" gives "+program+" an option"), true
+		if leaf, ok := v.braceInjects(w, harmless); ok {
+			return mutate(program, "the brace expansion "+w+" can become "+leaf+", which unquoted can add "+
+				"options to "+program), true
 		}
 	}
 	return Result{}, false
@@ -221,25 +240,47 @@ func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool)
 const braceLimit = 64
 
 // braceOption reports a word whose brace expansion ({a,b} or {1..3}, which bash performs before the
-// command runs) yields a word that starts with "-" (find . {-delete,-print} deletes) or with a
-// reference immediately followed by "-" (find . {a,$X}-delete: bash brace-expands textually, before
-// $X is read, so the alternative becomes $X-delete, and $X can expand to nothing and leave -delete)
-// (P3-R14). The literal word never shows either danger.
+// command runs) yields a leaf that is dangerous on its own (leafDanger): it starts with "-" (find .
+// {-delete,-print} deletes), or its own leading run of $ references ends right before "-" (find .
+// {a,$X}-delete: bash brace-expands textually, before $X is read, so the alternative becomes
+// $X-delete, and $X can expand to nothing and leave -delete) (P3-R14, P3-R20). The literal word never
+// shows either danger. It does not know about the line's variables, so valueKind (which classifies a
+// literal value in isolation) uses it; expansionCheck uses braceInjects instead.
 func braceOption(word string) bool {
+	_, found := braceLeaves(word, leafDanger)
+	return found
+}
+
+// braceInjects is braceOption plus ruling P3-R21: a brace alternative can rebuild the name of a
+// variable the line set (bash brace-expands before parameter expansion, so $a{b,x} becomes $ab and
+// $ax as words, not $a followed by b or x), so each leaf is also checked the way injects checks a
+// plain word, with the same harmless flag expansionCheck computed for the word itself. leaf is the
+// first dangerous leaf found, named in the mutation reason so it reads more like "$ab" than "-".
+func (v lineVars) braceInjects(word string, harmless bool) (leaf string, found bool) {
+	return braceLeaves(word, func(w string) bool {
+		return leafDanger(w) || v.injects(w, harmless)
+	})
+}
+
+// braceLeaves follows every alternative of word's brace expansion, nested up to braceLimit levels
+// (past it, word itself counts as its own dangerous leaf), and returns the first fully expanded leaf
+// dangerous reports true for. found is false when word has no brace expansion, or none of its leaves
+// are dangerous.
+func braceLeaves(word string, dangerous func(string) bool) (leaf string, found bool) {
 	if _, _, _, ok := braceSplit(word); !ok {
-		return false
+		return "", false
 	}
 	queue := []string{word}
 	for n := 0; len(queue) > 0; n++ {
 		if n > braceLimit {
-			return true
+			return word, true
 		}
 		w := queue[0]
 		queue = queue[1:]
 		prefix, alternatives, suffix, ok := braceSplit(w)
 		if !ok {
-			if leafDanger(w) {
-				return true
+			if dangerous(w) {
+				return w, true
 			}
 			continue
 		}
@@ -247,24 +288,14 @@ func braceOption(word string) bool {
 			queue = append(queue, prefix+a+suffix)
 		}
 	}
-	return false
+	return "", false
 }
 
-// leafDanger reports a fully brace-expanded leaf that starts with "-", or starts with a $ reference
-// immediately followed by "-": the reference can expand to nothing, so the "-" would then start the
-// leaf instead of following a value (P3-R14). A reference elsewhere in the leaf cannot expose a
-// leading "-" however it resolves, so only a leading one is checked, the same rule injects applies to
-// a whole word.
+// leafDanger reports a fully brace-expanded leaf that starts with "-", or whose own leading run of $
+// references ends right before "-" (leadingRunEndsInDash): the same rule injects applies to a whole
+// word, applied to the leaf instead (P3-R14, P3-R20).
 func leafDanger(w string) bool {
-	if strings.HasPrefix(w, "-") {
-		return true
-	}
-	if w == "" || w[0] != '$' {
-		return false
-	}
-	_, n := reference(w[1:])
-	end := 1 + n
-	return end < len(w) && w[end] == '-'
+	return strings.HasPrefix(w, "-") || leadingRunEndsInDash(w)
 }
 
 // braceSplit finds the first brace expansion of a word: a { (not ${) whose matching } encloses a

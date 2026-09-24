@@ -32,6 +32,9 @@ var relaxedReads = []string{
 	// fix round 2, P3-R14(a): literal text in front of a reference means the word can never start
 	// with "-", however the reference resolves; a plain brace expansion with no $ stays a read too
 	"kubectl get pods -l app=$APP-api", "echo {a,b}-x",
+	// fix round 3, P3-R20: literal text in front of a whole leading run of references (not just one)
+	// still keeps the word safe, and a brace prefix keeps a rebuilt name (x{a,$X}) from starting with -
+	"TAG=$VERSION-rc1 echo x", "find . x{a,$X}-delete",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -91,6 +94,18 @@ var relaxedMutations = map[string]string{
 	// with a reference (checked leaf by leaf in braceOption, not injects: see leafDanger) can still
 	// become an option if the reference resolves to nothing
 	"find . {a,$X}-delete": "find", "find . {x,${X:+}}-delete": "find", "find . {a,${X:-}}-delete": "find",
+	// fix round 3, N1/P3-R20: the dash rule walks the whole leading run of references (a chain, or a
+	// substitution marker), not just the first one, since every reference in the run can expand to
+	// nothing; applied to a brace leaf too (leafDanger)
+	"find . $@$@-delete": "find", "o=; find . $o$o-delete": "find", "find . $X$Y-delete": "find",
+	"find . ${X:+}$Y-delete": "find", "find . $X${Y:-}-delete": "find", `find . "$X""$Y"-delete`: "find",
+	"sort $X$Y-o out f": "sort", "find . {a,$X$Y}-delete": "find",
+	"find . $(true)-delete": "find", "find . $(true)$(true)-delete": "find",
+	// fix round 3, O1/P3-R21: brace expansion happens before parameter expansion, so a brace
+	// alternative can rebuild the name of a variable the line set; braceInjects checks every leaf the
+	// way injects checks a plain word, so the reason names the rebuilt variable
+	"ab=-o; sort $a{b,x} out f": "ab", "ab=-o; sort {$a,x}b out f": "ab",
+	"Xdelete=-delete; find . {$X,a}delete": "Xdelete",
 }
 
 func TestRelaxedReads(t *testing.T) {
