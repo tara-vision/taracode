@@ -135,8 +135,8 @@ func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string,
 	}
 
 	a.turn.Truncated = true
-	_, _ = fmt.Fprintf(a.out, "\n%s Reached the limit of %d tool iterations; answering with the findings so far\n",
-		ui.IconWarning, a.maxIterations)
+	_, _ = fmt.Fprintf(a.out, "\n%s Reached the limit of %d tool iterations; answering with the findings so "+
+		"far (context.max_tool_iterations)\n", ui.IconWarning, a.maxIterations)
 	return a.answerAtCap(ctx)
 }
 
