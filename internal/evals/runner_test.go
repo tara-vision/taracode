@@ -436,3 +436,48 @@ func TestRunnerNamesTranscriptsPerRunAndWarnsOnce(t *testing.T) {
 		t.Fatalf("%d warnings in %q", n, out.String())
 	}
 }
+
+// TestRunnerPublishesPooledRatesAcrossRuns pins ruling P3-R56: the summary's rates come from the
+// unrounded per-run values, pooled over the runs, while the row's counts stay rounded for display.
+// One run makes two calls in two replies with one miss (3 model requests), another makes both calls
+// in one reply with no miss (2 requests).
+func TestRunnerPublishesPooledRatesAcrossRuns(t *testing.T) {
+	describe := ollamatest.ToolCall{Name: "kubectl",
+		Args: map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}}
+	answer := ollamatest.Turn{Content: "OOMKilled at the memory limit."}
+	withMiss := []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{describe}},
+		call("kubectl", map[string]any{"verb": "get", "resource": "events", "namespace": "shop"}), answer}
+	clean := []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{describe, describe}}, answer}
+	cases := []struct {
+		name           string
+		runs           [][]ollamatest.Turn
+		missRate       float64
+		meanIterations float64
+		iterations     int // the row's rounded count
+		misses         int // the row's rounded count
+	}{
+		{"one miss in the first of two runs", [][]ollamatest.Turn{withMiss, clean}, 0.25, 2.5, 3, 1},
+		{"one miss in three runs", [][]ollamatest.Turn{withMiss, clean, clean}, 0.167, 2.333, 2, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, tasks := corpusWithTriage(t)
+			var turns []ollamatest.Turn
+			for _, run := range c.runs {
+				turns = append(turns, run...)
+			}
+			opts := runOptions(fakeOllama(t, turns...), "")
+			opts.Runs = len(c.runs)
+			res, err := Run(context.Background(), tasks, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s := res.Summary; s.FixtureMissRate != c.missRate || s.MeanIterations != c.meanIterations {
+				t.Errorf("summary %+v, want miss rate %v and mean iterations %v", s, c.missRate, c.meanIterations)
+			}
+			if tr := res.Tasks[0]; tr.ToolCalls != 2 || tr.Iterations != c.iterations || tr.FixtureMisses != c.misses {
+				t.Errorf("row %+v", tr)
+			}
+		})
+	}
+}
