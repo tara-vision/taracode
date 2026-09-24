@@ -1,8 +1,10 @@
 package evals
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/tools/redact"
@@ -35,6 +37,7 @@ func Lint(root string) (int, []string) {
 		}
 		seen[t.ID] = true
 		problems = append(problems, lintFixtures(t)...)
+		problems = append(problems, lintWorkdir(t)...)
 		if t.Policy != "" {
 			if _, err := os.Stat(filepath.Join(dir, t.Policy)); err != nil {
 				problems = append(problems, t.ID+": policy file "+t.Policy+" missing")
@@ -68,10 +71,10 @@ func lintFixtures(t Task) []string {
 	return append(problems, lintFixtureContents(t, store)...)
 }
 
-// lintFixtureContents flags a missing fixture file, a raw secret in a fixture file or in
-// index.yaml itself, a file two signatures share, and an orphan file (a dotfile such as .DS_Store
-// excepted). It uses redact.ContainsSecret, the same patterns the recorder redacts with, instead of
-// a narrower lint-only list, so text the recorder already redacted reads clean (ruling P3-R28).
+// lintFixtureContents flags a missing fixture file, a raw secret in any regular file under
+// fixtures/ (indexed, orphaned or a dotfile, index.yaml included: ruling P3-R38 - the dotfile
+// exemption below is for the "not in the index" message only, not for the secret scan), a file two
+// signatures share, and an orphan file.
 func lintFixtureContents(t Task, store *Store) []string {
 	var problems []string
 	referenced, seenFiles := map[string]bool{}, map[string]bool{}
@@ -80,26 +83,85 @@ func lintFixtureContents(t Task, store *Store) []string {
 			problems = append(problems, t.ID+": fixture file "+f.File+" is shared by multiple signatures")
 		}
 		seenFiles[f.File], referenced[f.File] = true, true
-		data, err := os.ReadFile(filepath.Join(store.Dir(), f.File))
-		if err != nil {
+		if _, err := os.Stat(filepath.Join(store.Dir(), f.File)); err != nil {
 			problems = append(problems, t.ID+": fixture file "+f.File+" missing")
-			continue
-		}
-		if _, found := redact.ContainsSecret(string(data)); found {
-			problems = append(problems, t.ID+": fixture "+f.File+" carries a raw secret pattern")
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(store.Dir(), "index.yaml")); err == nil {
-		if _, found := redact.ContainsSecret(string(data)); found {
-			problems = append(problems, t.ID+": fixtures index.yaml carries a raw secret pattern")
+	_ = filepath.WalkDir(store.Dir(), func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(store.Dir(), p)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		data, err := os.ReadFile(p) //nolint:gosec // p walks store.Dir(), a trusted corpus path
+		if err != nil {
+			return nil // the missing-file case for an indexed entry is already reported above
+		}
+		label := "fixture " + rel
+		if rel == "index.yaml" {
+			label = "fixtures index.yaml"
+		}
+		if fixtureCarriesASecret(data) {
+			problems = append(problems, t.ID+": "+label+" carries a raw secret pattern")
+		}
+		if rel != "index.yaml" && !referenced[rel] && !isDotPath(rel) {
+			problems = append(problems, t.ID+": fixture file "+rel+" is not in the index")
+		}
+		return nil
+	})
+	return problems
+}
+
+// isDotPath reports whether any component of a slash-separated relative path starts with a dot, the
+// convention a hidden file or directory (.DS_Store, .git, ...) uses to say "not real content".
+func isDotPath(rel string) bool {
+	for _, part := range strings.Split(rel, "/") {
+		if strings.HasPrefix(part, ".") {
+			return true
 		}
 	}
-	files, _ := os.ReadDir(store.Dir())
-	for _, f := range files {
-		if f.Name() == "index.yaml" || referenced[f.Name()] || strings.HasPrefix(f.Name(), ".") {
-			continue
-		}
-		problems = append(problems, t.ID+": fixture file "+f.Name()+" is not in the index")
+	return false
+}
+
+// rawSecret is a narrower, boundary-free lint-only check kept alongside redact.ContainsSecret
+// because each catches shapes the other misses: a PRIVATE KEY header with a body but no END line (the
+// redactor's pattern needs both), and an AWS key or a GitHub token glued to another word character
+// (the redactor's patterns are \b-anchored so a model or a scenario script that concatenates one
+// mid-word defeats them). A false positive here is the cheap direction (ruling P3-R38).
+var rawSecret = regexp.MustCompile(`AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----\n[A-Za-z0-9+/=]{20,}|` +
+	`ghp_[A-Za-z0-9]{36}|xox[abp]-[0-9A-Za-z-]{10,}`)
+
+// fixtureCarriesASecret flags data as a raw secret if either rawSecret or redact.ContainsSecret (the
+// same, thorough patterns the recorder redacts with) matches it.
+func fixtureCarriesASecret(data []byte) bool {
+	if rawSecret.Match(data) {
+		return true
 	}
+	_, found := redact.ContainsSecret(string(data))
+	return found
+}
+
+// lintWorkdir flags any symlink under a task's workdir/: it is copied into a fresh run directory
+// verbatim (record.go's copyDir), and initial task content is meant to be plain, reproducible files,
+// not a link that behaves differently across machines and platforms (ruling P3-R38). It walks with
+// Lstat (via fs.DirEntry, which never follows a symlink to decide this) so a symlinked directory is
+// reported itself rather than walked into.
+func lintWorkdir(t Task) []string {
+	root := filepath.Join(t.Dir, "workdir")
+	var problems []string
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d.Type()&fs.ModeSymlink == 0 {
+			return nil
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			rel = p
+		}
+		problems = append(problems, t.ID+": workdir/"+filepath.ToSlash(rel)+" is a symlink")
+		return nil
+	})
 	return problems
 }

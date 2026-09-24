@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
@@ -22,7 +23,7 @@ func Signature(tool string, args map[string]any) string {
 	case "helm", "git", "docker":
 		return strings.TrimSpace(tool + " " + strings.Join(words(str(args, "args")), " "))
 	case "cloud":
-		return strings.TrimSpace(str(args, "provider") + " " + strings.Join(words(str(args, "args")), " "))
+		return cloudSignature(str(args, "provider"), words(str(args, "args")))
 	case "scan":
 		return strings.TrimSpace(strings.Join([]string{"scan", str(args, "scanner"), str(args, "target"),
 			strings.ToUpper(str(args, "severity"))}, " "))
@@ -44,6 +45,22 @@ func Signature(tool string, args map[string]any) string {
 // DryRunSignature keys a tool's dry run.
 func DryRunSignature(tool string, args map[string]any) string {
 	return "dryrun:" + Signature(tool, args)
+}
+
+// cloudProviders are the CLIs a shell line can alias to a cloud call (ruling R11, spec 5.3); the
+// dedicated tool otherwise accepts any provider string.
+var cloudProviders = map[string]bool{"aws": true, "az": true, "gcloud": true}
+
+// cloudSignature keys aws, az and gcloud as the shell alias does ("<provider> <args>"), matching
+// shellSignature's own case list; any other provider is keyed "cloud <provider> <args>" so it can
+// never equal another tool's own signature (ruling P3-R38) - without this, {"provider": "terraform",
+// "args": "plan dir=."} would render as "terraform plan dir=.", the real tool's own plan signature,
+// and unlock its apply gate without a real terraform call ever having happened.
+func cloudSignature(provider string, args []string) string {
+	if cloudProviders[provider] {
+		return strings.TrimSpace(provider + " " + strings.Join(args, " "))
+	}
+	return strings.TrimSpace("cloud " + provider + " " + strings.Join(args, " "))
 }
 
 func str(args map[string]any, key string) string {
@@ -240,12 +257,21 @@ func findKubectlVerb(argv []string) (verb string, reordered []string) {
 	return "", argv
 }
 
-// terraformSignature renders "terraform <command> dir=<clean dir> [<args as written>]".
+// terraformSignature renders "terraform <command> dir=<clean dir> [<args as written>]". Since the
+// whole signature is space-joined and later split with strings.Fields (terraformSig in replay.go), a
+// dir containing whitespace is quoted with strconv.Quote so two directories that merely share a
+// leading word ("my infra" and "my other") key differently instead of both truncating to "my"
+// (ruling P3-R38).
 func terraformSignature(command, dir string, args []string) string {
 	if dir == "" {
 		dir = "."
 	}
-	parts := []string{"terraform", command, "dir=" + path.Clean(dir)}
+	dir = path.Clean(dir)
+	dirField := dir
+	if len(strings.Fields(dir)) > 1 {
+		dirField = strconv.Quote(dir)
+	}
+	parts := []string{"terraform", command, "dir=" + dirField}
 	return strings.Join(append(parts, args...), " ")
 }
 
