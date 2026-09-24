@@ -11,9 +11,11 @@ import (
 	"github.com/tara-vision/taracode/internal/tools"
 )
 
-// Replay serves tool calls from a task's fixtures (spec 5.3). The five file tools and get_datetime
-// run for real in the run directory, with writes confined to it; every other tool and every dry run
-// replays; a call with no fixture is a tool error and a counted miss.
+// Replay serves tool calls from a task's fixtures (spec 5.3). Only the five file tools and
+// get_datetime ever execute for real, inside the run directory; the four with a path argument are
+// confined to it, reads included, symlinks resolved. Every other tool and every dry run replays
+// from the fixture store; a call with no fixture is a tool error and a counted miss, and an indexed
+// fixture whose file cannot be read is a distinct, counted corpus defect rather than a miss.
 type Replay struct {
 	store  *Store
 	taskID string
@@ -21,19 +23,25 @@ type Replay struct {
 
 	mu      sync.Mutex
 	calls   []ReplayCall
-	planned map[string]bool // terraform directories with a replayed plan (ruling R6)
+	planned map[string]bool // terraform dir tokens with a replayed, successful plan (ruling P3-R6, P3-R26)
 }
 
 // ReplayCall is one call the middleware saw.
 type ReplayCall struct {
 	Signature string
 	DryRun    bool
-	Miss      bool
+	Miss      bool // no fixture was recorded for this signature
+	Defect    bool // the signature was indexed but its fixture file could not be read
 }
 
 // realTools run for real inside the run directory.
 var realTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true, "write_file": true,
 	"edit_file": true, "get_datetime": true}
+
+// confinedTools are the realTools that take a path and so must be confined to the run directory,
+// reads included (ruling P3-R24); get_datetime takes no path.
+var confinedTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true,
+	"write_file": true, "edit_file": true}
 
 // NewReplay returns a replay for one task run.
 func NewReplay(store *Store, taskID, runDir string) *Replay {
@@ -43,25 +51,40 @@ func NewReplay(store *Store, taskID, runDir string) *Replay {
 // Middleware is the tools.Middleware of this replay.
 func (r *Replay) Middleware(call tools.Call, next tools.Executor) tools.Executor {
 	if realTools[call.Tool] && !call.DryRun {
-		if call.Tool == "write_file" || call.Tool == "edit_file" {
-			return r.confined(next)
+		if confinedTools[call.Tool] {
+			return r.confined(call.Tool, next)
 		}
-		return next
+		return next // get_datetime: no path to confine
 	}
-	return func(_ context.Context, args map[string]any, workingDir string) (string, error) {
+	return r.replay(call)
+}
+
+// replay serves one call from the fixture store. The terraform apply gate runs before the lookup (a
+// refusal is not a miss and never touches the store), and a successful, non-error plan updates the
+// gate's state after the lookup; both are keyed on the canonical signature, so a shell line aliased
+// to terraform (ruling P3-R11) shares state with the dedicated tool in both directions (ruling
+// P3-R26).
+func (r *Replay) replay(call tools.Call) tools.Executor {
+	return func(_ context.Context, args map[string]any, _ string) (string, error) {
 		sig := Signature(call.Tool, args)
 		if call.DryRun {
 			sig = DryRunSignature(call.Tool, args)
 		}
-		if msg, refused := r.terraformState(call, args, workingDir); refused {
-			r.note(sig, call.DryRun, false)
+		if msg, refused := r.terraformApplyGate(sig); refused {
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
 			return "", errors.New(msg)
 		}
 		out, isErr, ok := r.store.Lookup(sig)
-		r.note(sig, call.DryRun, !ok)
 		if !ok {
+			if defectErr := r.store.LookupErr(sig); defectErr != nil {
+				r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Defect: true})
+				return "", fmt.Errorf("eval task %s: corpus defect: %w", r.taskID, defectErr)
+			}
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Miss: true})
 			return "", fmt.Errorf("no recorded data for this call in eval task %s: %s", r.taskID, sig)
 		}
+		r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
+		r.recordTerraformPlan(sig, call.DryRun, isErr)
 		if isErr {
 			return "", errors.New(out)
 		}
@@ -69,8 +92,11 @@ func (r *Replay) Middleware(call tools.Call, next tools.Executor) tools.Executor
 	}
 }
 
-// confined refuses a write whose resolved path leaves the run directory.
-func (r *Replay) confined(next tools.Executor) tools.Executor {
+// confined refuses a call whose path leaves the run directory, textually and, after that check
+// passes, by resolving symlinks along its deepest existing ancestor (ruling P3-R25); a purely
+// textual check misses a symlink inside the run directory that points outside it. Every one of the
+// five file tools with a path argument goes through this, reads included (ruling P3-R24).
+func (r *Replay) confined(tool string, next tools.Executor) tools.Executor {
 	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 		p := str(args, "path")
 		if !filepath.IsAbs(p) {
@@ -79,44 +105,100 @@ func (r *Replay) confined(next tools.Executor) tools.Executor {
 		p = filepath.Clean(p)
 		root := filepath.Clean(r.runDir)
 		if p != root && !strings.HasPrefix(p, root+string(filepath.Separator)) {
-			return "", fmt.Errorf("eval task %s: refusing to write outside the task directory: %s", r.taskID, p)
+			return "", r.confinementError(tool, p)
+		}
+		realRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return "", fmt.Errorf("eval task %s: resolving the run directory: %w", r.taskID, err)
+		}
+		realPath, err := evalDeepestAncestor(p)
+		if err != nil {
+			return "", fmt.Errorf("eval task %s: resolving %s: %w", r.taskID, p, err)
+		}
+		if realPath != realRoot && !strings.HasPrefix(realPath, realRoot+string(filepath.Separator)) {
+			return "", r.confinementError(tool, p)
 		}
 		return next(ctx, args, workingDir)
 	}
 }
 
-// terraformState emulates the one piece of tool state a replay needs: apply demands a plan replayed
-// earlier for the same directory, and consumes it, as the terraform tool does (ruling R6).
-func (r *Replay) terraformState(call tools.Call, args map[string]any, workingDir string) (string, bool) {
-	if call.Tool != "terraform" {
+// confinementError is the neutral refusal a confined tool gets for a path outside the run directory.
+func (r *Replay) confinementError(tool, path string) error {
+	return fmt.Errorf("eval task %s: %s: %s is outside the eval's working directory", r.taskID, tool, path)
+}
+
+// evalDeepestAncestor resolves symlinks along p, walking up to the deepest existing ancestor when p
+// itself does not exist yet (as for write_file creating a new file), and returns that ancestor's
+// real, symlink-free path. Resolving both the run directory and p this way also makes a difference
+// like macOS's /var vs /private/var a non-issue, since both sides of the comparison go through it.
+func evalDeepestAncestor(p string) (string, error) {
+	for {
+		resolved, err := filepath.EvalSymlinks(p)
+		if err == nil {
+			return resolved, nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return "", err
+		}
+		p = parent
+	}
+}
+
+// terraformSig parses a canonical terraform signature ("terraform <verb> dir=<dir> ..."), produced
+// identically for the terraform tool and for a shell line aliased to it (ruling P3-R11), so the
+// plan-state gate below keys on the call's meaning rather than on which tool the model used.
+func terraformSig(sig string) (verb, dir string, ok bool) {
+	fields := strings.Fields(strings.TrimPrefix(sig, "dryrun:"))
+	if len(fields) < 3 || fields[0] != "terraform" || !strings.HasPrefix(fields[2], "dir=") {
+		return "", "", false
+	}
+	return fields[1], strings.TrimPrefix(fields[2], "dir="), true
+}
+
+// terraformApplyGate refuses an apply with no plan replayed this session for the same directory. The
+// check runs, and consumes the plan, before the fixture lookup, mirroring terraform_tool.go's apply,
+// which checks and consumes its plan before running anything (ruling P3-R6).
+func (r *Replay) terraformApplyGate(sig string) (string, bool) {
+	verb, dir, ok := terraformSig(sig)
+	if !ok || verb != "apply" {
 		return "", false
 	}
-	dir := filepath.Clean(filepath.Join(workingDir, str(args, "dir")))
+	dryRun := strings.HasPrefix(sig, "dryrun:")
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	switch str(args, "command") {
-	case "plan":
-		if !call.DryRun {
-			r.planned[dir] = true
+	if !r.planned[dir] {
+		if dryRun {
+			return "no plan from this session for this directory; run terraform plan first", true
 		}
-	case "apply":
-		if !r.planned[dir] {
-			if call.DryRun {
-				return "no plan from this session for this directory; run terraform plan first", true
-			}
-			return fmt.Sprintf("no plan from this session for %s; run terraform plan first", dir), true
-		}
-		if !call.DryRun {
-			delete(r.planned, dir)
-		}
+		return fmt.Sprintf("no plan from this session for %s; run terraform plan first", dir), true
+	}
+	if !dryRun {
+		delete(r.planned, dir)
 	}
 	return "", false
 }
 
-func (r *Replay) note(sig string, dryRun, miss bool) {
+// recordTerraformPlan marks dir planned after a real plan whose fixture was found and was not
+// itself an error output, mirroring terraform_tool.go's plan(), which only stores a plan record on
+// total success: an error plan fixture or a plan miss must not unlock apply (ruling P3-R26).
+func (r *Replay) recordTerraformPlan(sig string, dryRun, isErr bool) {
+	if dryRun || isErr {
+		return
+	}
+	verb, dir, ok := terraformSig(sig)
+	if !ok || verb != "plan" {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.calls = append(r.calls, ReplayCall{Signature: sig, DryRun: dryRun, Miss: miss})
+	r.planned[dir] = true
+}
+
+func (r *Replay) note(c ReplayCall) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, c)
 }
 
 // Calls lists every replayed call in order.
@@ -131,6 +213,18 @@ func (r *Replay) Misses() []string {
 	var out []string
 	for _, c := range r.Calls() {
 		if c.Miss {
+			out = append(out, c.Signature)
+		}
+	}
+	return out
+}
+
+// Defects lists the signatures whose indexed fixture file could not be read, in call order: a
+// corpus defect the runner should surface distinctly from an ordinary miss.
+func (r *Replay) Defects() []string {
+	var out []string
+	for _, c := range r.Calls() {
+		if c.Defect {
 			out = append(out, c.Signature)
 		}
 	}

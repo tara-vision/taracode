@@ -56,3 +56,81 @@ func TestLintChecksFixturesAndRawSecrets(t *testing.T) {
 		t.Fatalf("%q", joined)
 	}
 }
+
+// TestLintFlagsAFileSharedByTwoSignatures covers the lint-time half of ruling P3-R27: two entries
+// hand-authored to point at the same file are each individually valid (a plain base name, no
+// duplicate signature), so LoadFixtures accepts the index; only content-level lint can catch it.
+func TestLintFlagsAFileSharedByTwoSignatures(t *testing.T) {
+	root := t.TempDir()
+	dir := writeTask(t, root, "crashloop-oomkilled", goodTask)
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "shared.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	indexYAML := "fixtures:\n  - signature: kubectl get pod -n shop\n    file: shared.txt\n" +
+		"  - signature: kubectl get pod -n other\n    file: shared.txt\n"
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "index.yaml"), []byte(indexYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, problems := Lint(root)
+	if !strings.Contains(strings.Join(problems, "\n"), "shared.txt is shared by multiple signatures") {
+		t.Fatalf("%q", problems)
+	}
+}
+
+// TestLintScansIndexYAMLItselfForASecret covers the index.yaml half of ruling P3-R28: the old lint
+// only scanned the referenced fixture files, never the index file that names them.
+func TestLintScansIndexYAMLItselfForASecret(t *testing.T) {
+	root := t.TempDir()
+	dir := writeTask(t, root, "crashloop-oomkilled", goodTask)
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "a.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	indexYAML := "fixtures:\n  - signature: key AKIAIOSFODNN7EXAMPLE leaked in the signature itself\n    file: a.txt\n"
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", "index.yaml"), []byte(indexYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, problems := Lint(root)
+	if !strings.Contains(strings.Join(problems, "\n"), "index.yaml carries a raw secret pattern") {
+		t.Fatalf("%q", problems)
+	}
+}
+
+// TestLintSkipsDotfilesAndCatchesWhatTheOldPatternMissed covers ruling P3-R28: the old lint.go
+// rawSecret pattern missed an ASIA key, a CRLF-formatted PEM body and a github_pat_ token, and would
+// have flagged a stray .DS_Store as an orphan.
+func TestLintSkipsDotfilesAndCatchesWhatTheOldPatternMissed(t *testing.T) {
+	root := t.TempDir()
+	dir := writeTask(t, root, "crashloop-oomkilled", goodTask)
+	s, _ := LoadFixtures(dir)
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixtures", ".DS_Store"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save("kubectl get secret -n shop", "key ASIAIOSFODNN7EXAMPLE leaked", false); err != nil {
+		t.Fatal(err)
+	}
+	crlfPEM := "-----BEGIN RSA PRIVATE KEY-----\r\nMIIabc\r\n-----END RSA PRIVATE KEY-----"
+	if err := s.Save("kubectl get secret -n other", crlfPEM, false); err != nil {
+		t.Fatal(err)
+	}
+	githubPAT := "token github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz here"
+	if err := s.Save("kubectl get secret -n third", githubPAT, false); err != nil {
+		t.Fatal(err)
+	}
+	_, problems := Lint(root)
+	joined := strings.Join(problems, "\n")
+	if strings.Contains(joined, "DS_Store") {
+		t.Fatalf("a dotfile must not be flagged as an orphan: %q", joined)
+	}
+	if count := strings.Count(joined, "carries a raw secret pattern"); count != 3 {
+		t.Fatalf("expected 3 raw-secret problems (ASIA key, CRLF PEM, github_pat_ token), got %d: %q", count, joined)
+	}
+}

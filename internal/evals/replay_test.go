@@ -78,7 +78,7 @@ func TestReplayRunsFileToolsForRealAndConfinesWrites(t *testing.T) {
 		t.Fatalf("read_file: %q %v", out, err)
 	}
 	if _, err := reg.Execute(ctx, "write_file", map[string]any{"path": "../escape.txt", "content": "x"}, runDir); err == nil ||
-		!strings.Contains(err.Error(), "outside the task directory") {
+		!strings.Contains(err.Error(), "outside the eval's working directory") {
 		t.Fatalf("escape: %v", err)
 	}
 	if _, err := reg.Execute(ctx, "write_file", map[string]any{"path": filepath.Join(os.TempDir(), "taracode-escape.txt"),
@@ -118,5 +118,165 @@ func TestReplayDryRunsAndTerraformPlanState(t *testing.T) {
 	}
 	if len(r.Misses()) != 0 {
 		t.Fatalf("misses %v", r.Misses())
+	}
+}
+
+// TestReplayConfinesEveryFileToolIncludingReads covers ruling P3-R24: read_file, list_files and
+// search_files must be confined exactly like write_file and edit_file; only get_datetime has no
+// path to confine. An empty path for list_files/search_files still resolves to the run directory
+// itself and must pass.
+func TestReplayConfinesEveryFileToolIncludingReads(t *testing.T) {
+	_, reg, runDir := replayRegistry(t)
+	ctx := context.Background()
+	cases := []struct {
+		tool string
+		args map[string]any
+	}{
+		{"read_file", map[string]any{"path": "/etc/hosts"}},
+		{"read_file", map[string]any{"path": "../../.."}},
+		{"search_files", map[string]any{"path": "/Users", "pattern": "password"}},
+		{"list_files", map[string]any{"path": "/etc"}},
+	}
+	for _, c := range cases {
+		if _, err := reg.Execute(ctx, c.tool, c.args, runDir); err == nil ||
+			!strings.Contains(err.Error(), "outside the eval's working directory") {
+			t.Errorf("%s %v: %v", c.tool, c.args, err)
+		}
+	}
+	if _, err := reg.Execute(ctx, "list_files", map[string]any{}, runDir); err != nil {
+		t.Fatalf("list_files with no path must resolve to the run directory: %v", err)
+	}
+}
+
+// TestReplayConfinementFollowsSymlinksOutOfTheRunDirectory covers ruling P3-R25: a symlink inside
+// the run directory that points outside it must not let a write escape a purely textual check.
+func TestReplayConfinementFollowsSymlinksOutOfTheRunDirectory(t *testing.T) {
+	_, reg, runDir := replayRegistry(t)
+	elsewhere := t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(runDir, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	ctx := context.Background()
+	_, err := reg.Execute(ctx, "write_file", map[string]any{"path": "link/escape.txt", "content": "x"}, runDir)
+	if err == nil || !strings.Contains(err.Error(), "outside the eval's working directory") {
+		t.Fatalf("write through a symlink: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(elsewhere, "escape.txt")); statErr == nil {
+		t.Fatal("the write escaped through the symlink")
+	}
+}
+
+// TestReplayApplyRefusedAfterErrorPlan covers the first half of ruling P3-R26: a plan fixture
+// recorded as an error must not unlock apply, mirroring terraform_tool.go's plan(), which only
+// stores plan state when the whole plan pipeline succeeds.
+func TestReplayApplyRefusedAfterErrorPlan(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	if err := s.Save("terraform plan dir=.", "terraform exited with status 1\nno credentials", true); err != nil {
+		t.Fatal(err)
+	}
+	r := NewReplay(s, "t", runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	ctx := context.Background()
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
+		!strings.Contains(err.Error(), "no credentials") {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "apply"}, runDir); err == nil ||
+		!strings.Contains(err.Error(), "run terraform plan first") {
+		t.Fatalf("apply after an error plan: %v", err)
+	}
+}
+
+// TestReplayApplyRefusedAfterPlanMiss covers the other half of ruling P3-R26: a plan the recorder
+// never captured must not unlock apply either.
+func TestReplayApplyRefusedAfterPlanMiss(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	r := NewReplay(s, "t", runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	ctx := context.Background()
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
+		!strings.Contains(err.Error(), "no recorded data") {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "apply"}, runDir); err == nil ||
+		!strings.Contains(err.Error(), "run terraform plan first") {
+		t.Fatalf("apply after a plan miss: %v", err)
+	}
+}
+
+// TestReplayTerraformPlanStateCrossesShellAndToolForms covers the second half of ruling P3-R26: the
+// terraform tool and a shell line aliased to it (ruling P3-R11) must share the same plan-state key,
+// in both directions, and a shell apply with no plan is refused exactly like the tool's.
+func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	for sig, text := range map[string]string{
+		"terraform plan dir=.":  "Plan: 1 to add, 0 to change, 0 to destroy.",
+		"terraform apply dir=.": "Apply complete! Resources: 1 added.",
+	} {
+		if err := s.Save(sig, text, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+
+	t.Run("shell plan unlocks the tool's apply", func(t *testing.T) {
+		r := NewReplay(s, "t", runDir)
+		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+		if _, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform plan"}, runDir); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "apply"}, runDir); err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+	})
+	t.Run("the tool's plan unlocks a shell apply", func(t *testing.T) {
+		r := NewReplay(s, "t", runDir)
+		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+		if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform apply"}, runDir); err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+	})
+	t.Run("a shell apply with no plan is refused", func(t *testing.T) {
+		r := NewReplay(s, "t", runDir)
+		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+		_, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform apply"}, runDir)
+		if err == nil || !strings.Contains(err.Error(), "run terraform plan first") {
+			t.Fatalf("apply: %v", err)
+		}
+	})
+}
+
+// TestReplayReportsACorpusDefectDistinctFromAMiss covers the last part of ruling P3-R28: a signature
+// that is indexed but whose fixture file cannot be read is a corpus defect, not a model miss, so the
+// runner can tell "the recorder needs to capture this" apart from "the corpus itself is broken."
+func TestReplayReportsACorpusDefectDistinctFromAMiss(t *testing.T) {
+	taskDir, runDir := t.TempDir(), t.TempDir()
+	s, _ := LoadFixtures(taskDir)
+	const sig = "kubectl get pod -n shop"
+	if err := s.Save(sig, "NAME READY\ncheckout-1 1/1\n", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range s.Fixtures() {
+		if err := os.Remove(filepath.Join(s.Dir(), f.File)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := NewReplay(s, "t", runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	_, err := reg.Execute(context.Background(), "kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}, runDir)
+	if err == nil || !strings.Contains(err.Error(), "corpus defect") {
+		t.Fatalf("defect: %v", err)
+	}
+	if len(r.Misses()) != 0 {
+		t.Fatalf("a corpus defect must not count as a miss: %v", r.Misses())
+	}
+	if d := r.Defects(); len(d) != 1 || d[0] != sig {
+		t.Fatalf("defects: %v", d)
 	}
 }

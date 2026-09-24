@@ -133,6 +133,49 @@ func TestLineWriterRedactsEachLineBeforeItReachesTheScreen(t *testing.T) {
 	}
 }
 
+// TestContainsSecret covers the final review's I6 requirement: a match-only detector next to New
+// that reuses the built-in patterns, so lintFixtures can catch what a narrower ad hoc pattern (the
+// old lint.go rawSecret) missed: an ASIA key, a CRLF-formatted PEM body, and a github_pat_ token.
+func TestContainsSecret(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		wantOK  bool
+		wantPat string
+	}{
+		{"raw AKIA key", "key AKIAIOSFODNN7EXAMPLE here", true, "aws-access-key"},
+		{"raw ASIA key", "key ASIAIOSFODNN7EXAMPLE here", true, "aws-access-key"},
+		{"CRLF PEM body", "-----BEGIN RSA PRIVATE KEY-----\r\nMIIabc\r\n-----END RSA PRIVATE KEY-----", true, "private-key"},
+		{
+			"github_pat token", "token github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz here",
+			true, "github-token",
+		},
+		{"already redacted aws-access-key marker", "key: [redacted:aws-access-key]", false, ""},
+		{"already redacted private-key marker", "cert: [redacted:private-key]", false, ""},
+		{"clean text", "just some ordinary log output", false, ""},
+	}
+	for _, c := range cases {
+		pattern, found := ContainsSecret(c.in)
+		if found != c.wantOK || (c.wantOK && pattern != c.wantPat) {
+			t.Errorf("%s: ContainsSecret(%q) = (%q, %v), want (%q, %v)", c.name, c.in, pattern, found, c.wantPat, c.wantOK)
+		}
+	}
+}
+
+// TestContainsSecretReadsAlreadyRedactedTextClean covers the other half of the same requirement: a
+// fixture the recorder already redacted must not be re-flagged as carrying a raw secret, even though
+// a "label: [redacted:...]" span textually resembles a credential pattern's match shape.
+func TestContainsSecretReadsAlreadyRedactedTextClean(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	redacted := r.Redact("password: hunter2, key AKIAIOSFODNN7EXAMPLE here")
+	if _, found := ContainsSecret(redacted); found {
+		t.Fatalf("already-redacted text must read clean: %q", redacted)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("screen gone") }

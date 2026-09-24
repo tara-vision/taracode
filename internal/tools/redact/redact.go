@@ -85,6 +85,27 @@ func New(opts Options) (*Redactor, error) {
 	return r, nil
 }
 
+// ContainsSecret reports whether s contains a raw, unredacted secret matching any built-in pattern,
+// and which kind if so. It reuses the same compiled patterns Redact does, so it catches everything
+// Redact would replace, unlike a narrower ad hoc pattern. Text that has already been through Redact
+// reads clean: for a pattern that keeps its label and redacts only the value, a value that is
+// already a "[redacted:...]" marker does not count, the same check redact itself uses so it does not
+// re-redact an already-redacted span.
+func ContainsSecret(s string) (pattern string, found bool) {
+	for _, p := range builtin {
+		for _, groups := range p.re.FindAllStringSubmatch(s, -1) {
+			if !p.keep {
+				return p.kind, true
+			}
+			if strings.HasPrefix(groups[2], "[redacted:") {
+				continue
+			}
+			return p.kind, true
+		}
+	}
+	return "", false
+}
+
 // Redact returns s with every secret replaced and counts the spans it replaced.
 func (r *Redactor) Redact(s string) string { return r.redact(s, true) }
 
