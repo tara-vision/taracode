@@ -104,15 +104,7 @@ func (rec *Recorder) Middleware(call tools.Call, next tools.Executor) tools.Exec
 		if ctx.Err() != nil {
 			return out, err
 		}
-		rec.mu.Lock()
-		saveErr := rec.store.Save(sig, text, isErr)
-		if saveErr == nil {
-			rec.saved = append(rec.saved, sig)
-		} else if rec.saveErr == nil {
-			rec.saveErr = saveErr
-		}
-		rec.mu.Unlock()
-		if saveErr != nil {
+		if saveErr := rec.saveDirect(sig, text, isErr); saveErr != nil {
 			return "", saveErr
 		}
 		return out, err
@@ -127,6 +119,28 @@ func (rec *Recorder) matchesPrivateName(s string) bool {
 		}
 	}
 	return false
+}
+
+// saveDirect saves sig/text/isErr under the recorder's mutex, appending to Saved() on success and
+// latching the first failure into SaveErr on failure. Middleware uses it for every ordinary save;
+// recordOneCall also calls it directly for a tools.ErrNoDryRun result that never reaches Middleware
+// at all (ruling P3-R41 item 7), sharing the same bookkeeping either way. Saving the same signature
+// twice (Middleware already saved it, and a caller saves it again) updates the store idempotently and
+// does not add a second entry to Saved().
+func (rec *Recorder) saveDirect(sig, text string, isErr bool) error {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	_, _, alreadyKnown := rec.store.Lookup(sig)
+	if err := rec.store.Save(sig, text, isErr); err != nil {
+		if rec.saveErr == nil {
+			rec.saveErr = err
+		}
+		return err
+	}
+	if !alreadyKnown {
+		rec.saved = append(rec.saved, sig)
+	}
+	return nil
 }
 
 // Saved lists the signatures recorded, in order.
@@ -286,6 +300,18 @@ func privateNames() ([]string, error) {
 	return defaultPrivateNames()
 }
 
+// namesFromHost builds the short-name-derived entries of the default deny list from short (a real
+// os.Hostname, or a synthetic one in a test): the name itself, and (ruling P3-R41 item 1) the label
+// before its first dot, when it has one -- a macOS ".local" host or an FQDN-named Linux host is
+// addressed by both forms across different tools, so both must be denied.
+func namesFromHost(short string) []string {
+	names := []string{short}
+	if label, _, ok := strings.Cut(short, "."); ok && label != "" {
+		names = append(names, label)
+	}
+	return names
+}
+
 // defaultPrivateNames builds privateNames' default list: the host's short and full names, the
 // resolv.conf search domains, and the global unicast addresses of its physical network interfaces.
 // The host's own short name (os.Hostname) must be known, or a recording cannot proceed at all; every
@@ -296,7 +322,7 @@ func defaultPrivateNames() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("look up the host name: %w", err)
 	}
-	names := []string{short}
+	names := namesFromHost(short)
 	lookupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if full, cnameErr := net.DefaultResolver.LookupCNAME(lookupCtx, short); cnameErr == nil {
@@ -313,6 +339,28 @@ func defaultPrivateNames() ([]string, error) {
 	return names, nil
 }
 
+// parseResolvConf extracts the search and domain entries of a resolv.conf's content, with any
+// trailing dot trimmed (ruling P3-R41 item 1: some resolvers write a search domain as "example.com.").
+// A pure function of its input so the trimming is unit-testable without a real /etc/resolv.conf.
+func parseResolvConf(data string) []string {
+	var domains []string
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "search":
+			for _, d := range fields[1:] {
+				domains = append(domains, strings.TrimSuffix(d, "."))
+			}
+		case "domain":
+			domains = append(domains, strings.TrimSuffix(fields[1], "."))
+		}
+	}
+	return domains
+}
+
 // resolvSearchDomains reads the search and domain entries of /etc/resolv.conf, best effort: a
 // missing or unreadable file yields none.
 func resolvSearchDomains() []string {
@@ -320,20 +368,7 @@ func resolvSearchDomains() []string {
 	if err != nil {
 		return nil
 	}
-	var domains []string
-	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		switch fields[0] {
-		case "search":
-			domains = append(domains, fields[1:]...)
-		case "domain":
-			domains = append(domains, fields[1])
-		}
-	}
-	return domains
+	return parseResolvConf(string(data))
 }
 
 // physicalInterfaceAddrs returns the global unicast addresses of the machine's physical network
@@ -378,10 +413,11 @@ func isVirtualInterfaceName(name string) bool {
 	return false
 }
 
-// RecordTask records one task: it copies the workdir to a fresh directory, runs the scenario's
-// setup there, executes every recorded call through a registry with the record middleware into a
-// fresh fixture store, and runs the teardown whatever happened. scenariosRoot is evals/scenarios;
-// out receives progress.
+// RecordTask records one task: it creates the fixture store's temporary directory, copies the
+// workdir to a fresh run directory, runs the scenario's setup there, executes every recorded call
+// through a registry with the record middleware into that temporary store, and runs the teardown
+// whatever happened. scenariosRoot is evals/scenarios; out receives progress. Every error this
+// returns is prefixed with the task's id (ruling P3-R41 item 6).
 func RecordTask(ctx context.Context, t Task, scenariosRoot string, resolve Resolver, out io.Writer) error {
 	if t.Record == nil {
 		return fmt.Errorf("%s: no record block", t.ID)
@@ -396,48 +432,70 @@ func RecordTask(ctx context.Context, t Task, scenariosRoot string, resolve Resol
 	}
 	runDir, err := os.MkdirTemp("", "taracode-record-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	defer func() { _ = os.RemoveAll(runDir) }()
+	// The fixture store's temporary directory is created before setup runs (ruling P3-R41 item 6): a
+	// read-only task directory then fails here, before any script has a chance to run.
+	tempParent, err := os.MkdirTemp(t.Dir, "fixtures-recording-*")
+	if err != nil {
+		return fmt.Errorf("%s: %w", t.ID, err)
+	}
 	// A missing workdir root is simply "no workdir"; anything else (a permission error, a symlink
 	// copyDir refuses, ...) is a real failure the caller must see (ruling P3-R36).
 	workdir := filepath.Join(t.Dir, "workdir")
 	if _, err := os.Lstat(workdir); err == nil {
 		if err := copyDir(workdir, runDir); err != nil {
-			return err
+			_ = os.RemoveAll(tempParent)
+			return fmt.Errorf("%s: %w", t.ID, err)
 		}
 	} else if !os.IsNotExist(err) {
-		return err
+		_ = os.RemoveAll(tempParent)
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	env := append(os.Environ(), "EVAL_WORKDIR="+runDir, "EVAL_SCENARIO="+scenario, "EVAL_TASK="+t.ID)
 	_, _ = fmt.Fprintf(out, "== %s: setup %s\n", t.ID, t.Record.Scenario)
-	if err := runScript(ctx, scenario, "setup.sh", env, out); err != nil {
-		_ = runScript(context.Background(), scenario, "teardown.sh", env, out)
+	setupPgid, err := runScript(ctx, scenario, "setup.sh", env, out)
+	if err != nil {
+		killProcessGroup(setupPgid)
+		_, _ = runScript(context.Background(), scenario, "teardown.sh", env, out)
+		_ = os.RemoveAll(tempParent)
 		return fmt.Errorf("%s: setup: %w", t.ID, err)
 	}
 	defer func() {
 		_, _ = fmt.Fprintf(out, "== %s: teardown\n", t.ID)
-		_ = runScript(context.Background(), scenario, "teardown.sh", env, out)
+		_, _ = runScript(context.Background(), scenario, "teardown.sh", env, out)
+		// Killed only now, after teardown has had its chance to run (ruling P3-R41 item 3): a
+		// background job setup.sh left behind (a stray `kubectl port-forward &`, say) must not
+		// outlive the whole recording.
+		killProcessGroup(setupPgid)
 	}()
-	return recordCalls(ctx, t, runDir, resolve, names, out)
+	return recordCalls(ctx, t, runDir, tempParent, resolve, names, out)
 }
 
-// recordCalls executes the task's calls with a recording registry in runDir, into a fresh temporary
-// store that replaces the task's fixtures/ only when every call succeeds (ruling P3-R36): an aborted
-// or repeated run never leaves the real fixtures mixed with stale or partial entries.
-func recordCalls(ctx context.Context, t Task, runDir string, resolve Resolver, names []string, out io.Writer) error {
-	tempParent, err := os.MkdirTemp(t.Dir, "fixtures-recording-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tempParent) }()
+// recordCalls executes the task's calls with a recording registry in runDir, into the fresh
+// temporary store at tempParent, which it replaces the task's fixtures/ with only when every call
+// succeeds (ruling P3-R36): an aborted or repeated run never leaves the real fixtures mixed with
+// stale or partial entries. tempParent is removed once it is no longer needed -- except when the
+// final swap itself fails, in which case it is left on disk (ruling P3-R41 item 2): swapFixtures has
+// already restored fixtures/ to what it was, and deleting the freshly recorded set on top of that
+// would lose it for nothing.
+func recordCalls(
+	ctx context.Context, t Task, runDir, tempParent string, resolve Resolver, names []string, out io.Writer,
+) error {
+	keepTempParent := false
+	defer func() {
+		if !keepTempParent {
+			_ = os.RemoveAll(tempParent)
+		}
+	}()
 	store, err := LoadFixtures(tempParent)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	red, err := redact.New(redact.Options{Environ: os.Environ()})
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	rec := NewRecorder(store, red, names)
 	reg := tools.NewBuiltinRegistry(tools.Options{Redactor: red, Middleware: rec.Middleware}, tools.Config{})
@@ -448,9 +506,10 @@ func recordCalls(ctx context.Context, t Task, runDir string, resolve Resolver, n
 	}
 	//nolint:gosec // store.Dir() is inside a fresh recorder run directory, made real even with zero fixtures
 	if err := os.MkdirAll(store.Dir(), 0o755); err != nil {
-		return err
+		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	if err := swapFixtures(filepath.Join(t.Dir, "fixtures"), store.Dir()); err != nil {
+		keepTempParent = true
 		return fmt.Errorf("%s: %w", t.ID, err)
 	}
 	_, _ = fmt.Fprintf(out, "== %s: %d fixtures\n", t.ID, store.Len())
@@ -459,8 +518,10 @@ func recordCalls(ctx context.Context, t Task, runDir string, resolve Resolver, n
 
 // recordOneCall resolves one recorded call's placeholders, runs it, and reports the outcome, or
 // returns the reason recordCalls must abort: a placeholder failure, a private-name refusal, a save
-// error, or the call's context ending mid-run. All three are checked after every call (ruling
-// P3-R36), since the registry does not hand back a sentinel errors.Is can see for any of them.
+// error, or the call's context ending mid-run. All are checked after every call (ruling P3-R36),
+// since the registry does not hand back a sentinel errors.Is can see for any of them; each aborting
+// path logs the call's signature before returning (ruling P3-R41 item 6), so the log names exactly
+// which call ended the run.
 func recordOneCall(
 	ctx context.Context, reg *tools.Registry, rec *Recorder, t Task, i int, call RecordCall,
 	resolve Resolver, runDir string, out io.Writer,
@@ -469,6 +530,10 @@ func recordOneCall(
 	if err != nil {
 		return fmt.Errorf("%s: call %d: %w", t.ID, i, err)
 	}
+	sig := Signature(call.Tool, args)
+	if call.DryRun {
+		sig = DryRunSignature(call.Tool, args)
+	}
 	var text string
 	if call.DryRun {
 		text, err = reg.DryRun(ctx, call.Tool, args, runDir)
@@ -476,23 +541,35 @@ func recordOneCall(
 		text, err = reg.Execute(ctx, call.Tool, args, runDir)
 	}
 	if refused := rec.Refused(); refused != nil {
+		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "refused", sig)
 		return fmt.Errorf("%s: %w", t.ID, refused)
 	}
+	// A dry run's own tool can decide it has none for this call (kubectl/helm/terraform, for a verb
+	// other than apply/upgrade/install): that runs through the middleware like any other dry run and
+	// is already saved by it. A tool with no DryRun at all never reaches the middleware (Registry.DryRun
+	// returns ErrNoDryRun before the wrap), so nothing was saved automatically. Either way this is
+	// exactly what the live model sees as the call's result, so a fixture must exist for it (ruling
+	// P3-R41 item 7), logged as recorded, never skipped, so the count and the log agree.
+	if call.DryRun && errors.Is(err, tools.ErrNoDryRun) {
+		if tool, ok := reg.Get(call.Tool); ok && tool.DryRun == nil {
+			if saveErr := rec.saveDirect(sig, err.Error(), true); saveErr != nil {
+				_, _ = fmt.Fprintf(out, "   %-14s %s\n", "save failed", sig)
+				return fmt.Errorf("%s: %w", t.ID, saveErr)
+			}
+		}
+		_, _ = fmt.Fprintf(out, "   %-14s %s (%d bytes)\n", "error recorded", sig, len(err.Error()))
+		return nil
+	}
 	if saveErr := rec.SaveErr(); saveErr != nil {
+		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "save failed", sig)
 		return fmt.Errorf("%s: %w", t.ID, saveErr)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
+		_, _ = fmt.Fprintf(out, "   %-14s %s\n", "cancelled", sig)
 		return fmt.Errorf("%s: %w", t.ID, ctxErr)
 	}
-	sig := Signature(call.Tool, args)
-	if call.DryRun {
-		sig = DryRunSignature(call.Tool, args)
-	}
 	status := "ok"
-	switch {
-	case call.DryRun && errors.Is(err, tools.ErrNoDryRun):
-		status, text = "skipped", err.Error()
-	case err != nil:
+	if err != nil {
 		status, text = "error recorded", err.Error()
 	}
 	_, _ = fmt.Fprintf(out, "   %-14s %s (%d bytes)\n", status, sig, len(text))
@@ -501,32 +578,49 @@ func recordOneCall(
 
 // swapFixtures replaces finalDir with newDir: the previous fixtures move aside, the new ones move
 // in, and only then does the aside copy get removed, so a failure partway through leaves either the
-// old fixtures or the new ones intact, never a mix (ruling P3-R36).
+// old fixtures or the new ones intact, never a mix (ruling P3-R36). If the second rename fails, the
+// aside copy moves straight back to finalDir before the error returns (ruling P3-R41 item 2): finalDir
+// must never be left missing just because moving the new set in did not work.
 func swapFixtures(finalDir, newDir string) error {
 	asideDir := finalDir + ".replaced"
 	_ = os.RemoveAll(asideDir)
+	movedAside := false
 	if _, err := os.Lstat(finalDir); err == nil {
 		if err := os.Rename(finalDir, asideDir); err != nil {
 			return fmt.Errorf("set aside the previous fixtures: %w", err)
 		}
+		movedAside = true
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 	if err := os.Rename(newDir, finalDir); err != nil {
+		if movedAside {
+			if rollbackErr := os.Rename(asideDir, finalDir); rollbackErr != nil {
+				return fmt.Errorf("move the recorded fixtures into place: %w (restoring the previous fixtures also failed: %v)",
+					err, rollbackErr)
+			}
+		}
 		return fmt.Errorf("move the recorded fixtures into place: %w", err)
 	}
 	return os.RemoveAll(asideDir)
 }
 
-// runScript runs <dir>/<name> with sh in dir, streaming its output to out, under a five-minute
-// limit. A missing script is not an error. The script runs in its own process group so a background
-// job it starts (a stray `kubectl port-forward &` in a setup.sh, say) cannot outlive it and hang a
-// later step: canceling the context (the five-minute limit here, or the caller's own) kills the whole
-// group, not just the sh process, and WaitDelay bounds the wait for its output once that happens.
-func runScript(ctx context.Context, dir, name string, env []string, out io.Writer) error {
+// runScript runs <dir>/<name> with sh in dir, streaming its output to out, and returns the process
+// group id it ran in: runScript itself only kills that group if the context ends (see Cancel below),
+// so a caller whose script exits normally but leaves a background job running (RecordTask, for
+// setup.sh) is responsible for reaping the group once it is done with the scenario. A missing script
+// is not an error. The script runs in its own process group so it is killable as a whole; canceling
+// the context (the five-minute limit here, or the caller's own) kills that whole group via Cancel, not
+// just the sh process. When out is not an *os.File, Go relays the child's output through a pipe on a
+// goroutine, and a job the script backgrounds inherits that pipe: it can keep the pipe's write end
+// open long after sh itself exits, so Wait's WaitDelay (scriptWaitDelay after sh exits) fires and Run
+// returns exec.ErrWaitDelay even though sh's own exit status was fine (ruling P3-R41 item 3). That
+// specific case -- ErrWaitDelay with a zero exit status -- is not a failure: sh did what it was asked,
+// so it becomes a warning line on out instead of an error.
+func runScript(ctx context.Context, dir, name string, env []string, out io.Writer) (pgid int, err error) {
 	path := filepath.Join(dir, name)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+		return 0, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -537,7 +631,25 @@ func runScript(ctx context.Context, dir, name string, env []string, out io.Write
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
-	return cmd.Run()
+	runErr := cmd.Run()
+	if cmd.Process != nil {
+		pgid = cmd.Process.Pid
+	}
+	if errors.Is(runErr, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == 0 {
+		_, _ = fmt.Fprintln(out, "setup left a background process running; its output is dropped")
+		return pgid, nil
+	}
+	return pgid, runErr
+}
+
+// killProcessGroup sends SIGKILL to the process group pgid leads (runScript's Setpgid makes a
+// script's own pid its process group id too), best effort (ruling P3-R41 item 3): a pgid of zero (no
+// script ran) or any error from the kill, ESRCH (already gone) included, is silently ignored.
+func killProcessGroup(pgid int) {
+	if pgid <= 0 {
+		return
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
 // copyDir copies every file and directory under src into dst at the same relative path. A symlink

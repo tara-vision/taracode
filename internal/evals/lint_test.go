@@ -221,3 +221,64 @@ func TestLintFlagsASymlinkUnderWorkdir(t *testing.T) {
 		t.Fatalf("expected a workdir symlink problem: %q", problems)
 	}
 }
+
+// TestLintFlagsAnUnreadableFixtureFile covers an addendum found alongside ruling P3-R41: the
+// WalkDir callback in lintFixtureContents returned nil on an os.ReadFile failure, silently skipping
+// both the secret scan and the orphan check for a file that exists but cannot be read (mode 000, or a
+// dangling symlink) rather than reporting it as its own problem.
+func TestLintFlagsAnUnreadableFixtureFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses file permissions")
+	}
+	root := t.TempDir()
+	dir := writeTask(t, root, "crashloop-oomkilled", goodTask)
+	s, _ := LoadFixtures(dir)
+	if err := s.Save("kubectl get pod -n shop", "ok", false); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(dir, "fixtures", "locked.txt")
+	if err := os.WriteFile(locked, []byte("secret AKIAIOSFODNN7EXAMPLE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) }) // so t.TempDir()'s own cleanup can remove it
+	_, problems := Lint(root)
+	joined := strings.Join(problems, "\n")
+	if !strings.Contains(joined, "locked.txt cannot be read") {
+		t.Fatalf("expected an unreadable-file problem naming locked.txt: %q", problems)
+	}
+	if strings.Contains(joined, "locked.txt is not in the index") {
+		t.Fatalf("an unreadable file must not also be checked for the orphan message: %q", problems)
+	}
+	if strings.Contains(joined, "locked.txt carries a raw secret pattern") {
+		t.Fatalf("an unreadable file must not also be scanned for a secret: %q", problems)
+	}
+}
+
+// TestLintFlagsLeftoverRecordingArtifacts covers ruling P3-R41 item 5: a fixtures-recording-* or
+// fixtures.replaced directory only exists when a recording run crashed or its final swap failed
+// (record.go's RecordTask and swapFixtures), so lint must flag it rather than lint clean around it.
+func TestLintFlagsLeftoverRecordingArtifacts(t *testing.T) {
+	root := t.TempDir()
+	dir := writeTask(t, root, "crashloop-oomkilled", goodTask)
+	s, _ := LoadFixtures(dir)
+	if err := s.Save("kubectl get pod -n shop", "ok", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures-recording-123456"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "fixtures.replaced"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, problems := Lint(root)
+	joined := strings.Join(problems, "\n")
+	if !strings.Contains(joined, "fixtures-recording-123456") || !strings.Contains(joined, "run make record again") {
+		t.Fatalf("expected a leftover fixtures-recording-* problem: %q", problems)
+	}
+	if !strings.Contains(joined, "fixtures.replaced") {
+		t.Fatalf("expected a leftover fixtures.replaced problem: %q", problems)
+	}
+}

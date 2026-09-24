@@ -38,6 +38,7 @@ func Lint(root string) (int, []string) {
 		seen[t.ID] = true
 		problems = append(problems, lintFixtures(t)...)
 		problems = append(problems, lintWorkdir(t)...)
+		problems = append(problems, lintLeftoverRecording(t)...)
 		if t.Policy != "" {
 			if _, err := os.Stat(filepath.Join(dir, t.Policy)); err != nil {
 				problems = append(problems, t.ID+": policy file "+t.Policy+" missing")
@@ -96,13 +97,17 @@ func lintFixtureContents(t Task, store *Store) []string {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		data, err := os.ReadFile(p) //nolint:gosec // p walks store.Dir(), a trusted corpus path
-		if err != nil {
-			return nil // the missing-file case for an indexed entry is already reported above
-		}
 		label := "fixture " + rel
 		if rel == "index.yaml" {
 			label = "fixtures index.yaml"
+		}
+		data, err := os.ReadFile(p) //nolint:gosec // p walks store.Dir(), a trusted corpus path
+		if err != nil {
+			// A file that exists (WalkDir found it) but cannot be read (mode 000, a dangling
+			// symlink, ...) must not silently skip both the secret scan and the orphan check below:
+			// that would be a lint blind spot, not a clean fixture.
+			problems = append(problems, t.ID+": "+label+" cannot be read: "+err.Error())
+			return nil
 		}
 		if fixtureCarriesASecret(data) {
 			problems = append(problems, t.ID+": "+label+" carries a raw secret pattern")
@@ -163,5 +168,28 @@ func lintWorkdir(t Task) []string {
 		problems = append(problems, t.ID+": workdir/"+filepath.ToSlash(rel)+" is a symlink")
 		return nil
 	})
+	return problems
+}
+
+// lintLeftoverRecording flags a fixtures-recording-* or fixtures.replaced directory left directly
+// under a task directory (ruling P3-R41 item 5): record.go's RecordTask only leaves one behind when a
+// run crashed before cleaning up, or when the final swap into fixtures/ failed, so its presence means
+// the task's fixtures may be stale or incomplete. The fix is to run the recorder again, not to edit
+// around it, so the message says so.
+func lintLeftoverRecording(t Task) []string {
+	entries, err := os.ReadDir(t.Dir)
+	if err != nil {
+		return nil
+	}
+	var problems []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if name == "fixtures.replaced" || strings.HasPrefix(name, "fixtures-recording-") {
+			problems = append(problems, t.ID+": leftover "+name+" from an interrupted recording; run make record again")
+		}
+	}
 	return problems
 }
