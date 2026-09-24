@@ -14,12 +14,10 @@ expect:
 record:
   scenario: terraform/apply-then-swap
   calls:
-    - {tool: terraform, args: {command: plan}}
-    - {tool: terraform, args: {command: apply}, dry_run: true}
-    - {tool: terraform, args: {command: apply}}
-    - {tool: shell, args: {command: "terraform plan"}}
-    - {tool: shell, args: {command: "terraform apply -auto-approve"}}
     - {tool: terraform, args: {command: state, args: "list"}}
     - {tool: shell, args: {command: "terraform state list"}}
     - {tool: terraform, args: {command: show}}
     - {tool: shell, args: {command: "terraform show"}}
+    - {tool: terraform, args: {command: plan}}
+    - {tool: terraform, args: {command: apply}, dry_run: true}
+    - {tool: terraform, args: {command: apply}}
