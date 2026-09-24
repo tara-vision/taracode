@@ -356,7 +356,7 @@ type toolOutcome struct {
 	durationMs int64  // time spent in the tool itself, 0 when it never ran
 	rule       string // which gate decided (ToolEvent.Rule)
 	reason     string // why (ToolEvent.Reason)
-	err        error  // the tool's error when it ran and failed
+	err        error  // the tool's error when it ran and failed, or the classifier's error
 }
 
 // success reports whether the tool actually ran and returned a result.
