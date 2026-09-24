@@ -80,7 +80,7 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 		}
 		// A transient Show failure still requests a window instead of silently disabling num_ctx
 		// for the whole session; the tools gate is skipped since capabilities are unknown.
-		fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("Could not read model capabilities: %v", err)))
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("Could not read model capabilities: %v", err)))
 		a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 		a.resolveAndApplyWindow(0)
 		return nil
@@ -103,7 +103,7 @@ func (a *Assistant) resolveAndApplyWindow(modelMax int) {
 		a.compactionCfg.MaxTokens = window
 	}
 	if warning != "" {
-		fmt.Println(a.renderer.WarningMessage(warning))
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(warning))
 	}
 }
 
@@ -116,6 +116,6 @@ func (a *Assistant) downgradeThinkIfUnsupported() {
 	if a.thinkingSupported || a.think == llm.ThinkAuto || a.think == llm.ThinkOff {
 		return
 	}
-	fmt.Println(a.renderer.WarningMessage(fmt.Sprintf("%s does not support thinking; using auto", a.model)))
+	_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("%s does not support thinking; using auto", a.model)))
 	a.think = llm.ThinkAuto
 }

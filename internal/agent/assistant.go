@@ -4,6 +4,7 @@ package agent
 import (
 	gocontext "context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -97,13 +98,29 @@ type Assistant struct {
 
 	// Truncation tracking for /context display
 	truncationEvents []TruncationResult
+
+	// Headless hooks (Phase 3): where the loop prints, who observes tool decisions, the last turn.
+	out      io.Writer
+	observer func(ToolEvent)
+	turn     TurnStats
 }
+
+// stdoutWriter is the output when Options.Output is nil. It writes to os.Stdout as it is at the time
+// of each write, as the bare prints it replaced did, so a caller that swaps os.Stdout after New (the
+// tests capture output that way) still gets what the assistant prints.
+type stdoutWriter struct{}
+
+func (stdoutWriter) Write(p []byte) (int, error) { return os.Stdout.Write(p) }
 
 // New connects to the LLM server, picks the model, loads the policy, the permission store and the
 // redactor, builds the tool registry and the system prompt. Every setting comes from opts: no
 // package under internal/ reads viper (cmd's loadOptions does, with the 2.x migrations).
 func New(opts Options) (*Assistant, error) {
 	renderer := ui.NewRenderer()
+	out := opts.Output
+	if out == nil {
+		out = stdoutWriter{}
+	}
 
 	// Create context with timeout for provider initialization
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), providerInitTimeout)
@@ -135,7 +152,7 @@ func New(opts Options) (*Assistant, error) {
 		storageMgr, err = storage.NewManager(workingDir)
 		if err != nil {
 			// Storage initialization failed - continue without persistence
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Could not initialize storage: %v", err)))
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("Could not initialize storage: %v", err)))
 		} else {
 			// Load persisted model preference
 			persistedModel = storageMgr.GetPreferredModel()
@@ -151,12 +168,13 @@ func New(opts Options) (*Assistant, error) {
 		}
 	}
 
-	gate := loadGate(workingDir, storageMgr, renderer)
-	registry := tools.NewBuiltinRegistry(tools.Options{Offline: opts.Offline, Redactor: gate.redactor}, opts.Tools)
+	gate := loadGate(workingDir, storageMgr, renderer, out)
+	registry := tools.NewBuiltinRegistry(
+		tools.Options{Offline: opts.Offline, Redactor: gate.redactor, Middleware: opts.ToolMiddleware}, opts.Tools)
 
 	// Determine which model to use (priority: persisted > config > auto-detect)
 	models, detectErr := prov.DetectModels(ctx)
-	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer)
+	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer, out)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +209,7 @@ func New(opts Options) (*Assistant, error) {
 	// value falls back to auto rather than failing the whole assistant.
 	think, thinkOK := llm.ParseThink(opts.Think)
 	if !thinkOK {
-		fmt.Println(renderer.WarningMessage(fmt.Sprintf("think %q not recognized; using auto", opts.Think)))
+		_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("think %q not recognized; using auto", opts.Think)))
 	}
 
 	a := &Assistant{
@@ -228,6 +246,11 @@ func New(opts Options) (*Assistant, error) {
 		memoryEnabled:      opts.MemoryEnabled,
 		memoryMaxTokens:    opts.MemoryMaxTokens,
 		truncationEvents:   make([]TruncationResult, 0),
+		out:                out,
+		observer:           opts.ToolObserver,
+	}
+	if opts.PermissionDecider != nil {
+		a.confirmPermission = opts.PermissionDecider
 	}
 
 	// Resolve the context window and gate on tool support once the model is chosen, before the
@@ -254,7 +277,7 @@ func New(opts Options) (*Assistant, error) {
 // configured one, then the first the server lists. When the server cannot list its models the
 // persisted or configured name is trusted.
 func chooseModel(
-	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer,
+	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer, out io.Writer,
 ) (string, error) {
 	var model string
 
@@ -272,10 +295,10 @@ func chooseModel(
 		// Can't detect models - use persisted or config
 		if persistedModel != "" {
 			model = persistedModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
+			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
 		} else if configModel != "" {
 			model = configModel
-			fmt.Println(renderer.WarningMessage(
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				fmt.Sprintf("Could not detect models (%v), using configured: %s", detectErr, model)))
 		} else {
 			return "", fmt.Errorf("failed to detect models and no fallback configured: %w", detectErr)
@@ -284,23 +307,23 @@ func chooseModel(
 		// Models available - check persisted, then config, then first available
 		if persistedModel != "" && modelAvailable(persistedModel) {
 			model = persistedModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
+			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using saved model: %s", model)))
 		} else if persistedModel != "" && !modelAvailable(persistedModel) {
 			// Saved model no longer available - warn and use first available
-			fmt.Println(renderer.WarningMessage(
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				fmt.Sprintf("Saved model '%s' not available. Use /model to select.", persistedModel)))
 			model = models[0]
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using: %s", model)))
+			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using: %s", model)))
 		} else if configModel != "" && modelAvailable(configModel) {
 			model = configModel
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using configured model: %s", model)))
+			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using configured model: %s", model)))
 		} else if configModel != "" {
 			model = models[0]
-			fmt.Println(renderer.WarningMessage(
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				fmt.Sprintf("Configured model '%s' not available. Using: %s", configModel, model)))
 		} else {
 			model = models[0]
-			fmt.Println(renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))
+			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))
 		}
 	} else {
 		if persistedModel != "" {
@@ -310,7 +333,7 @@ func chooseModel(
 		} else {
 			// No model persisted or configured, and the server lists none either: point at the
 			// registry's recommendation for this host before failing (native core, Task 11).
-			printFirstRunAdvice()
+			printFirstRunAdvice(out)
 			return "", fmt.Errorf("no models available and no fallback configured")
 		}
 	}
@@ -329,30 +352,31 @@ type gateConfig struct {
 
 // loadGate loads the policy for workingDir, the permission store from the project storage and the
 // redactor the policy asks for. Every problem is reported and degrades to a safe default.
-func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Renderer) gateConfig {
+func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Renderer, out io.Writer) gateConfig {
 	var g gateConfig
 	var err error
 	home, _ := os.UserHomeDir()
 	g.pol, g.sources, g.err = policy.Load(workingDir, home)
 	if g.err != nil {
-		fmt.Println(renderer.WarningMessage(fmt.Sprintf("Policy error, session locked to investigate mode: %v", g.err)))
+		_, _ = fmt.Fprintln(out, renderer.WarningMessage(
+			fmt.Sprintf("Policy error, session locked to investigate mode: %v", g.err)))
 		g.pol = policy.Default()
 	}
 	if storageMgr != nil {
 		var ignored bool
 		g.permissions, ignored, err = policy.LoadPermissions(filepath.Join(storageMgr.GetRootDir(), "permissions.json"))
 		if err != nil {
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Permissions file ignored: %v", err)))
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("Permissions file ignored: %v", err)))
 			g.permissions, _, _ = policy.LoadPermissions("")
 		} else if ignored {
-			fmt.Println(renderer.WarningMessage(
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				"permissions.json is from taracode 2.x and was ignored; rules are per tool now (/permissions)"))
 		}
 	}
 	if g.pol.RedactEnabled() {
 		g.redactor, err = redact.New(redact.Options{ExtraPatterns: g.pol.Redact.ExtraPatterns, Environ: os.Environ()})
 		if err != nil {
-			fmt.Println(renderer.WarningMessage(fmt.Sprintf("Redaction extra pattern ignored: %v", err)))
+			_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("Redaction extra pattern ignored: %v", err)))
 			g.redactor, _ = redact.New(redact.Options{Environ: os.Environ()})
 		}
 	}
@@ -405,6 +429,7 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 		memoryEnabled:    opts.MemoryEnabled,
 		memoryMaxTokens:  opts.MemoryMaxTokens,
 		truncationEvents: make([]TruncationResult, 0),
+		out:              stdoutWriter{},
 	}
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode, a.memoryBudget())
@@ -534,7 +559,7 @@ func (a *Assistant) SwitchModel(newModel string) error {
 		// Unload the old model to free memory
 		if err := mm.UnloadModel(ctx, oldModel); err != nil {
 			// Log but don't fail - the model might not be loaded
-			fmt.Printf("  Note: Could not unload %s (may not be loaded)\n", oldModel)
+			_, _ = fmt.Fprintf(a.out, "  Note: Could not unload %s (may not be loaded)\n", oldModel)
 		}
 	}
 
@@ -557,7 +582,7 @@ func (a *Assistant) SwitchModel(newModel string) error {
 	if a.storage != nil {
 		if err := a.storage.SetPreferredModel(newModel); err != nil {
 			// Log but don't fail
-			fmt.Printf("  Note: Could not save model preference: %v\n", err)
+			_, _ = fmt.Fprintf(a.out, "  Note: Could not save model preference: %v\n", err)
 		}
 	}
 

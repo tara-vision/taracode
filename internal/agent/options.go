@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"io"
+
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
+	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // Options is everything the assistant takes from configuration. cmd builds it from viper (config
@@ -38,6 +41,17 @@ type Options struct {
 	MemoryMaxTokens  int
 
 	Tools tools.Config
+
+	// Headless hooks (Phase 3, spec 3.1). Every field is optional; nil keeps the binary's behaviour.
+
+	// Output is where the loop prints; nil = os.Stdout.
+	Output io.Writer
+	// PermissionDecider answers the permission question for a mutation; nil = the terminal prompt.
+	PermissionDecider func(inv policy.Invocation, args map[string]any) ui.PermissionChoice
+	// ToolObserver sees every tool call the gate decided.
+	ToolObserver func(ev ToolEvent)
+	// ToolMiddleware wraps every tool execution.
+	ToolMiddleware tools.Middleware
 }
 
 // DefaultOptions are the spec 5.9 defaults.

@@ -102,7 +102,7 @@ func (a *Assistant) applyStartupMode(opts Options) {
 		return
 	}
 	if err := a.SetMode(target); err != nil {
-		fmt.Println(a.renderer.WarningMessage(
+		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(
 			fmt.Sprintf("The %s mode was not applied, staying in %s mode: %v", target, a.mode, err)))
 	}
 }

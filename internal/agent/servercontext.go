@@ -81,7 +81,7 @@ func (a *Assistant) checkServerContextOnce() {
 	msg, warn := ServerContextAdvice(
 		serverCtx, info.SystemPromptTokens, info.ToolDefsTokens, info.MaxTokens, info.CompactionThreshold)
 	if warn {
-		fmt.Printf("\n%s %s\n", ui.IconWarning, msg)
+		_, _ = fmt.Fprintf(a.out, "\n%s %s\n", ui.IconWarning, msg)
 	}
 }
 
