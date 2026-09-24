@@ -175,6 +175,12 @@ func TestShellKubeTargetsBehindKeywordsAndGrouping(t *testing.T) {
 		{`for X in ""; do kubectl delete pod p $X--namespace=prod; done`, "{* * }"},
 		{"for c in x; do for ct in --context=prod; do kubectl delete pod p $c{t,x}; done; done", "{* * }"},
 		{`for X in ""; do for Y in ""; do kubectl delete pod p {q,$X$Y}--namespace=prod; done; done`, "{* * }"},
+		// fix round 6, P3-R42: an operand past 32 bits makes the sequence opaque on the kube path too
+		// ($c{-9223372036854775808..0} can rebuild $c0=--context=prod), while a jsonpath body with ".."
+		// is no sequence and leaves the namespace read
+		{"for c in x; do for c0 in --context=prod; do kubectl delete pod p $c{-9223372036854775808..0}; done; done",
+			"{* * }"},
+		{"kubectl delete pod p -n apps -o jsonpath='{..metadata.name}'", "{ apps }"},
 	}
 	for _, c := range kube {
 		if got := kubeOf(c.cmd); got != c.want {
