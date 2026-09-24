@@ -1,0 +1,2 @@
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS       IMAGES         SELECTOR
+invoice-worker   0/1     1            0           3s    invoice-worker   busybox:1.37   app=invoice-worker

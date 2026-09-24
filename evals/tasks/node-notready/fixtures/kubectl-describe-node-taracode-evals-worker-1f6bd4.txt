@@ -14,14 +14,14 @@ Unschedulable:      false
 Lease:
   HolderIdentity:  taracode-evals-worker
   AcquireTime:     <unset>
-  RenewTime:       Thu, 24 Sep 2026 23:16:10 +0000
+  RenewTime:       Thu, 24 Sep 2026 23:44:58 +0000
 Conditions:
   Type             Status    LastHeartbeatTime                 LastTransitionTime                Reason              Message
   ----             ------    -----------------                 ------------------                ------              -------
-  MemoryPressure   Unknown   Thu, 24 Sep 2026 23:15:49 +0000   Thu, 24 Sep 2026 23:17:02 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
-  DiskPressure     Unknown   Thu, 24 Sep 2026 23:15:49 +0000   Thu, 24 Sep 2026 23:17:02 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
-  PIDPressure      Unknown   Thu, 24 Sep 2026 23:15:49 +0000   Thu, 24 Sep 2026 23:17:02 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
-  Ready            Unknown   Thu, 24 Sep 2026 23:15:49 +0000   Thu, 24 Sep 2026 23:17:02 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  MemoryPressure   Unknown   Thu, 24 Sep 2026 23:42:32 +0000   Thu, 24 Sep 2026 23:45:52 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  DiskPressure     Unknown   Thu, 24 Sep 2026 23:42:32 +0000   Thu, 24 Sep 2026 23:45:52 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  PIDPressure      Unknown   Thu, 24 Sep 2026 23:42:32 +0000   Thu, 24 Sep 2026 23:45:52 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
+  Ready            Unknown   Thu, 24 Sep 2026 23:42:32 +0000   Thu, 24 Sep 2026 23:45:52 +0000   NodeStatusUnknown   Kubelet stopped posting node status.
 Addresses:
   InternalIP:  172.18.0.2
   Hostname:    taracode-evals-worker
@@ -52,12 +52,13 @@ System Info:
 PodCIDR:                      10.244.1.0/24
 PodCIDRs:                     10.244.1.0/24
 ProviderID:                   kind://docker/taracode-evals/taracode-evals-worker
-Non-terminated Pods:          (3 in total)
+Non-terminated Pods:          (4 in total)
   Namespace                   Name                              CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
   ---------                   ----                              ------------  ----------  ---------------  -------------  ---
-  kube-system                 kindnet-nwdkc                     100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         5h41m
-  kube-system                 kube-proxy-rdkl9                  0 (0%)        0 (0%)      0 (0%)           0 (0%)         5h41m
-  platform                    metrics-agent-767dd6b94f-bxxtg    0 (0%)        0 (0%)      0 (0%)           0 (0%)         53s
+  kube-system                 kindnet-nwdkc                     100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         6h10m
+  kube-system                 kube-proxy-rdkl9                  0 (0%)        0 (0%)      0 (0%)           0 (0%)         6h10m
+  platform                    metrics-agent-767dd6b94f-275mv    0 (0%)        0 (0%)      0 (0%)           0 (0%)         56s
+  web                         storefront-5996978c75-dsqkp       0 (0%)        0 (0%)      0 (0%)           0 (0%)         60s
 Allocated resources:
   (Total limits may be over 100 percent, i.e., overcommitted.)
   Resource           Requests   Limits
@@ -68,6 +69,10 @@ Allocated resources:
   hugepages-1Gi      0 (0%)     0 (0%)
   hugepages-2Mi      0 (0%)     0 (0%)
 Events:
-  Type    Reason        Age                From             Message
-  ----    ------        ----               ----             -------
-  Normal  NodeNotReady  1s (x2 over 106m)  node-controller  Node taracode-evals-worker status is now: NodeNotReady
+  Type    Reason                   Age                From             Message
+  ----    ------                   ----               ----             -------
+  Normal  NodeHasSufficientMemory  28m (x2 over 28m)  kubelet          Node taracode-evals-worker status is now: NodeHasSufficientMemory
+  Normal  NodeHasNoDiskPressure    28m (x2 over 28m)  kubelet          Node taracode-evals-worker status is now: NodeHasNoDiskPressure
+  Normal  NodeHasSufficientPID     28m (x2 over 28m)  kubelet          Node taracode-evals-worker status is now: NodeHasSufficientPID
+  Normal  NodeReady                28m                kubelet          Node taracode-evals-worker status is now: NodeReady
+  Normal  NodeNotReady             3s (x3 over 135m)  node-controller  Node taracode-evals-worker status is now: NodeNotReady

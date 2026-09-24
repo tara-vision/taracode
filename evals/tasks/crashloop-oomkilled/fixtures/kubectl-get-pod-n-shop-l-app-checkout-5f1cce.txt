@@ -1,2 +1,2 @@
 NAME                        READY   STATUS      RESTARTS      AGE
-checkout-7d5ff6f675-tzcr6   0/1     OOMKilled   2 (15s ago)   16s
+checkout-7d5ff6f675-4dh2k   0/1     OOMKilled   2 (18s ago)   19s

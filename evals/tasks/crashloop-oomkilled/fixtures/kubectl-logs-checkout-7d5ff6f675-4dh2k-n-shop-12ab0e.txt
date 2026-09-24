@@ -1,0 +1,1 @@
+kubectl logs checkout-7d5ff6f675-4dh2k -n shop completed with no output

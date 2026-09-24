@@ -3,3 +3,5 @@ fixtures:
       file: kubectl-get-pod-n-kube-system-790dcf.txt
     - signature: kubectl get pod -A
       file: kubectl-get-pod-a-7e9106.txt
+    - signature: kubectl get pod -n kube-system -o wide
+      file: kubectl-get-pod-n-kube-system-o-wide-61da5c.txt

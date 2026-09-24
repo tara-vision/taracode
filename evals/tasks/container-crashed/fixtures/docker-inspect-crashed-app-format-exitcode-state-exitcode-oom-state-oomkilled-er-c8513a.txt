@@ -1,0 +1,5 @@
+docker exited with status 1
+ExitCode=3
+error: no such object: OOM={{.State.OOMKilled}}
+error: no such object: Error={{.State.Error}}
+error: no such object: RestartCount={{.RestartCount}}

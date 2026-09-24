@@ -15,14 +15,14 @@ Unschedulable:      false
 Lease:
   HolderIdentity:  taracode-evals-control-plane
   AcquireTime:     <unset>
-  RenewTime:       Thu, 24 Sep 2026 21:53:12 +0000
+  RenewTime:       Thu, 24 Sep 2026 23:45:55 +0000
 Conditions:
   Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
   ----             ------  -----------------                 ------------------                ------                       -------
-  MemoryPressure   False   Thu, 24 Sep 2026 21:53:09 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure     False   Thu, 24 Sep 2026 21:53:09 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure      False   Thu, 24 Sep 2026 21:53:09 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready            True    Thu, 24 Sep 2026 21:53:09 +0000   Thu, 24 Sep 2026 17:35:16 +0000   KubeletReady                 kubelet is posting ready status
+  MemoryPressure   False   Thu, 24 Sep 2026 23:45:23 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasSufficientMemory   kubelet has sufficient memory available
+  DiskPressure     False   Thu, 24 Sep 2026 23:45:23 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasNoDiskPressure     kubelet has no disk pressure
+  PIDPressure      False   Thu, 24 Sep 2026 23:45:23 +0000   Thu, 24 Sep 2026 17:34:55 +0000   KubeletHasSufficientPID      kubelet has sufficient PID available
+  Ready            True    Thu, 24 Sep 2026 23:45:23 +0000   Thu, 24 Sep 2026 17:35:16 +0000   KubeletReady                 kubelet is posting ready status
 Addresses:
   InternalIP:  172.18.0.3
   Hostname:    taracode-evals-control-plane
@@ -56,15 +56,15 @@ ProviderID:                   kind://docker/taracode-evals/taracode-evals-contro
 Non-terminated Pods:          (9 in total)
   Namespace                   Name                                                    CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
   ---------                   ----                                                    ------------  ----------  ---------------  -------------  ---
-  kube-system                 coredns-559f6c778d-977m4                                100m (0%)     0 (0%)      70Mi (0%)        170Mi (0%)     4h18m
-  kube-system                 coredns-559f6c778d-n42s4                                100m (0%)     0 (0%)      70Mi (0%)        170Mi (0%)     4h18m
-  kube-system                 etcd-taracode-evals-control-plane                       100m (0%)     0 (0%)      100Mi (0%)       0 (0%)         4h18m
-  kube-system                 kindnet-6f57p                                           100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         4h18m
-  kube-system                 kube-apiserver-taracode-evals-control-plane             250m (1%)     0 (0%)      0 (0%)           0 (0%)         4h18m
-  kube-system                 kube-controller-manager-taracode-evals-control-plane    200m (0%)     0 (0%)      0 (0%)           0 (0%)         4h18m
-  kube-system                 kube-proxy-745bt                                        0 (0%)        0 (0%)      0 (0%)           0 (0%)         4h18m
-  kube-system                 kube-scheduler-taracode-evals-control-plane             100m (0%)     0 (0%)      0 (0%)           0 (0%)         4h18m
-  local-path-storage          local-path-provisioner-75f7fc7dc5-zbbzm                 0 (0%)        0 (0%)      0 (0%)           0 (0%)         4h18m
+  kube-system                 coredns-559f6c778d-977m4                                100m (0%)     0 (0%)      70Mi (0%)        170Mi (0%)     6h10m
+  kube-system                 coredns-559f6c778d-n42s4                                100m (0%)     0 (0%)      70Mi (0%)        170Mi (0%)     6h10m
+  kube-system                 etcd-taracode-evals-control-plane                       100m (0%)     0 (0%)      100Mi (0%)       0 (0%)         6h11m
+  kube-system                 kindnet-6f57p                                           100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         6h10m
+  kube-system                 kube-apiserver-taracode-evals-control-plane             250m (1%)     0 (0%)      0 (0%)           0 (0%)         6h11m
+  kube-system                 kube-controller-manager-taracode-evals-control-plane    200m (0%)     0 (0%)      0 (0%)           0 (0%)         6h11m
+  kube-system                 kube-proxy-745bt                                        0 (0%)        0 (0%)      0 (0%)           0 (0%)         6h10m
+  kube-system                 kube-scheduler-taracode-evals-control-plane             100m (0%)     0 (0%)      0 (0%)           0 (0%)         6h11m
+  local-path-storage          local-path-provisioner-75f7fc7dc5-zbbzm                 0 (0%)        0 (0%)      0 (0%)           0 (0%)         6h10m
 Allocated resources:
   (Total limits may be over 100 percent, i.e., overcommitted.)
   Resource           Requests    Limits
@@ -91,14 +91,14 @@ Unschedulable:      false
 Lease:
   HolderIdentity:  taracode-evals-worker
   AcquireTime:     <unset>
-  RenewTime:       Thu, 24 Sep 2026 21:53:10 +0000
+  RenewTime:       Thu, 24 Sep 2026 23:45:55 +0000
 Conditions:
   Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
   ----             ------  -----------------                 ------------------                ------                       -------
-  MemoryPressure   False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure     False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure      False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready            True    Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletReady                 kubelet is posting ready status
+  MemoryPressure   False   Thu, 24 Sep 2026 23:45:55 +0000   Thu, 24 Sep 2026 23:45:55 +0000   KubeletHasSufficientMemory   kubelet has sufficient memory available
+  DiskPressure     False   Thu, 24 Sep 2026 23:45:55 +0000   Thu, 24 Sep 2026 23:45:55 +0000   KubeletHasNoDiskPressure     kubelet has no disk pressure
+  PIDPressure      False   Thu, 24 Sep 2026 23:45:55 +0000   Thu, 24 Sep 2026 23:45:55 +0000   KubeletHasSufficientPID      kubelet has sufficient PID available
+  Ready            True    Thu, 24 Sep 2026 23:45:55 +0000   Thu, 24 Sep 2026 23:45:55 +0000   KubeletReady                 kubelet is posting ready status
 Addresses:
   InternalIP:  172.18.0.2
   Hostname:    taracode-evals-worker
@@ -129,11 +129,12 @@ System Info:
 PodCIDR:                      10.244.1.0/24
 PodCIDRs:                     10.244.1.0/24
 ProviderID:                   kind://docker/taracode-evals/taracode-evals-worker
-Non-terminated Pods:          (2 in total)
-  Namespace                   Name                CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
-  ---------                   ----                ------------  ----------  ---------------  -------------  ---
-  kube-system                 kindnet-nwdkc       100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         4h18m
-  kube-system                 kube-proxy-rdkl9    0 (0%)        0 (0%)      0 (0%)           0 (0%)         4h18m
+Non-terminated Pods:          (3 in total)
+  Namespace                   Name                              CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+  ---------                   ----                              ------------  ----------  ---------------  -------------  ---
+  kube-system                 kindnet-nwdkc                     100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         6h10m
+  kube-system                 kube-proxy-rdkl9                  0 (0%)        0 (0%)      0 (0%)           0 (0%)         6h10m
+  platform                    metrics-agent-767dd6b94f-275mv    0 (0%)        0 (0%)      0 (0%)           0 (0%)         65s
 Allocated resources:
   (Total limits may be over 100 percent, i.e., overcommitted.)
   Resource           Requests   Limits

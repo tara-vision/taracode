@@ -7,3 +7,6 @@ fixtures:
       file: scan-gitleaks-392b8f.txt
     - signature: scan gitleaks repo HIGH
       file: scan-gitleaks-repo-high-d31e19.txt
+    - signature: git log --oneline --all
+      file: git-log-oneline-all-dd9b8a.txt
+      error: true

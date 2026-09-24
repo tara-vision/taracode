@@ -1,2 +1,0 @@
-kubectl exited with status 1
-Error from server (BadRequest): container "cart" in pod "cart-f688b8bd4-4kcg7" is waiting to start: trying and failing to pull image

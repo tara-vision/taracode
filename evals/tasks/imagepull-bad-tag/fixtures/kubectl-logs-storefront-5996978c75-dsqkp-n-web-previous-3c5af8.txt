@@ -1,0 +1,2 @@
+Error from server (BadRequest): previous terminated container "storefront" in pod "storefront-5996978c75-dsqkp" not found
+[exit status 1]

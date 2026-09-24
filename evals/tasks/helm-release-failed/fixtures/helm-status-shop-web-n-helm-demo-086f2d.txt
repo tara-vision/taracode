@@ -1,5 +1,5 @@
 NAME: shop-web
-LAST DEPLOYED: Thu Sep 24 23:23:16 2026
+LAST DEPLOYED: Thu Sep 24 23:44:01 2026
 NAMESPACE: helm-demo
 STATUS: failed
 REVISION: 2
@@ -7,17 +7,17 @@ DESCRIPTION: Upgrade "shop-web" failed: resource Deployment/helm-demo/shop-web n
 context deadline exceeded
 RESOURCES:
 ==> v1/Service
-NAME       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-shop-web   ClusterIP   10.96.141.132   <none>        80/TCP    42s
+NAME       TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+shop-web   ClusterIP   10.96.108.8   <none>        80/TCP    41s
 
 ==> v1/Deployment
 NAME       READY   UP-TO-DATE   AVAILABLE   AGE
-shop-web   1/1     1            1           42s
+shop-web   1/1     1            1           41s
 
 ==> v1/Pod(related)
 NAME                        READY   STATUS         RESTARTS   AGE
-shop-web-67c45748fb-x675q   0/1     ErrImagePull   0          41s
-shop-web-8f84c974-rps5t     1/1     Running        0          42s
+shop-web-67c45748fb-h4jgc   0/1     ErrImagePull   0          41s
+shop-web-8f84c974-7vtvz     1/1     Running        0          41s
 
 
 TEST SUITE: None

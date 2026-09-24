@@ -5,14 +5,14 @@ metadata:
     deployment.kubernetes.io/revision: "1"
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"nightly-etl"},"name":"nightly-etl","namespace":"batch"},"spec":{"selector":{"matchLabels":{"app":"nightly-etl"}},"template":{"metadata":{"labels":{"app":"nightly-etl"}},"spec":{"containers":[{"command":["sleep","3600"],"image":"busybox:1.37","name":"nightly-etl"}],"nodeSelector":{"kubernetes.io/hostname":"taracode-evals-worker"}}}}}
-  creationTimestamp: "2026-09-24T21:53:14Z"
+  creationTimestamp: "2026-09-24T23:46:02Z"
   generation: 1
   labels:
     app: nightly-etl
   name: nightly-etl
   namespace: batch
-  resourceVersion: "24815"
-  uid: 124022fc-596b-4bb7-9944-7cce93d87e62
+  resourceVersion: "36386"
+  uid: 30e4ef13-ef28-459a-89c3-90e246a18d39
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -49,14 +49,14 @@ spec:
       terminationGracePeriodSeconds: 30
 status:
   conditions:
-  - lastTransitionTime: "2026-09-24T21:53:14Z"
-    lastUpdateTime: "2026-09-24T21:53:14Z"
+  - lastTransitionTime: "2026-09-24T23:46:02Z"
+    lastUpdateTime: "2026-09-24T23:46:02Z"
     message: Deployment does not have minimum availability.
     reason: MinimumReplicasUnavailable
     status: "False"
     type: Available
-  - lastTransitionTime: "2026-09-24T21:53:14Z"
-    lastUpdateTime: "2026-09-24T21:53:14Z"
+  - lastTransitionTime: "2026-09-24T23:46:02Z"
+    lastUpdateTime: "2026-09-24T23:46:02Z"
     message: ReplicaSet "nightly-etl-77d8cf54bf" is progressing.
     reason: ReplicaSetUpdated
     status: "True"

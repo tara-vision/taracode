@@ -7,16 +7,16 @@ fixtures:
       file: kubectl-get-pod-n-billing-o-yaml-554155.txt
     - signature: kubectl get pod -n billing -l app=invoice-worker
       file: kubectl-get-pod-n-billing-l-app-invoice-worker-901510.txt
-    - signature: kubectl describe pod/invoice-worker-fbf95d7bd-zzkqf -n billing
-      file: kubectl-describe-pod-invoice-worker-fbf95d7bd-zzkqf-n-billing-2dd09e.txt
+    - signature: kubectl describe pod/invoice-worker-fbf95d7bd-pnqx6 -n billing
+      file: kubectl-describe-pod-invoice-worker-fbf95d7bd-pnqx6-n-billing-9d5c74.txt
     - signature: kubectl describe deployment/invoice-worker -n billing
       file: kubectl-describe-deployment-invoice-worker-n-billing-5da448.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing
-      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-f5bd58.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing --previous
-      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-previous-13ccec.txt
-    - signature: kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing --previous --tail=50
-      file: kubectl-logs-invoice-worker-fbf95d7bd-zzkqf-n-billing-previous-tail-50-b13239.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-pnqx6 -n billing
+      file: kubectl-logs-invoice-worker-fbf95d7bd-pnqx6-n-billing-1d3972.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-pnqx6 -n billing --previous
+      file: kubectl-logs-invoice-worker-fbf95d7bd-pnqx6-n-billing-previous-c7cea3.txt
+    - signature: kubectl logs invoice-worker-fbf95d7bd-pnqx6 -n billing --previous --tail=50
+      file: kubectl-logs-invoice-worker-fbf95d7bd-pnqx6-n-billing-previous-tail-50-573a05.txt
     - signature: kubectl get event -n billing
       file: kubectl-get-event-n-billing-a57a8a.txt
     - signature: kubectl get event -n billing --sort-by=.lastTimestamp
@@ -25,6 +25,8 @@ fixtures:
       file: kubectl-get-deployment-invoice-worker-n-billing-a2aa17.txt
     - signature: kubectl get deployment/invoice-worker -n billing -o yaml
       file: kubectl-get-deployment-invoice-worker-n-billing-o-yaml-fefae3.txt
+    - signature: kubectl get deployment/invoice-worker -n billing -o wide
+      file: kubectl-get-deployment-invoice-worker-n-billing-o-wide-357110.txt
     - signature: kubectl top pod -n billing
       file: kubectl-top-pod-n-billing-01525b.txt
       error: true

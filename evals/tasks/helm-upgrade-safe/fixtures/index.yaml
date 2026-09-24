@@ -25,3 +25,7 @@ fixtures:
       file: kubectl-get-pod-n-helm-demo-5ba4ac.txt
     - signature: kubectl get deployment/shop-web -n helm-demo
       file: kubectl-get-deployment-shop-web-n-helm-demo-70a83a.txt
+    - signature: kubectl get deployment -n helm-demo
+      file: kubectl-get-deployment-n-helm-demo-8bd991.txt
+    - signature: kubectl get deployment/shop-web -n helm-demo -o wide
+      file: kubectl-get-deployment-shop-web-n-helm-demo-o-wide-033e92.txt

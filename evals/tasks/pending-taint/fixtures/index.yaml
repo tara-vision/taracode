@@ -3,8 +3,10 @@ fixtures:
       file: kubectl-get-pod-n-batch-d141c8.txt
     - signature: kubectl get pod -n batch -o wide
       file: kubectl-get-pod-n-batch-o-wide-545d33.txt
-    - signature: kubectl describe pod/nightly-etl-77d8cf54bf-t94q4 -n batch
-      file: kubectl-describe-pod-nightly-etl-77d8cf54bf-t94q4-n-batch-000c19.txt
+    - signature: kubectl describe pod/nightly-etl-77d8cf54bf-phhb9 -n batch
+      file: kubectl-describe-pod-nightly-etl-77d8cf54bf-phhb9-n-batch-56e5fe.txt
+    - signature: kubectl describe pod/nightly-etl -n batch
+      file: kubectl-describe-pod-nightly-etl-n-batch-1a632b.txt
     - signature: kubectl get event -n batch
       file: kubectl-get-event-n-batch-c838c2.txt
     - signature: kubectl get event -n batch --sort-by=.lastTimestamp
@@ -13,6 +15,8 @@ fixtures:
       file: kubectl-get-deployment-nightly-etl-n-batch-o-yaml-5e8918.txt
     - signature: kubectl get node
       file: kubectl-get-node-a47d9a.txt
+    - signature: kubectl get node -o wide
+      file: kubectl-get-node-o-wide-a8f79e.txt
     - signature: kubectl describe node
       file: kubectl-describe-node-d0fc0e.txt
     - signature: kubectl describe node/taracode-evals-control-plane

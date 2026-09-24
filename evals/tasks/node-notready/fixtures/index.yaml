@@ -9,13 +9,26 @@ fixtures:
       file: kubectl-get-pod-n-platform-6515db.txt
     - signature: kubectl get pod -n platform -o wide
       file: kubectl-get-pod-n-platform-o-wide-38a453.txt
-    - signature: kubectl describe pod/metrics-agent-767dd6b94f-bxxtg -n platform
-      file: kubectl-describe-pod-metrics-agent-767dd6b94f-bxxtg-n-platform-1417a9.txt
+    - signature: kubectl describe pod/metrics-agent-767dd6b94f-275mv -n platform
+      file: kubectl-describe-pod-metrics-agent-767dd6b94f-275mv-n-platform-ea7b74.txt
     - signature: kubectl get event -n platform
       file: kubectl-get-event-n-platform-104b1b.txt
     - signature: kubectl get event -A
       file: kubectl-get-event-a-db2bfc.txt
     - signature: kubectl get service -n platform
       file: kubectl-get-service-n-platform-510e4c.txt
+    - signature: kubectl get deployment -n platform
+      file: kubectl-get-deployment-n-platform-d55774.txt
+    - signature: kubectl get endpoints -n platform
+      file: kubectl-get-endpoints-n-platform-af8668.txt
+    - signature: kubectl get event -n platform --sort-by=.lastTimestamp
+      file: kubectl-get-event-n-platform-sort-by-lasttimestamp-fe2044.txt
+    - signature: kubectl get svc,endpoints -n platform
+      file: kubectl-get-svc-endpoints-n-platform-b3e77c.txt
+    - signature: kubectl logs metrics-agent-767dd6b94f-275mv -n platform --tail=50
+      file: kubectl-logs-metrics-agent-767dd6b94f-275mv-n-platform-tail-50-a2cbbf.txt
+      error: true
+    - signature: kubectl get pod/metrics-agent-767dd6b94f-275mv -n platform -o yaml
+      file: kubectl-get-pod-metrics-agent-767dd6b94f-275mv-n-platform-o-yaml-9e445b.txt
     - signature: kubectl events -n platform
       file: kubectl-events-n-platform-e29a1c.txt

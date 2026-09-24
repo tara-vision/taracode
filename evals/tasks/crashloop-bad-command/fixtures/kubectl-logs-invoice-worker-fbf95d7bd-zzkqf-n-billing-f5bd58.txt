@@ -1,1 +1,0 @@
-kubectl logs invoice-worker-fbf95d7bd-zzkqf -n billing completed with no output

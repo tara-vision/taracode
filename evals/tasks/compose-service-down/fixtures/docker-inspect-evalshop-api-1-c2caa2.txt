@@ -1,0 +1,202 @@
+[
+    {
+        "Id": "7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb",
+        "Created": "2026-09-24T23:43:44.975049815Z",
+        "Path": "/api-entrypoint.sh",
+        "Args": [],
+        "State": {
+            "Status": "exited",
+            "Running": false,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 0,
+            "ExitCode": 1,
+            "Error": "",
+            "StartedAt": "2026-09-24T23:43:45.224854179Z",
+            "FinishedAt": "2026-09-24T23:43:45.331763839Z"
+        },
+        "Image": "sha256:906942d7586ee754ffc2ef7593aa977619091592ac2a63d063ee088e8feedc41",
+        "ResolvConfPath": "/var/lib/docker/containers/7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb/hostname",
+        "HostsPath": "/var/lib/docker/containers/7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb/hosts",
+        "LogPath": "/var/lib/docker/containers/7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb/7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb-json.log",
+        "Name": "/evalshop-api-1",
+        "RestartCount": 0,
+        "Driver": "overlay2",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "docker-default",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "evalshop_default",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": null,
+            "DnsSearch": null,
+            "ExtraHosts": [],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": {
+                "ID": "7d147bea917d72a2e12e72ef4321eefed290b30717b75301fad011ca8b3e3feb",
+                "LowerDir": "/var/lib/docker/overlay2/77e91133ada1634fae0803791ad82abfc4755e3bb1bc33ef2dab19ea9b5192fc-init/diff:/var/lib/docker/overlay2/20569a6b9647100f9c769548ad96cbb3f0692d20a5caf81fba0d99aaf72cb816/diff:/var/lib/docker/overlay2/60436836a4433d764006bc26f0c42abc6e119eb5c913f10309373a4bda1506eb/diff:/var/lib/docker/overlay2/456999ae4bd394f0855c28670918502f71856d8430959e0add13184d3ea2a6a8/diff",
+                "MergedDir": "/var/lib/docker/overlay2/77e91133ada1634fae0803791ad82abfc4755e3bb1bc33ef2dab19ea9b5192fc/merged",
+                "UpperDir": "/var/lib/docker/overlay2/77e91133ada1634fae0803791ad82abfc4755e3bb1bc33ef2dab19ea9b5192fc/diff",
+                "WorkDir": "/var/lib/docker/overlay2/77e91133ada1634fae0803791ad82abfc4755e3bb1bc33ef2dab19ea9b5192fc/work"
+            },
+            "Name": "overlay2"
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "7d147bea917d",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": null,
+            "Image": "taracode-eval-compose-down-api:latest",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": [
+                "/api-entrypoint.sh"
+            ],
+            "Labels": {
+                "com.docker.compose.config-hash": "34fb141ce09119ca96fa8a6b57aff7084de621fb1fc277e121f6fac97238f04e",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.depends_on": "",
+                "com.docker.compose.image": "sha256:906942d7586ee754ffc2ef7593aa977619091592ac2a63d063ee088e8feedc41",
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project": "evalshop",
+                "com.docker.compose.project.config_files": "/tmp/taracode-record-3823923835/compose.yaml",
+                "com.docker.compose.project.working_dir": "/tmp/taracode-record-3823923835",
+                "com.docker.compose.service": "api",
+                "com.docker.compose.version": "5.5.1"
+            }
+        },
+        "NetworkSettings": {
+            "SandboxID": "",
+            "SandboxKey": "",
+            "Ports": {},
+            "Networks": {
+                "evalshop_default": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "evalshop-api-1",
+                        "api"
+                    ],
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "05349ab7fa0b1ffbf75835d2d02a3e818a6b292158bb42e5eb810b9073c36a7e",
+                    "EndpointID": "",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "MacAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "evalshop-api-1",
+                        "api",
+                        "7d147bea917d"
+                    ]
+                }
+            }
+        }
+    }
+]

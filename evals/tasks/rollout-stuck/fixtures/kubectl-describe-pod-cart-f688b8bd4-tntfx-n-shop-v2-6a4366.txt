@@ -1,0 +1,55 @@
+Name:             cart-f688b8bd4-tntfx
+Namespace:        shop-v2
+Priority:         0
+Service Account:  default
+Node:             taracode-evals-worker/172.18.0.2
+Start Time:       Thu, 24 Sep 2026 23:46:29 +0000
+Labels:           app=cart
+                  pod-template-hash=f688b8bd4
+Annotations:      <none>
+Status:           Pending
+IP:               10.244.1.44
+IPs:
+  IP:           10.244.1.44
+Controlled By:  ReplicaSet/cart-f688b8bd4
+Containers:
+  cart:
+    Container ID:   
+    Image:          nginx:1.99.99-nope
+    Image ID:       
+    Port:           <none>
+    Host Port:      <none>
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-zcftq (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-zcftq:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  47s                default-scheduler  Successfully assigned shop-v2/cart-f688b8bd4-tntfx to taracode-evals-worker
+  Normal   BackOff    14s (x2 over 45s)  kubelet            spec.containers{cart}: Back-off pulling image "nginx:1.99.99-nope"
+  Warning  Failed     14s (x2 over 45s)  kubelet            spec.containers{cart}: Error: ImagePullBackOff
+  Normal   Pulling    2s (x3 over 46s)   kubelet            spec.containers{cart}: Pulling image "nginx:1.99.99-nope"
+  Warning  Failed     1s (x3 over 45s)   kubelet            spec.containers{cart}: Failed to pull image "nginx:1.99.99-nope": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-nope": failed to resolve reference "docker.io/library/nginx:1.99.99-nope": docker.io/library/nginx:1.99.99-nope: not found
+  Warning  Failed     1s (x3 over 45s)   kubelet            spec.containers{cart}: Error: ErrImagePull

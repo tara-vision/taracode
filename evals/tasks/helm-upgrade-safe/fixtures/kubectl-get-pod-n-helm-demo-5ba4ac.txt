@@ -1,3 +1,3 @@
 NAME                      READY   STATUS    RESTARTS   AGE
-shop-web-8f84c974-8lsg9   1/1     Running   0          2s
-shop-web-8f84c974-h6jh8   1/1     Running   0          5s
+shop-web-8f84c974-5hdx5   1/1     Running   0          2s
+shop-web-8f84c974-g4klw   1/1     Running   0          0s
