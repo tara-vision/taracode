@@ -168,6 +168,13 @@ func TestShellKubeTargetsBehindKeywordsAndGrouping(t *testing.T) {
 		// fix round 1, I1 (P3-R10): a substitution operator on a literal for-loop variable is still
 		// run time, since the operator can swap in its own word instead of that value.
 		{"for c in a; do kubectl delete pod p ${c:+--context=prod}; done", "{* * }"},
+		// fix round 4, OOS-3/OOS-4 (P3-R33): the kube-target path applies the argument path's rules, so
+		// a leading run of references landing on "-" ($X vanishing reveals --namespace=prod) and a brace
+		// word rebuilding a line variable ($c{t,x} rebuilds $ct=--context=prod) make the target "*", not
+		// "". The third row (empty $X$Y before a "-" inside a brace leaf) had no pin before this round.
+		{`for X in ""; do kubectl delete pod p $X--namespace=prod; done`, "{* * }"},
+		{"for c in x; do for ct in --context=prod; do kubectl delete pod p $c{t,x}; done; done", "{* * }"},
+		{`for X in ""; do for Y in ""; do kubectl delete pod p {q,$X$Y}--namespace=prod; done; done`, "{* * }"},
 	}
 	for _, c := range kube {
 		if got := kubeOf(c.cmd); got != c.want {

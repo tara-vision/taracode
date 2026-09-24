@@ -38,6 +38,15 @@ var relaxedReads = []string{
 	// fix round 3, P3-R20: literal text in front of a whole leading run of references (not just one)
 	// still keeps the word safe, and a brace prefix keeps a rebuilt name (x{a,$X}) from starting with -
 	"TAG=$VERSION-rc1 echo x", "find . x{a,$X}-delete",
+	// fix round 4, P3-R31: a brace sequence with no assignment rebuilds no line variable, and one set
+	// to a plain value is safe to expand
+	"sort $a{1..9} out f", "a5=x; sort $a{1..9} out f",
+	// fix round 4, P3-R32: a ${...} with a balanced brace pair (no stripped, unmatched "}") is a read
+	"find . -name ${X}",
+	// fix round 4, minors: an unset or plain variable, and a brace expansion that rebuilds a plain or
+	// (under an option-harmless program) an option-valued line variable, stay reads
+	"ls $X", "cat $HOME/x", "find . -name $X",
+	"ab=x; sort $a{b,x} out f", "a=1; sort $a{b,x} out f", "ab=-o; echo $a{b,x}",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -115,6 +124,19 @@ var relaxedMutations = map[string]string{
 	// way injects checks a plain word, so the reason names the rebuilt variable
 	"ab=-o; sort $a{b,x} out f": "ab", "ab=-o; sort {$a,x}b out f": "ab",
 	"Xdelete=-delete; find . {$X,a}delete": "Xdelete",
+	// fix round 4, O1 remainder/P3-R31: braceInjects enumerates every member of a {x..y}, {x..y..step}
+	// or single-character sequence, so $a{1..9} rebuilds $a5 (not only its ends $a1 and $a9), and a
+	// sequence over the braceLimit is one option (fail closed)
+	"a5=-o; sort $a{1..9} out f": "a5", "ac=-o; sort $a{b..d} out f": "ac",
+	"a1=-o; sort $a{1..9} out f": "a1", "a9=-o; sort $a{1..9} out f": "a9",
+	"sort {1..1000}": "sort",
+	// fix round 4, OOS-1/P3-R32: shellwords strips the quote or escape around a "}", so ${X:+"}"},
+	// ${X:+\}}, ${X:+'}'} and ${X:+"a}b"} all reach the classifier as ${X:+}}, whose unmatched "}" is
+	// the trace of the brace a quote hid; every shell expands the word to -delete. echo is
+	// option-harmless, but an opaque ${...} form is a mutation for every program.
+	`find . ${X:+"}"}-delete`: "find", `find . ${X:+\}}-delete`: "find",
+	`find . ${X:+'}'}-delete`: "find", `find . ${X:+"a}b"}-delete`: "find",
+	`echo ${X:+"}"}`: "echo",
 }
 
 func TestRelaxedReads(t *testing.T) {
