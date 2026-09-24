@@ -346,3 +346,29 @@ func TestSplitCommentAfterParenCaptureSubstitution(t *testing.T) {
 		t.Fatalf("body must capture past the glued comment: %q", res.Substitutions)
 	}
 }
+
+// TestSplitBackslashNewlineLineContinuation (Task 6 fix round 3, ruling P3-R34): outside single
+// quotes, and inside double quotes, a backslash immediately followed by a newline is a line
+// continuation - both characters are removed and the word continues, as every shell does. Inside
+// single quotes the backslash and the newline stay literal.
+func TestSplitBackslashNewlineLineContinuation(t *testing.T) {
+	res, err := Split("a \\\nb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Segments) != 1 || strings.Join(res.Segments[0].Words, "|") != "a|b" {
+		t.Fatalf("unquoted continuation must split into a, b: %+v", res.Segments)
+	}
+	// A continuation with no space glues the two words into one.
+	if res, _ := Split("x\\\ny"); len(res.Segments) != 1 || strings.Join(res.Segments[0].Words, "|") != "xy" {
+		t.Fatalf("glued continuation must be one word xy: %+v", res.Segments)
+	}
+	res, _ = Split("\"a\\\nb\"")
+	if len(res.Segments) != 1 || len(res.Segments[0].Words) != 1 || res.Segments[0].Words[0] != "ab" {
+		t.Fatalf("double-quoted continuation must be the single word ab: %+v", res.Segments)
+	}
+	res, _ = Split("'a\\\nb'")
+	if len(res.Segments) != 1 || len(res.Segments[0].Words) != 1 || res.Segments[0].Words[0] != "a\\\nb" {
+		t.Fatalf("single-quoted backslash-newline stays literal: %q", res.Segments[0].Words)
+	}
+}
