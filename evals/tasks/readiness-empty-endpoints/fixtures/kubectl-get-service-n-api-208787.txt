@@ -1,0 +1,2 @@
+NAME         TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+orders-api   ClusterIP   10.96.17.79   <none>        80/TCP    3s
