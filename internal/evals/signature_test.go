@@ -39,6 +39,12 @@ func TestSignatures(t *testing.T) {
 		{"shell", map[string]any{"command": "  cat  file | grep x ; "}, "shell cat file | grep x"},
 		{"shell", map[string]any{"command": "echo hi > out.txt"}, "shell echo hi > out.txt"},
 		{"shell", map[string]any{"command": "kubectl get pods | grep Running"}, "shell kubectl get pods | grep Running"},
+		{"shell", map[string]any{"command": "kubectl -n logs get pods"}, "kubectl get pod -n logs"},
+		{"shell", map[string]any{"command": "kubectl -n get delete pods"}, "kubectl delete pod -n get"},
+		{"shell", map[string]any{"command": "kubectl -n shop-v2 rollout restart deploy/cart"}, "kubectl rollout restart deploy/cart -n shop-v2"},
+		{"shell", map[string]any{"command": "kubectl -n shop scale deploy/checkout --replicas=3"}, "kubectl scale deployment/checkout -n shop --replicas=3"},
+		{"shell", map[string]any{"command": "kubectl --context prod-cluster -n shop get deploy checkout"}, "kubectl get deployment/checkout -n shop --context prod-cluster"},
+		{"shell", map[string]any{"command": "kubectl get -n shop pods"}, "kubectl get pod -n shop"},
 	}
 	for _, c := range cases {
 		if got := Signature(c.tool, c.args); got != c.want {

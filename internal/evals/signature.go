@@ -123,8 +123,8 @@ func kubectlSignature(argv []string) string {
 	verb := argv[0]
 	positional, extra, fields := parseKubectlArgs(argv[1:])
 	parts := []string{"kubectl", verb}
-	appendKubectlResourceAndName(&parts, verb, positional)
-	appendKubectlFields(&parts, fields)
+	parts = appendKubectlResourceAndName(parts, verb, positional)
+	parts = appendKubectlFields(parts, fields)
 	return strings.Join(append(parts, extra...), " ")
 }
 
@@ -167,10 +167,10 @@ func parseKubectlShortFlag(t string, fields map[string]string) bool {
 	return false
 }
 
-// appendKubectlResourceAndName adds resource and name to parts.
-func appendKubectlResourceAndName(parts *[]string, verb string, positional []string) {
+// appendKubectlResourceAndName adds resource and name to parts and returns the extended slice.
+func appendKubectlResourceAndName(parts []string, verb string, positional []string) []string {
 	if len(positional) == 0 {
-		return
+		return parts
 	}
 	resource, name, _ := strings.Cut(positional[0], "/")
 	rest := positional[1:]
@@ -184,20 +184,60 @@ func appendKubectlResourceAndName(parts *[]string, verb string, positional []str
 	if name != "" {
 		item += "/" + name
 	}
-	*parts = append(*parts, item)
-	*parts = append(*parts, rest...)
+	parts = append(parts, item)
+	return append(parts, rest...)
 }
 
-// appendKubectlFields adds flags and their values to parts.
-func appendKubectlFields(parts *[]string, fields map[string]string) {
+// appendKubectlFields adds flags and their values to parts and returns the extended slice.
+func appendKubectlFields(parts []string, fields map[string]string) []string {
 	for _, f := range []struct {
 		key  string
 		flag string
 	}{{"namespace", "-n"}, {"context", "--context"}, {"output", "-o"}, {"kubeconfig", "--kubeconfig"}} {
 		if v := fields[f.key]; v != "" {
-			*parts = append(*parts, f.flag, v)
+			parts = append(parts, f.flag, v)
 		}
 	}
+	return parts
+}
+
+// findKubectlVerb finds the kubectl verb in argv, properly skipping flags and their values.
+// Returns the verb and argv reordered with verb first, or empty verb if none found.
+func findKubectlVerb(argv []string) (verb string, reordered []string) {
+	for i := 0; i < len(argv); i++ {
+		t := argv[i]
+
+		// Flag with = value (-n=value or --namespace=value)
+		if name, _, ok := strings.Cut(t, "="); ok && kubectlValueFlags[name] != "" {
+			continue
+		}
+
+		// Flag with separate next value (-n value or --namespace value)
+		if kubectlValueFlags[t] != "" && i+1 < len(argv) {
+			i++ // skip both flag and value
+			continue
+		}
+
+		// Short flag with attached value (-nshop or -owide)
+		if (strings.HasPrefix(t, "-n") || strings.HasPrefix(t, "-o")) && len(t) > 2 && !strings.HasPrefix(t, "--") {
+			continue
+		}
+
+		// Any other flag
+		if strings.HasPrefix(t, "-") {
+			continue
+		}
+
+		// Found the verb
+		verb = t
+		reordered = make([]string, 0, len(argv))
+		reordered = append(reordered, verb)
+		reordered = append(reordered, argv[:i]...)
+		reordered = append(reordered, argv[i+1:]...)
+		return
+	}
+
+	return "", argv
 }
 
 // terraformSignature renders "terraform <command> dir=<clean dir> [<args as written>]".
@@ -222,19 +262,9 @@ func shellSignature(command string) string {
 			switch w[0] {
 			case "kubectl":
 				argv := w[1:]
-				verbIdx := -1
-				for i, arg := range argv {
-					if resourceVerbs[arg] || arg == "logs" {
-						verbIdx = i
-						break
-					}
-				}
-				if verbIdx > 0 {
-					verb := argv[verbIdx]
-					newArgv := []string{verb}
-					newArgv = append(newArgv, argv[:verbIdx]...)
-					newArgv = append(newArgv, argv[verbIdx+1:]...)
-					return kubectlSignature(newArgv)
+				verb, reordered := findKubectlVerb(argv)
+				if verb != "" {
+					return kubectlSignature(reordered)
 				}
 				return kubectlSignature(argv)
 			case "helm", "git", "docker", "aws", "az", "gcloud":
