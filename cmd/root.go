@@ -295,6 +295,7 @@ func init() {
 	_ = viper.BindPFlag("offline", rootCmd.PersistentFlags().Lookup("offline"))
 
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(evalCmd)
 }
 
 func initConfig() {

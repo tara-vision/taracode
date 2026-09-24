@@ -32,3 +32,11 @@ config.yaml
 *.log
 .DS_Store
 
+# eval transcripts (docs/evals/results holds the committed numbers)
+evals/runs/*
+!evals/runs/.gitkeep
+
+# leftover recorder temp dirs from an interrupted `taracode eval record` (ruling P3-R41)
+evals/tasks/*/fixtures-recording-*/
+evals/tasks/*/fixtures.replaced/
+
