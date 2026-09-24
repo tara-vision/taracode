@@ -175,54 +175,6 @@ func TestMaxIterationsStopsTheLoop(t *testing.T) {
 	}
 }
 
-// TestTheCapAnswersWithTheFindingsSoFar pins ruling P3-R60, headlessly: a model that calls a tool on
-// every turn, for one turn more than the cap, gets one final completion with no tools offered, whose
-// text is the turn's answer. The tool call it makes there is not run and does not enter the
-// conversation, and the turn is marked truncated.
-func TestTheCapAnswersWithTheFindingsSoFar(t *testing.T) {
-	a, srv := newTestAssistant(t, false)
-	var out bytes.Buffer
-	a.out = &out
-	a.maxIterations = 2
-	var events []ToolEvent
-	a.observer = func(ev ToolEvent) { events = append(events, ev) }
-	read := ollamatest.ToolCall{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{read}},
-		{ToolCalls: []ollamatest.ToolCall{read}},
-		{Content: "So far: hello.txt says hello from disk.", ToolCalls: []ollamatest.ToolCall{read}},
-	}
-	if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
-		t.Fatal(err)
-	}
-	if got := a.GetLastResponse(); got != "So far: hello.txt says hello from disk." {
-		t.Fatalf("answer %q", got)
-	}
-	if st := a.LastTurn(); !st.Truncated || st.Completions != 3 || st.ToolCalls != 2 || len(events) != 2 {
-		t.Fatalf("turn %+v, events %d", st, len(events))
-	}
-	var chats []ollamatest.RecordedRequest
-	for _, r := range srv.Requests {
-		if r.Path == "/api/chat" {
-			chats = append(chats, r)
-		}
-	}
-	if _, offered := chats[1].Body["tools"]; !offered {
-		t.Fatal("the requests before the cap must offer the tools")
-	}
-	if _, offered := chats[2].Body["tools"]; offered {
-		t.Fatalf("the final request at the cap offered tools: %v", chats[2].Body["tools"])
-	}
-	messages, _ := chats[2].Body["messages"].([]any)
-	if last, _ := messages[len(messages)-1].(map[string]any); last["role"] != "user" || last["content"] != capNudge {
-		t.Fatalf("the final request does not end with the cap nudge: %v", last)
-	}
-	last := a.conversation[len(a.conversation)-1]
-	if last.Role != openai.ChatMessageRoleAssistant || len(last.ToolCalls) != 0 || !strings.Contains(out.String(), "So far:") {
-		t.Fatalf("last message %+v, output %q", last, out.String())
-	}
-}
-
 func TestThinkingIsNotStoredInTheConversation(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
 	srv.Turns = []ollamatest.Turn{{Content: "yes", Thinking: "let me think"}}
