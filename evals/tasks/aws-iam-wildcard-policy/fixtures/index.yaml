@@ -1,0 +1,13 @@
+fixtures:
+  - signature: "aws sts get-caller-identity"
+    file: aws-sts-get-caller-identity-86ac4b.txt
+  - signature: "aws iam get-role --role-name ci-deployer"
+    file: aws-iam-get-role-role-name-ci-deployer-f35434.txt
+  - signature: "aws iam list-attached-role-policies --role-name ci-deployer"
+    file: aws-iam-list-attached-role-policies-role-name-ci-deployer-d0f69e.txt
+  - signature: "aws iam list-role-policies --role-name ci-deployer"
+    file: aws-iam-list-role-policies-role-name-ci-deployer-7190f3.txt
+  - signature: "aws iam get-policy --policy-arn arn:aws:iam::123456789012:policy/CiDeployerPolicy"
+    file: aws-iam-get-policy-policy-arn-arn-aws-iam-123456789012-policy-cideployerpolicy-9d652b.txt
+  - signature: "aws iam get-policy-version --policy-arn arn:aws:iam::123456789012:policy/CiDeployerPolicy --version-id v3"
+    file: aws-iam-get-policy-version-policy-arn-arn-aws-iam-123456789012-policy-cideployer-d08120.txt

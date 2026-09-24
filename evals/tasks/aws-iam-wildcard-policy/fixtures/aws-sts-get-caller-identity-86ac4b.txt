@@ -1,0 +1,5 @@
+{
+    "UserId": "AROA1234567890EXAMPL:security-audit-session",
+    "Account": "123456789012",
+    "Arn": "arn:aws:sts::123456789012:assumed-role/security-audit/security-audit-session"
+}

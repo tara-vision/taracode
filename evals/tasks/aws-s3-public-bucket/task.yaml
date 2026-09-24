@@ -1,0 +1,14 @@
+id: aws-s3-public-bucket
+area: cloud
+mode: investigate
+provenance: authored
+prompt: Check whether the S3 bucket acme-customer-exports is publicly accessible, and tell me what to fix.
+expect:
+  tools_called_any:
+    - {tool: cloud}
+    - {tool: shell, signature_matches: "^aws s3"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)public", "(?i)(block public access|public access block|bucket policy|acl|principal)"]
+  answer_matches_any: ["(?i)(remove|restrict|deny|enable|block)"]
+  max_iterations: 8

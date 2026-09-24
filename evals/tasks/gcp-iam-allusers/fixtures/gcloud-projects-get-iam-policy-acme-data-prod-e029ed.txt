@@ -1,0 +1,12 @@
+bindings:
+- members:
+  - allUsers
+  role: roles/storage.objectViewer
+- members:
+  - allAuthenticatedUsers
+  role: roles/viewer
+- members:
+  - user:ops@acme.example
+  role: roles/owner
+etag: BwWKmjvelug=
+version: 1

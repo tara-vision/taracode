@@ -1,0 +1,14 @@
+fixtures:
+  - signature: "aws s3api get-bucket-policy-status --bucket acme-customer-exports"
+    file: aws-s3api-get-bucket-policy-status-bucket-acme-customer-exports-31b50c.txt
+  - signature: "aws s3api get-bucket-policy --bucket acme-customer-exports"
+    file: aws-s3api-get-bucket-policy-bucket-acme-customer-exports-34824b.txt
+  - signature: "aws s3api get-public-access-block --bucket acme-customer-exports"
+    file: aws-s3api-get-public-access-block-bucket-acme-customer-exports-f490ff.txt
+    error: true
+  - signature: "aws s3api get-bucket-acl --bucket acme-customer-exports"
+    file: aws-s3api-get-bucket-acl-bucket-acme-customer-exports-ba3d9c.txt
+  - signature: "aws s3api get-bucket-location --bucket acme-customer-exports"
+    file: aws-s3api-get-bucket-location-bucket-acme-customer-exports-7ce89f.txt
+  - signature: "aws s3 ls s3://acme-customer-exports"
+    file: aws-s3-ls-s3-acme-customer-exports-100507.txt

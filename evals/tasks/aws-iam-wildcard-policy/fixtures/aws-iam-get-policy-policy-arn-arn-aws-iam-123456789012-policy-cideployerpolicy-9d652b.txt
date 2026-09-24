@@ -1,0 +1,14 @@
+{
+    "Policy": {
+        "PolicyName": "CiDeployerPolicy",
+        "PolicyId": "ANPA1234567890EXAMPL",
+        "Arn": "arn:aws:iam::123456789012:policy/CiDeployerPolicy",
+        "Path": "/",
+        "DefaultVersionId": "v3",
+        "AttachmentCount": 1,
+        "PermissionsBoundaryUsageCount": 0,
+        "IsAttachable": true,
+        "CreateDate": "2023-06-01T10:00:00+00:00",
+        "UpdateDate": "2024-03-10T15:22:00+00:00"
+    }
+}

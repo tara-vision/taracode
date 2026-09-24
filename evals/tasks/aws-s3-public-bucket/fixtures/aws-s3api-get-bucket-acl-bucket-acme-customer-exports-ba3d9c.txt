@@ -1,0 +1,23 @@
+{
+    "Owner": {
+        "DisplayName": "acme-data-team",
+        "ID": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "Grants": [
+        {
+            "Grantee": {
+                "Type": "CanonicalUser",
+                "DisplayName": "acme-data-team",
+                "ID": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            },
+            "Permission": "FULL_CONTROL"
+        },
+        {
+            "Grantee": {
+                "Type": "Group",
+                "URI": "http://acs.amazonaws.com/groups/global/AllUsers"
+            },
+            "Permission": "READ"
+        }
+    ]
+}

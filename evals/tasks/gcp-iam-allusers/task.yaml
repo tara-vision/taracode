@@ -1,0 +1,14 @@
+id: gcp-iam-allusers
+area: cloud
+mode: investigate
+provenance: authored
+prompt: Audit the IAM bindings of the GCP project acme-data-prod for anything granted to everyone.
+expect:
+  tools_called_any:
+    - {tool: cloud}
+    - {tool: shell, signature_matches: "^gcloud"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(allUsers|all users|everyone|public)", "(?i)(objectViewer|allAuthenticatedUsers|storage)"]
+  answer_matches_any: ["(?i)(remove|revoke|remove-iam-policy-binding|restrict)"]
+  max_iterations: 8
