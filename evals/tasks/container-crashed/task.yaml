@@ -21,6 +21,15 @@ record:
     - tool: docker
       args:
         args: "inspect crashed-app"
+    - tool: docker
+      args:
+        args: "ps -a --filter name=crashed-app"
+    - tool: docker
+      args:
+        args: "inspect crashed-app --format Cmd={{json .Config.Cmd}} Entrypoint={{json .Config.Entrypoint}} Binds={{json .HostConfig.Binds}}"
+    - tool: docker
+      args:
+        args: "inspect crashed-app --format ExitCode={{.State.ExitCode}} OOM={{.State.OOMKilled}} Error={{.State.Error}} RestartCount={{.RestartCount}}"
     - tool: shell
       args:
         command: "docker ps -a"

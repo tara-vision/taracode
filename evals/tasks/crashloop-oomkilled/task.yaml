@@ -26,6 +26,7 @@ record:
     - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop}}
     - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: "--previous"}}
     - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: "--previous --tail=50"}}
+    - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: "--previous --tail=20"}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: shop}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: shop, args: "--sort-by=.lastTimestamp"}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: checkout, namespace: shop}}

@@ -22,6 +22,7 @@ record:
     - {tool: helm, args: {args: "history shop-web -n helm-demo"}}
     - {tool: helm, args: {args: "get values shop-web -n helm-demo"}}
     - {tool: helm, args: {args: "get values shop-web -n helm-demo --revision 1"}}
+    - {tool: helm, args: {args: "get values shop-web -n helm-demo --revision 2"}}
     - {tool: helm, args: {args: "get manifest shop-web -n helm-demo"}}
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: helm-demo}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: shop-web, namespace: helm-demo}}

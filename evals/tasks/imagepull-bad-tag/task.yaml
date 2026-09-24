@@ -29,6 +29,7 @@ record:
     - {tool: kubectl, args: {verb: get, resource: events, namespace: web, args: "--sort-by=.lastTimestamp"}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: storefront, namespace: web}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: storefront, namespace: web, output: yaml}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, namespace: web, output: wide}}
     - {tool: kubectl, args: {verb: top, resource: pods, namespace: web}}
     - {tool: shell, args: {command: "kubectl get pods -n web"}}
     - {tool: shell, args: {command: "kubectl describe pod {{pod app=storefront ns=web}} -n web"}}

@@ -1,0 +1,2 @@
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES            SELECTOR
+checkout   1/1     1            1           30d   checkout     checkout:v1.4.2   app=checkout

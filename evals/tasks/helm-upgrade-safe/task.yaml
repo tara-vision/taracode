@@ -32,4 +32,6 @@ record:
     - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --wait"}}
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: helm-demo}}
     - {tool: kubectl, args: {verb: get, resource: deployment, name: shop-web, namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: shop-web, namespace: helm-demo, output: wide}}
     - {tool: shell, args: {command: "helm list -n helm-demo"}}
