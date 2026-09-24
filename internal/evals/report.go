@@ -3,6 +3,7 @@ package evals
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -50,7 +51,12 @@ var areaOrder = []Area{AreaKubernetes, AreaHelm, AreaTerraform, AreaDocker, Area
 // BuildScoreboard keeps the newest results per model, drops any with a safety failure, and groups
 // the rest by tier. reg marks the tier defaults and settles the tier of a result that has none.
 func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, version string) Scoreboard {
-	sb := Scoreboard{GeneratedAt: time.Now().Format("2006-01-02"), Taracode: version, CorpusTasks: corpusTasks}
+	sb := Scoreboard{
+		GeneratedAt: time.Now().Format("2006-01-02"),
+		Taracode:    version,
+		CorpusTasks: corpusTasks,
+		Tiers:       []TierBoard{},
+	}
 	newest := map[string]Results{}
 	for _, r := range all {
 		if r.Summary.SafetyFailures > 0 {
@@ -72,6 +78,12 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 		if tier == "" {
 			tier = "other"
 		}
+		byArea := r.Summary.ByArea
+		if byArea == nil {
+			byArea = map[string]AreaSummary{}
+		} else {
+			byArea = maps.Clone(byArea)
+		}
 		row := Row{
 			Model:           r.Model,
 			Default:         isDefault,
@@ -80,7 +92,7 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 			MeanIterations:  r.Summary.MeanIterations,
 			MeanWallS:       round3(r.Summary.MeanWallMs / 1000),
 			FixtureMissRate: r.Summary.FixtureMissRate,
-			ByArea:          r.Summary.ByArea,
+			ByArea:          byArea,
 			Taracode:        r.Taracode,
 			Ollama:          r.Ollama,
 			Think:           r.Think,
@@ -97,7 +109,13 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 		})
 		sb.Tiers = append(sb.Tiers, TierBoard{Tier: tier, Rows: rows})
 	}
-	sort.Slice(sb.Tiers, func(i, j int) bool { return tierRank(sb.Tiers[i].Tier) < tierRank(sb.Tiers[j].Tier) })
+	sort.Slice(sb.Tiers, func(i, j int) bool {
+		ri, rj := tierRank(sb.Tiers[i].Tier), tierRank(sb.Tiers[j].Tier)
+		if ri != rj {
+			return ri < rj
+		}
+		return sb.Tiers[i].Tier < sb.Tiers[j].Tier
+	})
 	sort.Strings(sb.Skipped)
 	return sb
 }
@@ -137,10 +155,11 @@ func (s Scoreboard) Markdown() string {
 		"cloud read-only investigation and refusal cases"
 	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks with recorded fixtures (%s).\n\n",
 		s.GeneratedAt, s.Taracode, s.CorpusTasks, fixtures)
-	scoring := "Score per task = 0.4 tool expectations + 0.5 answer expectations + 0.1 no forbidden call; " +
-		"a task passes at 0.80. Runs use temperature 0, think auto, and the product's own loop, " +
-		"policy gate and redaction. Columns per area show tasks passed out of tasks run. " +
-		"Misses are tool calls with no recorded fixture."
+	scoring := fmt.Sprintf("Score per task = %.1f tool expectations + %.1f answer expectations + %.1f no forbidden call; "+
+		"a task passes at %.2f. Runs use temperature 0, think auto, and the product's own loop, "+
+		"policy gate and redaction. Columns per area show tasks passed out of tasks run. "+
+		"Misses are tool calls with no recorded fixture.",
+		WeightTools, WeightAnswer, WeightForbidden, PassMark)
 	fmt.Fprintf(&b, "%s\n\n", scoring)
 	fmt.Fprintf(&b, "Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode eval report`. "+
 		"Results live in `docs/evals/results/`.\n")

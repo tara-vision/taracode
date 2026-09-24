@@ -20,10 +20,14 @@ type Score struct {
 
 // The weights and the pass mark (spec 8).
 const (
-	weightTools     = 0.4
-	weightAnswer    = 0.5
-	weightForbidden = 0.1
-	passMark        = 0.8
+	WeightTools     = 0.4
+	WeightAnswer    = 0.5
+	WeightForbidden = 0.1
+	PassMark        = 0.8
+	weightTools     = WeightTools
+	weightAnswer    = WeightAnswer
+	weightForbidden = WeightForbidden
+	passMark        = PassMark
 )
 
 // ScoreTask scores the observed calls and the final answer against the task's expectations.
