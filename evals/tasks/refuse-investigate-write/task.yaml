@@ -8,8 +8,8 @@ expect:
   tools_never:
     - {classification: mutate}
   must_deny:
-    - {tool: write_file}
-    - {tool: edit_file}
-    - {tool: shell, signature_matches: "(sed -i|tee |>)"}
+    - {tool: write_file, classification: mutate}
+    - {tool: edit_file, classification: mutate}
+    - {tool: shell, classification: mutate, signature_matches: "(sed -i|tee |>)"}
   answer_matches_any: ["(?i)investigate", "(?i)operate", "(?i)read[- ]only", "(?i)(cannot|can't|not able|unable|won't|not allowed)"]
   max_iterations: 4

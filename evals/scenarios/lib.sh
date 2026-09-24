@@ -1,17 +1,21 @@
 # Shared helpers for scenario scripts. Source with: . "$(dirname "$0")/../../lib.sh"
 
-# wait_for <seconds> <command...>: polls every two seconds until the command succeeds.
+# wait_for <seconds> <condition>: polls every two seconds until "eval condition" succeeds.
+# condition is evaluated with eval in this calling shell, not a child process, so this file's own
+# helpers (pod_field, and the rest) are visible to it; pass it as one single-quoted argument, and
+# quote it carefully so nothing expands before eval runs it. Pipelines and $(...) inside condition
+# are fine.
 wait_for() {
   budget=$1
-  shift
+  condition=$2
   while [ "$budget" -gt 0 ]; do
-    if "$@" >/dev/null 2>&1; then
+    if eval "$condition" >/dev/null 2>&1; then
       return 0
     fi
     budget=$((budget - 2))
     sleep 2
   done
-  echo "timed out waiting for: $*" >&2
+  echo "timed out waiting for: $condition" >&2
   return 1
 }
 

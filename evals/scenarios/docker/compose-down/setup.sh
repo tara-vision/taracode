@@ -5,4 +5,4 @@
 set -eu
 . "$(dirname "$0")/../../lib.sh"
 docker compose -f "$EVAL_WORKDIR/compose.yaml" up -d --no-build || true
-wait_for 60 sh -c "docker ps -a --filter name=evalshop-api-1 --format '{{.Status}}' | grep -q Exited"
+wait_for 60 'docker ps -a --filter name=evalshop-api-1 --format "{{.Status}}" | grep -q Exited'
