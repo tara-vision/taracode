@@ -34,6 +34,19 @@ func checkReads(t *testing.T, cases []string) {
 	}
 }
 
+// c1HolesReads are the reads TestShellFailsClosedOnC1Holes checks stay reads next to the C1
+// mutations it locks; each also runs through the differential harness.
+var c1HolesReads = []string{
+	"kubectl apply -f x.yaml --dry-run=client", "kubectl delete pod web --dry-run=server",
+	"kubectl delete pod web --dry-run=none --dry-run=client", "kubectl delete pod web --dry-run none",
+	"TZ=UTC date", "LANG=C sort names.txt", "LC_ALL=C grep -n x file.txt", "NO_COLOR=1 ls",
+	"KUBECONFIG=/home/u/.kube/dev kubectl get pods", "AWS_PROFILE=dev aws s3 ls",
+	"AWS_REGION=eu-west-1 aws ec2 describe-instances", "PAGER=cat git log -n 3", "env TZ=UTC date",
+	"TZ=UTC env | grep TZ", "/bin/cat file.txt", "/usr/bin/grep -n x file.txt", "/bin/ls -la",
+	"cat big.log > /dev/null", "ls 2> /dev/null", "ls &> /dev/null", "echo x > /dev/stderr",
+	"echo x > /dev/stdout", "echo x > /dev/tty", "echo x > /dev/fd/1", "echo x 2> /dev/fd/2",
+}
+
 // TestShellFailsClosedOnC1Holes locks the four fail-open holes of the final review's C1; every row
 // was classified read before the fix.
 func TestShellFailsClosedOnC1Holes(t *testing.T) {
@@ -74,16 +87,7 @@ func TestShellFailsClosedOnC1Holes(t *testing.T) {
 		{"echo x > /dev/tcp/example.com/80", "/dev/tcp"},
 		{"cat file.txt 2> /dev/fd/3", "/dev/fd/3"},
 	})
-	checkReads(t, []string{
-		"kubectl apply -f x.yaml --dry-run=client", "kubectl delete pod web --dry-run=server",
-		"kubectl delete pod web --dry-run=none --dry-run=client", "kubectl delete pod web --dry-run none",
-		"TZ=UTC date", "LANG=C sort names.txt", "LC_ALL=C grep -n x file.txt", "NO_COLOR=1 ls",
-		"KUBECONFIG=/home/u/.kube/dev kubectl get pods", "AWS_PROFILE=dev aws s3 ls",
-		"AWS_REGION=eu-west-1 aws ec2 describe-instances", "PAGER=cat git log -n 3", "env TZ=UTC date",
-		"TZ=UTC env | grep TZ", "/bin/cat file.txt", "/usr/bin/grep -n x file.txt", "/bin/ls -la",
-		"cat big.log > /dev/null", "ls 2> /dev/null", "ls &> /dev/null", "echo x > /dev/stderr",
-		"echo x > /dev/stdout", "echo x > /dev/tty", "echo x > /dev/fd/1", "echo x 2> /dev/fd/2",
-	})
+	checkReads(t, c1HolesReads)
 }
 
 // TestKubectlNeverReadVerbsAndDoubleDash covers the kubectl tool's path into the same classifier:
@@ -117,6 +121,25 @@ func TestKubectlNeverReadVerbsAndDoubleDash(t *testing.T) {
 	if _, ns := KubeTargets(strings.Fields("exec web -- env -A")); ns != "" {
 		t.Errorf("-A after -- is not kubectl's: %q", ns)
 	}
+}
+
+// i5CommandsReads are the reads TestShellFailsClosedOnI5Commands checks stay reads next to the I5
+// mutations it locks; each also runs through the differential harness.
+var i5CommandsReads = []string{
+	"yq '.a' x.yaml", "yq -o json '.a' x.yaml", "yq -ojson '.a' x.yaml", "yq -P x.yaml",
+	"sort -n names.txt", "sort -k2,2 -t, data.csv", "terraform fmt -check", "terraform fmt -check -diff",
+	"terraform fmt -write=false", "ip a", "ip addr", "ip addr show dev eth0", "ip route", "ip r get 1.1.1.1",
+	"ip link show", "ip -V", "awk '{print $1}' access.log", "awk '/error|warn/ {print}' app.log",
+	"awk -F: '{print $1}' /etc/passwd", "awk '$1 == \"a|b\"' x", "awk 'a || b' x",
+	"git -c color.ui=never log -n 3", "git -c COLOR.UI=never log -n 3", "git -c core.quotepath=off status",
+	"sed -n '1,20p' main.go", "sed 's/a/b/g' x", "sed 's/w/W/g' x", "sed -e 's/a/b/' -e 's/c/d/' x",
+	"sed '/^#/d' x", "sed 's|/usr|/opt|g' x", "sed 'y/abc/xyz/' x", "sed -n '/start/,/end/p' x",
+	"openssl x509 -in c.pem -noout -text", "openssl req -in csr.pem -noout -text",
+	"openssl s_client -connect example.com:443", "openssl dgst -sha256 x", "openssl version",
+	"git reflog", "git reflog show HEAD", "npm config get registry", "npm config list", "go env",
+	"go env GOPATH", "journalctl -u nginx --since '1 hour ago'", "find . -name '*.go' -print0",
+	"curl -s https://example.com/health", "curl -fsSL https://example.com", "az aks show -n x -g y",
+	"az aks list", "gcloud container clusters list", "gcloud container clusters describe x",
 }
 
 // TestShellFailsClosedOnI5Commands: the mutating commands the final review's I5 found classified
@@ -159,22 +182,24 @@ func TestShellFailsClosedOnI5Commands(t *testing.T) {
 		{"az aks get-credentials -n x -g y", "get-credentials"},
 		{"gcloud container clusters get-credentials x --zone z", "get-credentials"},
 	})
-	checkReads(t, []string{
-		"yq '.a' x.yaml", "yq -o json '.a' x.yaml", "yq -ojson '.a' x.yaml", "yq -P x.yaml",
-		"sort -n names.txt", "sort -k2,2 -t, data.csv", "terraform fmt -check", "terraform fmt -check -diff",
-		"terraform fmt -write=false", "ip a", "ip addr", "ip addr show dev eth0", "ip route", "ip r get 1.1.1.1",
-		"ip link show", "ip -V", "awk '{print $1}' access.log", "awk '/error|warn/ {print}' app.log",
-		"awk -F: '{print $1}' /etc/passwd", "awk '$1 == \"a|b\"' x", "awk 'a || b' x",
-		"git -c color.ui=never log -n 3", "git -c COLOR.UI=never log -n 3", "git -c core.quotepath=off status",
-		"sed -n '1,20p' main.go", "sed 's/a/b/g' x", "sed 's/w/W/g' x", "sed -e 's/a/b/' -e 's/c/d/' x",
-		"sed '/^#/d' x", "sed 's|/usr|/opt|g' x", "sed 'y/abc/xyz/' x", "sed -n '/start/,/end/p' x",
-		"openssl x509 -in c.pem -noout -text", "openssl req -in csr.pem -noout -text",
-		"openssl s_client -connect example.com:443", "openssl dgst -sha256 x", "openssl version",
-		"git reflog", "git reflog show HEAD", "npm config get registry", "npm config list", "go env",
-		"go env GOPATH", "journalctl -u nginx --since '1 hour ago'", "find . -name '*.go' -print0",
-		"curl -s https://example.com/health", "curl -fsSL https://example.com", "az aks show -n x -g y",
-		"az aks list", "gcloud container clusters list", "gcloud container clusters describe x",
-	})
+	checkReads(t, i5CommandsReads)
+}
+
+// sameClassHolesReads are the reads TestShellFailsClosedOnSameClassHoles checks stay reads next to
+// the C1/I5-class mutations it locks; each also runs through the differential harness.
+var sameClassHolesReads = []string{
+	"echo x >&2", "ls 2>&1", "helm upgrade web ./chart --dry-run", "helm upgrade web ./chart --dry-run=server",
+	"helm template web ./chart", "helm list -A", "rg -n pattern .", "rg --pretty pattern", "uniq -c names.txt",
+	"uniq names.txt", "xxd in.bin", "tree -L 2", "less big.log", "base64 -d in.txt", "xmllint --noout in.xml",
+	"file main.go", "ack pattern", "arch", "tar -tzf release.tgz", "tar -tvf x.tar", "git grep -n pattern",
+	"git diff --stat", "git log --oneline -n 5", "git status", "kubectl kustomize .", "kubectl cluster-info",
+	"kubectl cluster-info dump", "kubectl get pods -A", "docker compose config", "docker buildx inspect",
+	"docker ps", "terraform plan -var-file=x.tfvars", "terraform plan", "terraform init -backend=false",
+	"curl -sI https://example.com", "curl -XHEAD https://example.com", "curl -w '%{http_code}' https://example.com",
+	"wget -qO- https://example.com", "wget -O - https://example.com", "gh run view 123", "gh pr list",
+	"aws s3api head-object --bucket b --key k", "aws s3api get-object-acl --bucket b --key k", "ifconfig",
+	"ifconfig -a", "ifconfig lo0", "hostname", "hostname -f", "dmesg -T", "ss -tulpn", "ls -la",
+	"cat /etc/hosts", "grep -rn TODO .", "git log -n 3",
 }
 
 // TestShellFailsClosedOnSameClassHoles: holes of the C1 and I5 class found while fixing them. Each
@@ -261,31 +286,22 @@ func TestShellFailsClosedOnSameClassHoles(t *testing.T) {
 		{"dmesg -C", "dmesg"},
 		{"ss -K dst 10.0.0.1", "ss"},
 	})
-	checkReads(t, []string{
-		"echo x >&2", "ls 2>&1", "helm upgrade web ./chart --dry-run", "helm upgrade web ./chart --dry-run=server",
-		"helm template web ./chart", "helm list -A", "rg -n pattern .", "rg --pretty pattern", "uniq -c names.txt",
-		"uniq names.txt", "xxd in.bin", "tree -L 2", "less big.log", "base64 -d in.txt", "xmllint --noout in.xml",
-		"file main.go", "ack pattern", "arch", "tar -tzf release.tgz", "tar -tvf x.tar", "git grep -n pattern",
-		"git diff --stat", "git log --oneline -n 5", "git status", "kubectl kustomize .", "kubectl cluster-info",
-		"kubectl cluster-info dump", "kubectl get pods -A", "docker compose config", "docker buildx inspect",
-		"docker ps", "terraform plan -var-file=x.tfvars", "terraform plan", "terraform init -backend=false",
-		"curl -sI https://example.com", "curl -XHEAD https://example.com", "curl -w '%{http_code}' https://example.com",
-		"wget -qO- https://example.com", "wget -O - https://example.com", "gh run view 123", "gh pr list",
-		"aws s3api head-object --bucket b --key k", "aws s3api get-object-acl --bucket b --key k", "ifconfig",
-		"ifconfig -a", "ifconfig lo0", "hostname", "hostname -f", "dmesg -T", "ss -tulpn", "ls -la",
-		"cat /etc/hosts", "grep -rn TODO .", "git log -n 3",
-	})
+	checkReads(t, sameClassHolesReads)
+}
+
+// assignmentOnlySegmentReads are the reads TestShellAssignmentOnlySegments checks stay reads; each
+// also runs through the differential harness.
+var assignmentOnlySegmentReads = []string{
+	"TZ=UTC", "LANG=C", "TZ=UTC; date", "NO_COLOR=1 && ls", "KUBECONFIG=/x && kubectl get pods",
+	"AWS_PROFILE=dev; aws s3 ls", "LC_ALL=C LANG=C", "PAGER=cat | cat",
+	"TZ=UTC FOO=bar", "FOO=bar; ls",
 }
 
 // TestShellAssignmentOnlySegments: a segment that only sets variables names no program. With the
 // safe variables it is a read, as before the fix wave (which made it panic in hostsIn); with a
 // program-loading variable (programVar) it is a mutation; any other variable is a read too (Task 4).
 func TestShellAssignmentOnlySegments(t *testing.T) {
-	checkReads(t, []string{
-		"TZ=UTC", "LANG=C", "TZ=UTC; date", "NO_COLOR=1 && ls", "KUBECONFIG=/x && kubectl get pods",
-		"AWS_PROFILE=dev; aws s3 ls", "LC_ALL=C LANG=C", "PAGER=cat | cat",
-		"TZ=UTC FOO=bar", "FOO=bar; ls",
-	})
+	checkReads(t, assignmentOnlySegmentReads)
 	checkMutations(t, []hardeningCase{
 		{"PATH=/tmp/bin", "PATH"},
 	})
@@ -294,17 +310,25 @@ func TestShellAssignmentOnlySegments(t *testing.T) {
 	}
 }
 
+// sedBracketsReads are the reads TestSedBracketsAndBSDInPlaceClusters checks stay reads; each also
+// runs through the differential harness.
+var sedBracketsReads = []string{"sed 's/[/]/_/g' paths.txt", "sed -n 's|[|]|/|gp' x", "sed -l -n p f.txt"}
+
 // TestSedBracketsAndBSDInPlaceClusters: a delimiter inside a bracket expression does not end a sed
 // expression (a read stays a read), and BSD sed's boolean -l does not hide an -i in its cluster or
 // swallow the script that follows it (both fail closed on every platform).
 func TestSedBracketsAndBSDInPlaceClusters(t *testing.T) {
-	checkReads(t, []string{"sed 's/[/]/_/g' paths.txt", "sed -n 's|[|]|/|gp' x", "sed -l -n p f.txt"})
+	checkReads(t, sedBracketsReads)
 	checkMutations(t, []hardeningCase{
 		{"sed -li '' s/a/b/ f.txt", "sed -i"}, {"sed -i '' s/a/b/ f.txt", "sed -i"},
 		{"sed -ni 's/a/b/p' f.txt", "sed -i"}, {"sed -l 'w out.txt' in.txt", "sed"},
 		{"sed '/[/]/w out.txt' in.txt", "sed"},
 	})
 }
+
+// sedScriptFileReads are the reads TestSedScriptFileBehindBSDLineBuffering checks stay reads; each
+// also runs through the differential harness.
+var sedScriptFileReads = []string{"sed -le 's/a/b/' f.txt", "sed -l -n p f.txt"}
 
 // TestSedScriptFileBehindBSDLineBuffering (pre-tag round H): BSD sed's -l takes no value, so in -lf
 // and -nlf the f is the script-file option and sed runs a script the classifier cannot read; GNU
@@ -313,7 +337,16 @@ func TestSedScriptFileBehindBSDLineBuffering(t *testing.T) {
 	checkMutations(t, []hardeningCase{
 		{"sed -lf p in.txt", "sed -f"}, {"sed -nlf p in.txt", "sed -f"}, {"sed -l -f p in.txt", "sed -f"},
 	})
-	checkReads(t, []string{"sed -le 's/a/b/' f.txt", "sed -l -n p f.txt"})
+	checkReads(t, sedScriptFileReads)
+}
+
+// variableExpansionReads are the reads TestShellVariableExpansionsCannotAddOptions checks stay
+// reads next to the mutations it locks; each also runs through the differential harness.
+var variableExpansionReads = []string{
+	"for f in a b; do cat $f; done", "for f in *.go; do wc -l $f; done", "TZ=UTC; date +%H $TZ",
+	"echo $HOME", "ls $HOME/.kube", "for x in a b; do echo ${x}; done", "echo $1 $@ $#",
+	"for n in 1 2 3; do head -n $n f.txt; done", "grep $'\\t' f.txt", "echo $'a b'", "ls {a,b}.txt",
+	"cat f.{txt,md}", "echo {1..5}", "awk '{print $1,$2}' f.txt", "TZ=UTC date; echo $TZ",
 }
 
 // TestShellVariableExpansionsCannotAddOptions (pre-tag round B): once a loop is classified by its
@@ -350,10 +383,5 @@ func TestShellVariableExpansionsCannotAddOptions(t *testing.T) {
 		{"for x in {-delete,a}; do find . $x; done", "$x"},
 		{"for x in ${y:=-delete}; do echo $x; done; find . $y", "${y:=-delete}"},
 	})
-	checkReads(t, []string{
-		"for f in a b; do cat $f; done", "for f in *.go; do wc -l $f; done", "TZ=UTC; date +%H $TZ",
-		"echo $HOME", "ls $HOME/.kube", "for x in a b; do echo ${x}; done", "echo $1 $@ $#",
-		"for n in 1 2 3; do head -n $n f.txt; done", "grep $'\\t' f.txt", "echo $'a b'", "ls {a,b}.txt",
-		"cat f.{txt,md}", "echo {1..5}", "awk '{print $1,$2}' f.txt", "TZ=UTC date; echo $TZ",
-	})
+	checkReads(t, variableExpansionReads)
 }

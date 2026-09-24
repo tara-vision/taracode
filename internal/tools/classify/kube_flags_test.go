@@ -7,22 +7,26 @@ import (
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
+// leadingGlobalFlagsReads are the reads TestLeadingGlobalFlagsAreNotTheVerb checks stay reads; each
+// also runs through the differential harness.
+var leadingGlobalFlagsReads = []string{
+	"kubectl -n kube-system get pods", "kubectl --context prod-eu get pods", "helm -n kube-system list",
+	"kubectl --context kind-dev -n kube-system get pods", "docker --context x ps",
+	"kubectl --namespace=kube-system get pods", "kubectl -nkube-system get pods", "kubectl -n=kube-system get pods",
+	"kubectl --kubeconfig ~/.kube/dev --context dev get pods", "kubectl -v 6 get pods", "kubectl -v=6 describe pod x",
+	"kubectl --insecure-skip-tls-verify logs web", "kubectl -n apps rollout status deploy/web",
+	"kubectl rollout -n apps history deploy/web", "kubectl --context dev config view",
+	"kubectl --request-timeout 5s version", "helm --kube-context dev -n apps status web", "helm --debug list",
+	"helm --kubeconfig ~/.kube/dev -n apps get values web", "docker -H unix:///var/run/docker.sock ps",
+	"docker --context x compose ps", "docker -c x images", "docker --debug info",
+}
+
 // TestLeadingGlobalFlagsAreNotTheVerb (pre-tag round A): kubectl, helm and docker take global options
 // before the verb. The known ones are skipped with their values, so a read stays a read and a
 // mutation keeps its verb and targets; an option before the verb that is not a known global stays a
 // mutation (it may take a value that hides the verb, or write a file).
 func TestLeadingGlobalFlagsAreNotTheVerb(t *testing.T) {
-	checkReads(t, []string{
-		"kubectl -n kube-system get pods", "kubectl --context prod-eu get pods", "helm -n kube-system list",
-		"kubectl --context kind-dev -n kube-system get pods", "docker --context x ps",
-		"kubectl --namespace=kube-system get pods", "kubectl -nkube-system get pods", "kubectl -n=kube-system get pods",
-		"kubectl --kubeconfig ~/.kube/dev --context dev get pods", "kubectl -v 6 get pods", "kubectl -v=6 describe pod x",
-		"kubectl --insecure-skip-tls-verify logs web", "kubectl -n apps rollout status deploy/web",
-		"kubectl rollout -n apps history deploy/web", "kubectl --context dev config view",
-		"kubectl --request-timeout 5s version", "helm --kube-context dev -n apps status web", "helm --debug list",
-		"helm --kubeconfig ~/.kube/dev -n apps get values web", "docker -H unix:///var/run/docker.sock ps",
-		"docker --context x compose ps", "docker -c x images", "docker --debug info",
-	})
+	checkReads(t, leadingGlobalFlagsReads)
 	checkMutations(t, []hardeningCase{
 		{"kubectl -n kube-system delete pod x", "delete"},
 		{"kubectl --context prod-eu -n apps apply -f x.yaml", "apply"},
