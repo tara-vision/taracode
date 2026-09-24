@@ -385,3 +385,20 @@ func TestShellVariableExpansionsCannotAddOptions(t *testing.T) {
 	})
 	checkReads(t, variableExpansionReads)
 }
+
+// shellNeverPanicsCases are commands that must not crash Shell(), whatever they classify as (fix
+// round 2, finding 3): a "for" segment with fewer than two words used to panic in note's
+// v.raise(stripped[1], kind) before the len(words) >= 2 guard from before Task 4 was restored. The
+// arithmetic form reaches the same bug through shellKube, since ((...)) is not a construct shellwords
+// knows: it tokenizes as a bare "(" splitting "for" into its own segment.
+var shellNeverPanicsCases = []string{
+	"for", "ls; for", "for; do true; done", "for ((i=0; i<3; i++)); do echo $i; done",
+}
+
+func TestShellNeverPanics(t *testing.T) {
+	for _, c := range shellNeverPanicsCases {
+		t.Run(c, func(*testing.T) {
+			Shell(c) // must return, not panic; the classification (read or mutate) does not matter here
+		})
+	}
+}

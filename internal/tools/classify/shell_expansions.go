@@ -23,26 +23,6 @@ const (
 
 var identifierPrefix = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*`)
 
-// underscoreUnknown is a lineVars key that can never be a real shell identifier (a bare "$" alone is
-// never a variable name), used as a sentinel: once set, $_ is unknowable for the rest of the line
-// (P3-R6) and note leaves it alone from here on, even for a later segment that looks like a plain
-// command.
-const underscoreUnknown = "$_"
-
-// poisonUnderscore records that $_ can no longer be tracked: a condition or a loop body can run its
-// commands zero, one or many times, and a subshell's own $_ never reaches the parent shell, so this
-// classifier's flat, segment-by-segment model cannot know its value from here on. $_ becomes the most
-// dangerous kind (optionValue) and stays that way for the rest of the line.
-func (v lineVars) poisonUnderscore() {
-	v[underscoreUnknown] = optionValue
-	v["_"] = optionValue
-}
-
-func (v lineVars) underscorePoisoned() bool {
-	_, poisoned := v[underscoreUnknown]
-	return poisoned
-}
-
 // raise records a variable's kind, keeping the more dangerous of what was already recorded and kind:
 // optionValue is the most dangerous, then globValue, then literalValue (min, in their declared order),
 // the same rule the for-list scan below already applies across a list's own words. A kind never
@@ -59,51 +39,29 @@ func (v lineVars) raise(name string, kind varKind) {
 // note records the variables a segment sets for the segments after it: a for loop's variable, and
 // the NAME=value words in front of a command or alone. In front of a command they apply to that
 // command only, except before a POSIX special builtin (exec, :, set, ...), where they stay set; they
-// are recorded either way. $_, the previous command's last argument, is tracked the same way, but
-// only across a line of plain commands joined by ; && || and | (P3-R6): a control word (opening or
-// closing), a case head, a brace group or a parenthesis anywhere on the line poisons it permanently
-// (poisonUnderscore), since none of them changes bash's real $_ the way a flat, segment-by-segment
-// model would assume.
-func (v lineVars) note(words []string, parenthesized bool) {
-	if parenthesized {
-		v.poisonUnderscore()
-	}
+// are recorded either way. $_ is not tracked (P3-R13): bash's real $_ depends on control flow,
+// pipelines and even the shell (bash 3 vs 5, dash) in ways this flat, segment-by-segment model
+// cannot follow, so injects treats every $_ reference as unknown instead of consulting this map.
+func (v lineVars) note(words []string) {
 	i := 0
 	for i < len(words) && openingWords[words[i]] {
 		i++
 	}
-	stripped := words[i:]
-	switch {
-	case len(stripped) == 0, len(stripped) == 1 && closingWords[stripped[0]]:
-		v.poisonUnderscore()
-		return
-	case stripped[0] == "case":
-		v.poisonUnderscore()
-		return
-	case stripped[0] == "for":
+	words = words[i:]
+	if len(words) >= 2 && words[0] == "for" {
 		kind := optionValue // no "in", or an empty list: an unknown number of iterations, or none
-		if len(stripped) > 3 && stripped[2] == "in" {
+		if len(words) > 3 && words[2] == "in" {
 			kind = literalValue
-			for _, w := range stripped[3:] {
+			for _, w := range words[3:] {
 				kind = min(kind, valueKind(w))
 			}
 		}
-		v.raise(stripped[1], kind)
-		v.poisonUnderscore()
+		v.raise(words[1], kind)
 		return
 	}
-	if i > 0 { // an opening word (if, while, !, do, ...) ran what remains: how often is unknown
-		v.poisonUnderscore()
-	}
-	for _, w := range stripped[:assignmentsEnd(stripped)] {
+	for _, w := range words[:assignmentsEnd(words)] {
 		name, value, _ := strings.Cut(w, "=")
 		v.raise(name, valueKind(value))
-	}
-	if v.underscorePoisoned() {
-		return
-	}
-	if command := stripped[assignmentsEnd(stripped):]; len(command) > 0 {
-		v["_"] = valueKind(command[len(command)-1])
 	}
 }
 
@@ -171,7 +129,7 @@ func reference(rest string) (expansionRef, int) {
 		}
 		return expansionRef{}, end + 1
 	}
-	if rest != "" && strings.IndexByte("0123456789@*#?$!-_", rest[0]) >= 0 {
+	if rest != "" && strings.IndexByte("0123456789@*#?$!-", rest[0]) >= 0 {
 		return expansionRef{Name: rest[:1]}, 1
 	}
 	return expansionRef{}, 0
@@ -179,22 +137,25 @@ func reference(rest string) (expansionRef, int) {
 
 // injects reports a word that expands a value the line controls and may split into options: a
 // variable the line set to a value with an option or an expansion, a substitution operator whose
-// literal word is an option, ${...} with an assigning operator, or a command substitution. $_ is the
-// last argument of the previous command, which note records like any variable; a variable the line
-// does not set is taracode's environment, which the user controls. Any reference immediately followed
-// by "-" in the same word injects too (P3-R7), whatever it reads: the substitution operators can
-// expand to nothing (${X:+w} and ${X+w} when X is unset, ${X:-} and ${X-} when X is unset or empty),
-// and a plain $X can itself be an empty variable, so the "-" would then start the word instead of
-// following a value. It rescans word itself (rather than calling references) so it can see the byte
-// after each reference ends.
+// literal word is an option, ${...} with an assigning operator, a command substitution, or $_ (P3-R13:
+// never tracked, since bash's real $_ depends on control flow, pipelines and even the shell in ways
+// this classifier cannot follow, so every $_ reference is unknown). A variable the line does not set
+// is taracode's environment, which the user controls. A reference at the very start of the word
+// (nothing before the $) immediately followed by "-" injects too (P3-R14): the substitution operators
+// can expand to nothing (${X:+w} and ${X+w} when X is unset, ${X:-} and ${X-} when X is unset or
+// empty), and a plain $X can itself be an empty variable, so the "-" would then start the word instead
+// of following a value. Literal text in front of the reference (app=$APP-api) means the word can never
+// start with "-" however the reference resolves, so the rule does not apply there; the same danger for
+// a brace alternative ({a,$X}-delete) is caught in braceOption instead, leaf by leaf. It rescans word
+// itself (rather than calling references) so it can see the byte after each reference ends.
 //
 // harmless is true when the program that receives the word only prints its arguments (echo, :, true,
 // false, or a for-list, which runs nothing): ruling R3. It relaxes the two shapes that are dangerous
 // only because an extra option changes what the program does - a command-substitution marker (a bare
 // "$" the parser left when it split the word at the substitution's "(") and a variable set to an
-// option value. The other shapes stay a mutation whatever the program: a reference followed by "-", an
-// assigning or otherwise opaque ${...} form (it can change shell state or hide any output), and a
-// substitution operator whose literal word is an option.
+// option value. The other shapes stay a mutation whatever the program: $_, a reference followed by
+// "-", an assigning or otherwise opaque ${...} form (it can change shell state or hide any output),
+// and a substitution operator whose literal word is an option.
 func (v lineVars) injects(word string, harmless bool) bool {
 	for i := 0; i < len(word); i++ {
 		if word[i] != '$' {
@@ -202,7 +163,10 @@ func (v lineVars) injects(word string, harmless bool) bool {
 		}
 		r, n := reference(word[i+1:])
 		end := i + 1 + n
-		if end < len(word) && word[end] == '-' {
+		if i == 0 && end < len(word) && word[end] == '-' {
+			return true
+		}
+		if r.Name == "_" {
 			return true
 		}
 		if r.Name == "" {
@@ -257,8 +221,10 @@ func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool)
 const braceLimit = 64
 
 // braceOption reports a word whose brace expansion ({a,b} or {1..3}, which bash performs before the
-// command runs) yields a word that starts with "-": find . {-delete,-print} deletes. The literal
-// word never shows it.
+// command runs) yields a word that starts with "-" (find . {-delete,-print} deletes) or with a
+// reference immediately followed by "-" (find . {a,$X}-delete: bash brace-expands textually, before
+// $X is read, so the alternative becomes $X-delete, and $X can expand to nothing and leave -delete)
+// (P3-R14). The literal word never shows either danger.
 func braceOption(word string) bool {
 	if _, _, _, ok := braceSplit(word); !ok {
 		return false
@@ -272,7 +238,7 @@ func braceOption(word string) bool {
 		queue = queue[1:]
 		prefix, alternatives, suffix, ok := braceSplit(w)
 		if !ok {
-			if strings.HasPrefix(w, "-") {
+			if leafDanger(w) {
 				return true
 			}
 			continue
@@ -282,6 +248,23 @@ func braceOption(word string) bool {
 		}
 	}
 	return false
+}
+
+// leafDanger reports a fully brace-expanded leaf that starts with "-", or starts with a $ reference
+// immediately followed by "-": the reference can expand to nothing, so the "-" would then start the
+// leaf instead of following a value (P3-R14). A reference elsewhere in the leaf cannot expose a
+// leading "-" however it resolves, so only a leading one is checked, the same rule injects applies to
+// a whole word.
+func leafDanger(w string) bool {
+	if strings.HasPrefix(w, "-") {
+		return true
+	}
+	if w == "" || w[0] != '$' {
+		return false
+	}
+	_, n := reference(w[1:])
+	end := 1 + n
+	return end < len(w) && w[end] == '-'
 }
 
 // braceSplit finds the first brace expansion of a word: a { (not ${) whose matching } encloses a

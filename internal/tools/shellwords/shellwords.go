@@ -14,10 +14,9 @@ import (
 
 // Segment is one simple command of a pipeline or list.
 type Segment struct {
-	Words         []string // the command and its arguments, quotes removed
-	Redirects     []string // redirections in this segment, operator and target: "> out.log", "2>&1"
-	Background    bool     // the segment ends with &
-	Parenthesized bool     // a ( or ) ended this segment: a subshell's body, or the one before a case arm
+	Words      []string // the command and its arguments, quotes removed
+	Redirects  []string // redirections in this segment, operator and target: "> out.log", "2>&1"
+	Background bool     // the segment ends with &
 }
 
 // Result is a parsed command line.
@@ -40,7 +39,6 @@ type parser struct {
 	shell       bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
 	closed      bool   // the last segment was ended by a closing )
 	ansiStopped bool   // a NUL was decoded inside the current $'...': the rest of the quote is discarded
-	parenDepth  int    // ( seen minus ) seen so far; never negative, since a case arm's ) has no matching (
 }
 
 // Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
@@ -386,25 +384,14 @@ func (p *parser) skipComment() {
 // group ends the segment at a ( or ). A background & or a redirect after the closing ) applies to
 // the whole group: the & marks the last segment (endSegment), a redirect starts a segment of its own.
 // A "(" that closes a function definition (a single name, then "()") flags the line: the body runs
-// on the call, so the name can shadow any allowlisted program. The segment finalized here, if any, is
-// Parenthesized when it was accumulated at a positive paren depth: the last command of a subshell's
-// body, or the one right before a case arm's ")". parenDepth only rises on "(": a case pattern's ")"
-// has no matching "(", so it is left at 0, not driven negative.
+// on the call, so the name can shadow any allowlisted program.
 func (p *parser) group(c rune) {
 	p.endWord()
 	if c == '(' && len(p.seg.Words) == 1 && len(p.seg.Redirects) == 0 && p.nextNonSpaceIsCloseParen() {
 		p.res.FunctionDef = true
 	}
-	if p.parenDepth > 0 {
-		p.seg.Parenthesized = true
-	}
 	p.pos++
 	p.endSegment(false)
-	if c == '(' {
-		p.parenDepth++
-	} else if p.parenDepth > 0 {
-		p.parenDepth--
-	}
 	p.closed = c == ')'
 }
 

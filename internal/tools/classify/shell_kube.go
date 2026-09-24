@@ -96,7 +96,7 @@ func (l *kubeLine) segment(seg shellwords.Segment) {
 	if !header {
 		l.command(words)
 	}
-	l.vars.note(seg.Words, seg.Parenthesized)
+	l.vars.note(seg.Words)
 }
 
 // command reads a simple command; when it may change the kube configuration for the commands after
