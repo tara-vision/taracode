@@ -157,8 +157,9 @@ func reference(rest string) (expansionRef, int) {
 // only because an extra option changes what the program does - a command-substitution marker (a bare
 // "$" the parser left when it split the word at the substitution's "(") and a variable set to an
 // option value. The other shapes stay a mutation whatever the program: $_, the leading-run dash rule,
-// a stripped brace, an assigning or otherwise opaque ${...} form (it can change shell state or hide
-// any output), and a substitution operator whose literal word is an option.
+// a stripped brace, a substitution operator whose word holds a brace (P3-R40: a stripped quote may
+// have hidden the real end of the ${...}), an assigning or otherwise opaque ${...} form (it can change
+// shell state or hide any output), and a substitution operator whose literal word is an option.
 func (v lineVars) injects(word string, harmless bool) bool {
 	if leadingRunEndsInDash(word) || strippedBrace(word) {
 		return true
@@ -180,8 +181,17 @@ func (v lineVars) injects(word string, harmless bool) bool {
 		if kind, set := v[r.Name]; set && kind == optionValue {
 			return !harmless
 		}
-		if r.Substitutes && valueKind(strings.Trim(r.Word, `"'`)) == optionValue {
-			return true
+		if r.Substitutes {
+			// P3-R40: a brace ({ or }) in the operator word may be the trace of a quote or escape
+			// shellwords removed, so reference() can have closed the ${...} at the wrong "}" and the
+			// classifier's word can differ from the shell's; the form is opaque and injects for every
+			// program (find . ${X:+{}}-delete, find . ${X:-a{b}}-delete, echo ${X:+{}}).
+			if strings.ContainsAny(r.Word, "{}") {
+				return true
+			}
+			if valueKind(strings.Trim(r.Word, `"'`)) == optionValue {
+				return true
+			}
 		}
 		i += n
 	}
