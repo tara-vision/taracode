@@ -118,15 +118,48 @@ func writesFile(redirect string) bool {
 
 var assignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
-// safeAssignments are the variables a read may set in front of its program: they pick a config
-// file, a profile, a locale or an output style, never which program runs or what it loads (PATH,
-// LD_PRELOAD and the like do both).
+// safeAssignments lists the variables that are reads even by name shape (KUBECONFIG, AWS_PROFILE):
+// splitAssignments checks this list before programVar, so a read may set them in front of its
+// program. They pick a config file, a profile, a locale or an output style, never which program
+// runs or what it loads (PATH, LD_PRELOAD and the like do both).
 var safeAssignments = map[string]bool{
 	"KUBECONFIG": true, "AWS_PROFILE": true, "AWS_REGION": true, "TZ": true, "LANG": true, "NO_COLOR": true,
 	"PAGER": true,
 }
 
 func safeAssignment(name string) bool { return safeAssignments[name] || strings.HasPrefix(name, "LC_") }
+
+// programVars change which program a name runs, what a program loads or how the shell reads the
+// line; setting one is a mutation whatever the value. Any other variable set to a literal is a
+// read: lineVars tracks where the line expands it, so a value that would add an option to a
+// command is still refused at the command that uses it.
+var programVars = map[string]bool{
+	"PATH": true, "IFS": true, "ENV": true, "BASH_ENV": true, "CDPATH": true, "SHELLOPTS": true, "BASHOPTS": true,
+	"PS4": true, "PROMPT_COMMAND": true, "HOME": true, "TMPDIR": true, "EDITOR": true, "VISUAL": true, "SHELL": true,
+	"LESSOPEN": true, "LESSCLOSE": true, "GREP_OPTIONS": true, "MAKEFLAGS": true, "AWKPATH": true, "AWKLIBPATH": true,
+	"PYTHONSTARTUP": true, "PERL5LIB": true, "PERL5OPT": true, "RUBYOPT": true, "RUBYLIB": true, "GOFLAGS": true,
+	"GOROOT": true, "GOPROXY": true, "GOTOOLCHAIN": true, "GOOGLE_APPLICATION_CREDENTIALS": true,
+}
+
+// programVarPrefixes and programVarSuffixes catch the same class by name shape.
+var (
+	programVarPrefixes = []string{"LD_", "DYLD_", "GIT_", "KUBECTL_", "HELM_", "TF_", "DOCKER_", "CLOUDSDK_",
+		"SSH_", "BASH_"}
+	programVarSuffixes = []string{"PATH", "_HOME", "_DIR", "_FILE", "_CONFIG", "_OPTS", "_OPTIONS", "_ENV", "_PRELOAD",
+		"_CMD", "_COMMAND", "_PROGRAM", "_EDITOR", "_PAGER", "_SHELL", "_BIN", "_EXEC"}
+)
+
+func programVar(name string) bool {
+	if programVars[name] || hasPrefixIn(name, programVarPrefixes...) {
+		return true
+	}
+	for _, s := range programVarSuffixes {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // assignmentsEnd is the index of the first word that is not a leading NAME=value assignment.
 func assignmentsEnd(words []string) int {
@@ -138,12 +171,16 @@ func assignmentsEnd(words []string) int {
 }
 
 // splitAssignments drops the leading NAME=value words. ok is false, with the mutate result, when a
-// variable is outside the safe list: set in front of a command or on its own (it then applies to
-// every later command of the line), it can change which program an allowlisted name runs.
+// variable can change which program runs or what it loads (programVar); the safe list is checked
+// first because KUBECONFIG ends in CONFIG.
 func splitAssignments(words []string) (rest []string, res Result, ok bool) {
 	end := assignmentsEnd(words)
 	for _, w := range words[:end] {
-		if name, _, _ := strings.Cut(w, "="); !safeAssignment(name) {
+		name, _, _ := strings.Cut(w, "=")
+		if safeAssignment(name) {
+			continue
+		}
+		if programVar(name) {
 			return nil, mutate(name, "setting "+name+" can change which program runs or what it loads"), false
 		}
 	}
@@ -169,14 +206,25 @@ func programName(word string) (string, bool) {
 
 // shellWrapper classifies the programs that run another command in a modified context: sudo, su and
 // doas escalate privileges outright; command, exec, nohup, time, nice, builtin, timeout and env run
-// whatever follows them, so the wrapped command is classified by recursing into shellProgram. ok is
-// false when prog is not one of these wrapper programs, so shellProgram falls through to its own
-// switch.
+// whatever follows them, so the wrapped command is classified by recursing into shellProgram (command
+// -v and -V are the exception: they describe a command without running it). ok is false when prog is
+// not one of these wrapper programs, so shellProgram falls through to its own switch.
 func shellWrapper(prog string, rest []string) (Result, bool) {
 	switch prog {
 	case "sudo", "su", "doas":
 		return mutate(prog, prog+" escalates privileges"), true
-	case "command", "exec", "nohup", "time", "nice", "builtin":
+	case "command":
+		if in(first(rest), "-v", "-V") {
+			return read(prog), true // describes a command; runs nothing
+		}
+		if first(rest) == "-p" {
+			rest = rest[1:]
+		}
+		if len(rest) == 0 {
+			return read(prog), true
+		}
+		return shellProgram(rest), true
+	case "exec", "nohup", "time", "nice", "builtin":
 		if len(rest) == 0 {
 			return read(prog), true
 		}

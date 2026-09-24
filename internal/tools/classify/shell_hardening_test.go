@@ -56,7 +56,7 @@ func TestShellFailsClosedOnC1Holes(t *testing.T) {
 		{"env PATH=/tmp/bin cat file.txt", "PATH"},
 		{"env TZ=UTC PATH=/tmp/bin cat file.txt", "PATH"},
 		{"PATH=/tmp/bin; cat file.txt", "PATH"},
-		{"FOO=bar env", "FOO"},
+		{"PATH=/tmp/bin env", "PATH"},
 		// (b) the deferred Task 4 minor: an assignment alone in a background segment
 		{"FOO=bar &", "background"},
 		{"TZ=UTC & ls", "background"},
@@ -278,15 +278,16 @@ func TestShellFailsClosedOnSameClassHoles(t *testing.T) {
 }
 
 // TestShellAssignmentOnlySegments: a segment that only sets variables names no program. With the
-// safe variables it is a read, as before the fix wave (which made it panic in hostsIn); with any
-// other variable it is a mutation.
+// safe variables it is a read, as before the fix wave (which made it panic in hostsIn); with a
+// program-loading variable (programVar) it is a mutation; any other variable is a read too (Task 4).
 func TestShellAssignmentOnlySegments(t *testing.T) {
 	checkReads(t, []string{
 		"TZ=UTC", "LANG=C", "TZ=UTC; date", "NO_COLOR=1 && ls", "KUBECONFIG=/x && kubectl get pods",
 		"AWS_PROFILE=dev; aws s3 ls", "LC_ALL=C LANG=C", "PAGER=cat | cat",
+		"TZ=UTC FOO=bar", "FOO=bar; ls",
 	})
 	checkMutations(t, []hardeningCase{
-		{"PATH=/tmp/bin", "PATH"}, {"TZ=UTC FOO=bar", "FOO"}, {"FOO=bar; ls", "FOO"},
+		{"PATH=/tmp/bin", "PATH"},
 	})
 	if got := hostsIn(nil); got != nil {
 		t.Errorf("hostsIn of no words: %v", got)

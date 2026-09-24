@@ -26,7 +26,7 @@ var identifierPrefix = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*`)
 // note records the variables a segment sets for the segments after it: a for loop's variable, and
 // the NAME=value words in front of a command or alone. In front of a command they apply to that
 // command only, except before a POSIX special builtin (exec, :, set, ...), where they stay set; they
-// are recorded either way.
+// are recorded either way, and so is $_, the previous command's last argument.
 func (v lineVars) note(words []string) {
 	i := 0
 	for i < len(words) && openingWords[words[i]] {
@@ -47,6 +47,9 @@ func (v lineVars) note(words []string) {
 		name, value, _ := strings.Cut(w, "=")
 		v[name] = valueKind(value)
 	}
+	if command := words[assignmentsEnd(words):]; len(command) > 0 {
+		v["_"] = valueKind(command[len(command)-1])
+	}
 }
 
 // valueKind classifies a value: an option or an expansion in it (a for list is brace-expanded too),
@@ -66,11 +69,18 @@ func valueKind(value string) varKind {
 	return literalValue
 }
 
-// references returns what each $ of a word expands: a variable name, a special parameter (one of
-// 0-9 @ * # ? $ ! -), "_" for bash's last argument of the previous command, or "" for ${...} with
-// an operator (${x:=y} assigns, ${x:-y} substitutes y), a substitution or a lone $.
-func references(word string) []string {
-	var out []string
+// expansionRef is one $ expansion of a word: the variable it reads (Name; "" for a substitution, a
+// lone $ or a ${...} form whose value the line cannot know), and, for the substitution operators
+// ${name:-word}, ${name-word}, ${name:+word} and ${name+word}, the literal word the shell may use
+// instead (Word, Substitutes true). ${name:=word} assigns and ${name?word} exits, so they stay unknown.
+type expansionRef struct {
+	Name        string
+	Word        string
+	Substitutes bool
+}
+
+func references(word string) []expansionRef {
+	var out []expansionRef
 	for i := 0; i < len(word); i++ {
 		if word[i] == '$' {
 			ref, n := reference(word[i+1:])
@@ -82,32 +92,50 @@ func references(word string) []string {
 }
 
 // reference reads the expansion after a $ and returns it with the number of bytes it takes.
-func reference(rest string) (string, int) {
+func reference(rest string) (expansionRef, int) {
 	if name := identifierPrefix.FindString(rest); name != "" {
-		return name, len(name)
+		return expansionRef{Name: name}, len(name)
 	}
 	if strings.HasPrefix(rest, "{") {
 		end := strings.IndexByte(rest, '}')
 		if end < 0 {
-			return "", len(rest)
+			return expansionRef{}, len(rest)
 		}
-		if inner := rest[1:end]; inner != "" && identifierPrefix.FindString(inner) == inner {
-			return inner, end + 1
+		inner := rest[1:end]
+		name := identifierPrefix.FindString(inner)
+		if name != "" && name == inner {
+			return expansionRef{Name: name}, end + 1
 		}
-		return "", end + 1
+		if name != "" {
+			op := inner[len(name):]
+			for _, prefix := range []string{":-", ":+", "-", "+"} {
+				if strings.HasPrefix(op, prefix) {
+					return expansionRef{Name: name, Word: op[len(prefix):], Substitutes: true}, end + 1
+				}
+			}
+		}
+		return expansionRef{}, end + 1
 	}
-	if rest != "" && strings.IndexByte("0123456789@*#?$!-", rest[0]) >= 0 {
-		return rest[:1], 1
+	if rest != "" && strings.IndexByte("0123456789@*#?$!-_", rest[0]) >= 0 {
+		return expansionRef{Name: rest[:1]}, 1
 	}
-	return "", 0
+	return expansionRef{}, 0
 }
 
 // injects reports a word that expands a value the line controls and may split into options: a
-// variable the line set to a value with an option or an expansion, ${...} with an operator, $_ or a
-// substitution. A glob is expanded as the same glob written as an argument would be.
+// variable the line set to a value with an option or an expansion, a substitution operator whose
+// literal word is an option, ${...} with an assigning operator, or a command substitution. $_ is the
+// last argument of the previous command, which note records like any variable; a variable the line
+// does not set is taracode's environment, which the user controls.
 func (v lineVars) injects(word string) bool {
 	for _, r := range references(word) {
-		if kind, set := v[r]; r == "" || r == "_" || set && kind == optionValue {
+		if r.Name == "" {
+			return true
+		}
+		if kind, set := v[r.Name]; set && kind == optionValue {
+			return true
+		}
+		if r.Substitutes && valueKind(strings.Trim(r.Word, `"'`)) == optionValue {
 			return true
 		}
 	}

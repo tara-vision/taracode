@@ -20,6 +20,9 @@ var readOnlyPrograms = map[string]bool{
 	"netstat": true, "lsof": true, "ifconfig": true, "dig": true, "nslookup": true, "host": true, "ping": true,
 	"traceroute": true, "tracepath": true, "mtr": true, "apt-cache": true, "dpkg-query": true, "xmllint": true,
 	"apt-mark": false,
+	// cd, pushd, popd and dirs are reads: the protected-path and kube-target logic already follow a
+	// literal cd (cdTarget in shell_paths.go, otherCommand in shell_kube.go).
+	"cd": true, "pushd": true, "popd": true, "dirs": true,
 }
 
 // subcommandReads lists, for programs whose first argument selects the operation, the operations
