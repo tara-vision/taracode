@@ -1,3 +1,3 @@
-NAME             IMAGE               COMMAND                  SERVICE   CREATED         STATUS                     PORTS
-evalshop-api-1   busybox:1.37        "sh -c 'echo 'api: D…"   api       2 seconds ago   Exited (1) 2 seconds ago   
-evalshop-web-1   nginx:1.27-alpine   "/docker-entrypoint.…"   web       2 seconds ago   Up 2 seconds               0.0.0.0:18080->80/tcp, [::]:18080->80/tcp
+NAME             IMAGE                                   COMMAND                  SERVICE   CREATED         STATUS                     PORTS
+evalshop-api-1   taracode-eval-compose-down-api:latest   "/api-entrypoint.sh"     api       3 seconds ago   Exited (1) 2 seconds ago   
+evalshop-web-1   nginx:1.27-alpine                       "/docker-entrypoint.…"   web       3 seconds ago   Up 2 seconds               0.0.0.0:18080->80/tcp, [::]:18080->80/tcp

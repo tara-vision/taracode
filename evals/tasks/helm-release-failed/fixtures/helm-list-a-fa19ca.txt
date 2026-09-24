@@ -1,2 +1,2 @@
 NAME    	NAMESPACE	REVISION	UPDATED                                	STATUS	CHART         	APP VERSION
-shop-web	helm-demo	2       	2026-09-24 21:28:24.209360161 +0000 UTC	failed	shop-web-0.1.0	1.27       
+shop-web	helm-demo	2       	2026-09-24 22:42:07.643566723 +0000 UTC	failed	shop-web-0.1.0	1.27       

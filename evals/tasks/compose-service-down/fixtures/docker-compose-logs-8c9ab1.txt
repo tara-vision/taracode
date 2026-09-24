@@ -1,3 +1,4 @@
+api-1  | api: DATABASE_URL is not set, refusing to start
 web-1  | /docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
 web-1  | /docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/
 web-1  | /docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh
@@ -7,34 +8,33 @@ web-1  | /docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers
 web-1  | /docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
 web-1  | /docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
 web-1  | /docker-entrypoint.sh: Configuration complete; ready for start up
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: using the "epoll" event method
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: nginx/1.27.5
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: OS: Linux 6.8.0-139-generic
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker processes
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 30
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 31
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 32
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 33
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 34
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 35
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 36
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 37
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 38
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 39
-api-1  | api: DATABASE_URL is not set, refusing to start
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 40
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 41
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 42
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 43
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 44
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 45
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 46
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 47
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 48
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 49
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 50
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 51
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 52
-web-1  | 2026/09/24 21:34:59 [notice] 1#1: start worker process 53
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: using the "epoll" event method
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: nginx/1.27.5
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: OS: Linux 6.8.0-139-generic
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1024:524288
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker processes
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 30
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 31
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 32
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 33
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 34
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 35
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 36
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 37
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 38
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 39
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 40
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 41
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 42
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 43
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 44
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 45
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 46
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 47
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 48
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 49
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 50
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 51
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 52
+web-1  | 2026/09/24 22:42:50 [notice] 1#1: start worker process 53

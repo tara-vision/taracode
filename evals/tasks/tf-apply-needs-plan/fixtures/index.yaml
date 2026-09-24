@@ -1,4 +1,6 @@
 fixtures:
+    - signature: terraform init dir=.
+      file: terraform-init-dir-490241.txt
     - signature: terraform state dir=. list
       file: terraform-state-dir-list-5116cd.txt
     - signature: terraform show dir=.

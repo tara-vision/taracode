@@ -11,7 +11,12 @@ fixtures:
       file: kubectl-rollout-status-deployment-cart-n-shop-v2-77695f.txt
     - signature: kubectl rollout history deployment/cart -n shop-v2
       file: kubectl-rollout-history-deployment-cart-n-shop-v2-fd65b7.txt
-    - signature: kubectl describe pod/cart-f4df567fd-cmltk -n shop-v2
-      file: kubectl-describe-pod-cart-f4df567fd-cmltk-n-shop-v2-cca335.txt
+    - signature: kubectl describe pod/cart-f4df567fd-4v964 -n shop-v2
+      file: kubectl-describe-pod-cart-f4df567fd-4v964-n-shop-v2-89d15f.txt
+    - signature: kubectl describe pod/cart-f688b8bd4-4kcg7 -n shop-v2
+      file: kubectl-describe-pod-cart-f688b8bd4-4kcg7-n-shop-v2-3f81d2.txt
+    - signature: kubectl logs cart-f688b8bd4-4kcg7 -n shop-v2
+      file: kubectl-logs-cart-f688b8bd4-4kcg7-n-shop-v2-3fb566.txt
+      error: true
     - signature: kubectl get event -n shop-v2
       file: kubectl-get-event-n-shop-v2-f6e8a8.txt
