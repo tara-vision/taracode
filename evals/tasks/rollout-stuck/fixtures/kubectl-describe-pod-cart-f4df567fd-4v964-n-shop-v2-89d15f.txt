@@ -1,31 +1,31 @@
-Name:             cart-f4df567fd-cmltk
+Name:             cart-f4df567fd-4v964
 Namespace:        shop-v2
 Priority:         0
 Service Account:  default
 Node:             taracode-evals-worker/172.18.0.2
-Start Time:       Thu, 24 Sep 2026 21:32:51 +0000
+Start Time:       Thu, 24 Sep 2026 22:41:16 +0000
 Labels:           app=cart
                   pod-template-hash=f4df567fd
 Annotations:      <none>
 Status:           Running
-IP:               10.244.1.13
+IP:               10.244.1.18
 IPs:
-  IP:           10.244.1.13
+  IP:           10.244.1.18
 Controlled By:  ReplicaSet/cart-f4df567fd
 Containers:
   cart:
-    Container ID:   containerd://74628c632c82996a37db159fae7a4ffd43a111a3480e8048fda80cd4f6ce9905
+    Container ID:   containerd://c0029edcd7e52a3354429ac1f39da5474192d7b2d63e9a4ced74ce320c6a665c
     Image:          nginx:1.27-alpine
     Image ID:       docker.io/library/nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     Port:           <none>
     Host Port:      <none>
     State:          Running
-      Started:      Thu, 24 Sep 2026 21:32:51 +0000
+      Started:      Thu, 24 Sep 2026 22:41:17 +0000
     Ready:          True
     Restart Count:  0
     Environment:    <none>
     Mounts:
-      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-zv45k (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-flsrw (ro)
 Conditions:
   Type                        Status
   PodReadyToStartContainers   True 
@@ -34,7 +34,7 @@ Conditions:
   ContainersReady             True 
   PodScheduled                True 
 Volumes:
-  kube-api-access-zv45k:
+  kube-api-access-flsrw:
     Type:                    Projected (a volume that contains injected data from multiple sources)
     TokenExpirationSeconds:  3607
     ConfigMapName:           kube-root-ca.crt
@@ -47,7 +47,7 @@ Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists fo
 Events:
   Type    Reason     Age   From               Message
   ----    ------     ----  ----               -------
-  Normal  Scheduled  47s   default-scheduler  Successfully assigned shop-v2/cart-f4df567fd-cmltk to taracode-evals-worker
-  Normal  Pulled     47s   kubelet            spec.containers{cart}: Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
+  Normal  Scheduled  48s   default-scheduler  Successfully assigned shop-v2/cart-f4df567fd-4v964 to taracode-evals-worker
+  Normal  Pulled     48s   kubelet            spec.containers{cart}: Container image "nginx:1.27-alpine" already present on machine and can be accessed by the pod
   Normal  Created    47s   kubelet            spec.containers{cart}: Container created
   Normal  Started    47s   kubelet            spec.containers{cart}: Container started
