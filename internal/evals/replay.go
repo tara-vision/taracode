@@ -13,11 +13,17 @@ import (
 	"github.com/tara-vision/taracode/internal/tools"
 )
 
+// ErrNoFixture is the error, wrapped with the call's signature, of a call no fixture was recorded
+// for: a miss (ruling P3-R58).
+var ErrNoFixture = errors.New("no recorded data for this call")
+
 // Replay serves tool calls from a task's fixtures (spec 5.3). Only the five file tools and
 // get_datetime ever execute for real, inside the run directory; the four with a path argument are
 // confined to it, reads included, symlinks resolved. Every other tool and every dry run replays
 // from the fixture store; a call with no fixture is a tool error and a counted miss, and an indexed
-// fixture whose file cannot be read is a distinct, counted corpus defect rather than a miss.
+// fixture whose file cannot be read is a distinct, counted corpus defect rather than a miss. The
+// errors the model sees never name the task (ruling P3-R58): a model quoted the task id back as the
+// policy that blocked it, and task ids share words with their own answer patterns.
 type Replay struct {
 	store  *Store
 	taskID string
@@ -32,8 +38,9 @@ type Replay struct {
 type ReplayCall struct {
 	Signature string
 	DryRun    bool
-	Miss      bool // no fixture was recorded for this signature
-	Defect    bool // the signature was indexed but its fixture file could not be read
+	Miss      bool  // no fixture was recorded for this signature
+	Defect    bool  // the signature was indexed but its fixture file could not be read
+	Err       error // the error the replay returned, nil when it served an output; wraps ErrNoFixture on a miss
 }
 
 // realTools run for real inside the run directory.
@@ -73,23 +80,28 @@ func (r *Replay) replay(call tools.Call) tools.Executor {
 			sig = DryRunSignature(call.Tool, args)
 		}
 		if msg, refused := r.terraformApplyGate(sig); refused {
-			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
-			return "", errors.New(msg)
+			err := errors.New(msg)
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Err: err})
+			return "", err
 		}
 		out, isErr, ok := r.store.Lookup(sig)
 		if !ok {
-			if defectErr := r.store.LookupErr(sig); defectErr != nil {
-				r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Defect: true})
-				return "", fmt.Errorf("eval task %s: corpus defect: %w", r.taskID, defectErr)
+			if r.store.LookupErr(sig) != nil { // the file and its path stay out of what the model sees
+				err := fmt.Errorf("corpus defect: the recorded data for this call cannot be read: %s", sig)
+				r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Defect: true, Err: err})
+				return "", err
 			}
-			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Miss: true})
-			return "", fmt.Errorf("no recorded data for this call in eval task %s: %s", r.taskID, sig)
+			err := fmt.Errorf("%w: %s", ErrNoFixture, sig)
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Miss: true, Err: err})
+			return "", err
 		}
-		r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
 		r.recordTerraformPlan(sig, call.DryRun, isErr)
 		if isErr {
-			return "", errors.New(out)
+			err := errors.New(out)
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Err: err})
+			return "", err
 		}
+		r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
 		return out, nil
 	}
 }
@@ -111,11 +123,11 @@ func (r *Replay) confined(tool string, next tools.Executor) tools.Executor {
 		}
 		realRoot, err := filepath.EvalSymlinks(root)
 		if err != nil {
-			return "", fmt.Errorf("eval task %s: resolving the run directory: %w", r.taskID, err)
+			return "", fmt.Errorf("resolving the run directory: %w", err)
 		}
 		realPath, err := evalDeepestAncestor(p)
 		if err != nil {
-			return "", fmt.Errorf("eval task %s: resolving %s: %w", r.taskID, p, err)
+			return "", fmt.Errorf("resolving %s: %w", p, err)
 		}
 		if realPath != realRoot && !strings.HasPrefix(realPath, realRoot+string(filepath.Separator)) {
 			return "", r.confinementError(tool, p)
@@ -126,7 +138,7 @@ func (r *Replay) confined(tool string, next tools.Executor) tools.Executor {
 
 // confinementError is the neutral refusal a confined tool gets for a path outside the run directory.
 func (r *Replay) confinementError(tool, path string) error {
-	return fmt.Errorf("eval task %s: %s: %s is outside the eval's working directory", r.taskID, tool, path)
+	return fmt.Errorf("%s: %s is outside the eval's working directory", tool, path)
 }
 
 // evalDeepestAncestor resolves symlinks along p, walking up to the deepest existing ancestor when p

@@ -97,12 +97,14 @@ func TestLastTurnMarksTheIterationCap(t *testing.T) {
 	a.out = io.Discard
 	a.maxIterations = 2
 	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}}
-	srv.Turns = []ollamatest.Turn{call, call, {Content: "never reached"}}
+	srv.Turns = []ollamatest.Turn{call, call, {Content: "the findings so far"}}
 	if err := a.ProcessMessage("loop"); err != nil {
 		t.Fatal(err)
 	}
-	if st := a.LastTurn(); !st.Truncated || st.Completions != 2 || st.ToolCalls != 2 {
-		t.Errorf("turn %+v", st)
+	// The cap adds one final completion with no tools, which answers the turn (ruling P3-R60).
+	if st := a.LastTurn(); !st.Truncated || st.Completions != 3 || st.ToolCalls != 2 ||
+		a.GetLastResponse() != "the findings so far" {
+		t.Errorf("turn %+v, answer %q", st, a.GetLastResponse())
 	}
 }
 

@@ -3,6 +3,7 @@ package evals
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -380,6 +381,11 @@ func TestRunnerAveragesEveryCountPerRun(t *testing.T) {
 		tr.CompletionTokens != 26 || res.Summary.FixtureMissRate != 0.5 {
 		t.Fatalf("task %+v, summary %+v", tr, res.Summary)
 	}
+	// The runs' miss notes survive the fold, once each (ruling P3-R58).
+	if want := "fixture miss: " + Signature("kubectl", map[string]any{"verb": "get", "resource": "events",
+		"namespace": "shop"}); len(tr.Notes) != 1 || tr.Notes[0] != want {
+		t.Fatalf("notes %q, want [%q]", tr.Notes, want)
+	}
 }
 
 // TestRunnerRefusesAModelTheEngineDoesNotServe pins ruling P3-R49: the engine's show resolves the
@@ -479,5 +485,82 @@ func TestRunnerPublishesPooledRatesAcrossRuns(t *testing.T) {
 				t.Errorf("row %+v", tr)
 			}
 		})
+	}
+}
+
+// TestRunnerLogsEveryCallInTheTranscript pins ruling P3-R58: the transcript's calls block lists each
+// decided call with its signature, a denial's rule and reason, a tool error, and MISS on a call the
+// fixtures lacked; the row's notes name the missed signature; and the text the model saw for the
+// miss names no task.
+func TestRunnerLogsEveryCallInTheTranscript(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	describe := map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}
+	events := map[string]any{"verb": "get", "resource": "events", "namespace": "shop"}
+	deletePod := map[string]any{"verb": "delete", "resource": "pod", "name": "checkout-1", "namespace": "shop"}
+	srv := fakeOllama(t, call("kubectl", describe), call("kubectl", events), call("kubectl", deletePod),
+		ollamatest.Turn{Content: "OOMKilled at the memory limit."})
+	runsDir := t.TempDir()
+	res, err := Run(context.Background(), tasks, runOptions(srv, runsDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(runsDir, "gemma4-12b-2026-09-26", "crashloop-oomkilled.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, block, ok := strings.Cut(string(data), "\n## calls\n\n")
+	missed := Signature("kubectl", events)
+	want := []string{
+		"#1 kubectl allowed " + Signature("kubectl", describe),
+		"#2 kubectl allowed " + missed + "  MISS",
+		"  error: no recorded data for this call: " + missed,
+		"#3 kubectl DENIED(mode) " + Signature("kubectl", deletePod),
+		"  reason: investigate mode is read-only",
+	}
+	for _, line := range want {
+		if !ok || !strings.Contains(block, line) {
+			t.Errorf("the calls block lacks %q:\n%s", line, block)
+		}
+	}
+	if strings.Contains(block, Signature("kubectl", describe)+"  MISS") {
+		t.Errorf("a replayed hit is tagged MISS:\n%s", block)
+	}
+	notes := strings.Join(res.Tasks[0].Notes, "\n")
+	if !strings.Contains(notes, "fixture miss: "+missed) {
+		t.Errorf("notes %q lack the miss", res.Tasks[0].Notes)
+	}
+	for _, r := range srv.Requests {
+		messages, _ := r.Body["messages"].([]any)
+		for _, m := range messages {
+			if msg, _ := m.(map[string]any); msg["role"] == "tool" && strings.Contains(fmt.Sprint(msg["content"]), "crashloop-oomkilled") {
+				t.Errorf("the model saw the task id: %v", msg["content"])
+			}
+		}
+	}
+}
+
+// TestRunnerCapsNumPredict pins ruling P3-R60: an eval run caps every completion at 4096 tokens by
+// default, a set value replaces it and a negative one sends no cap.
+func TestRunnerCapsNumPredict(t *testing.T) {
+	for _, c := range []struct {
+		set  int
+		want any
+	}{{0, 4096.0}, {256, 256.0}, {-1, nil}} {
+		_, tasks := corpusWithTriage(t)
+		srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+		opts := runOptions(srv, "")
+		opts.NumPredict = c.set
+		if _, err := Run(context.Background(), tasks, opts); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range srv.Requests {
+			if r.Path != "/api/chat" {
+				continue
+			}
+			options, _ := r.Body["options"].(map[string]any)
+			if got := options["num_predict"]; got != c.want {
+				t.Errorf("NumPredict %d: num_predict %v, want %v", c.set, got, c.want)
+			}
+		}
 	}
 }
