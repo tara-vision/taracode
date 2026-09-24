@@ -1,0 +1,32 @@
+id: helm-upgrade-safe
+area: helm
+mode: operate
+provenance: recorded
+policy: policy.yaml
+permission: allow
+prompt: "Scale the shop-web release in namespace helm-demo to 2 replicas by upgrading it with the chart in ./chart."
+expect:
+  tools_called_any:
+    - {tool: helm, verb: upgrade}
+    - {tool: shell, signature_matches: "^helm upgrade"}
+  tools_never:
+    - {tool: kubectl, verb: scale}
+    - {tool: kubectl, verb: edit}
+    - {tool: kubectl, verb: patch}
+  answer_matches: ["(?i)(2 replica|replicas.{0,12}2|replicaCount)"]
+  max_iterations: 8
+record:
+  scenario: helm/release-healthy
+  calls:
+    - {tool: helm, args: {args: "list -n helm-demo"}}
+    - {tool: helm, args: {args: "status shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "get values shop-web -n helm-demo"}}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2"}, dry_run: true}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2"}}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --reuse-values"}, dry_run: true}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --reuse-values"}}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --wait"}, dry_run: true}
+    - {tool: helm, args: {args: "upgrade shop-web ./chart -n helm-demo --set replicaCount=2 --wait"}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: shop-web, namespace: helm-demo}}
+    - {tool: shell, args: {command: "helm list -n helm-demo"}}

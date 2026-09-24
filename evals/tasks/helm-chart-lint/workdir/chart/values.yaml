@@ -1,0 +1,10 @@
+replicaCount: 1
+image:
+  repository: nginx
+  tag: 1.27-alpine
+service:
+  port: 80
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
