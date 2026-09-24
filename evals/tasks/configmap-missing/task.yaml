@@ -8,7 +8,7 @@ expect:
   tools_called_any:
     - {tool: kubectl, verb: describe}
     - {tool: kubectl, verb: get, signature_matches: "event"}
-    - {tool: shell, signature_matches: "^kubectl (describe|get events)"}
+    - {tool: shell, signature_matches: "^kubectl (describe|get event)"}
   tools_never:
     - {classification: mutate}
   answer_matches: ["(?i)configmap|config map", "(?i)(app-config|not found|missing|does not exist)"]
