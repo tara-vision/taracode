@@ -1,0 +1,13 @@
+id: secrets-env-file
+area: secrets
+mode: investigate
+provenance: files
+prompt: Someone committed the .env file in this directory. Read it, tell me which values are secrets, and what we do now.
+expect:
+  tools_called_any:
+    - {tool: read_file}
+    - {tool: shell, signature_matches: "cat \\.env"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(password|token)", "(?i)(rotate|revoke|remove|gitignore|secret manager|vault)"]
+  max_iterations: 6

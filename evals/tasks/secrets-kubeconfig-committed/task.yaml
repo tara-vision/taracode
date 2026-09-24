@@ -1,0 +1,15 @@
+id: secrets-kubeconfig-committed
+area: secrets
+mode: investigate
+provenance: files
+prompt: Is there anything in this repository that should never have been committed? Start with the deploy directory.
+expect:
+  tools_called_any:
+    - {tool: list_files}
+    - {tool: read_file}
+    - {tool: search_files}
+    - {tool: shell, signature_matches: "^shell (ls|cat|find|grep|tree)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)kubeconfig", "(?i)(client-key|credential|certificate|key-data|secret)", "(?i)(rotate|revoke|remove|history|purge)"]
+  max_iterations: 6
