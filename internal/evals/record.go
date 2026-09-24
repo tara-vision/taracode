@@ -214,9 +214,16 @@ type Resolver func(ctx context.Context, kind, spec string) (string, error)
 
 var placeholder = regexp.MustCompile(`\{\{\s*(pod|node)\b([^}]*)\}\}`)
 
+// leftoverPlaceholder is what an eval placeholder leaves when the pattern above did not resolve it:
+// "{{" and optional spaces before the word pod, pods, node or nodes, as in a misspelled {{pods app=x}}
+// or an unterminated {{node (ruling P3-R68). Any other "{{...}}" is the command's own Go template (a
+// docker --format, a kubectl -o go-template) and passes through untouched.
+var leftoverPlaceholder = regexp.MustCompile(`\{\{\s*(?:pods?|nodes?)\b`)
+
 // resolvePlaceholders replaces every placeholder in a call's arguments, however deeply nested in
-// slices and maps, then fails if any string, at any depth, still contains "{{": a placeholder the
-// pattern did not recognize must not silently reach a recorded tool call (ruling P3-R36).
+// slices and maps, then fails if any string, at any depth, still carries a leftoverPlaceholder: a
+// placeholder the pattern did not recognize must not silently reach a recorded tool call (rulings
+// P3-R36, P3-R68).
 func resolvePlaceholders(ctx context.Context, args map[string]any, resolve Resolver) (map[string]any, error) {
 	out := make(map[string]any, len(args))
 	for k, v := range args {
@@ -230,8 +237,8 @@ func resolvePlaceholders(ctx context.Context, args map[string]any, resolve Resol
 }
 
 // resolveArgValue resolves every placeholder in v: a string is matched against the placeholder
-// pattern and checked for a leftover "{{" afterward, a slice or map is walked recursively, anything
-// else passes through unchanged.
+// pattern and checked for a leftoverPlaceholder afterward, a slice or map is walked recursively,
+// anything else passes through unchanged.
 func resolveArgValue(ctx context.Context, v any, resolve Resolver) (any, error) {
 	switch val := v.(type) {
 	case string:
@@ -261,10 +268,10 @@ func resolveArgValue(ctx context.Context, v any, resolve Resolver) (any, error) 
 	}
 }
 
-// resolveStringPlaceholders resolves every placeholder in s and rejects a result that still contains
-// "{{", whether or not s matched the placeholder pattern in the first place: a brace pair the pattern
-// did not recognize as {{pod ...}} or {{node ...}} is left untouched by the replace below, so this is
-// the only thing that catches it before it reaches a recorded tool call.
+// resolveStringPlaceholders resolves every placeholder in s and rejects a result that still carries a
+// leftoverPlaceholder, whether or not s matched the placeholder pattern in the first place: a
+// misspelled {{pods ...}} or {{nodes}} is left untouched by the replace below, so this is the only
+// thing that catches it before it reaches a recorded tool call.
 func resolveStringPlaceholders(ctx context.Context, s string, resolve Resolver) (string, error) {
 	resolved := s
 	if placeholder.MatchString(s) {
@@ -284,7 +291,7 @@ func resolveStringPlaceholders(ctx context.Context, s string, resolve Resolver) 
 			return "", firstErr
 		}
 	}
-	if strings.Contains(resolved, "{{") {
+	if leftoverPlaceholder.MatchString(resolved) {
 		return "", fmt.Errorf("%q still has an unresolved placeholder", resolved)
 	}
 	return resolved, nil
