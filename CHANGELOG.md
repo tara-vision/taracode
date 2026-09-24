@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0-beta.1] - DATE
+
+Third pre-release of the v3 line (ROADMAP.md, Phase 3 "Evals"). Non-breaking: existing config and policy
+files keep working unchanged; `mcp:` is a new, optional policy section.
+
+### Added
+- **The eval suite and `taracode eval`.** `internal/evals` loads and lints a corpus of 33 offline DevOps
+  tasks (Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, cloud
+  read-only investigation and refusal cases) under `evals/tasks/`, replays their tool calls from recorded or
+  hand-authored fixtures through the product's own loop, classifier, gate and redaction, and scores the tool
+  calls, the answer and any forbidden attempt against each task's expectations. `taracode eval
+  run|record|report|lint`; results in `docs/evals/results/`, transcripts in `evals/runs/`. See
+  [docs/evals/README.md](docs/evals/README.md).
+- **The first scoreboard.** A run across the whole model registry (twelve models, four RAM tiers),
+  committed as `docs/evals/results/*.json` plus `docs/evals/scoreboard.md` and `scoreboard.json`; `taracode
+  eval report --check-defaults` compares each tier's top scorer against the registry's recommended model.
+- **Headless hooks for embedders.** `agent.Options.Output`, `PermissionDecider` and `ToolObserver`, plus
+  `tools.Options.Middleware` on the registry and `Assistant.LastTurn()`, let a caller (the eval runner, or
+  any other embedder) drive a session without a terminal and observe every tool decision.
+- **The MCP `mcp:` policy section** (`trust_read_only_hint`, `read_only`): with the default
+  `trust_read_only_hint: true`, a server's `readOnlyHint: true` still gives its tool a read form; set it to
+  `false` for a server you do not trust and list the tools that may read under `read_only`, per server, by
+  name or glob. `/policy show` prints the section; `taracode doctor` names untrusted servers.
+- **The classifier differential harness** (`internal/tools/classify/differential_test.go`, `make
+  classify-diff`, a CI job) - runs every read-classified shell command from the classifier's own table tests
+  against shim binaries and a sentinel file tree, and fails if any of them changed the tree, created a file,
+  or shelled out to anything but a read verb.
+- Ansible: `servers/aramis/taracode/sandbox.yml` provisions the eval sandbox on the taracode VM (kind,
+  kubectl, helm, terraform, trivy, gitleaks, the docker compose plugin) and exports
+  `TARACODE_EVALS_PRIVATE_NAMES`.
+- CI: a `classify-diff` job runs the differential harness on Ubuntu; the coverage gate adds `internal/evals`
+  at the 80 percent floor.
+
+### Changed
+- **Shell reads relaxed** after the classifier over-block review: a literal parameter-expansion default
+  (`${x:-word}`, `${x-word}`) and an assignment-only segment ahead of a read stay reads; `cd`, `command -v`,
+  a comparison or a quoted brace inside a `grep`/`awk`/`jq`/`sed` program argument, the `gcloud` read verbs
+  (including `logging read` and the other resource-group forms), a value-less `git config` read, and
+  `ifconfig` without an address no longer trip the mutate fallback; a `$(...)` command substitution that
+  only reads (a `for`-list, an `echo`) keeps its enclosing command a read too.
+- At the iteration cap, the agent now makes one final completion with no tools offered, so a session that
+  runs out of iterations still answers with the findings so far instead of ending the turn empty-handed.
+- `mcp.ToTool(mgr, tool, readOnly)` takes the trust decision as an explicit parameter instead of reading it
+  off the manager itself, so an embedder can classify an MCP tool without wiring a manager's trust config
+  just to call it.
+
+### Fixed
+- **kubectl argument-line normalization.** The `kubectl` tool now accepts a command line repeated in its
+  free-form `args` (a leading `kubectl`, a repeated verb, resource or name, a namespace, context or output
+  given twice with the same value) and merges it with the structured parameters; a remaining argument error
+  (another verb, conflicting values) is refused at the gate with the verb, its classification and `"*"`
+  targets kept, closing a gap where a malformed operate-mode mutation used to reach the policy with no verb
+  or targets at all.
+- The shell classifier closes seven fail-open shapes found in review: a `case` pattern's `)` inside a quoted
+  command substitution, a `#` glued to a closing paren, a backslash-newline continuation, a run of empty
+  parameter references before a `-`, brace expansion rebuilding a line's variable name, a quoted brace
+  inside `${...}`, and integer overflow in a `{a..b}` brace sequence.
+- Multi-word `kubectl` and `terraform` parameters (a namespace, context or directory containing a space) now
+  run as separate `argv` words instead of one shell-joined token.
+- The MCP adapter's denial reason for an untrusted tool no longer tells a read-only-hinted tool that it "is
+  not marked read-only"; the message now matches whichever trust rule actually applied.
+
+### Migration from 3.0.0-alpha.2
+- Nothing required. A policy file may add an `mcp:` section (`trust_read_only_hint`, `read_only`); without
+  one, behavior is unchanged (`trust_read_only_hint: true`, empty `read_only`).
+
 ## [3.0.0-alpha.2] - 2026-09-23
 
 Second pre-release of the v3 line (ROADMAP.md, Phase 2 "Tools and policy"). Breaking: the tool set,
@@ -372,7 +438,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-beta.1...HEAD
+
+[3.0.0-beta.1]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.2...v3.0.0-beta.1
 
 [3.0.0-alpha.2]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.1...v3.0.0-alpha.2
 

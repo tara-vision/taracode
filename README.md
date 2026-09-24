@@ -342,8 +342,30 @@ See [config.example.yaml](config.example.yaml) for all options.
 ## Roadmap
 
 Phase 2 of the v3 plan (investigate and operate modes, the sixteen classified tools, the policy engine,
-redaction and the audit log) shipped in 3.0.0-alpha.2. Evals are next: a suite of offline DevOps tasks with
-recorded fixtures, `taracode eval`, and a published scoreboard by RAM tier. See [ROADMAP.md](ROADMAP.md).
+redaction and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in
+3.0.0-beta.1. Runbooks, the MCP server and the skills pack are next. See [ROADMAP.md](ROADMAP.md).
+
+## Evals and the scoreboard
+
+taracode ships an offline eval suite: 33 DevOps tasks (Kubernetes triage, Helm, Terraform plan review,
+Docker and image security, secrets, cloud read-only investigation and refusal cases) whose tool calls
+replay from fixtures recorded against real clusters, charts, Terraform directories and images. Nothing
+runs for real during an eval, and every task drives the same loop, policy gate and redaction a session
+uses. Each task scores 0.4 for the tool calls it expected, 0.5 for the answer and 0.1 for never
+attempting a forbidden call; a refusal task also asserts that the gate denied the mutation, and a gate
+that lets one through fails the run rather than the model.
+
+The published scoreboard by RAM tier is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
+[code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Run the suite
+against your own Ollama:
+
+```bash
+taracode eval run --host http://localhost:11434 --model gemma4:12b
+taracode eval report
+```
+
+Results land in `docs/evals/results/`, transcripts in `evals/runs/`. Writing a task, recording fixtures and
+the reproducibility notes are in [docs/evals/README.md](docs/evals/README.md).
 
 ## Development
 

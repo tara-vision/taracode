@@ -169,6 +169,13 @@ registration step left from the old 58-tool set.
 4. Add tests
 5. Update README with provider documentation
 
+## Adding an Eval Task
+
+taracode's offline eval suite (`evals/tasks/`, `internal/evals`) needs new tasks as the tool set and the
+model registry grow. Writing a task, recording its fixtures against the lab sandbox, authoring fixtures by
+hand for a task that needs no live scenario, and running `taracode eval lint` over the corpus are all covered
+in [docs/evals/README.md](docs/evals/README.md); start there.
+
 ## Questions?
 
 If you have questions, feel free to:

@@ -17,6 +17,15 @@ re-recording is one command. Out of scope for this suite: LLM-as-judge scoring, 
 (non-replay) eval mode, a per-think-level matrix, seeds and automatic registry changes (a human always
 commits a registry default change from the evidence).
 
+The corpus currently has 33 tasks across seven areas: nine kubernetes, three helm, five terraform, four
+docker, three secrets, three cloud and six refusal. Twenty-five are `provenance: recorded` against the live
+sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
+scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates and fixture-miss
+rates per model and RAM tier, from the first scoreboard run, are published in
+[scoreboard.md](scoreboard.md); the headline numbers:
+
+<!-- scoreboard numbers: filled after the scoreboard run -->
+
 ## Task layout
 
 ```
@@ -38,7 +47,7 @@ An operate task's `policy.yaml` is written to `.taracode/policy.yaml` after `Ini
 id: crashloop-oomkilled            # [a-z0-9-]+, equals the directory name, unique in the corpus
 area: kubernetes                   # kubernetes | helm | terraform | docker | secrets | cloud | refusal
 mode: investigate                  # investigate | operate
-provenance: recorded               # recorded | authored
+provenance: recorded               # recorded | authored | files
 prompt: >
   Pods of the checkout deployment in namespace shop keep restarting. Find the root cause.
 weight: 1                          # default 1
@@ -56,7 +65,7 @@ expect:
   answer_matches_any: []           # when non-empty, at least one must match
   answer_never: []                 # none may match
   max_iterations: 8                # the assistant's iteration cap for this task
-record:                            # record mode only, absent on authored tasks
+record:                            # record mode only, absent on authored and files tasks
   scenario: kubernetes/crashloop-oomkilled
   calls:
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}
@@ -75,7 +84,9 @@ docker subcommand, the terraform command, the cloud verb, or the first program o
 match their directory, that `area`, `mode`, `provenance` and matcher fields are known values, that every
 regex compiles, that every `record.calls` entry names a built-in tool, that `provenance: recorded` tasks
 carry a `record` block and a non-empty fixtures index, that a `must_deny` entry only appears with
-`area: refusal` or `mode: operate`, and that authored tasks carry a fixtures index and no `record` block.
+`area: refusal` or `mode: operate`, that authored tasks carry a fixtures index and no `record` block, and
+that a `files` task (no fixtures at all: it only reads its `workdir/`) has a `workdir/` directory and
+neither a fixtures index nor a `record` block.
 
 ## How scoring works
 
@@ -107,6 +118,28 @@ Add `--tasks <glob>` to run a subset of the corpus, `--think <mode>` to override
 decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which is
 git-ignored.
 
+## Environment isolation
+
+Every `eval run` (and the recorder) builds the assistant with an isolated environment, not the operator's
+own: `KUBECONFIG` points at a path that does not exist, `HELM_KUBECONTEXT` and `HELM_NAMESPACE` are cleared,
+and `HOME` is a fresh, empty directory created for that run alone. No run reads the machine's real
+kubeconfig, its `~/.taracode/policy.yaml`, or its permission store. This matters for an operate-mode task
+whose policy protects a kube context or a namespace: with no kubeconfig to read and no environment variable
+set, an unnamed context or namespace resolves to `"*"`, and a policy that protects `"*"` denies everything.
+A task that means to exercise a protected-target denial must therefore either have the model name its
+context and namespace explicitly (matching the fixtures recorded for it), or write a policy that protects
+nothing and expect the call through.
+
+Every run's transcript ends with a `## calls` block: one line per decided call, its canonical signature, the
+rule that allowed or denied it, and `MISS <signature>` on a call the replay could not find a fixture for;
+the results JSON carries the same misses as `fixture miss: <signature>` notes on the task. The text a model
+sees on a miss never names the task, so a run cannot accidentally teach a model which eval it is inside.
+
+A task that reaches its iteration cap does not end the turn empty-handed: the loop makes one final
+completion with no tools offered, so the answer still carries whatever the model found before the cap. Eval
+runs cap `num_predict` at 4096 tokens by default, where the interactive REPL leaves it at 0 (the model's own
+default), so a run's wall time stays bounded even when a small model would otherwise ramble past its answer.
+
 ## Adding a task
 
 Write `evals/tasks/<id>/task.yaml` (and a `workdir/` or `policy.yaml` if the task needs one). If the task is
@@ -124,8 +157,10 @@ Then validate the corpus with:
 taracode eval lint
 ```
 
-`provenance: authored` tasks (the cloud tasks, for now) skip recording: write the fixtures index and its
-files by hand and lint still has to pass.
+`provenance: authored` tasks (the cloud tasks, plus a refusal task that needs no live scenario) skip
+recording: write the fixtures index and its files by hand and lint still has to pass. A `provenance: files`
+task skips fixtures altogether: give it a `workdir/` and let the file tools do the work reading it; write
+neither a `record` block nor a fixtures index for it.
 
 ## Record-mode requirements
 
@@ -135,6 +170,19 @@ the output, and saves it as fixtures. It needs three things in place: a running 
 sandbox CLIs on that same host (kind, kubectl, helm, terraform, trivy and gitleaks, installed by the ansible
 playbook that sits next to the Ollama one), and `RECORD_HOST` set to that sandbox host so `make record` knows
 where to sync the corpus and run `taracode eval record` over SSH.
+
+The recorder refuses to write a fixture whose text or signature carries a private name of the lab host. It
+reads the complete list from `TARACODE_EVALS_PRIVATE_NAMES` (comma-separated) when the lab environment sets
+it; otherwise it falls back to the host's own short and full names, the search domains in its
+`resolv.conf`, and the addresses of its physical network interfaces. A fixture that would leak one of these
+is a recording failure, not a job for redaction: fix the scenario so its output never contains the name,
+rather than adding the name as a redaction pattern.
+
+`make record` deletes stale fixture files before syncing the fresh set back: its pull-back step replaces
+whatever is under `evals/tasks/*/fixtures/` locally wholesale, so a fixture a task no longer needs
+disappears on a successful re-record instead of lingering as an orphan for `lint` to catch. A failed
+recording run leaves the previous fixtures in place, since the pull-back only runs after the recorder
+succeeds.
 
 ## Reproducibility notes
 
@@ -146,3 +194,21 @@ so a run never touches the real network or the real sandbox. Operate-mode tasks 
 `~/.taracode/policy.yaml` from the machine running the eval, if one exists there. That means an operate-mode
 result can be influenced by whoever's machine produced it. Generate the scoreboard from a machine with no
 `~/.taracode/policy.yaml` of its own.
+
+## Known limitations
+
+- A `provenance: files` task (dockerfile-review, secrets-env-file, secrets-kubeconfig-committed,
+  refuse-investigate-write) runs only the file tools by design; a model that reaches for `shell` or `git` to
+  look at the same files always misses, since no fixture exists for that call. This is a corpus gap, not a
+  product bug: switch the task to `provenance: recorded` and record it if a model's shell habit turns out to
+  matter for that task.
+- A bare host probe such as `docker ps` with no scenario-specific filter is never recorded: a scenario
+  records the calls its task actually expects, not an open-ended look at whatever else is running on the
+  sandbox host.
+- The tools registry rebuilds every tool error as a plain string before anything else sees it (redaction runs
+  on that string), so a middleware's own error values lose their identity by the time evals code sees them;
+  the record and replay middlewares work around this by matching on the error text instead of `errors.Is`.
+- A handful of value-taking kubectl flags in their space form (`-c`, `--sort-by`, `--tail`, `-f`) are not
+  kept attached to their value the way the selector flags (`-l`, `--selector`, `--field-selector`) are, so
+  the flag and its value can end up in different positions among a signature's sorted extra args. Record
+  both spellings a model might use for these until they join the attached list.
