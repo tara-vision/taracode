@@ -281,8 +281,8 @@ var awkSystem = regexp.MustCompile(`\bsystem\s*\(`)
 
 // awkResult: awk reads unless it runs a program, a library or an extension from a file (-f, gawk's
 // -E, -i and -l), writes a dump or profile file (gawk's -d, -o and -p), takes a mawk -W option, or a
-// program writes a file (>), runs a command (system, a | pipe, |&) or loads code (@load, @include,
-// an @f() indirect call).
+// program writes a file (> after print or printf), runs a command (system, a | pipe, |&) or loads
+// code (@load, @include, an @f() indirect call).
 func awkResult(prog string, rest []string) Result {
 	if shortFlag(rest, "fEildopW", "Fve") || hasGNUFlag(rest, nil, "--file", "--exec", "--include", "--load",
 		"--dump-variables", "--pretty-print", "--profile") {
@@ -293,11 +293,67 @@ func awkResult(prog string, rest []string) Result {
 		programs = ops[:1]
 	}
 	for _, program := range programs {
-		if strings.Contains(program, ">") || awkSystem.MatchString(program) || awkCodeOutsideLiterals(program) {
+		if awkWritesFile(program) || awkSystem.MatchString(program) || awkCodeOutsideLiterals(program) {
 			return mutate(prog, "the "+prog+" program writes files, runs commands or loads code")
 		}
 	}
 	return read(prog)
+}
+
+// awkKeywords end no operand: after print, return or in, a / starts a regular expression.
+var awkKeywords = map[string]bool{"print": true, "printf": true, "return": true, "in": true, "if": true, "while": true,
+	"for": true, "do": true, "else": true, "delete": true, "exit": true, "next": true, "nextfile": true, "getline": true,
+	"BEGIN": true, "END": true}
+
+// awkWritesFile reports a > that redirects output: outside parentheses, string and regular
+// expression literals and comments, not the first byte of >=, in a statement that began with print
+// or printf. Anywhere else (a pattern, an if condition, an assignment) > compares.
+func awkWritesFile(program string) bool {
+	depth, printing, operand := 0, false, false
+	word := ""
+	for i := 0; i < len(program); i++ {
+		c := program[i]
+		if !isAwkWordByte(c) && word != "" {
+			if word == "print" || word == "printf" {
+				printing = true
+			}
+			word = ""
+		}
+		if end, ok := awkLiteral(program, i, operand); ok {
+			i, operand = end, c != '#'
+			continue
+		}
+		switch {
+		case isAwkWordByte(c):
+			word += string(c)
+			operand = true
+			continue
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case awkStatementEnds(c):
+			printing = false
+		case awkRedirectsAt(program, i, depth, printing):
+			return true
+		}
+		if c != ' ' && c != '\t' {
+			operand = awkEndsOperand(program, i)
+		}
+	}
+	return false
+}
+
+// awkStatementEnds reports the bytes that end a statement, after which print or printf no longer
+// governs a later >: a semicolon, a block boundary or a newline.
+func awkStatementEnds(c byte) bool {
+	return c == ';' || c == '{' || c == '}' || c == '\n'
+}
+
+// awkRedirectsAt reports whether the byte at i is a > that redirects output: outside parentheses
+// (depth 0), in a print or printf statement (printing), and not the first byte of >=.
+func awkRedirectsAt(program string, i, depth int, printing bool) bool {
+	return program[i] == '>' && depth == 0 && printing && (i+1 >= len(program) || program[i+1] != '=')
 }
 
 // awkCodeOutsideLiterals reports a | that is not || (a pipe to or from a command, or |&), or an @
@@ -308,8 +364,15 @@ func awkResult(prog string, rest []string) Result {
 // it is still seen.
 func awkCodeOutsideLiterals(program string) bool {
 	operand := false
+	word := ""
 	for i := 0; i < len(program); i++ {
 		c := program[i]
+		if !isAwkWordByte(c) && word != "" {
+			if awkKeywords[word] {
+				operand = false
+			}
+			word = ""
+		}
 		if end, ok := awkLiteral(program, i, operand); ok {
 			i, operand = end, c != '#'
 			continue
@@ -319,6 +382,9 @@ func awkCodeOutsideLiterals(program string) bool {
 			i, operand = i+1, false
 		case c == '|' || c == '@':
 			return true
+		case isAwkWordByte(c):
+			word += string(c)
+			operand = true
 		case c != ' ' && c != '\t':
 			operand = awkEndsOperand(program, i)
 		}

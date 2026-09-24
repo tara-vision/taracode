@@ -75,11 +75,19 @@ func readProgramWrites(prog string, rest []string) (Result, bool) {
 			return mutate(prog, "hostname with a name or a file sets the host name"), true
 		}
 	case "ifconfig":
-		if len(operands(rest)) > 1 {
-			return mutate(prog, "ifconfig with more than an interface name configures it"), true
+		if ifconfigConfigures(rest) {
+			return mutate(prog, "ifconfig with more than an interface name and a family configures it"), true
 		}
 	}
 	return Result{}, false
+}
+
+// ifconfigConfigures reports operands that change an interface rather than query it: more than an
+// interface name and a family (inet, inet6, ether, link, media).
+func ifconfigConfigures(rest []string) bool {
+	ops := operands(rest)
+	query := len(ops) == 2 && in(ops[1], "inet", "inet6", "ether", "link", "media")
+	return len(ops) > 1 && !query
 }
 
 // ipReadCommands are the ip commands that only display.

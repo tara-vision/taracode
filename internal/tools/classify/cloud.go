@@ -88,24 +88,36 @@ var gcloudMutatePrefixes = []string{"create", "delete", "update", "add-", "remov
 	"apply", "rollback", "promote", "migrate", "upgrade", "install", "uninstall", "push", "pull", "publish",
 	"invoke", "execute", "insert", "replace", "undelete", "purge", "clear", "kill", "terminate", "unset", "set"}
 
-// gcloudVerb scans the positional tokens in order: the first token that is a known verb decides, so
-// a resource named after a read verb ("delete describe-x") cannot turn a mutation into a read.
+// gcloudGroups are command groups spelled like a mutating verb: gcloud run and gcloud deploy are
+// products when they come first, so the verb is found among the tokens after them.
+var gcloudGroups = map[string]bool{"run": true, "deploy": true}
+
+// gcloudReadVerbs are gcloud reads that are no cloudReadPrefixes: logging read.
+var gcloudReadVerbs = []string{"read"}
+
+// gcloudVerb scans the positional tokens in order, after a leading product group: the first token
+// that is a known verb decides, so a resource named after a read verb ("delete describe-x") cannot
+// turn a mutation into a read.
 func gcloudVerb(tokens []string) Result {
-	pos := positionals(tokens, gcloudValueFlags...)
+	all := positionals(tokens, gcloudValueFlags...)
+	pos := all
+	if len(pos) > 0 && gcloudGroups[pos[0]] {
+		pos = pos[1:]
+	}
 	for _, p := range pos {
 		if in(p, cloudFileWriters...) {
-			return mutate(p, "gcloud "+strings.Join(pos, " ")+" writes a file (get-credentials writes the kubeconfig)")
+			return mutate(p, "gcloud "+strings.Join(all, " ")+" writes a file (get-credentials writes the kubeconfig)")
 		}
 		if hasPrefixIn(p, gcloudMutatePrefixes...) {
-			return mutate(p, "gcloud "+strings.Join(pos, " ")+" changes cloud resources or local state")
+			return mutate(p, "gcloud "+strings.Join(all, " ")+" changes cloud resources or local state")
 		}
-		if hasPrefixIn(p, cloudReadPrefixes...) {
+		if hasPrefixIn(p, cloudReadPrefixes...) || in(p, gcloudReadVerbs...) {
 			return read(p)
 		}
 	}
 	verb := ""
-	if len(pos) > 0 {
-		verb = pos[len(pos)-1]
+	if len(all) > 0 {
+		verb = all[len(all)-1]
 	}
-	return mutate(verb, "gcloud "+strings.Join(pos, " ")+" has no read-only verb (describe, list, get-*, ...)")
+	return mutate(verb, "gcloud "+strings.Join(all, " ")+" has no read-only verb (describe, list, get-*, ...)")
 }
