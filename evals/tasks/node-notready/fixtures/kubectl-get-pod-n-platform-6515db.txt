@@ -1,2 +1,2 @@
 NAME                             READY   STATUS    RESTARTS   AGE
-metrics-agent-767dd6b94f-wvb2z   1/1     Running   0          56s
+metrics-agent-767dd6b94f-bxxtg   1/1     Running   0          53s

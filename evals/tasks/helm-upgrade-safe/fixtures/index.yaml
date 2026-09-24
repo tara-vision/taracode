@@ -5,6 +5,10 @@ fixtures:
       file: helm-status-shop-web-n-helm-demo-086f2d.txt
     - signature: helm get values shop-web -n helm-demo
       file: helm-get-values-shop-web-n-helm-demo-9b5547.txt
+    - signature: dryrun:helm upgrade shop-web ./chart --set replicaCount=2 -n helm-demo
+      file: dryrun-helm-upgrade-shop-web-chart-set-replicacount-2-n-helm-demo-84c4cf.txt
+    - signature: helm upgrade shop-web ./chart --set replicaCount=2 -n helm-demo
+      file: helm-upgrade-shop-web-chart-set-replicacount-2-n-helm-demo-790884.txt
     - signature: dryrun:helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2
       file: dryrun-helm-upgrade-shop-web-chart-n-helm-demo-set-replicacount-2-f51f38.txt
     - signature: helm upgrade shop-web ./chart -n helm-demo --set replicaCount=2

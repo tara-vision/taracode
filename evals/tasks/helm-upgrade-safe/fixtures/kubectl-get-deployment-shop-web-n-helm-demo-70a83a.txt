@@ -1,2 +1,2 @@
 NAME       READY   UP-TO-DATE   AVAILABLE   AGE
-shop-web   2/2     2            2           2s
+shop-web   2/2     2            2           5s

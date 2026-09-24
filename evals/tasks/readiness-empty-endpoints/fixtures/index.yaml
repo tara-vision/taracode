@@ -1,20 +1,24 @@
 fixtures:
     - signature: kubectl get pod -n api
       file: kubectl-get-pod-n-api-49e09e.txt
-    - signature: kubectl describe pod/orders-api-674454676b-dmf7d -n api
-      file: kubectl-describe-pod-orders-api-674454676b-dmf7d-n-api-8aa89e.txt
+    - signature: kubectl describe pod/orders-api-674454676b-k7qgq -n api
+      file: kubectl-describe-pod-orders-api-674454676b-k7qgq-n-api-145bd2.txt
     - signature: kubectl get service -n api
       file: kubectl-get-service-n-api-208787.txt
     - signature: kubectl describe service/orders-api -n api
       file: kubectl-describe-service-orders-api-n-api-76d75a.txt
+    - signature: kubectl get service/orders-api -n api -o yaml
+      file: kubectl-get-service-orders-api-n-api-o-yaml-e487cd.txt
+    - signature: kubectl get service -n api -o yaml
+      file: kubectl-get-service-n-api-o-yaml-85893f.txt
     - signature: kubectl get endpoints -n api
       file: kubectl-get-endpoints-n-api-6ae9f3.txt
     - signature: kubectl get endpoints/orders-api -n api
       file: kubectl-get-endpoints-orders-api-n-api-2f1033.txt
     - signature: kubectl get event -n api
       file: kubectl-get-event-n-api-86a245.txt
-    - signature: kubectl logs orders-api-674454676b-dmf7d -n api
-      file: kubectl-logs-orders-api-674454676b-dmf7d-n-api-e92407.txt
+    - signature: kubectl logs orders-api-674454676b-k7qgq -n api
+      file: kubectl-logs-orders-api-674454676b-k7qgq-n-api-991c61.txt
     - signature: kubectl get deployment/orders-api -n api -o yaml
       file: kubectl-get-deployment-orders-api-n-api-o-yaml-5a5f2c.txt
     - signature: kubectl get service/orders-api -n api
