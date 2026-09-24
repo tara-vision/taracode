@@ -196,6 +196,9 @@ require_dry_run:                # shown before the permission prompt
 redact:
   enabled: true                 # secrets in tool output become [redacted:<kind>]
   extra_patterns: []            # additional Go regular expressions
+mcp:
+  trust_read_only_hint: true    # a server's readOnlyHint gives its tool a read form (investigate mode)
+  read_only: {}                 # per server, the tools (globs) that count as reads when the hint is not trusted
 ```
 
 `/policy show` prints the effective policy and where it came from. `/permissions` manages the remembered
@@ -232,8 +235,11 @@ tool's name. Investigate mode exposes the tools that have a read form (fourteen,
 | `web_fetch` | url | always (external, disabled by `offline`) | never |
 | `get_datetime` | format, timezone | always | never |
 
-MCP tools join the same registry: a server that annotates a tool `readOnlyHint: true` gets a read form;
-every other MCP tool is a mutation and stays hidden in investigate mode.
+MCP tools join the same registry. With `mcp.trust_read_only_hint: true` (the default) a server that
+annotates a tool `readOnlyHint: true` gives it a read form; every other MCP tool is a mutation and
+stays hidden in investigate mode. Set it to `false` for a server you do not trust and list the tools
+that may read under `mcp.read_only`, per server, by name or glob. Protected targets and deny patterns
+do not apply to MCP tools: the per-tool permission is their only gate.
 
 ### Project Memory
 

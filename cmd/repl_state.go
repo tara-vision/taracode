@@ -66,7 +66,8 @@ func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
 	}
 	if r.mcp != nil {
 		for _, tool := range r.mcp.GetAllTools() {
-			registry.RegisterMCP(mcp.ToTool(r.mcp, tool), tool.ServerName)
+			registry.RegisterMCP(mcp.ToTool(r.mcp, tool, r.asst.Policy().MCPReadOnly(tool.ServerName, tool.OriginalName,
+				tool.ReadOnly)), tool.ServerName)
 		}
 	}
 	r.asst.RefreshTools()
@@ -196,7 +197,8 @@ func (r *repl) startMCP() {
 	r.mcp.SetToolDiscoveryCallback(func(_ string, tools []mcp.MCPTool) {
 		registry := r.asst.ToolRegistry()
 		for _, tool := range tools {
-			registry.RegisterMCP(mcp.ToTool(r.mcp, tool), tool.ServerName)
+			registry.RegisterMCP(mcp.ToTool(r.mcp, tool, r.asst.Policy().MCPReadOnly(tool.ServerName, tool.OriginalName,
+				tool.ReadOnly)), tool.ServerName)
 		}
 		r.asst.RefreshTools()
 	})

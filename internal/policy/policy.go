@@ -74,6 +74,7 @@ type Policy struct {
 	Deny          DenyRules     `yaml:"deny"`
 	RequireDryRun RequireDryRun `yaml:"require_dry_run"`
 	Redact        Redact        `yaml:"redact"`
+	MCP           MCPRules      `yaml:"mcp"`
 }
 
 // Protected lists targets that operate mode may never mutate. Patterns are globs.
@@ -103,6 +104,28 @@ type Redact struct {
 	ExtraPatterns []string `yaml:"extra_patterns"`
 }
 
+// MCPRules decide how MCP tools are classified. With the hint trusted (the default) a tool the server
+// annotates readOnlyHint: true has a read form; with it distrusted, only the tools read_only lists
+// for that server, by name or glob, are reads and everything else is a mutation.
+type MCPRules struct {
+	TrustReadOnlyHint *bool               `yaml:"trust_read_only_hint"`
+	ReadOnly          map[string][]string `yaml:"read_only"`
+}
+
+// MCPReadOnly reports whether an MCP tool counts as a read: the server's hint when trusted, else the
+// read_only list for that server.
+func (p Policy) MCPReadOnly(server, tool string, hinted bool) bool {
+	if enabled(p.MCP.TrustReadOnlyHint) {
+		return hinted
+	}
+	for _, pattern := range p.MCP.ReadOnly[server] {
+		if matchGlob(pattern, tool) {
+			return true
+		}
+	}
+	return false
+}
+
 // CurrentVersion is the only policy file version this build reads.
 const CurrentVersion = 1
 
@@ -123,6 +146,7 @@ func Default() Policy {
 			"*.taracode/policy.yaml*"}},
 		RequireDryRun: RequireDryRun{KubectlApply: &on, TerraformApply: &on, HelmUpgrade: &on},
 		Redact:        Redact{Enabled: &on},
+		MCP:           MCPRules{TrustReadOnlyHint: &on},
 	}
 }
 
@@ -152,7 +176,8 @@ func Parse(data []byte) (Policy, error) {
 }
 
 // Merge lays over on top of base: lists are unioned in order, the mode is over's when set, and a
-// boolean that is true on either side stays true (the stricter value).
+// boolean that is true on either side stays true (the stricter value), except the MCP trust switch,
+// whose stricter value is false (see weaker).
 func Merge(base, over Policy) Policy {
 	out := base
 	if over.Version > out.Version {
@@ -177,6 +202,13 @@ func Merge(base, over Policy) Policy {
 	out.Redact = Redact{
 		Enabled:       stricter(base.Redact.Enabled, over.Redact.Enabled),
 		ExtraPatterns: union(base.Redact.ExtraPatterns, over.Redact.ExtraPatterns),
+	}
+	out.MCP = MCPRules{TrustReadOnlyHint: weaker(base.MCP.TrustReadOnlyHint, over.MCP.TrustReadOnlyHint),
+		ReadOnly: map[string][]string{}}
+	for _, rules := range []map[string][]string{base.MCP.ReadOnly, over.MCP.ReadOnly} {
+		for server, patterns := range rules {
+			out.MCP.ReadOnly[server] = union(out.MCP.ReadOnly[server], patterns)
+		}
 	}
 	return out
 }
@@ -205,6 +237,19 @@ func stricter(a, b *bool) *bool {
 		return a
 	}
 	v := *a || *b
+	return &v
+}
+
+// weaker keeps false when either side says false; nil means not set. For a trust switch, the
+// stricter reading is to distrust.
+func weaker(a, b *bool) *bool {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	v := *a && *b
 	return &v
 }
 

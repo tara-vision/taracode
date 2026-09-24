@@ -137,7 +137,8 @@ func mcpConnect(mgr *mcp.Manager, args []string, asst *agent.Assistant) {
 	// discovery callback having done the same is harmless) and refresh the exposed schemas
 	registry := asst.ToolRegistry()
 	for _, tool := range mcpTools {
-		registry.RegisterMCP(mcp.ToTool(mgr, tool), tool.ServerName)
+		registry.RegisterMCP(mcp.ToTool(mgr, tool, asst.Policy().MCPReadOnly(tool.ServerName, tool.OriginalName,
+			tool.ReadOnly)), tool.ServerName)
 	}
 	asst.RefreshTools()
 	fmt.Println()
