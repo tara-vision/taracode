@@ -1,0 +1,46 @@
+id: container-crashed
+area: docker
+mode: investigate
+provenance: recorded
+prompt: "The crashed-app container exits right after it starts. Find out why from the container itself."
+record:
+  scenario: docker/crashed-container
+  calls:
+    - tool: docker
+      args:
+        args: "ps"
+    - tool: docker
+      args:
+        args: "ps -a"
+    - tool: docker
+      args:
+        args: "logs crashed-app"
+    - tool: docker
+      args:
+        args: "logs crashed-app --tail 50"
+    - tool: docker
+      args:
+        args: "inspect crashed-app"
+    - tool: shell
+      args:
+        command: "docker ps -a"
+    - tool: shell
+      args:
+        command: "docker logs crashed-app"
+expect:
+  tools_called_any:
+    - tool: docker
+      verb: logs
+    - tool: docker
+      verb: inspect
+    - tool: shell
+      signature_matches: "^docker (logs|inspect)"
+  tools_never:
+    - classification: mutate
+  answer_matches:
+    - "(?i)config"
+    - "(?i)(not found|missing)"
+  answer_matches_any:
+    - "(?i)exit(ed)? ?(code )?3"
+    - "(?i)config\\.yaml"
+  max_iterations: 6
