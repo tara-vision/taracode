@@ -167,3 +167,60 @@ func TestRegistryDryRunRedactsErrorsAndKeepsErrNoDryRun(t *testing.T) {
 		t.Fatalf("a tool's ErrNoDryRun must survive the redaction: %v", err)
 	}
 }
+
+func TestMiddlewareReplacesExecutionAndIsRedacted(t *testing.T) {
+	red, _ := redact.New(redact.Options{})
+	var seen []Call
+	mw := func(call Call, next Executor) Executor {
+		seen = append(seen, call)
+		if call.Tool == "reader" {
+			return func(context.Context, map[string]any, string) (string, error) {
+				return "replayed secret=AKIAIOSFODNN7EXAMPLE", nil
+			}
+		}
+		return next
+	}
+	r := NewRegistry(Options{Redactor: red, Middleware: mw})
+	r.Register(newTestTool("reader", true, policy.Read))
+	r.Register(newTestTool("writer", false, policy.Mutate))
+	out, err := r.Execute(context.Background(), "reader", map[string]any{"x": "1"}, t.TempDir())
+	if err != nil || !strings.HasPrefix(out, "replayed") || strings.Contains(out, "AKIAIOSFODNN7EXAMPLE") {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+	out, err = r.Execute(context.Background(), "writer", map[string]any{"x": "2"}, t.TempDir())
+	if err != nil || !strings.HasPrefix(out, "ran writer x=2") {
+		t.Fatalf("next was not called: out=%q err=%v", out, err)
+	}
+	if len(seen) != 2 || seen[0] != (Call{Tool: "reader"}) || seen[1] != (Call{Tool: "writer"}) {
+		t.Fatalf("calls %+v", seen)
+	}
+}
+
+func TestMiddlewareWrapsDryRunsAndSkipsToolsWithoutOne(t *testing.T) {
+	var seen []Call
+	mw := func(call Call, _ Executor) Executor {
+		seen = append(seen, call)
+		return func(context.Context, map[string]any, string) (string, error) { return "dry", nil }
+	}
+	r := NewRegistry(Options{Middleware: mw})
+	withDry := newTestTool("dry", false, policy.Mutate)
+	withDry.DryRun = func(context.Context, map[string]any, string) (string, error) { return "real dry", nil }
+	r.Register(withDry)
+	r.Register(newTestTool("nodry", false, policy.Mutate))
+	out, err := r.DryRun(context.Background(), "dry", nil, "")
+	if err != nil || out != "dry" || len(seen) != 1 || !seen[0].DryRun || seen[0].Tool != "dry" {
+		t.Fatalf("out=%q err=%v seen=%+v", out, err, seen)
+	}
+	if _, err := r.DryRun(context.Background(), "nodry", nil, ""); !errors.Is(err, ErrNoDryRun) || len(seen) != 1 {
+		t.Fatalf("err=%v seen=%+v", err, seen)
+	}
+}
+
+func TestWithoutMiddlewareTheToolRunsItself(t *testing.T) {
+	r := NewRegistry(Options{})
+	r.Register(newTestTool("reader", true, policy.Read))
+	out, err := r.Execute(context.Background(), "reader", map[string]any{"x": "3"}, t.TempDir())
+	if err != nil || !strings.HasPrefix(out, "ran reader x=3") {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
