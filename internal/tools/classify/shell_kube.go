@@ -232,10 +232,10 @@ func (l *kubeLine) runTimeArguments(tokens []string) bool {
 // the ones read.
 func (v lineVars) runTime(word string) bool {
 	for _, r := range references(word) {
-		if r == "" || specialParameter(r) {
+		if r.Name == "" || specialParameter(r.Name) {
 			return true
 		}
-		if kind, set := v[r]; !set || kind != literalValue {
+		if kind, set := v[r.Name]; !set || kind != literalValue {
 			return true
 		}
 	}

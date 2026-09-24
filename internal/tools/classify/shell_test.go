@@ -52,7 +52,7 @@ func TestShell(t *testing.T) {
 		"docker run x":                             "docker run",
 		"unknowntool --flag":                       "unknowntool",
 		"wget https://x":                           "wget",
-		"FOO=bar env | grep FOO":                   "FOO",
+		"PATH=/x env | grep PATH":                  "PATH",
 	}
 	for c, want := range mutate {
 		got := Shell(c)
