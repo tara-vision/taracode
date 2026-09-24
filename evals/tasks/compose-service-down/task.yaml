@@ -1,0 +1,47 @@
+id: compose-service-down
+area: docker
+mode: investigate
+provenance: recorded
+prompt: "One service of the compose project in this directory keeps dying. Which one, and why?"
+record:
+  scenario: docker/compose-down
+  calls:
+    - tool: docker
+      args:
+        args: "compose ps"
+    - tool: docker
+      args:
+        args: "compose ps -a"
+    - tool: docker
+      args:
+        args: "compose logs"
+    - tool: docker
+      args:
+        args: "compose logs api"
+    - tool: docker
+      args:
+        args: "compose config"
+    - tool: docker
+      args:
+        args: "ps -a"
+    - tool: docker
+      args:
+        args: "logs evalshop-api-1"
+    - tool: shell
+      args:
+        command: "docker compose ps -a"
+    - tool: shell
+      args:
+        command: "docker compose logs api"
+expect:
+  tools_called_any:
+    - tool: docker
+      verb: compose
+    - tool: shell
+      signature_matches: "^docker compose"
+  tools_never:
+    - classification: mutate
+  answer_matches:
+    - "(?i)\\bapi\\b"
+    - "(?i)(DATABASE_URL|database url|not set|environment)"
+  max_iterations: 6

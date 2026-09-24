@@ -1,0 +1,17 @@
+id: dockerfile-review
+area: docker
+mode: investigate
+provenance: files
+prompt: "Review the Dockerfile in this directory for security and best-practice problems before we ship it."
+expect:
+  tools_called_any:
+    - tool: read_file
+    - tool: shell
+      signature_matches: "cat Dockerfile"
+  tools_never:
+    - classification: mutate
+  answer_matches:
+    - "(?i)(latest|pin)"
+    - "(?i)(root|USER)"
+    - "(?i)(secret|token|env)"
+  max_iterations: 6
