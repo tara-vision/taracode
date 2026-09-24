@@ -109,11 +109,11 @@ func TestConnectionStatus(t *testing.T) {
 }
 
 func TestToToolClassifiesByTheReadOnlyHint(t *testing.T) {
-	readTool := ToTool(nil, MCPTool{Name: "gh.list", ServerName: "gh", OriginalName: "list", ReadOnly: true})
+	readTool := ToTool(nil, MCPTool{Name: "gh.list", ServerName: "gh", OriginalName: "list", ReadOnly: true}, true)
 	if !readTool.ReadForm || readTool.Classify(nil, "").Classification != policy.Read {
 		t.Fatalf("a readOnlyHint tool must be a read: %+v", readTool)
 	}
-	writeTool := ToTool(nil, MCPTool{Name: "gh.create", ServerName: "gh", OriginalName: "create"})
+	writeTool := ToTool(nil, MCPTool{Name: "gh.create", ServerName: "gh", OriginalName: "create"}, false)
 	inv := writeTool.Classify(nil, "")
 	if writeTool.ReadForm || inv.Classification != policy.Mutate || inv.Tool != "gh.create" {
 		t.Fatalf("an unannotated tool must be a mutation hidden in investigate mode: %+v %+v", writeTool, inv)
@@ -185,7 +185,7 @@ func TestDecodeJSONArgsTurnsJSONTextBackIntoValues(t *testing.T) {
 }
 
 func TestToToolRunCallsTheManager(t *testing.T) {
-	tool := ToTool(NewManager(MCPConfig{}), MCPTool{Name: "gh.list", ServerName: "gh", OriginalName: "list"})
+	tool := ToTool(NewManager(MCPConfig{}), MCPTool{Name: "gh.list", ServerName: "gh", OriginalName: "list"}, false)
 	if _, err := tool.Run(context.Background(), map[string]any{}, ""); err == nil || !strings.Contains(err.Error(), "unknown MCP tool: gh.list") {
 		t.Fatalf("a tool of a server that is not connected: %v", err)
 	}

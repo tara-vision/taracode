@@ -22,4 +22,7 @@ require_dry_run:                # shown before the permission prompt
 redact:
   enabled: true                 # secrets in tool output become [redacted:<kind>]
   extra_patterns: []            # additional Go regular expressions
+mcp:
+  trust_read_only_hint: true    # a server's readOnlyHint gives its tool a read form (investigate mode)
+  read_only: {}                 # per server, the tools (globs) that count as reads when the hint is not trusted
 `

@@ -17,11 +17,12 @@ const callTimeout = 60 * time.Second
 // JSON text, which the adapter decodes back into values before the call.
 var jsonTypes = map[string]bool{"number": true, "array": true, "object": true}
 
-// ToTool adapts a discovered MCP tool to the registry. A tool the server annotates readOnlyHint is
-// read; every other MCP tool is a mutation and hidden in investigate mode.
-func ToTool(mgr *Manager, tool MCPTool) *tools.Tool {
+// ToTool adapts a discovered MCP tool to the registry. readOnly is the caller's decision (from the
+// policy's mcp section: the server's readOnlyHint when trusted, else the policy's read_only list) on
+// whether this tool has a read form; every other MCP tool is a mutation and hidden in investigate mode.
+func ToTool(mgr *Manager, tool MCPTool, readOnly bool) *tools.Tool {
 	class := policy.Mutate
-	if tool.ReadOnly {
+	if readOnly {
 		class = policy.Read
 	}
 	jsonArgs := jsonParams(tool.InputSchema)
@@ -29,10 +30,14 @@ func ToTool(mgr *Manager, tool MCPTool) *tools.Tool {
 		Name:        tool.Name,
 		Description: tool.Description,
 		Params:      paramsFromSchema(tool.InputSchema),
-		ReadForm:    tool.ReadOnly,
+		ReadForm:    readOnly,
 		Classify: func(map[string]any, string) policy.Invocation {
-			return policy.Invocation{Tool: tool.Name, Classification: class,
-				Reason: "MCP tool " + tool.OriginalName + " on " + tool.ServerName + " is not marked read-only"}
+			inv := policy.Invocation{Tool: tool.Name, Classification: class}
+			if class == policy.Mutate {
+				inv.Reason = "MCP tool " + tool.OriginalName + " on " + tool.ServerName +
+					" is not a read under the policy's mcp section"
+			}
+			return inv
 		},
 		Run: func(ctx context.Context, args map[string]any, _ string) (string, error) {
 			ctx, cancel := context.WithTimeout(ctx, callTimeout)

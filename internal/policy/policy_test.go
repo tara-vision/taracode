@@ -162,3 +162,27 @@ func contains(list []string, want string) bool {
 	}
 	return false
 }
+
+func TestMCPRulesParseMergeAndDecide(t *testing.T) {
+	p, err := Parse([]byte("version: 1\nmcp:\n  trust_read_only_hint: false\n  read_only:\n    github: [\"get_*\", \"list_*\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled(p.MCP.TrustReadOnlyHint) || len(p.MCP.ReadOnly["github"]) != 2 {
+		t.Fatalf("parsed %+v", p.MCP)
+	}
+	if !Default().MCPReadOnly("github", "get_issue", true) || Default().MCPReadOnly("github", "get_issue", false) {
+		t.Fatal("the default trusts the hint")
+	}
+	if !p.MCPReadOnly("github", "get_issue", false) || p.MCPReadOnly("github", "create_issue", true) ||
+		p.MCPReadOnly("other", "get_issue", true) {
+		t.Fatalf("distrusting policy decided wrongly")
+	}
+	m := Merge(Default(), p)
+	if enabled(m.MCP.TrustReadOnlyHint) || strings.Join(m.MCP.ReadOnly["github"], ",") != "get_*,list_*" {
+		t.Fatalf("merged %+v", m.MCP)
+	}
+	if starter, err := Parse([]byte(StarterYAML)); err != nil || !enabled(starter.MCP.TrustReadOnlyHint) {
+		t.Fatalf("starter %+v %v", starter.MCP, err)
+	}
+}
