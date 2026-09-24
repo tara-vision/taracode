@@ -1,7 +1,7 @@
 version: 1
 mode: operate
 protected:
-  kube_contexts: ["*prod*", "*production*"]
+  kube_contexts: []
   kube_namespaces: ["kube-system"]
   cloud_accounts: []
   paths: ["**/*.tfstate", ".git/**"]
