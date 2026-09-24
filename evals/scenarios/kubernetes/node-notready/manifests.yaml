@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-agent
+  namespace: platform
+  labels:
+    app: metrics-agent
+spec:
+  selector:
+    matchLabels:
+      app: metrics-agent
+  template:
+    metadata:
+      labels:
+        app: metrics-agent
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: taracode-evals-worker
+      containers:
+        - name: metrics-agent
+          image: busybox:1.37
+          command: ["sleep", "3600"]

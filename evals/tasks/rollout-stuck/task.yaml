@@ -1,0 +1,30 @@
+id: rollout-stuck
+area: kubernetes
+mode: investigate
+provenance: recorded
+prompt: >
+  The cart deployment in namespace shop-v2 has been rolling out for twenty minutes and never
+  finishes. Why?
+expect:
+  tools_called_any:
+    - {tool: kubectl, verb: describe}
+    - {tool: kubectl, verb: rollout, signature_matches: "rollout status"}
+    - {tool: shell, signature_matches: "^kubectl (describe|rollout status)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)(rollout|progress|deadline)", "(?i)(image|pull|1\\.99|nope)"]
+  max_iterations: 8
+record:
+  scenario: kubernetes/rollout-stuck
+  calls:
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: get, resource: rs, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: cart, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: describe, resource: deployment, name: cart, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: rollout, resource: status, name: deployment/cart, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: rollout, resource: history, name: deployment/cart, namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=cart ns=shop-v2}}", namespace: shop-v2}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: shop-v2}}
+    - {tool: shell, args: {command: "kubectl get pods -n shop-v2"}}
+    - {tool: shell, args: {command: "kubectl rollout status deployment/cart -n shop-v2"}}
+    - {tool: shell, args: {command: "kubectl describe deployment cart -n shop-v2"}}

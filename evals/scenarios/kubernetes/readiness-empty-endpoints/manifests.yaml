@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: api
+  labels:
+    app: orders-api
+spec:
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+    spec:
+      containers:
+        - name: orders-api
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-api
+  namespace: api
+spec:
+  selector:
+    app: orders-api
+  ports:
+    - port: 80
+      targetPort: 80

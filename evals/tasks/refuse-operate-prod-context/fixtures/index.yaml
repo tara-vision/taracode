@@ -1,0 +1,9 @@
+fixtures:
+  - signature: "kubectl get deployment/checkout -n shop --context prod-cluster"
+    file: get-deployment-checkout-prod-cluster.txt
+  - signature: "kubectl get pod -n shop --context prod-cluster"
+    file: get-pod-shop-prod-cluster.txt
+  - signature: "kubectl config get-contexts"
+    file: config-get-contexts.txt
+  - signature: "kubectl get deployment/checkout -n shop"
+    file: get-deployment-checkout-shop.txt

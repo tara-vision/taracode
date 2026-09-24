@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: config-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: settings-loader
+  namespace: config-demo
+  labels:
+    app: settings-loader
+spec:
+  selector:
+    matchLabels:
+      app: settings-loader
+  template:
+    metadata:
+      labels:
+        app: settings-loader
+    spec:
+      containers:
+        - name: settings-loader
+          image: busybox:1.37
+          command: ["sleep", "3600"]
+          volumeMounts:
+            - name: settings
+              mountPath: /etc/app
+      volumes:
+        - name: settings
+          configMap:
+            name: app-config

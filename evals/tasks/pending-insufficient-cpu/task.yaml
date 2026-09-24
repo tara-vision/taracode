@@ -1,0 +1,32 @@
+id: pending-insufficient-cpu
+area: kubernetes
+mode: investigate
+provenance: recorded
+prompt: >
+  The report-builder pod in namespace analytics has been Pending for ten minutes. Why, and what
+  would fix it?
+expect:
+  tools_called_any:
+    - {tool: kubectl, verb: describe}
+    - {tool: kubectl, verb: get, signature_matches: "event"}
+    - {tool: shell, signature_matches: "^kubectl (describe|get events)"}
+  tools_never:
+    - {classification: mutate}
+  answer_matches: ["(?i)cpu", "(?i)(insufficient|request|schedul|no nodes? available)"]
+  max_iterations: 8
+record:
+  scenario: kubernetes/pending-insufficient-cpu
+  calls:
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: analytics}}
+    - {tool: kubectl, args: {verb: get, resource: pods, namespace: analytics, output: wide}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app=report-builder ns=analytics}}", namespace: analytics}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: analytics}}
+    - {tool: kubectl, args: {verb: get, resource: events, namespace: analytics, args: "--sort-by=.lastTimestamp"}}
+    - {tool: kubectl, args: {verb: get, resource: deployment, name: report-builder, namespace: analytics, output: yaml}}
+    - {tool: kubectl, args: {verb: get, resource: nodes}}
+    - {tool: kubectl, args: {verb: describe, resource: nodes}}
+    - {tool: kubectl, args: {verb: top, resource: nodes}}
+    - {tool: shell, args: {command: "kubectl get pods -n analytics"}}
+    - {tool: shell, args: {command: "kubectl describe pod {{pod app=report-builder ns=analytics}} -n analytics"}}
+    - {tool: shell, args: {command: "kubectl get events -n analytics --sort-by=.lastTimestamp"}}
+    - {tool: shell, args: {command: "kubectl get nodes"}}

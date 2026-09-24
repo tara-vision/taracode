@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: batch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nightly-etl
+  namespace: batch
+  labels:
+    app: nightly-etl
+spec:
+  selector:
+    matchLabels:
+      app: nightly-etl
+  template:
+    metadata:
+      labels:
+        app: nightly-etl
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: taracode-evals-worker
+      containers:
+        - name: nightly-etl
+          image: busybox:1.37
+          command: ["sleep", "3600"]
