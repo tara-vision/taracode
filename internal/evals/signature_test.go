@@ -126,6 +126,39 @@ func TestSignatures(t *testing.T) {
 		{"kubectl", map[string]any{"verb": "get", "resource": "configmap", "args": "get configmap config"},
 			"kubectl get configmap/config"},
 		{"kubectl", map[string]any{"verb": "get", "resource": "configmap", "name": "config"}, "kubectl get configmap/config"},
+		// Ruling P3-R66 (the qwen3.8:27b shake-out). A terraform command parameter that holds several words
+		// keys as the command with the rest leading the args, as the tool runs it.
+		{"terraform", map[string]any{"command": "state list"}, "terraform state dir=. list"},
+		{"terraform", map[string]any{"command": "state", "args": "list"}, "terraform state dir=. list"},
+		{"shell", map[string]any{"command": "terraform state list"}, "terraform state dir=. list"},
+		{"terraform", map[string]any{"command": "state show aws_instance.web"}, "terraform state dir=. show aws_instance.web"},
+		{"terraform", map[string]any{"command": "state show", "args": "aws_instance.web"},
+			"terraform state dir=. show aws_instance.web"},
+		{"terraform", map[string]any{"command": "state", "args": "show aws_instance.web"},
+			"terraform state dir=. show aws_instance.web"},
+		{"terraform", map[string]any{"command": "workspace list", "dir": "infra"}, "terraform workspace dir=infra list"},
+		{"terraform", map[string]any{"command": "workspace", "dir": "infra", "args": "list"}, "terraform workspace dir=infra list"},
+		{"terraform", map[string]any{"command": "providers lock", "args": "-platform=linux_amd64"},
+			"terraform providers dir=. lock -platform=linux_amd64"},
+		{"terraform", map[string]any{"command": "providers", "args": "lock -platform=linux_amd64"},
+			"terraform providers dir=. lock -platform=linux_amd64"},
+		// A scan of the working directory keys as the default target, a path inside it relative to it,
+		// and a severity list in rising order, as the scan tool reads them. The run directory is found in
+		// the path itself (the replay does not pass it); a path outside it keeps its absolute form.
+		{"scan", map[string]any{"scanner": "gitleaks"}, "scan gitleaks"},
+		{"scan", map[string]any{"scanner": "gitleaks", "target": "."}, "scan gitleaks"},
+		{"scan", map[string]any{"scanner": "gitleaks", "target": "./"}, "scan gitleaks"},
+		{"scan", map[string]any{"scanner": "gitleaks",
+			"target": "/private/var/folders/np/f7hblt7s1xs3xbn0_450896m0000gn/T/taracode-eval-1192437596"}, "scan gitleaks"},
+		{"scan", map[string]any{"scanner": "gitleaks",
+			"target": "/private/var/folders/np/f7hblt7s1xs3xbn0_450896m0000gn/T/taracode-eval-1192437596/repo/"},
+			"scan gitleaks repo"},
+		{"scan", map[string]any{"scanner": "gitleaks", "target": "repo"}, "scan gitleaks repo"},
+		{"scan", map[string]any{"scanner": "gitleaks", "target": "/etc/app"}, "scan gitleaks /etc/app"},
+		{"scan", map[string]any{"scanner": "gitleaks", "target": "/private/var/folders/x/T/taracode-eval-env-12/repo"},
+			"scan gitleaks /private/var/folders/x/T/taracode-eval-env-12/repo"},
+		{"scan", map[string]any{"scanner": "trivy", "target": "python:3.9.0-alpine", "severity": "CRITICAL,HIGH"},
+			"scan trivy python:3.9.0-alpine HIGH,CRITICAL"},
 	}
 	for _, c := range cases {
 		if got := Signature(c.tool, c.args); got != c.want {
@@ -213,5 +246,81 @@ func TestKubectlSignatureKeysTheArgvTheToolRuns(t *testing.T) {
 	}
 	if got := Signature("kubectl", anotherVerb); !strings.HasPrefix(got, "kubectl get ") {
 		t.Errorf("refused call signature %q", got)
+	}
+}
+
+// TestTerraformSignatureKeysTheCommandTheToolRuns pins the parity of ruling P3-R66: the signature of a
+// terraform call is the command and arguments terraform actually receives (a command parameter of
+// several words split as the tool splits it), for commands the tool passes through as given. A fake
+// terraform prints its arguments one per line.
+func TestTerraformSignatureKeysTheCommandTheToolRuns(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n"
+	if err := os.WriteFile(filepath.Join(bin, "terraform"), []byte(script), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	inputs := []map[string]any{
+		{"command": "state list"}, {"command": "state", "args": "list"},
+		{"command": "state show aws_instance.web"}, {"command": "state show", "args": "aws_instance.web"},
+		{"command": "workspace list", "dir": "infra"}, {"command": "workspace show"},
+		{"command": "providers lock", "args": "-platform=linux_amd64"}, {"command": "providers schema -json"},
+		{"command": "fmt -check"}, {"command": "graph"},
+	}
+	tool := tools.TerraformTool()
+	work := t.TempDir()
+	if err := os.Mkdir(filepath.Join(work, "infra"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, params := range inputs {
+		out, err := tool.Run(context.Background(), params, work)
+		if err != nil {
+			t.Errorf("%v: %v", params, err)
+			continue
+		}
+		ran := strings.Split(out, "\n")
+		if got, want := Signature("terraform", params), terraformSignature(ran[0], str(params, "dir"), ran[1:]); got != want {
+			t.Errorf("%v:\n signature %q\n tool ran %q", params, got, want)
+		}
+	}
+}
+
+// TestScanSignatureKeysTheTargetTheToolScans pins the scan half of ruling P3-R66 against a real run
+// directory (makeRunDir, the eval's working directory): targets the scan tool scans alike key alike,
+// the run directory itself as the default target and a path inside it relative to it.
+func TestScanSignatureKeysTheTargetTheToolScans(t *testing.T) {
+	runDir, remove, err := makeRunDir("taracode-eval-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(remove)
+	if err := os.Mkdir(filepath.Join(runDir, "repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\necho \"gitleaks $@\"\n"), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	tool := tools.ScanTool("")
+	groups := [][]map[string]any{
+		{{"scanner": "gitleaks"}, {"scanner": "gitleaks", "target": "."}, {"scanner": "gitleaks", "target": runDir},
+			{"scanner": "gitleaks", "target": runDir + "/"}},
+		{{"scanner": "gitleaks", "target": "repo"}, {"scanner": "gitleaks", "target": filepath.Join(runDir, "repo")}},
+	}
+	for _, group := range groups {
+		first, err := tool.Run(context.Background(), group[0], runDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, params := range group[1:] {
+			ran, err := tool.Run(context.Background(), params, runDir)
+			if err != nil || ran != first {
+				t.Errorf("%v ran %q (%v), want %q", params, ran, err, first)
+			}
+			if got, want := Signature("scan", params), Signature("scan", group[0]); got != want {
+				t.Errorf("%v:\n signature %q\n want %q", params, got, want)
+			}
+		}
 	}
 }
