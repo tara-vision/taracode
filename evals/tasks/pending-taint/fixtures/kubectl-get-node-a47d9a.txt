@@ -1,3 +1,3 @@
 NAME                           STATUS   ROLES           AGE     VERSION
-taracode-evals-control-plane   Ready    control-plane   3h55m   v1.37.0
-taracode-evals-worker          Ready    <none>          3h55m   v1.37.0
+taracode-evals-control-plane   Ready    control-plane   4h18m   v1.37.0
+taracode-evals-worker          Ready    <none>          4h18m   v1.37.0

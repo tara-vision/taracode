@@ -5,14 +5,14 @@ metadata:
     deployment.kubernetes.io/revision: "1"
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"report-builder"},"name":"report-builder","namespace":"analytics"},"spec":{"selector":{"matchLabels":{"app":"report-builder"}},"template":{"metadata":{"labels":{"app":"report-builder"}},"spec":{"containers":[{"command":["sleep","3600"],"image":"busybox:1.37","name":"report-builder","resources":{"requests":{"cpu":"64"}}}]}}}}
-  creationTimestamp: "2026-09-24T21:30:24Z"
+  creationTimestamp: "2026-09-24T21:53:11Z"
   generation: 1
   labels:
     app: report-builder
   name: report-builder
   namespace: analytics
-  resourceVersion: "22216"
-  uid: 9ee129d8-bc52-47aa-a47c-762edb759ef2
+  resourceVersion: "24794"
+  uid: 3fd340df-bab7-48cc-b5bf-40371406b137
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -49,14 +49,14 @@ spec:
       terminationGracePeriodSeconds: 30
 status:
   conditions:
-  - lastTransitionTime: "2026-09-24T21:30:24Z"
-    lastUpdateTime: "2026-09-24T21:30:24Z"
+  - lastTransitionTime: "2026-09-24T21:53:11Z"
+    lastUpdateTime: "2026-09-24T21:53:11Z"
     message: Deployment does not have minimum availability.
     reason: MinimumReplicasUnavailable
     status: "False"
     type: Available
-  - lastTransitionTime: "2026-09-24T21:30:24Z"
-    lastUpdateTime: "2026-09-24T21:30:24Z"
+  - lastTransitionTime: "2026-09-24T21:53:11Z"
+    lastUpdateTime: "2026-09-24T21:53:11Z"
     message: ReplicaSet "report-builder-5677bcbdd8" is progressing.
     reason: ReplicaSetUpdated
     status: "True"

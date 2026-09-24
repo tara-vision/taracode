@@ -15,7 +15,7 @@ Unschedulable:      false
 Lease:
   HolderIdentity:  taracode-evals-control-plane
   AcquireTime:     <unset>
-  RenewTime:       Thu, 24 Sep 2026 21:53:12 +0000
+  RenewTime:       Thu, 24 Sep 2026 21:53:01 +0000
 Conditions:
   Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
   ----             ------  -----------------                 ------------------                ------                       -------
@@ -74,72 +74,4 @@ Allocated resources:
   ephemeral-storage  0 (0%)      0 (0%)
   hugepages-1Gi      0 (0%)      0 (0%)
   hugepages-2Mi      0 (0%)      0 (0%)
-
-
-Name:               taracode-evals-worker
-Roles:              <none>
-Labels:             beta.kubernetes.io/arch=amd64
-                    beta.kubernetes.io/os=linux
-                    kubernetes.io/arch=amd64
-                    kubernetes.io/hostname=taracode-evals-worker
-                    kubernetes.io/os=linux
-Annotations:        node.alpha.kubernetes.io/ttl: 0
-                    volumes.kubernetes.io/controller-managed-attach-detach: true
-CreationTimestamp:  Thu, 24 Sep 2026 17:35:10 +0000
-Taints:             dedicated=batch:NoSchedule
-Unschedulable:      false
-Lease:
-  HolderIdentity:  taracode-evals-worker
-  AcquireTime:     <unset>
-  RenewTime:       Thu, 24 Sep 2026 21:53:10 +0000
-Conditions:
-  Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
-  ----             ------  -----------------                 ------------------                ------                       -------
-  MemoryPressure   False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure     False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure      False   Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready            True    Thu, 24 Sep 2026 21:49:03 +0000   Thu, 24 Sep 2026 21:30:22 +0000   KubeletReady                 kubelet is posting ready status
-Addresses:
-  InternalIP:  172.18.0.2
-  Hostname:    taracode-evals-worker
-Capacity:
-  cpu:                24
-  ephemeral-storage:  622945865728
-  hugepages-1Gi:      0
-  hugepages-2Mi:      0
-  memory:             49257512Ki
-  pods:               110
-Allocatable:
-  cpu:                24
-  ephemeral-storage:  622945865728
-  hugepages-1Gi:      0
-  hugepages-2Mi:      0
-  memory:             49257512Ki
-  pods:               110
-System Info:
-  Machine ID:                 c35de71bd904419ca594223288594046
-  System UUID:                14a0426e-f739-4f02-ac71-a77fff4be8f8
-  Boot ID:                    649cf74a-64f3-468a-b798-fa325b55b00c
-  Kernel Version:             6.8.0-139-generic
-  OS Image:                   Debian GNU/Linux 13 (trixie)
-  Operating System:           linux
-  Architecture:               amd64
-  Container Runtime Version:  containerd://2.3.4
-  Kubelet Version:            v1.37.0
-PodCIDR:                      10.244.1.0/24
-PodCIDRs:                     10.244.1.0/24
-ProviderID:                   kind://docker/taracode-evals/taracode-evals-worker
-Non-terminated Pods:          (2 in total)
-  Namespace                   Name                CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
-  ---------                   ----                ------------  ----------  ---------------  -------------  ---
-  kube-system                 kindnet-nwdkc       100m (0%)     0 (0%)      50Mi (0%)        0 (0%)         4h18m
-  kube-system                 kube-proxy-rdkl9    0 (0%)        0 (0%)      0 (0%)           0 (0%)         4h18m
-Allocated resources:
-  (Total limits may be over 100 percent, i.e., overcommitted.)
-  Resource           Requests   Limits
-  --------           --------   ------
-  cpu                100m (0%)  0 (0%)
-  memory             50Mi (0%)  0 (0%)
-  ephemeral-storage  0 (0%)     0 (0%)
-  hugepages-1Gi      0 (0%)     0 (0%)
-  hugepages-2Mi      0 (0%)     0 (0%)
+Events:              <none>

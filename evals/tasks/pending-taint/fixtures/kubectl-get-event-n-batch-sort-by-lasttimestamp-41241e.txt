@@ -1,4 +1,4 @@
 LAST SEEN   TYPE      REASON              OBJECT                              MESSAGE
-0s          Warning   FailedScheduling    pod/nightly-etl-77d8cf54bf-pfddl    0/2 nodes are available: 2 node(s) had untolerated taint(s). preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.
-0s          Normal    SuccessfulCreate    replicaset/nightly-etl-77d8cf54bf   Created pod: nightly-etl-77d8cf54bf-pfddl
+0s          Warning   FailedScheduling    pod/nightly-etl-77d8cf54bf-t94q4    0/2 nodes are available: 2 node(s) had untolerated taint(s). preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.
+0s          Normal    SuccessfulCreate    replicaset/nightly-etl-77d8cf54bf   Created pod: nightly-etl-77d8cf54bf-t94q4
 0s          Normal    ScalingReplicaSet   deployment/nightly-etl              Scaled up replica set nightly-etl-77d8cf54bf from 0 to 1
