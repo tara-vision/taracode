@@ -61,3 +61,13 @@ func TestModelOptions_LLMValues_Immutability(t *testing.T) {
 		t.Errorf("opts.TopP = %f, want unchanged 0.8 after mutating the returned pointer", opts.TopP)
 	}
 }
+
+func TestTemperatureZeroIsSentExplicitly(t *testing.T) {
+	temp, _, _ := ModelOptions{TemperatureZero: true, Temperature: 0.7}.LLMValues()
+	if temp == nil || *temp != 0 {
+		t.Fatalf("temperature %v", temp)
+	}
+	if temp, _, _ := (ModelOptions{}).LLMValues(); temp != nil {
+		t.Fatal("zero without the flag must stay unset")
+	}
+}
