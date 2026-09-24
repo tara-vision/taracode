@@ -15,6 +15,7 @@ gates="
 ./internal/llm/openai:80
 ./internal/llm/ollamatest:80
 ./internal/models:80
+./internal/evals:80
 "
 
 status=0
