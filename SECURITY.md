@@ -72,3 +72,6 @@ When using Tara Code:
 - Review commands before execution when using the `shell` tool, and review the policy before switching to operate mode
 - Be cautious with file operations in sensitive directories
 - Ensure your self-hosted LLM servers (Ollama, vLLM, llama.cpp) are properly secured if exposed to a network
+- `.taracode/audit.jsonl` stores the model's raw command for every mutation, so a secret it echoes into a
+  command (rather than one taracode reads from a file or an environment variable) lands unredacted in that
+  0600 file; treat it like any other local file with your command history in it

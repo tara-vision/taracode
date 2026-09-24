@@ -22,8 +22,12 @@ recommendations, and a warning when Ollama's context window is smaller than the 
    until Phase 4 (ruling R1): their templates called v2 tool names and the code under them was untested, so
    Phase 4 builds the runbook engine fresh instead of carrying it forward. `search.ollama_api_key` is left
    out of alpha.2 as a non-breaking addition for later (ruling R12).
-3. **Evals** - a suite of offline DevOps tasks with recorded fixtures, `taracode eval`, and a published
-   scoreboard by RAM tier, refreshed every release.
+3. **Evals** (shipped in 3.0.0-beta.1) - a corpus of 33 offline DevOps tasks (Kubernetes, Helm, Terraform,
+   Docker, secrets, cloud and refusal cases) replayed from recorded and hand-authored fixtures through
+   `taracode eval run|record|report|lint`, and a first scoreboard across the whole model registry, published
+   in `docs/evals/scoreboard.md` and on code.tara.vision, refreshed every release. Carries two Phase 2 safety
+   follow-ups forward: the shell-classifier differential harness (`make classify-diff`) and the MCP trust
+   switch (`policy.mcp`).
 4. **Runbooks, MCP server and skills pack** - ten built-in runbooks on the existing checkpoint engine,
    `taracode mcp serve` for Claude Code, OpenCode, Codex and Pi users, and skills in the Agent Skills format.
 5. **Removed in 3.0** - the seven-agent orchestration system, `/watch`, the security mode and the JSON-in-content
