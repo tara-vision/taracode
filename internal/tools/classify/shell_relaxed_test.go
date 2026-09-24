@@ -27,6 +27,8 @@ var relaxedReads = []string{
 	// substitution loops (Task 6, ruling R3)
 	"for p in $(ls); do echo $p; done", "echo $(date)", "echo \"today: $(date +%F)\"",
 	"for f in $(find . -name '*.tf'); do echo $f; done",
+	// Task 6 fix round 1, minor: ":" is the null utility (a read), so it may receive a substitution
+	": $(date)",
 	// fix round 2, P3-R14(a): literal text in front of a reference means the word can never start
 	// with "-", however the reference resolves; a plain brace expansion with no $ stays a read too
 	"kubectl get pods -l app=$APP-api", "echo {a,b}-x",
@@ -75,6 +77,16 @@ var relaxedMutations = map[string]string{
 	"for p in $(ls); do cat $p; done": "cat", "cat $(ls)": "cat", "for p in $(rm -rf x); do echo $p; done": "rm",
 	"echo $(kubectl delete pod x)": "kubectl", "echo `date`": "substitution", "kubectl get pods -n $(cat ns)": "kubectl",
 	"echo $(cat f > g)": "redirect",
+	// Task 6 fix round 1, ruling P3-R17: a case arm's ) has no matching (, so a quoted $(...) body with a
+	// case is captured to the end (the outer quote goes with it), fails to parse and stays a mutation.
+	// The critical fail-opens the safety review found; the last one was over-blocked before the capture
+	// change. Wants that name a parse-error over-capture use "substitution" (its reason prefix), since
+	// the trailing outer quote breaks parsing before the redirect or program is classified.
+	"echo \"$(case a in a) rm x;; esac)\"":                       "rm",
+	"for p in \"$(case a in a) rm x;; esac)\"; do echo $p; done": "rm",
+	"echo \"$(case a in a) cat f > g;; esac)\"":                  "substitution",
+	"echo \"$(case $y in x) rm -rf pwned ;; *) : ;; esac)\"":     "rm",
+	"echo \"$(case $x in a) echo 1;; esac)\"":                    "substitution",
 	// fix round 2, C2/P3-R14(b): bash brace-expands textually before $X is read, so an alternative
 	// with a reference (checked leaf by leaf in braceOption, not injects: see leafDanger) can still
 	// become an option if the reference resolves to nothing

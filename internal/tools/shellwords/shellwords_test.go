@@ -301,3 +301,34 @@ func TestSplitCapturesSubstitutionBodies(t *testing.T) {
 		t.Fatalf("nested %q", got)
 	}
 }
+
+// TestSplitCaseSubstitutionCapturesToEnd (Task 6 fix, ruling P3-R17): a case statement's arm
+// terminator ")" has no matching "(", so the paren scanner would stop early and under-capture the
+// body. captureSubstitution treats the "case" keyword (a whole word at a token boundary, followed by
+// whitespace) as a shape it cannot follow and captures to the end of the input, so a quoted
+// substitution hiding a command after a case arm classifies as a mutation, not a false read. Words
+// named "case" that are not the keyword (showcase, case_x) do not trigger it.
+func TestSplitCaseSubstitutionCapturesToEnd(t *testing.T) {
+	res, _ := Split(`echo "$(case a in a) rm x;; esac)"`)
+	if len(res.Substitutions) != 1 || res.Substitutions[0] != `case a in a) rm x;; esac)"` {
+		t.Fatalf("case body must capture to the end: %q", res.Substitutions)
+	}
+	res, _ = Split(`echo $(case $y in x) rm -rf pwned ;; *) : ;; esac)`)
+	if len(res.Substitutions) != 1 || res.Substitutions[0] != `case $y in x) rm -rf pwned ;; *) : ;; esac)` {
+		t.Fatalf("unquoted case body must capture to the end: %q", res.Substitutions)
+	}
+	// A quoted "case" inside the body is data, not the keyword, so the paren scan still closes normally.
+	res, _ = Split("echo \"$(grep 'case' f)\"")
+	if len(res.Substitutions) != 1 || res.Substitutions[0] != `grep 'case' f` {
+		t.Fatalf("quoted case is not the keyword: %q", res.Substitutions)
+	}
+	// showcase and case_x are not the keyword: the substitution closes at its own ).
+	for _, c := range []struct{ in, body string }{
+		{"echo $(showcase list)", "showcase list"},
+		{"echo $(case_x=1 env)", "case_x=1 env"},
+	} {
+		if res, _ := Split(c.in); len(res.Substitutions) != 1 || res.Substitutions[0] != c.body {
+			t.Errorf("%q: body %q, want %q", c.in, res.Substitutions, c.body)
+		}
+	}
+}

@@ -262,21 +262,15 @@ func (p *parser) captureSubstitution() string {
 	start := p.pos + 2
 	depth := 0
 	for i := start; i < len(p.in); i++ {
+		if j, skipped := skipSpan(p.in, i); skipped {
+			i = j
+			continue
+		}
 		switch {
-		case p.in[i] == '\\':
-			i++
-		case p.in[i] == '$' && i+1 < len(p.in) && p.in[i+1] == '\'':
-			i = skipQuoted(p.in, i+1, true) // $'...' ANSI-C quoting: backslash escapes the closing quote
-		case p.in[i] == '$' && i+1 < len(p.in) && p.in[i+1] == '{':
-			i = skipBraces(p.in, i+1)
-		case p.in[i] == '\'':
-			i = skipQuoted(p.in, i, false)
-		case p.in[i] == '"':
-			i = skipQuoted(p.in, i, true)
-		case p.in[i] == '#' && commentStart(p.in, i):
-			i = skipToNewline(p.in, i)
 		case p.in[i] == '<' && i+1 < len(p.in) && p.in[i+1] == '<':
 			return string(p.in[start:]) // a heredoc or here-string the scanner cannot follow
+		case p.in[i] == 'c' && caseKeyword(p.in, i, start):
+			return string(p.in[start:]) // a case arm's ) has no matching (, so the scanner cannot follow the body
 		case p.in[i] == '(':
 			depth++
 		case p.in[i] == ')':
@@ -287,6 +281,28 @@ func (p *parser) captureSubstitution() string {
 		}
 	}
 	return string(p.in[start:])
+}
+
+// skipSpan advances past a span starting at i in a substitution body where a ) does not close the
+// substitution - a backslash escape, a quoted string, an ANSI-C $'...', a ${...} expansion or a #
+// comment - and returns the index of its last rune with skipped true. skipped is false when the rune
+// at i starts none of these, so captureSubstitution handles it (a paren, a heredoc, the case keyword).
+func skipSpan(in []rune, i int) (int, bool) {
+	switch {
+	case in[i] == '\\':
+		return i + 1, true
+	case in[i] == '$' && i+1 < len(in) && in[i+1] == '\'':
+		return skipQuoted(in, i+1, true), true // $'...' ANSI-C quoting: backslash escapes the closing quote
+	case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
+		return skipBraces(in, i+1), true
+	case in[i] == '\'':
+		return skipQuoted(in, i, false), true
+	case in[i] == '"':
+		return skipQuoted(in, i, true), true
+	case in[i] == '#' && commentStart(in, i):
+		return skipToNewline(in, i), true
+	}
+	return i, false
 }
 
 // skipQuoted returns the index of the closing quote that matches the one at start; the end when it is
@@ -320,6 +336,31 @@ func skipBraces(in []rune, start int) int {
 		}
 	}
 	return len(in)
+}
+
+// caseKeyword reports whether the word "case" begins at i in a substitution body: a token boundary
+// before it (the start of the body, or one of whitespace ; | & ( { before it) and whitespace after it.
+// A case statement's arm terminator ")" has no matching "(", so the paren scanner cannot find the
+// body's real end; captureSubstitution bails to the end of the input instead (P3-R17), which fails
+// closed. "showcase" (no boundary before) and "case_x=1" (no whitespace after) are not the keyword.
+func caseKeyword(in []rune, i, start int) bool {
+	if i+4 > len(in) || string(in[i:i+4]) != "case" {
+		return false
+	}
+	if i+4 >= len(in) || !unicode.IsSpace(in[i+4]) {
+		return false
+	}
+	return i == start || isTokenBoundary(in[i-1])
+}
+
+// isTokenBoundary reports the characters before which a reserved word can begin: whitespace and the
+// command operators that end the token before it.
+func isTokenBoundary(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', ';', '|', '&', '(', '{':
+		return true
+	}
+	return false
 }
 
 // skipToNewline returns the index of the newline at or after start, or the end.
