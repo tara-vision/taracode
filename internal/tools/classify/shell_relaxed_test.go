@@ -26,6 +26,9 @@ var relaxedReads = []string{
 	"ifconfig en0 inet", "ifconfig eth0 inet6",
 	// fix round 1: $_ still tracks across a line of plain commands (P3-R6)
 	"ls /tmp; cat $_",
+	// substitution loops (Task 6, ruling R3)
+	"for p in $(ls); do echo $p; done", "echo $(date)", "echo \"today: $(date +%F)\"",
+	"for f in $(find . -name '*.tf'); do echo $f; done",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -57,6 +60,11 @@ var relaxedMutations = map[string]string{
 	// fix round 1, I2: more variables that smuggle an option into an allowlisted reader
 	"echo x | LESS=-O/tmp/x less": "LESS", "PYTHONUSERBASE=/tmp/x aws s3 ls": "PYTHONUSERBASE",
 	"GNUPGHOME=/tmp/x git log --show-signature": "GNUPGHOME", "WGETRC=/tmp/x wget -qO- https://example.com": "WGETRC",
+	// substitution loops (Task 6, ruling R3): a body that writes, runs or names a cluster, a backtick,
+	// and a substitution feeding any program that is not a for-list or an option-harmless one
+	"for p in $(ls); do cat $p; done": "cat", "cat $(ls)": "cat", "for p in $(rm -rf x); do echo $p; done": "rm",
+	"echo $(kubectl delete pod x)": "kubectl", "echo `date`": "substitution", "kubectl get pods -n $(cat ns)": "kubectl",
+	"echo $(cat f > g)": "redirect",
 }
 
 func TestRelaxedReads(t *testing.T) {

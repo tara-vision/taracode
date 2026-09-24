@@ -187,18 +187,32 @@ func reference(rest string) (expansionRef, int) {
 // and a plain $X can itself be an empty variable, so the "-" would then start the word instead of
 // following a value. It rescans word itself (rather than calling references) so it can see the byte
 // after each reference ends.
-func (v lineVars) injects(word string) bool {
+//
+// harmless is true when the program that receives the word only prints its arguments (echo, :, true,
+// false, or a for-list, which runs nothing): ruling R3. It relaxes the two shapes that are dangerous
+// only because an extra option changes what the program does - a command-substitution marker (a bare
+// "$" the parser left when it split the word at the substitution's "(") and a variable set to an
+// option value. The other shapes stay a mutation whatever the program: a reference followed by "-", an
+// assigning or otherwise opaque ${...} form (it can change shell state or hide any output), and a
+// substitution operator whose literal word is an option.
+func (v lineVars) injects(word string, harmless bool) bool {
 	for i := 0; i < len(word); i++ {
 		if word[i] != '$' {
 			continue
 		}
 		r, n := reference(word[i+1:])
 		end := i + 1 + n
-		if r.Name == "" || (end < len(word) && word[end] == '-') {
+		if end < len(word) && word[end] == '-' {
 			return true
 		}
+		if r.Name == "" {
+			if n == 0 {
+				return !harmless // a command-substitution marker or a bare "$"
+			}
+			return true // an assigning or opaque ${...} form
+		}
 		if kind, set := v[r.Name]; set && kind == optionValue {
-			return true
+			return !harmless
 		}
 		if r.Substitutes && valueKind(strings.Trim(r.Word, `"'`)) == optionValue {
 			return true
@@ -216,16 +230,18 @@ func expansionResult(program, word string) Result {
 
 // expansionCheck finds the first word of a segment (its words, assignments included, and its
 // redirect targets) that expands a value the line controls, and the first argument whose brace
-// expansion yields an option. ok is false when there is none.
+// expansion yields an option. ok is false when there is none. The program is option-harmless when it
+// only prints its arguments; a for-header has no args, so its list may hold a substitution (R3).
 func (v lineVars) expansionCheck(words, redirects, args []string) (Result, bool) {
 	program := first(args)
+	harmless := args == nil || optionHarmless[program]
 	targets := make([]string, 0, len(redirects))
 	for _, r := range redirects {
 		_, target, _ := strings.Cut(r, " ")
 		targets = append(targets, target)
 	}
 	for _, w := range append(append([]string{}, words...), targets...) {
-		if v.injects(w) {
+		if v.injects(w, harmless) {
 			return expansionResult(program, w), true
 		}
 	}

@@ -22,9 +22,11 @@ type Segment struct {
 
 // Result is a parsed command line.
 type Result struct {
-	Segments     []Segment
-	Substitution bool // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
-	FunctionDef  bool // the line defines a shell function (name (), function name), which can shadow any name
+	Segments      []Segment
+	Substitution  bool     // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
+	Backtick      bool     // a backtick substitution appeared; its body is not captured
+	FunctionDef   bool     // the line defines a shell function (name (), function name), which can shadow any name
+	Substitutions []string // the bodies of every $(...) in order, outermost first, for a classifier to read
 }
 
 type parser struct {
@@ -103,6 +105,11 @@ func (p *parser) step() error {
 		p.skipComment()
 	case p.substitutionStart(c):
 		p.res.Substitution = true
+		if c == '`' {
+			p.res.Backtick = true
+		} else {
+			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
+		}
 		p.word.WriteRune(c)
 		p.hasWord = true
 		p.pos++
@@ -247,6 +254,99 @@ func (p *parser) substitutionStart(c rune) bool {
 	return c == '`' || (c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(')
 }
 
+// captureSubstitution returns the text between the $( at the current position and its matching ),
+// following nested parentheses and skipping the spans where a ) does not close the substitution: a
+// quoted string, a backslash escape, a # comment (to the newline) and a ${...} parameter expansion.
+// A heredoc body it cannot follow, so a << makes it capture to the end and fail closed. The position
+// does not move: the body is still parsed into segments as before, so the classifier sees its
+// commands. Capturing too much only makes a body classify as a mutation, never as a false read.
+func (p *parser) captureSubstitution() string {
+	start := p.pos + 2
+	depth := 0
+	for i := start; i < len(p.in); i++ {
+		switch {
+		case p.in[i] == '\\':
+			i++
+		case p.in[i] == '$' && i+1 < len(p.in) && p.in[i+1] == '\'':
+			i = skipQuoted(p.in, i+1, true) // $'...' ANSI-C quoting: backslash escapes the closing quote
+		case p.in[i] == '$' && i+1 < len(p.in) && p.in[i+1] == '{':
+			i = skipBraces(p.in, i+1)
+		case p.in[i] == '\'':
+			i = skipQuoted(p.in, i, false)
+		case p.in[i] == '"':
+			i = skipQuoted(p.in, i, true)
+		case p.in[i] == '#' && commentStart(p.in, i):
+			i = skipToNewline(p.in, i)
+		case p.in[i] == '<' && i+1 < len(p.in) && p.in[i+1] == '<':
+			return string(p.in[start:]) // a heredoc or here-string the scanner cannot follow
+		case p.in[i] == '(':
+			depth++
+		case p.in[i] == ')':
+			if depth == 0 {
+				return string(p.in[start:i])
+			}
+			depth--
+		}
+	}
+	return string(p.in[start:])
+}
+
+// skipQuoted returns the index of the closing quote that matches the one at start; the end when it is
+// unbalanced. A single quote is literal ('...'), so escapes is false; a double quote and ANSI-C
+// $'...' honour backslash escapes, so escapes is true and a \' or \" does not close the span.
+func skipQuoted(in []rune, start int, escapes bool) int {
+	q := in[start]
+	for i := start + 1; i < len(in); i++ {
+		switch {
+		case escapes && in[i] == '\\':
+			i++
+		case in[i] == q:
+			return i
+		}
+	}
+	return len(in)
+}
+
+// skipBraces returns the index of the } that matches the { at start, tracking nested braces; the end
+// when it is unbalanced. A ) inside ${...} is a literal, not a substitution close.
+func skipBraces(in []rune, start int) int {
+	depth := 0
+	for i := start; i < len(in); i++ {
+		switch in[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return i
+			}
+		}
+	}
+	return len(in)
+}
+
+// skipToNewline returns the index of the newline at or after start, or the end.
+func skipToNewline(in []rune, start int) int {
+	for i := start; i < len(in); i++ {
+		if in[i] == '\n' {
+			return i
+		}
+	}
+	return len(in)
+}
+
+// commentStart reports whether the # at i begins a comment: the shell treats it as one only at the
+// start of a word, after whitespace or a command operator, not glued to a word (echo a#b keeps #b).
+func commentStart(in []rune, i int) bool {
+	if i == 0 {
+		return true
+	}
+	switch in[i-1] {
+	case ' ', '\t', '\n', ';', '&', '|', '(':
+		return true
+	}
+	return false
+}
+
 func (p *parser) quoted(q rune) error {
 	p.pos++ // opening quote
 	for p.pos < len(p.in) {
@@ -259,8 +359,14 @@ func (p *parser) quoted(q rune) error {
 		case q == '"' && c == '\\' && p.pos+1 < len(p.in):
 			p.word.WriteRune(p.in[p.pos+1])
 			p.pos += 2
-		case q == '"' && (c == '`' || (c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(')):
+		case q == '"' && c == '`':
 			p.res.Substitution = true
+			p.res.Backtick = true
+			p.word.WriteRune(c)
+			p.pos++
+		case q == '"' && c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(':
+			p.res.Substitution = true
+			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
 			p.word.WriteRune(c)
 			p.pos++
 		default:

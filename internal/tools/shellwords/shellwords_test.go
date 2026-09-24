@@ -277,3 +277,27 @@ func TestSplitTruncatesANSICAtNUL(t *testing.T) {
 		t.Errorf(`echo $'\x00' must keep an empty word: %+v`, res)
 	}
 }
+
+// TestSplitCapturesSubstitutionBodies (Task 6): Split records the body of every $(...) in order,
+// outermost first, so the classifier can decide whether each one reads; a backtick sets Backtick and
+// its body is not captured. The bodies keep their own quoting.
+func TestSplitCapturesSubstitutionBodies(t *testing.T) {
+	res, err := Split(`for p in $(ls -1 "$HOME"); do echo $p $(date +%F); done`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Substitution || res.Backtick {
+		t.Fatalf("%+v", res)
+	}
+	if got := strings.Join(res.Substitutions, "|"); got != `ls -1 "$HOME"|date +%F` {
+		t.Fatalf("bodies %q", got)
+	}
+	res, _ = Split("echo `date`")
+	if !res.Substitution || !res.Backtick || len(res.Substitutions) != 0 {
+		t.Fatalf("backtick %+v", res)
+	}
+	res, _ = Split("echo $(echo $(id))")
+	if got := strings.Join(res.Substitutions, "|"); got != "echo $(id)|id" {
+		t.Fatalf("nested %q", got)
+	}
+}

@@ -38,9 +38,10 @@ func Shell(command string) ShellResult {
 		return out
 	}
 	if parsed.Substitution {
-		out.Result = mutate("", "command substitution ($(...), backticks, <(...), >(...)) or a translated $\"...\" "+
-			"hides what runs")
-		return out
+		if reason, ok := substitutionsRead(parsed); !ok {
+			out.Result = mutate("", reason)
+			return out
+		}
 	}
 	var hosts []string
 	vars := lineVars{}
@@ -60,6 +61,29 @@ func Shell(command string) ShellResult {
 	}
 	out.Hosts = hosts
 	return out
+}
+
+// optionHarmless are the programs an unknown word may expand into options of: they print their
+// arguments and nothing else. A command substitution's output may be placed only in a for-list or
+// as their argument (ruling R3).
+var optionHarmless = map[string]bool{"echo": true, ":": true, "true": true, "false": true}
+
+// substitutionsRead reports whether every $(...) body of the line is itself a read that writes no
+// file and names no cluster; a backtick, a process substitution or $"..." keeps the line opaque.
+func substitutionsRead(parsed shellwords.Result) (string, bool) {
+	if parsed.Backtick || len(parsed.Substitutions) == 0 {
+		return "command substitution (backticks, <(...), >(...)) or a translated $\"...\" hides what runs", false
+	}
+	for _, body := range parsed.Substitutions {
+		res := Shell(body)
+		if res.Classification != policy.Read {
+			return "the command substitution $(" + body + ") " + res.Reason, false
+		}
+		if len(res.Paths) > 0 || len(res.Kube) > 0 {
+			return "the command substitution $(" + body + ") writes files or names a cluster", false
+		}
+	}
+	return "", true
 }
 
 // shellSegment classifies one simple command and returns it without the shell's reserved words
