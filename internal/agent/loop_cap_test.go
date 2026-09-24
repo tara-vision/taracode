@@ -82,7 +82,7 @@ func TestTheCapAnswersWithTheFindingsSoFar(t *testing.T) {
 		}
 		last := a.conversation[len(a.conversation)-1]
 		if last.Role != openai.ChatMessageRoleAssistant || len(last.ToolCalls) != 0 || storesNudge(a) ||
-			!strings.Contains(out.String(), "Reached the limit of 2 tool iterations; answering with the findings so far") {
+			!strings.Contains(out.String(), "Reached the limit of 2 tool iterations; answering with the findings so far (context.max_tool_iterations)") {
 			t.Fatalf("streaming=%v: last message %+v, output %q", streaming, last, out.String())
 		}
 		if err := a.ProcessMessage("and now?"); err != nil {
