@@ -70,21 +70,25 @@ func TestKubectlDiffDryRunOnlyTreatsExitStatusOneAsDifferences(t *testing.T) {
 }
 
 // TestKubectlRefusesFlagsGivenBothAsParameterAndInArgs covers namespace, context and output: each is
-// refused, not silently resolved one way, when the same flag also appears (in any spelling) in args.
+// refused, not silently resolved one way, when args repeats the flag with a different value. The
+// refused call keeps its verb's own classification (ruling P3-R59): a malformed get is still a read,
+// which the gate refuses as an argument error before the mode or the policy sees it.
 func TestKubectlRefusesFlagsGivenBothAsParameterAndInArgs(t *testing.T) {
 	fakeBin(t, "kubectl", fakeKubectl)
 	tool := KubectlTool()
 	cases := []struct {
-		name string
-		args map[string]any
+		name  string
+		args  map[string]any
+		class policy.Classification
 	}{
-		{"namespace", map[string]any{"verb": "apply", "namespace": "sandbox", "args": "-f x.yaml --namespace kube-system"}},
-		{"context", map[string]any{"verb": "apply", "context": "dev", "args": "-f x.yaml --context prod"}},
-		{"output", map[string]any{"verb": "get", "resource": "pods", "output": "json", "args": "-o yaml"}},
+		{"namespace", map[string]any{"verb": "apply", "namespace": "sandbox", "args": "-f x.yaml --namespace kube-system"},
+			policy.Mutate},
+		{"context", map[string]any{"verb": "apply", "context": "dev", "args": "-f x.yaml --context prod"}, policy.Mutate},
+		{"output", map[string]any{"verb": "get", "resource": "pods", "output": "json", "args": "-o yaml"}, policy.Read},
 	}
 	for _, c := range cases {
 		inv := tool.Classify(c.args, "/w")
-		if inv.Classification != policy.Mutate || !strings.Contains(inv.Reason, "both") {
+		if inv.Classification != c.class || !strings.Contains(inv.Reason, "both") || inv.Targets.KubeContext != "*" {
 			t.Errorf("%s: a flag given both ways must be refused: %+v", c.name, inv)
 		}
 		if _, err := tool.Run(context.Background(), c.args, ""); err == nil || !strings.Contains(err.Error(), "both") {

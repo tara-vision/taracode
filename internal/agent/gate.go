@@ -21,9 +21,9 @@ func (a *Assistant) executeOne(ctx gocontext.Context, run toolRun) toolOutcome {
 	return outcome
 }
 
-// gateAndRun is the order of the gates: classify (a classifier that panics is a refusal), exposure
-// (a tool the model was not offered does not run), policy (mode, protected targets, deny patterns),
-// audit, dry run, permission, edit preview, execute.
+// gateAndRun is the order of the gates: classify (a classifier that panics is a refusal, and so are
+// arguments the tool itself refuses), exposure (a tool the model was not offered does not run),
+// policy (mode, protected targets, deny patterns), audit, dry run, permission, edit preview, execute.
 func (a *Assistant) gateAndRun(ctx gocontext.Context, run toolRun) (policy.Invocation, toolOutcome) {
 	call := run.call
 	inv, panicked, err := a.classify(call)
@@ -36,6 +36,9 @@ func (a *Assistant) gateAndRun(ctx gocontext.Context, run toolRun) (policy.Invoc
 		a.audit(inv, "deny", "classifier", inv.Reason, false)
 		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage("Blocked: "+inv.Reason))
 		return inv, toolOutcome{result: "Blocked: " + inv.Reason, denied: true, rule: "classifier", reason: inv.Reason}
+	}
+	if argErr := a.toolRegistry.ArgumentError(call.Tool, call.Params); argErr != nil {
+		return inv, a.refuseArguments(inv, argErr.Error())
 	}
 	if !a.toolRegistry.Exposed(call.Tool, a.mode) {
 		if !a.toolRegistry.Exposed(call.Tool, policy.ModeOperate) {
@@ -79,6 +82,19 @@ func (a *Assistant) classify(call *ToolCall) (inv policy.Invocation, panicked bo
 	}()
 	inv, err = a.toolRegistry.Classify(call.Tool, call.Params, a.workingDir)
 	return inv, false, err
+}
+
+// refuseArguments refuses a call whose arguments the tool itself refuses (ruling P3-R59), in every
+// mode and before the mode or the policy sees it: the mode rule would tell the model to switch modes
+// for a call that fails in both, and the policy cannot read the targets of a command that will never
+// run. The model gets the plain reason, so it can fix the call; a mutating verb is audited as a deny,
+// as a policy deny is, with the verb the call named.
+func (a *Assistant) refuseArguments(inv policy.Invocation, reason string) toolOutcome {
+	if inv.Classification == policy.Mutate {
+		a.audit(inv, "deny", "classifier", reason, false)
+	}
+	_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("Refused %s call: %s", inv.Tool, reason)))
+	return toolOutcome{result: "Error: " + reason, isError: true, denied: true, rule: "classifier", reason: reason}
 }
 
 // maxCallSummary bounds the command an audit record carries for a call the classifier could not read.

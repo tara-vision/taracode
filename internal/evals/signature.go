@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
@@ -77,9 +78,15 @@ func words(s string) []string {
 	return w
 }
 
-// kubectlArgv rebuilds the argv the kubectl tool runs from its structured parameters, in the same
-// order internal/tools builds it, so the dedicated tool and a shell line meet in kubectlSignature.
+// kubectlArgv is the argv the kubectl tool runs for its structured parameters, from tools.KubectlArgv
+// itself, so the dedicated tool and a shell line meet in kubectlSignature and a command line a model
+// repeats in args keys the command the tool would run (ruling P3-R59). A call the tool refuses for its
+// arguments never runs or replays, since the gate refuses it first; it keys its parameters as given,
+// so the notes and the calls log still name what it tried.
 func kubectlArgv(args map[string]any) []string {
+	if argv, err := tools.KubectlArgv(args); err == nil {
+		return argv
+	}
 	argv := []string{str(args, "verb")}
 	if r := str(args, "resource"); r != "" {
 		argv = append(argv, r)
@@ -109,26 +116,10 @@ var resourceVerbs = map[string]bool{"get": true, "describe": true, "delete": tru
 	"scale": true, "annotate": true, "label": true, "wait": true, "top": true, "explain": true, "expose": true,
 	"autoscale": true, "taint": true, "rollout": false}
 
-var resourceAliases = map[string]string{
-	"po": "pod", "pods": "pod", "deploy": "deployment", "deployments": "deployment", "svc": "service",
-	"services": "service", "cm": "configmap", "configmaps": "configmap", "ns": "namespace", "namespaces": "namespace",
-	"no": "node", "nodes": "node", "ing": "ingress", "ingresses": "ingress", "sts": "statefulset",
-	"statefulsets": "statefulset", "ds": "daemonset", "daemonsets": "daemonset", "rs": "replicaset",
-	"replicasets": "replicaset", "pvc": "persistentvolumeclaim", "persistentvolumeclaims": "persistentvolumeclaim",
-	"pv": "persistentvolume", "persistentvolumes": "persistentvolume", "sa": "serviceaccount",
-	"serviceaccounts": "serviceaccount", "ev": "event", "events": "event", "secrets": "secret", "jobs": "job",
-	"cj": "cronjob", "cronjobs": "cronjob", "ep": "endpoints", "hpa": "horizontalpodautoscaler",
-	"horizontalpodautoscalers": "horizontalpodautoscaler", "netpol": "networkpolicy", "networkpolicies": "networkpolicy",
-	"sc": "storageclass", "storageclasses": "storageclass", "crd": "customresourcedefinition",
-	"crds": "customresourcedefinition", "customresourcedefinitions": "customresourcedefinition",
-}
-
+// canonicalResource names a resource type the way the kubectl tool compares one
+// (tools.CanonicalKubeResource), so the signature and the tool agree on what one type is.
 func canonicalResource(r string) string {
-	lower := strings.ToLower(r)
-	if c, ok := resourceAliases[lower]; ok {
-		return c
-	}
-	return lower
+	return tools.CanonicalKubeResource(r)
 }
 
 // kubectlSignature renders "kubectl <verb> <resource>[/<name>] [-n ns] [--context c] [-o out]

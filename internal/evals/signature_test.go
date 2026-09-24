@@ -1,6 +1,14 @@
 package evals
 
-import "testing"
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/tara-vision/taracode/internal/tools"
+)
 
 func TestSignatures(t *testing.T) {
 	cases := []struct {
@@ -47,6 +55,15 @@ func TestSignatures(t *testing.T) {
 		{"shell", map[string]any{"command": "kubectl -n shop scale deploy/checkout --replicas=3"}, "kubectl scale deployment/checkout -n shop --replicas=3"},
 		{"shell", map[string]any{"command": "kubectl --context prod-cluster -n shop get deploy checkout"}, "kubectl get deployment/checkout -n shop --context prod-cluster"},
 		{"shell", map[string]any{"command": "kubectl get -n shop pods"}, "kubectl get pod -n shop"},
+		// The first shake-out's shapes (ruling P3-R59): the command line repeated in args keys the
+		// command the kubectl tool runs once it has undone the repetition.
+		{"kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "billing", "args": "get pods -n billing"},
+			"kubectl get pod -n billing"},
+		{"kubectl", map[string]any{"verb": "get", "resource": "deployment", "namespace": "shop",
+			"args": "get deployment checkout -n shop --context prod-cluster"},
+			"kubectl get deployment/checkout -n shop --context prod-cluster"},
+		{"kubectl", map[string]any{"verb": "get", "args": "get pod report-builder -n analytics"},
+			"kubectl get pod/report-builder -n analytics"},
 	}
 	for _, c := range cases {
 		if got := Signature(c.tool, c.args); got != c.want {
@@ -55,5 +72,64 @@ func TestSignatures(t *testing.T) {
 	}
 	if got := DryRunSignature("helm", map[string]any{"args": "upgrade web ./chart -n apps"}); got != "dryrun:helm upgrade web ./chart -n apps" {
 		t.Errorf("dry run %q", got)
+	}
+}
+
+// TestKubectlSignatureKeysTheArgvTheToolRuns pins the parity of ruling P3-R59: the signature of a
+// kubectl call is the canonical form of the argv the kubectl tool actually runs, its normalization of a
+// repeated command line included, so a replayed call meets the fixture recorded for the command it
+// would run. A fake kubectl prints its arguments one per line.
+func TestKubectlSignatureKeysTheArgvTheToolRuns(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n"
+	if err := os.WriteFile(filepath.Join(bin, "kubectl"), []byte(script), 0o755); err != nil { //nolint:gosec // test binary
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	inputs := []map[string]any{
+		{"verb": "get", "resource": "pods", "namespace": "shop"},
+		{"verb": "get", "resource": "po", "namespace": "shop", "output": "wide"},
+		{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"},
+		{"verb": "logs", "name": "checkout-1", "namespace": "shop", "args": "--previous"},
+		{"verb": "get", "resource": "events", "namespace": "shop", "args": "--sort-by=.lastTimestamp"},
+		{"verb": "get", "resource": "nodes"},
+		{"verb": "get", "resource": "deploy", "name": "checkout", "namespace": "shop", "context": "prod-cluster"},
+		{"verb": "get", "resource": "pods", "namespace": "billing", "args": "get pods -n billing"},
+		{"verb": "get", "resource": "deployment", "namespace": "shop",
+			"args": "get deployment checkout -n shop --context prod-cluster"},
+		{"verb": "get", "args": "get pod report-builder -n analytics"},
+		{"verb": "get", "resource": "pods", "args": "kubectl get pods -o wide"},
+		{"verb": "describe", "resource": "pod", "name": "x", "namespace": "shop", "args": "describe pod/x -n shop"},
+		{"verb": "describe", "resource": "pods", "args": "describe pod/x -n shop"},
+		{"verb": "describe", "resource": "deploy/web", "namespace": "shop", "args": "describe deployment web"},
+		{"verb": "logs", "name": "web-1", "namespace": "shop", "args": "logs web-1 --tail=50 -n shop"},
+		{"verb": "get", "resource": "pods", "namespace": "billing", "args": "--namespace=billing -nbilling"},
+		{"verb": "get", "resource": "pods", "context": "kind-dev", "output": "yaml", "args": "--context=kind-dev -oyaml"},
+		{"verb": "get", "args": "events -n shop"},
+		{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
+			"args": "scale deployment checkout --replicas=3 -n shop"},
+		{"verb": "get", "resource": "pods", "namespace": "apps", "output": "wide", "args": "-l app=web"},
+	}
+	tool := tools.KubectlTool()
+	for _, params := range inputs {
+		out, err := tool.Run(context.Background(), params, "")
+		if err != nil {
+			t.Errorf("%v: %v", params, err)
+			continue
+		}
+		ran := kubectlSignature(strings.Split(out, "\n"))
+		if got := Signature("kubectl", params); got != ran {
+			t.Errorf("%v:\n signature %q\n tool ran %q", params, got, ran)
+		}
+	}
+	// A call the tool refuses never runs or replays (the gate refuses it first); its signature still
+	// starts with the verb it named, so a verb or signature matcher sees what it tried.
+	refused := map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
+		"context": "prod-cluster", "args": "scale deployment checkout --replicas=3 -n prod-shop"}
+	if _, err := tool.Run(context.Background(), refused, ""); err == nil {
+		t.Fatal("the kubectl tool must refuse a namespace given twice with different values")
+	}
+	if got := Signature("kubectl", refused); !strings.HasPrefix(got, "kubectl scale deployment/checkout ") {
+		t.Errorf("refused call signature %q", got)
 	}
 }
