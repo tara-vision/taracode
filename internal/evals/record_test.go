@@ -704,15 +704,16 @@ func TestRecorderGuardAndSaveGuardsADirectSaveLikeTheMiddleware(t *testing.T) {
 	rec := NewRecorder(s, nil, []string{"kiosk-7"})
 	done, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := rec.guardAndSave(done, "dryrun:shell true", "this tool has no dry run", true); err != nil || s.Len() != 0 {
-		t.Fatalf("a call whose context is done must save nothing: err=%v len=%d", err, s.Len())
+	kept, err := rec.guardAndSave(done, "dryrun:shell true", "this tool has no dry run", true, keepExisting)
+	if kept || err != nil || s.Len() != 0 {
+		t.Fatalf("a call whose context is done must save nothing: kept=%v err=%v len=%d", kept, err, s.Len())
 	}
-	err := rec.guardAndSave(context.Background(), "dryrun:shell true", "reached kiosk-7", true)
+	_, err = rec.guardAndSave(context.Background(), "dryrun:shell true", "reached kiosk-7", true, keepExisting)
 	if !errors.Is(err, ErrFixtureHostname) || !errors.Is(rec.Refused(), ErrFixtureHostname) || s.Len() != 0 {
 		t.Fatalf("a private name in the text must be refused and latched: err=%v refused=%v len=%d",
 			err, rec.Refused(), s.Len())
 	}
-	err = rec.guardAndSave(context.Background(), "dryrun:shell echo clean", "clean", true)
+	_, err = rec.guardAndSave(context.Background(), "dryrun:shell echo clean", "clean", true, keepExisting)
 	if !errors.Is(err, ErrFixtureHostname) || s.Len() != 0 {
 		t.Fatalf("the refusal must stay sticky for a later, clean save: err=%v len=%d", err, s.Len())
 	}
@@ -870,5 +871,170 @@ func TestRecordTaskAbortsANoDryRunCallWhoseContextEnded(t *testing.T) {
 				t.Fatalf("teardown did not run\n%s", log.String())
 			}
 		})
+	}
+}
+
+// TestRecordTaskResolvesRelativeRoots drives RecordTask the way `make record` does (ruling P3-R55
+// item 1): a relative corpus root and a relative scenarios root, from the working directory holding
+// them. sh runs a script with its scenario directory as the working directory, so a relative script
+// path was once resolved from inside it and failed with exit status 127 before setup, or the
+// teardown, could run. Recording must work, with EVAL_SCENARIO absolute, and a failing setup must
+// still be followed by the teardown.
+func TestRecordTaskResolvesRelativeRoots(t *testing.T) {
+	cases := []struct{ name, setup, wantErr string }{
+		{"records", "#!/bin/sh\ncase \"$EVAL_SCENARIO\" in /*) ;; *) exit 3 ;; esac\n" +
+			"printf 'from setup' > \"$EVAL_WORKDIR/marker.txt\"\n", ""},
+		{"setup fails", "#!/bin/sh\nprintf 'ran' > \"$EVAL_SCENARIO/setup-ran\"\nexit 1\n", "setup: exit status 1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(privateNamesEnvVar, "not-a-real-name")
+			task, scenarios, scenario := newRecordingTask(t, "relative",
+				"- {tool: shell, args: {command: \"cat marker.txt\"}}")
+			if err := os.WriteFile(filepath.Join(scenario, "setup.sh"), []byte(tc.setup), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Chdir(filepath.Dir(scenarios)) // restored when the test ends
+			tasks, err := LoadCorpus("tasks", "")
+			if err != nil || len(tasks) != 1 || filepath.IsAbs(tasks[0].Dir) {
+				t.Fatalf("expected one task loaded from a relative corpus root: %v %v", tasks, err)
+			}
+			var log strings.Builder
+			err = RecordTask(context.Background(), tasks[0], "scenarios", nil, &log)
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("expected error %q, got %v\n%s", tc.wantErr, err, log.String())
+			}
+			if tc.wantErr == "" {
+				s, _ := LoadFixtures(task.Dir)
+				if out, isErr, ok := s.Lookup("shell cat marker.txt"); !ok || isErr || out != "from setup" {
+					t.Fatalf("fixture %q %v %v\n%s", out, isErr, ok, log.String())
+				}
+			} else if _, statErr := os.Stat(filepath.Join(scenario, "setup-ran")); statErr != nil {
+				t.Fatalf("setup itself must have run and failed, not been missed\n%s", log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+				t.Fatalf("teardown did not run\n%s", log.String())
+			}
+			if leftovers, _ := filepath.Glob(filepath.Join(task.Dir, "fixtures-recording-*")); len(leftovers) != 0 {
+				t.Fatalf("the temporary store must not be left behind: %v", leftovers)
+			}
+		})
+	}
+}
+
+// TestRecordTaskRefusesAPrivateNameRebuiltInTheFixtureFileName is ruling P3-R55 item 2's probe: a
+// fixture's file name is a slug of its signature, so "shell echo kiosk 7" is saved as
+// shell-echo-kiosk-7-<hash>.txt, and the slug rebuilds the hyphenated private name kiosk-7 that
+// neither the signature nor the output ("kiosk 7") carries. The file name is checked too, on the
+// middleware's save and on the direct save alike.
+func TestRecordTaskRefusesAPrivateNameRebuiltInTheFixtureFileName(t *testing.T) {
+	cases := []struct{ name, call, sig string }{
+		{"ordinary call", `- {tool: shell, args: {command: "echo kiosk 7"}}`, "shell echo kiosk 7"},
+		{"dry run of a tool with no DryRun", `- {tool: shell, dry_run: true, args: {command: "echo kiosk 7"}}`,
+			"dryrun:shell echo kiosk 7"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.sig, "kiosk-7") || !strings.Contains(fixtureFileName(tc.sig), "-kiosk-7-") {
+				t.Fatalf("precondition: only the file name %q may carry the name", fixtureFileName(tc.sig))
+			}
+			t.Setenv(privateNamesEnvVar, "kiosk-7")
+			task, scenarios, scenario := newRecordingTask(t, "slug", tc.call)
+			var log strings.Builder
+			err := RecordTask(context.Background(), task, scenarios, nil, &log)
+			if !errors.Is(err, ErrFixtureHostname) {
+				t.Fatalf("expected an ErrFixtureHostname, got %v\n%s", err, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(task.Dir, "fixtures", "index.yaml")); !os.IsNotExist(statErr) {
+				t.Fatalf("a refused recording must leave no fixtures/index.yaml behind: %v\n%s", statErr, log.String())
+			}
+			if leftovers, _ := filepath.Glob(filepath.Join(task.Dir, "fixtures-recording-*")); len(leftovers) != 0 {
+				t.Fatalf("a refused recording must not leave its temporary store behind: %v", leftovers)
+			}
+			if !regexp.MustCompile(`refused\s+` + regexp.QuoteMeta(tc.sig) + `\n`).MatchString(log.String()) {
+				t.Fatalf("the log must name the refused call %q\n%s", tc.sig, log.String())
+			}
+			if _, statErr := os.Stat(filepath.Join(scenario, "teardown-ran")); statErr != nil {
+				t.Fatalf("teardown did not run\n%s", log.String())
+			}
+		})
+	}
+}
+
+// fakeKubectl puts an executable kubectl script first on PATH for the rest of the test, the way
+// internal/tools' fakeBin does.
+func fakeKubectl(t *testing.T, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "kubectl"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestRecordTaskKeepsARecordedDryRunOverAnAliasedPlaceholder pins ruling P3-R55 item 3: a shell dry
+// run of "kubectl apply -f web.yaml" shares the signature of the kubectl tool's own dry run, but shell
+// has no DryRun, so all it can record is the "this tool has no dry run" placeholder. Recorded after
+// the real dry run, the placeholder must not overwrite the diff, and is logged as kept; recorded
+// before it, the placeholder is replaced by the real dry run through Save's normal replace path.
+func TestRecordTaskKeepsARecordedDryRunOverAnAliasedPlaceholder(t *testing.T) {
+	const diff = "-  replicas: 2\n+  replicas: 3"
+	realDryRun := `- {tool: kubectl, dry_run: true, args: {verb: apply, args: "-f web.yaml"}}`
+	placeholder := `- {tool: shell, dry_run: true, args: {command: "kubectl apply -f web.yaml"}}`
+	sig := DryRunSignature("kubectl", map[string]any{"verb": "apply", "args": "-f web.yaml"})
+	if aliased := DryRunSignature("shell", map[string]any{"command": "kubectl apply -f web.yaml"}); aliased != sig {
+		t.Fatalf("precondition: the shell dry run must alias the kubectl one: %q != %q", aliased, sig)
+	}
+	cases := []struct {
+		name, calls string
+		wantKept    bool
+	}{
+		{"real dry run first", realDryRun + "\n    " + placeholder, true},
+		{"placeholder first", placeholder + "\n    " + realDryRun, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(privateNamesEnvVar, "not-a-real-name")
+			// kubectl diff exits 1 when there are differences; the kubectl tool's dry run reads that as
+			// the diff itself.
+			fakeKubectl(t, "#!/bin/sh\nprintf '%s\\n' '-  replicas: 2' '+  replicas: 3'\nexit 1\n")
+			task, scenarios, _ := newRecordingTask(t, "aliased", tc.calls)
+			var log strings.Builder
+			if err := RecordTask(context.Background(), task, scenarios, nil, &log); err != nil {
+				t.Fatalf("%v\n%s", err, log.String())
+			}
+			s, _ := LoadFixtures(task.Dir)
+			if out, isErr, ok := s.Lookup(sig); !ok || isErr || out != diff || s.Len() != 1 {
+				t.Fatalf("the real dry run's diff must be the fixture: %q %v %v len=%d\n%s",
+					out, isErr, ok, s.Len(), log.String())
+			}
+			kept := regexp.MustCompile(`kept\s+` + regexp.QuoteMeta(sig) +
+				` \(a dry-run placeholder does not replace a recorded fixture\)\n`).MatchString(log.String())
+			if kept != tc.wantKept {
+				t.Fatalf("kept logged: %v, want %v\n%s", kept, tc.wantKept, log.String())
+			}
+		})
+	}
+}
+
+// TestRunScriptResolvesARelativeScriptPath pins runScript's own half of ruling P3-R55 item 1: given a
+// relative directory, it still runs the script, in that directory, although sh starts there and
+// would not find the relative path from inside it.
+func TestRunScriptResolvesARelativeScriptPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "scenario"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf 'ran' > ran.txt\n"
+	if err := os.WriteFile(filepath.Join(root, "scenario", "setup.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root) // restored when the test ends
+	var out strings.Builder
+	if _, err := runScript(context.Background(), "scenario", "setup.sh", os.Environ(), &out); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "scenario", "ran.txt")); err != nil {
+		t.Fatalf("the script must have run in its own directory: %v\n%s", err, out.String())
 	}
 }
