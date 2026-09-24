@@ -296,9 +296,10 @@ func runTaskRepeated(ctx context.Context, t Task, opts RunOptions) taskRun {
 	return averageRuns(runs)
 }
 
-// averageRuns folds the runs of one task into one row: the scores and every count are per-run means,
-// the counts rounded, so the rates the summary derives from them stay per-run rates (ruling P3-R48);
-// a flag is set when any run set it, and the error is the first one seen.
+// averageRuns folds the runs of one task into one row: the scores and every count are per-run means
+// (ruling P3-R48), the counts rounded for display while the row keeps the unrounded means the
+// summary's rates come from (ruling P3-R56); a flag is set when any run set it, and the error is the
+// first one seen.
 func averageRuns(runs []taskRun) taskRun {
 	mean := func(f func(TaskResult) float64) float64 {
 		s := 0.0
@@ -323,6 +324,11 @@ func averageRuns(runs []taskRun) taskRun {
 	avg.PromptTokens = count(func(r TaskResult) int { return r.PromptTokens })
 	avg.CompletionTokens = count(func(r TaskResult) int { return r.CompletionTokens })
 	avg.WallMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.WallMs) })))
+	avg.means = &runMeans{ // unrounded, for the summary's rates (ruling P3-R56)
+		iterations:    mean(func(r TaskResult) float64 { return float64(r.Iterations) }),
+		toolCalls:     mean(func(r TaskResult) float64 { return float64(r.ToolCalls) }),
+		fixtureMisses: mean(func(r TaskResult) float64 { return float64(r.FixtureMisses) }),
+	}
 	avg.Notes = nil
 	for _, r := range runs[1:] {
 		avg.Truncated = avg.Truncated || r.row.Truncated

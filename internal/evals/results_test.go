@@ -61,8 +61,8 @@ func TestSummarizeWeightsTheScoreAndCountsAreas(t *testing.T) {
 // operation and URL, the engine-side causes become fixed phrases, and the engine, IP addresses and
 // host paths are scrubbed, while text with no address in it stays as it was.
 func TestPublicErrorScrubsAddressesAndPaths(t *testing.T) {
-	opts := RunOptions{Host: "http://engine.example.internal:11434", scope: &runScope{home: "/home/operator"}}
-	task := Task{ID: "crashloop-oomkilled", Dir: "/home/operator/src/taracode/evals/tasks/crashloop-oomkilled"}
+	opts := RunOptions{Host: "http://engine.example.internal:11434", scope: &runScope{home: "/srv/operator"}}
+	task := Task{ID: "crashloop-oomkilled", Dir: "/srv/operator/src/taracode/evals/tasks/crashloop-oomkilled"}
 	chat := func(cause error) error {
 		return fmt.Errorf("ollama: /api/chat: %w",
 			&url.Error{Op: "Post", URL: "http://engine.example.internal:11434/api/chat", Err: cause})
@@ -86,8 +86,14 @@ func TestPublicErrorScrubsAddressesAndPaths(t *testing.T) {
 		{errors.New(`Post "http://engine.example.internal:11434/api/chat": EOF`), `Post "<engine>/api/chat": EOF`},
 		{errors.New("engine.example.internal:11434 refused, engine.example.internal is down"), "<engine> refused, <engine> is down"},
 		{errors.New("open " + task.Dir + "/policy.yaml: denied"), "open evals/tasks/crashloop-oomkilled/policy.yaml: denied"},
-		{errors.New("read /home/operator/.kube/config: denied"), "read ~/.kube/config: denied"},
-		{errors.New("read /home/operatorx/file: denied"), "read /home/operatorx/file: denied"},
+		{errors.New("read /srv/operator/.kube/config: denied"), "read ~/.kube/config: denied"},
+		{errors.New("read /srv/operatorx/file: denied"), "read /srv/operatorx/file: denied"},
+		{errors.New("open /home/ollama/.ollama/models/blobs/sha256-ab: denied"), "open ~/.ollama/models/blobs/sha256-ab: denied"},
+		{errors.New("stat /Users/alice/.ollama, /root/.ollama and /home/bob"), "stat ~/.ollama, ~/.ollama and ~"},
+		{errors.New("mount /rootfs/x and /var/home/bob/y"), "mount /rootfs/x and /var/home/bob/y"},
+		{errors.New("dial ::ffff:192.0.2.10 failed"), "dial <addr> failed"},
+		{errors.New("dial tcp [::ffff:192.0.2.10]:11434: refused"), "dial tcp <addr>: refused"},
+		{errors.New("via 64:ff9b::192.0.2.10 and 0:0:0:0:0:ffff:192.0.2.10"), "via <addr> and <addr>"},
 		{errors.New("mkdir " + tmp + ": exists"), "mkdir <tmp>/taracode-eval-1: exists"},
 		{errors.New("version 0.34.2 at 10:00:00, replicas=3"), "version 0.34.2 at 10:00:00, replicas=3"},
 	}
@@ -99,6 +105,36 @@ func TestPublicErrorScrubsAddressesAndPaths(t *testing.T) {
 	if got := publicNotes([]string{"forbidden: read_file path=" + tmp + "/x"}, opts, task); got[0] !=
 		"forbidden: read_file path=<tmp>/taracode-eval-1/x" {
 		t.Errorf("notes %q", got)
+	}
+	// A host given with doubled trailing slashes still scrubs whole: the client trims them all, so
+	// the text carries http://host:port/api/chat (ruling P3-R56).
+	slashed := RunOptions{Host: "http://engine.example.internal:11434//", scope: opts.scope}
+	if got := publicText(`Post "http://engine.example.internal:11434/api/chat": EOF`, slashed, task); got !=
+		`Post "<engine>/api/chat": EOF` {
+		t.Errorf("doubled slashes: %q", got)
+	}
+}
+
+// TestRunnerResultsCarryNoEngineHomePath: an engine error whose status body names the engine's own
+// home (a models directory under /home/ollama) reaches the results as ~ (ruling P3-R56).
+func TestRunnerResultsCarryNoEngineHomePath(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeOllama(t, ollamatest.Turn{Status: http.StatusInternalServerError,
+		Error: "open /home/ollama/.ollama/models/blobs/sha256-1234: permission denied"})
+	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := WriteResults(t.TempDir(), res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := string(data); strings.Contains(text, "/home/ollama") || !strings.Contains(text, "~/.ollama/models/blobs") {
+		t.Fatalf("the engine's home path:\n%s", text)
 	}
 }
 

@@ -30,9 +30,10 @@ type Results struct {
 }
 
 // TaskResult is one task's row. The scores and the counts are per run: with --runs N each is the
-// mean over the runs, the counts rounded to whole numbers, so the rates the summary derives from
-// them (the fixture miss rate, the mean iterations) stay per-run rates (ruling P3-R48). Error and
-// Notes never carry an engine address or a host path (ruling P3-R45).
+// mean over the runs (ruling P3-R48), the counts rounded to whole numbers for display only. The
+// summary's rates, the fixture miss rate and the mean iterations, come from the unrounded per-run
+// values instead, pooled over the runs (ruling P3-R56). Error and Notes never carry an engine
+// address or a host path (ruling P3-R45).
 type TaskResult struct {
 	ID               string   `json:"id"`
 	Area             string   `json:"area"`
@@ -53,6 +54,25 @@ type TaskResult struct {
 	SafetyFailure    bool     `json:"safety_failure"`    // any run's gate allowed a must_deny call
 	Error            string   `json:"error"`             // the first error of the runs, scrubbed
 	Notes            []string `json:"notes,omitempty"`   // the scorer's notes, scrubbed
+
+	means *runMeans // the unrounded per-run counts of a row folded from several runs; not serialized
+}
+
+// runMeans are the unrounded per-run means of the counts the summary derives its rates from (ruling
+// P3-R56). averageRuns keeps them on a row folded from several runs, whose own counts are rounded
+// for display. A single run's row has none, and neither has a row read back from a results file:
+// the summary is computed once, by Run, and stored.
+type runMeans struct {
+	iterations, toolCalls, fixtureMisses float64
+}
+
+// perRun is the row's unrounded per-run iterations, tool calls and fixture misses: the means
+// averageRuns kept, else the row's own counts.
+func (r TaskResult) perRun() (iterations, toolCalls, fixtureMisses float64) {
+	if r.means != nil {
+		return r.means.iterations, r.means.toolCalls, r.means.fixtureMisses
+	}
+	return float64(r.Iterations), float64(r.ToolCalls), float64(r.FixtureMisses)
 }
 
 // AreaSummary is the per-area breakdown.
@@ -116,7 +136,10 @@ func ReadResults(dir string) ([]Results, error) {
 	return out, nil
 }
 
-// summarize computes the totals of a run from its task results and the tasks' weights.
+// summarize computes the totals of a run from its task results and the tasks' weights. The mean
+// iterations and the fixture miss rate come from the rows' unrounded per-run values (perRun, ruling
+// P3-R56). Every task of a run has the same number of runs, so the per-run means pool exactly: the
+// miss rate is the misses of every run over the calls of every run.
 func summarize(tasks []Task, results []TaskResult) Summary {
 	s := Summary{ByArea: map[string]AreaSummary{}}
 	if len(results) == 0 {
@@ -127,8 +150,7 @@ func summarize(tasks []Task, results []TaskResult) Summary {
 		weights[t.ID] = t.Weight
 	}
 	var passed int
-	var weightSum, scoreSum, iterations, wall float64
-	var calls, misses int
+	var weightSum, scoreSum, iterations, wall, calls, misses float64
 	areaScores := map[string][]float64{}
 	for _, r := range results {
 		w := weights[r.ID]
@@ -137,10 +159,11 @@ func summarize(tasks []Task, results []TaskResult) Summary {
 		}
 		weightSum += w
 		scoreSum += w * r.Score
-		iterations += float64(r.Iterations)
+		runIterations, runCalls, runMisses := r.perRun()
+		iterations += runIterations
 		wall += float64(r.WallMs)
-		calls += r.ToolCalls
-		misses += r.FixtureMisses
+		calls += runCalls
+		misses += runMisses
 		if r.Pass {
 			passed++
 		}
@@ -161,7 +184,7 @@ func summarize(tasks []Task, results []TaskResult) Summary {
 	s.MeanIterations = round3(iterations / n)
 	s.MeanWallMs = round3(wall / n)
 	if calls > 0 {
-		s.FixtureMissRate = round3(float64(misses) / float64(calls))
+		s.FixtureMissRate = round3(misses / calls)
 	}
 	for area, scores := range areaScores {
 		sum := 0.0
@@ -230,12 +253,14 @@ func publicNotes(notes []string, opts RunOptions, t Task) []string {
 }
 
 // publicText scrubs a text for a results file (ruling P3-R45): the task directory becomes
-// evals/tasks/<id>, the temporary directory <tmp>, the home directory ~, the engine's URL, address
-// and host name <engine>, and any other IP address, with or without a port, <addr>.
+// evals/tasks/<id>, the temporary directory <tmp>, the home directory ~ (and so does any user home a
+// path starts with, the engine's own included, ruling P3-R56), the engine's URL, address and host
+// name <engine>, and any other IP address, with or without a port, <addr>.
 func publicText(s string, opts RunOptions, t Task) string {
 	for _, p := range scrubbedPaths(opts, t) {
 		s = replaceBounded(s, p[0], p[1], isPathByte, isPathByte)
 	}
+	s = scrubUserHomes(s)
 	for _, form := range engineForms(opts.Host) {
 		s = strings.ReplaceAll(s, form, "<engine>")
 	}
@@ -247,12 +272,39 @@ func publicText(s string, opts RunOptions, t Task) string {
 }
 
 // ipLiteral matches an IPv6 address in brackets, an IPv4 address and a bare IPv6 address (the full
-// form, or one with "::" and a group on at least one side), each with an optional port.
+// form, or one with "::" and a group on at least one side), each with an optional port. A bare IPv6
+// address may end in a dotted quad, as an IPv4-mapped one does (::ffff:192.0.2.10, ruling P3-R56).
 var ipLiteral = regexp.MustCompile(`\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*(?:%[0-9A-Za-z._-]+)?\](?::\d{1,5})?` +
 	`|\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b` +
+	`|\b(?:[0-9A-Fa-f]{1,4}:){6}\d{1,3}(?:\.\d{1,3}){3}\b` +
 	`|\b(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}\b` +
-	`|\b[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6}::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?` +
-	`|::[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6}\b`)
+	`|\b[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6}::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?` + dottedQuadTail +
+	`|::[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6}` + dottedQuadTail + `\b`)
+
+// dottedQuadTail continues an IPv6 address whose last group starts an embedded IPv4 address.
+const dottedQuadTail = `(?:(?:\.\d{1,3}){3})?`
+
+// userHome matches the start of a user's home directory: /home/<user>, /Users/<user> or /root.
+var userHome = regexp.MustCompile(`/home/[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+|/root`)
+
+// scrubUserHomes rewrites a user's home directory to ~ wherever it starts a path, whoever the user
+// is: a status body from the engine can name the engine's own home, such as an .ollama directory
+// (ruling P3-R56). A match inside a longer path (/var/home/x) or a longer name (/rootfs) stays.
+func scrubUserHomes(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, loc := range userHome.FindAllStringIndex(s, -1) {
+		start, end := loc[0], loc[1]
+		if start > 0 && (isPathByte(s[start-1]) || s[start-1] == '/') || end < len(s) && isPathByte(s[end]) {
+			continue
+		}
+		b.WriteString(s[last:start])
+		b.WriteString("~")
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
 
 // scrubbedPaths are the host paths publicText replaces, each also in its symlink-free form, longest
 // first so a task directory under the home directory keeps its own replacement.
@@ -291,7 +343,7 @@ func scrubbedPaths(opts RunOptions, t Task) [][2]string {
 // engineForms are the engine's URL as given and as scheme://host[:port], and its host[:port],
 // longest first.
 func engineForms(host string) []string {
-	host = strings.TrimSuffix(strings.TrimSpace(host), "/")
+	host = strings.TrimRight(strings.TrimSpace(host), "/") // http://h:11434// is http://h:11434
 	if host == "" {
 		return nil
 	}
