@@ -56,7 +56,7 @@ func Shell(command string) ShellResult {
 		if len(words) > 0 { // a segment of safe assignments only names no program and no host
 			hosts = append(hosts, hostsIn(words)...)
 		}
-		vars.note(seg.Words)
+		vars.note(seg.Words, seg.Parenthesized)
 	}
 	out.Hosts = hosts
 	return out
@@ -70,9 +70,10 @@ func Shell(command string) ShellResult {
 func shellSegment(seg shellwords.Segment, vars lineVars) (Result, []string) {
 	simple, header := simpleCommand(seg.Words)
 	command := simple[assignmentsEnd(simple):]
-	// Redirects and the background flag are checked before the empty-words case below: a segment
-	// that is only a redirect ("> out.txt") or only an assignment ("NAME=value &") must never pass
-	// just because it has no program to classify.
+	// Redirects, the background flag and expansionCheck are all checked before the empty-words case
+	// below (P3-R8): a segment that is only a redirect ("> out.txt"), only an assignment
+	// ("NAME=value &") or only an assignment whose value itself expands ("x=${y:=-delete}") must
+	// never pass just because it has no program to classify.
 	for _, r := range seg.Redirects {
 		if writesFile(r) {
 			return mutate(first(command), "the redirect "+r+" writes a file"), nil
@@ -91,11 +92,11 @@ func shellSegment(seg shellwords.Segment, vars lineVars) (Result, []string) {
 	if !ok {
 		return res, nil
 	}
-	if len(words) == 0 {
-		return read(""), nil
-	}
 	if res, found := vars.expansionCheck(simple, seg.Redirects, words); found {
 		return res, nil
+	}
+	if len(words) == 0 {
+		return read(""), nil
 	}
 	return shellProgram(words), words
 }
@@ -139,12 +140,15 @@ var programVars = map[string]bool{
 	"LESSOPEN": true, "LESSCLOSE": true, "GREP_OPTIONS": true, "MAKEFLAGS": true, "AWKPATH": true, "AWKLIBPATH": true,
 	"PYTHONSTARTUP": true, "PERL5LIB": true, "PERL5OPT": true, "RUBYOPT": true, "RUBYLIB": true, "GOFLAGS": true,
 	"GOROOT": true, "GOPROXY": true, "GOTOOLCHAIN": true, "GOOGLE_APPLICATION_CREDENTIALS": true,
+	// I2: these smuggle an option into an allowlisted reader through its own default-options variable
+	// (less -O, more's $MORE) or point it at a different config/module directory it then trusts.
+	"LESS": true, "MORE": true, "PYTHONHOME": true, "PYTHONUSERBASE": true, "GNUPGHOME": true, "WGETRC": true,
 }
 
 // programVarPrefixes and programVarSuffixes catch the same class by name shape.
 var (
 	programVarPrefixes = []string{"LD_", "DYLD_", "GIT_", "KUBECTL_", "HELM_", "TF_", "DOCKER_", "CLOUDSDK_",
-		"SSH_", "BASH_"}
+		"SSH_", "BASH_", "PYTHON"}
 	programVarSuffixes = []string{"PATH", "_HOME", "_DIR", "_FILE", "_CONFIG", "_OPTS", "_OPTIONS", "_ENV", "_PRELOAD",
 		"_CMD", "_COMMAND", "_PROGRAM", "_EDITOR", "_PAGER", "_SHELL", "_BIN", "_EXEC"}
 )

@@ -96,7 +96,7 @@ func (l *kubeLine) segment(seg shellwords.Segment) {
 	if !header {
 		l.command(words)
 	}
-	l.vars.note(seg.Words)
+	l.vars.note(seg.Words, seg.Parenthesized)
 }
 
 // command reads a simple command; when it may change the kube configuration for the commands after
@@ -227,12 +227,14 @@ func (l *kubeLine) runTimeArguments(tokens []string) bool {
 
 // runTime reports a word whose value the classifier cannot read: a ${...} with an operator, a
 // substitution, a special or positional parameter ($@, $*, $1..$9, $#, $_, $-, ...) that set -- or a
-// function's arguments can set to anything, or a variable the line did not set to plain words. An
-// argument of kubectl or helm like that can split into -n, --context or --kubeconfig and override
-// the ones read.
+// function's arguments can set to anything, or a variable the line did not set to plain words. A
+// substitution operator (${c:+--context=prod}) is run time even when the name it reads is a plain,
+// literal variable (P3-R10): the operator can still swap in its own word instead of that value. An
+// argument of kubectl or helm like that can split into -n, --context or --kubeconfig and override the
+// ones read.
 func (v lineVars) runTime(word string) bool {
 	for _, r := range references(word) {
-		if r.Name == "" || specialParameter(r.Name) {
+		if r.Name == "" || specialParameter(r.Name) || r.Substitutes {
 			return true
 		}
 		if kind, set := v[r.Name]; !set || kind != literalValue {

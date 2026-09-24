@@ -23,31 +23,86 @@ const (
 
 var identifierPrefix = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*`)
 
+// underscoreUnknown is a lineVars key that can never be a real shell identifier (a bare "$" alone is
+// never a variable name), used as a sentinel: once set, $_ is unknowable for the rest of the line
+// (P3-R6) and note leaves it alone from here on, even for a later segment that looks like a plain
+// command.
+const underscoreUnknown = "$_"
+
+// poisonUnderscore records that $_ can no longer be tracked: a condition or a loop body can run its
+// commands zero, one or many times, and a subshell's own $_ never reaches the parent shell, so this
+// classifier's flat, segment-by-segment model cannot know its value from here on. $_ becomes the most
+// dangerous kind (optionValue) and stays that way for the rest of the line.
+func (v lineVars) poisonUnderscore() {
+	v[underscoreUnknown] = optionValue
+	v["_"] = optionValue
+}
+
+func (v lineVars) underscorePoisoned() bool {
+	_, poisoned := v[underscoreUnknown]
+	return poisoned
+}
+
+// raise records a variable's kind, keeping the more dangerous of what was already recorded and kind:
+// optionValue is the most dangerous, then globValue, then literalValue (min, in their declared order),
+// the same rule the for-list scan below already applies across a list's own words. A kind never
+// downgrades: a command-prefix assignment (x=1 true) does not persist past its command, and an empty
+// or in-less for loop may not run its body at all, so the earlier, more dangerous value can still be
+// the real one.
+func (v lineVars) raise(name string, kind varKind) {
+	if old, set := v[name]; set {
+		kind = min(kind, old)
+	}
+	v[name] = kind
+}
+
 // note records the variables a segment sets for the segments after it: a for loop's variable, and
 // the NAME=value words in front of a command or alone. In front of a command they apply to that
 // command only, except before a POSIX special builtin (exec, :, set, ...), where they stay set; they
-// are recorded either way, and so is $_, the previous command's last argument.
-func (v lineVars) note(words []string) {
+// are recorded either way. $_, the previous command's last argument, is tracked the same way, but
+// only across a line of plain commands joined by ; && || and | (P3-R6): a control word (opening or
+// closing), a case head, a brace group or a parenthesis anywhere on the line poisons it permanently
+// (poisonUnderscore), since none of them changes bash's real $_ the way a flat, segment-by-segment
+// model would assume.
+func (v lineVars) note(words []string, parenthesized bool) {
+	if parenthesized {
+		v.poisonUnderscore()
+	}
 	i := 0
 	for i < len(words) && openingWords[words[i]] {
 		i++
 	}
-	words = words[i:]
-	if len(words) >= 2 && words[0] == "for" {
-		kind := literalValue
-		if len(words) > 2 && words[2] == "in" {
-			for _, w := range words[3:] {
+	stripped := words[i:]
+	switch {
+	case len(stripped) == 0, len(stripped) == 1 && closingWords[stripped[0]]:
+		v.poisonUnderscore()
+		return
+	case stripped[0] == "case":
+		v.poisonUnderscore()
+		return
+	case stripped[0] == "for":
+		kind := optionValue // no "in", or an empty list: an unknown number of iterations, or none
+		if len(stripped) > 3 && stripped[2] == "in" {
+			kind = literalValue
+			for _, w := range stripped[3:] {
 				kind = min(kind, valueKind(w))
 			}
 		}
-		v[words[1]] = kind
+		v.raise(stripped[1], kind)
+		v.poisonUnderscore()
 		return
 	}
-	for _, w := range words[:assignmentsEnd(words)] {
-		name, value, _ := strings.Cut(w, "=")
-		v[name] = valueKind(value)
+	if i > 0 { // an opening word (if, while, !, do, ...) ran what remains: how often is unknown
+		v.poisonUnderscore()
 	}
-	if command := words[assignmentsEnd(words):]; len(command) > 0 {
+	for _, w := range stripped[:assignmentsEnd(stripped)] {
+		name, value, _ := strings.Cut(w, "=")
+		v.raise(name, valueKind(value))
+	}
+	if v.underscorePoisoned() {
+		return
+	}
+	if command := stripped[assignmentsEnd(stripped):]; len(command) > 0 {
 		v["_"] = valueKind(command[len(command)-1])
 	}
 }
@@ -126,10 +181,20 @@ func reference(rest string) (expansionRef, int) {
 // variable the line set to a value with an option or an expansion, a substitution operator whose
 // literal word is an option, ${...} with an assigning operator, or a command substitution. $_ is the
 // last argument of the previous command, which note records like any variable; a variable the line
-// does not set is taracode's environment, which the user controls.
+// does not set is taracode's environment, which the user controls. Any reference immediately followed
+// by "-" in the same word injects too (P3-R7), whatever it reads: the substitution operators can
+// expand to nothing (${X:+w} and ${X+w} when X is unset, ${X:-} and ${X-} when X is unset or empty),
+// and a plain $X can itself be an empty variable, so the "-" would then start the word instead of
+// following a value. It rescans word itself (rather than calling references) so it can see the byte
+// after each reference ends.
 func (v lineVars) injects(word string) bool {
-	for _, r := range references(word) {
-		if r.Name == "" {
+	for i := 0; i < len(word); i++ {
+		if word[i] != '$' {
+			continue
+		}
+		r, n := reference(word[i+1:])
+		end := i + 1 + n
+		if r.Name == "" || (end < len(word) && word[end] == '-') {
 			return true
 		}
 		if kind, set := v[r.Name]; set && kind == optionValue {
@@ -138,6 +203,7 @@ func (v lineVars) injects(word string) bool {
 		if r.Substitutes && valueKind(strings.Trim(r.Word, `"'`)) == optionValue {
 			return true
 		}
+		i += n
 	}
 	return false
 }
