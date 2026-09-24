@@ -4,5 +4,4 @@ services:
     image: nginx:1.27-alpine
     ports: ["18080:80"]
   api:
-    image: busybox:1.37
-    command: ["sh", "-c", "echo 'api: DATABASE_URL is not set, refusing to start' >&2; exit 1"]
+    image: taracode-eval-compose-down-api:latest

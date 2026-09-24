@@ -24,7 +24,7 @@ record:
     - {tool: helm, args: {args: "get values shop-web -n helm-demo --revision 1"}}
     - {tool: helm, args: {args: "get manifest shop-web -n helm-demo"}}
     - {tool: kubectl, args: {verb: get, resource: pods, namespace: helm-demo}}
-    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app.kubernetes.io/name=shop-web ns=helm-demo}}", namespace: helm-demo}}
+    - {tool: kubectl, args: {verb: describe, resource: pod, name: "{{pod app.kubernetes.io/name=shop-web ns=helm-demo phase=Pending}}", namespace: helm-demo}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: helm-demo}}
     - {tool: shell, args: {command: "helm list -n helm-demo"}}
     - {tool: shell, args: {command: "helm status shop-web -n helm-demo"}}

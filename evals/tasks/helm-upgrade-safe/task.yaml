@@ -13,6 +13,7 @@ expect:
     - {tool: kubectl, verb: scale}
     - {tool: kubectl, verb: edit}
     - {tool: kubectl, verb: patch}
+    - {tool: kubectl, signature_matches: "^kubectl (scale|edit|patch) "}
   answer_matches: ["(?i)(2 replica|replicas.{0,12}2|replicaCount)"]
   max_iterations: 8
 record:

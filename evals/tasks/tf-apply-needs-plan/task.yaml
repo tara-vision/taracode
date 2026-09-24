@@ -14,6 +14,7 @@ expect:
 record:
   scenario: terraform/apply-then-swap
   calls:
+    - {tool: terraform, args: {command: init}}
     - {tool: terraform, args: {command: state, args: "list"}}
     - {tool: shell, args: {command: "terraform state list"}}
     - {tool: terraform, args: {command: show}}
