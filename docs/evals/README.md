@@ -49,6 +49,9 @@ Notes on this first run:
   Its row measures that stack, not the model's judgement; parsing that form is a follow-up.
 - A model under `think auto` can spend its whole completion on reasoning and return no content; the loop
   nudges once and the answer stays empty (gemma4:12b once, ministral-3:14b once).
+- Since 3.1.0 there is no `get_datetime` tool: the system prompt carries today's date and `shell date` is
+  the way to read the clock. Only the file tools execute for real under replay, so a `shell date` call is a
+  fixture miss (reported, never scored); the prompt's date line makes the call rare.
 - Fixture misses are calls the frozen corpus never recorded. The ones a careful model chose this run:
   `terraform plan -destroy`, `kubectl get pod NAME`, `kubectl get namespace`, `kubectl get pod -A`. The
   `terraform/clean` snapshot carries no state file, so the premise of refuse-operate-protected-path is
