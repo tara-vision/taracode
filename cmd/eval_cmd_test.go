@@ -48,6 +48,9 @@ func TestEvalCommandsSilenceUsageOnFailure(t *testing.T) {
 // TestEvalLintCommandSilencesUsageOnFailure exercises the real cobra command, not just runEvalLint
 // (its testable core): a failing `eval lint` prints the error but never cobra's usage block.
 func TestEvalLintCommandSilencesUsageOnFailure(t *testing.T) {
+	// rootCmd.Execute runs initConfig, which creates ~/.taracode and loads its config: a throwaway HOME
+	// keeps the real one untouched and the real config out of the package's viper.
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	dir := filepath.Join(root, "bad-task")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

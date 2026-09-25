@@ -1,10 +1,14 @@
 package classify
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tara-vision/taracode/internal/policy"
+)
 
 // causeExpandedObjects is why a kubectl command of a shell line whose words sh expands has the
-// namespace "*" (expandsIntoNamespaceObject).
-const causeExpandedObjects = "a word the shell expands can name a namespace object"
+// namespace "*" (expandsIntoNamespaceObject); the policy names the kubectl tool as its remedy.
+const causeExpandedObjects = policy.CauseExpandedObjects
 
 // expandsIntoNamespaceObject reports a kubectl command of a shell line that holds a word sh expands (a
 // glob, or a brace with alternatives or a sequence) and can change a namespace object through it.
@@ -15,6 +19,8 @@ const causeExpandedObjects = "a word the shell expands can name a namespace obje
 // is among its objects, as written or once expanded, or an option's value expands to one; with the
 // verb itself unreadable, when any word can name the kind. The words have their quotes removed, so a
 // quoted glob or brace counts too (fail closed). The kubectl tool runs no shell and is not read so.
+// kubectl refuses a resource argument next to -f, --filename, -k or --kustomize, so a command that
+// reads its objects from files names none, whatever its words expand to (apply -f *.yaml).
 func expandsIntoNamespaceObject(tokens []string) bool {
 	if !anyExpands(tokens) {
 		return false
@@ -25,19 +31,53 @@ func expandsIntoNamespaceObject(tokens []string) bool {
 		_, found := starIfNamespaceWord(tokens)
 		return found
 	}
-	if !namespaceObjectVerbs[strings.ToLower(verb)] {
+	verb = strings.ToLower(verb)
+	if !namespaceObjectVerbs[verb] {
 		return false
 	}
 	args := readKubeArgs(rest)
-	if _, found := starIfNamespaceWord(append(append([]string{}, args.positionals...), after...)); found {
-		return true
+	if args.ambiguous { // an option the classifier does not know may take any next word, -f included
+		_, found := starIfNamespaceWord(append(append([]string{}, rest...), after...))
+		return found
 	}
-	for _, v := range args.values {
+	if args.files {
+		return false
+	}
+	objects := append(append([]string{}, args.positionals...), after...)
+	values := args.values
+	if len(objects) > 0 && literalOtherKind(objects[0]) {
+		values = values[:args.leading] // an option after the type can add only names of that type
+	}
+	for _, v := range values {
 		if expandsToNamespaceKind(v) {
 			return true
 		}
 	}
-	return false
+	return objectsNameNamespace(verb, objects)
+}
+
+// objectsNameNamespace reports objects that can name the namespace kind, as written or once sh expands
+// them. create reads the kind from its subcommand alone (create ns x, but create configmap x
+// --from-file *.conf), and after a type of another kind written out every word names an object of that
+// kind (delete pod -n shop *): kubectl reads no kind from a name, and refuses a type/name word there.
+func objectsNameNamespace(verb string, objects []string) bool {
+	if len(objects) == 0 {
+		return false
+	}
+	if verb == "create" {
+		objects = objects[:1]
+	}
+	if literalOtherKind(objects[0]) {
+		return false
+	}
+	_, found := starIfNamespaceWord(objects)
+	return found
+}
+
+// literalOtherKind reports a first object written out, without a glob or a brace, as a bare type of a
+// kind other than the namespace (pod, deploy, configmap): the words after it name objects of that kind.
+func literalOtherKind(word string) bool {
+	return !anyExpands([]string{word}) && !strings.Contains(word, "/") && !namespaceTypeWord(word)
 }
 
 // anyExpands reports a word sh expands before the program reads it: a glob character, or a brace with

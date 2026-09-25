@@ -193,19 +193,27 @@ func namespaceTypeWord(w string) bool {
 	return false
 }
 
-// globMatchesNamespaceKind reports a glob that can match a file named ns, namespace or namespaces, in
-// any case and with a group or version after a dot: sh replaces it with the names of the files it
-// matches in the working directory.
+// namespaceSpellings are the words kubectl reads as the namespace kind: ns, namespace and namespaces,
+// alone or with the core group or version after a dot (namespaces., namespaces.v1.), and with v1 alone
+// after it (namespaces.v1), which namespaceKind reads so too.
+var namespaceSpellings = func() []string {
+	var out []string
+	for _, kind := range []string{"ns", "namespace", "namespaces"} {
+		out = append(out, kind, kind+".", kind+".v1", kind+".v1.")
+	}
+	return out
+}()
+
+// globMatchesNamespaceKind reports a glob that can match a file named like the namespace kind (n?,
+// name*, *), in any case: sh replaces it with the names of the files it matches in the working
+// directory. A glob for file names such as *.yaml matches none: kubectl reads no such word as the kind.
 func globMatchesNamespaceKind(k string) bool {
 	if !strings.ContainsAny(k, "*?[") {
 		return false
 	}
 	lower := strings.ToLower(k)
-	head, _, _ := strings.Cut(lower, ".")
-	for _, spelling := range []string{"ns", "namespace", "namespaces"} {
-		whole, _ := path.Match(lower, spelling)
-		beforeDot, _ := path.Match(head, spelling)
-		if whole || beforeDot {
+	for _, spelling := range namespaceSpellings {
+		if ok, _ := path.Match(lower, spelling); ok {
 			return true
 		}
 	}
@@ -216,8 +224,10 @@ func globMatchesNamespaceKind(k string) bool {
 type kubeArgs struct {
 	positionals []string
 	values      []string // the words options take as their values (-l x, --grace-period 0)
+	leading     int      // how many of values come before the first positional
 	selects     bool     // --all, -l or --field-selector: the command selects objects instead of naming them
 	raw         bool     // --raw: a URI names the object, in any namespace
+	files       bool     // -f, --filename, -k or --kustomize: kubectl refuses a resource argument next to them
 	ambiguous   bool     // before the first positional, an option the classifier does not know: it may take the next word
 }
 
@@ -243,6 +253,9 @@ func readKubeArgs(tokens []string) kubeArgs {
 func (a *kubeArgs) value(tokens []string, i, n int) int {
 	if n == 1 && i+1 < len(tokens) {
 		a.values = append(a.values, tokens[i+1])
+		if len(a.positionals) == 0 {
+			a.leading++
+		}
 	}
 	return n
 }
@@ -254,6 +267,7 @@ func (a *kubeArgs) long(t string, beforeObjects bool) int {
 		a.selects = true
 	}
 	a.raw = a.raw || name == "--raw"
+	a.files = a.files || in(name, "--filename", "--kustomize")
 	switch {
 	case inline, in(name, kubeBooleanLong...), in(name, kubectlGlobals.boolean...):
 		return 0
@@ -272,9 +286,8 @@ func (a *kubeArgs) short(t string, beforeObjects bool) int {
 		switch {
 		case strings.IndexByte(kubeShortBool, c) >= 0:
 		case strings.IndexByte(kubeShortValued, c) >= 0:
-			if c == 'l' {
-				a.selects = true
-			}
+			a.selects = a.selects || c == 'l'
+			a.files = a.files || c == 'f' || c == 'k'
 			if j+1 < len(t) {
 				return 0
 			}

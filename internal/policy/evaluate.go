@@ -72,10 +72,22 @@ const CauseNamespaceObjects = "the command changes several namespaces or selects
 // names another namespace, is a namespace the policy can check.
 const namespaceObjectRemedy = "name a single namespace object, or drop -n"
 
+// CauseExpandedObjects is the cause the classifier records when a word the shell expands (a glob, or a
+// brace list, quoted or not) in a kubectl command of a shell line can name a namespace object, which
+// makes its namespace "*". A literal -n does not pin that down; the kubectl tool, which runs no shell,
+// reads the same words literally, so its deny names expandedObjectRemedy.
+const CauseExpandedObjects = "a word the shell expands can name a namespace object"
+
+// expandedObjectRemedy is the remedy for CauseExpandedObjects.
+const expandedObjectRemedy = "use the kubectl tool, which runs no shell"
+
 // namespaceRemedy is the remedy a "*" namespace's deny names for its cause.
 func namespaceRemedy(reason string) string {
-	if reason == CauseNamespaceObjects {
+	switch reason {
+	case CauseNamespaceObjects:
 		return namespaceObjectRemedy
+	case CauseExpandedObjects:
+		return expandedObjectRemedy
 	}
 	return kubeRemedy
 }

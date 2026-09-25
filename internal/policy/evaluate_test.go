@@ -157,6 +157,14 @@ func TestANamespaceObjectStarDenyNamesItsOwnRemedy(t *testing.T) {
 	if !strings.Contains(other.Reason, "literal --context and -n") || strings.Contains(other.Reason, objectRemedy) {
 		t.Fatalf("another cause keeps the -n remedy: %+v", other)
 	}
+	// Round 3 (M3): a word the shell expands is not fixed by a literal -n; the kubectl tool, which runs no
+	// shell, reads the same words literally.
+	expanded := Default().Evaluate(ModeOperate, mutate("shell", "", `kubectl patch ns shop -p '{"a":1,"b":2}'`,
+		Targets{KubeContext: "kind-dev", KubeNamespace: "*", KubeReason: CauseExpandedObjects}))
+	if expanded.Rule != "protected.kube_namespaces" || !strings.HasSuffix(expanded.Reason,
+		"("+CauseExpandedObjects+"), including the protected kube-system; use the kubectl tool, which runs no shell") {
+		t.Fatalf("an expanded word names the kubectl tool alone: %+v", expanded)
+	}
 }
 
 // TestSeveralContextsHitProtectedContexts: a shell line that names more than one kube context
