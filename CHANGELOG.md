@@ -63,11 +63,26 @@ files keep working unchanged; `mcp:` is a new, optional policy section.
   command substitution, a `#` glued to a closing paren, a backslash-newline continuation, a run of empty
   parameter references before a `-`, brace expansion rebuilding a line's variable name, a quoted brace
   inside `${...}`, and integer overflow in a `{a..b}` brace sequence.
+- Four more fail-open shapes, regressions of this release's own relaxation that the whole-branch review
+  found: an `awk` statement's redirect after a backslash-newline or a `,`, `&&` or `||` continuation, an
+  `awk` regex literal right after `print` (read as division, so a `;` inside it ended the statement),
+  `git config --worktree KEY VALUE` (a boolean flag read as value-taking, so the write looked like a read),
+  and an `ifconfig` flag word after the interface (`ifconfig en0 inet6 -ifdisabled`).
+- A kubectl `label` or `annotate` call follows kubectl's own rule for `KEY=VALUE` and `KEY-` pairs, so
+  `kubectl label ns - kube-system team=x` names kube-system and a pair in the TYPE/NAME form no longer reads
+  as a second object. A namespace word the shell would expand (`kube-sys{tem,}`, `kube-syst*`,
+  `{ns,kube-system}`) reads as any namespace and is refused under a protected namespace; on the shell path a
+  namespace-object command whose argument carries a brace or glob, quoted or not, is refused too, with the
+  `kubectl` tool (which runs no shell) named as the way through.
 - The `kubectl` verb, resource and name parameters and the `terraform` command parameter now run as separate
   `argv` words instead of one shell-joined token; a namespace, context or directory parameter is still
   passed through whole, even when it contains a space.
 - The MCP adapter's denial reason for an untrusted tool no longer tells a read-only-hinted tool that it "is
   not marked read-only"; the message now matches whichever trust rule actually applied.
+- A model named without a tag (`--model glm-4.7-flash`) matches the engine's `glm-4.7-flash:latest`;
+  taracode no longer falls back to the first listed model behind a warning.
+- `taracode eval` subcommands print their error instead of the usage block when they fail, and
+  `eval report` ignores a `*-partial.json` file left by an interrupted run.
 
 ### Migration from 3.0.0-alpha.2
 - Nothing required. A policy file may add an `mcp:` section (`trust_read_only_hint`, `read_only`); without
