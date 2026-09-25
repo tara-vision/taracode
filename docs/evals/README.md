@@ -39,7 +39,8 @@ docs/evals/scoreboard.md, scoreboard.json
 ```
 
 `workdir/`, when present, is copied into the run directory; the five file tools operate on the copy for real.
-An operate task's `policy.yaml` is written to `.taracode/policy.yaml` after `InitProject`.
+For an operate task, the runner creates the run directory's `.taracode` storage with `storage.NewManager`
+and writes the task's `policy.yaml` into it.
 
 ### The task.yaml reference
 
@@ -120,15 +121,16 @@ git-ignored.
 
 ## Environment isolation
 
-Every `eval run` (and the recorder) builds the assistant with an isolated environment, not the operator's
-own: `KUBECONFIG` points at a path that does not exist, `HELM_KUBECONTEXT` and `HELM_NAMESPACE` are cleared,
-and `HOME` is a fresh, empty directory created for that run alone. No run reads the machine's real
-kubeconfig, its `~/.taracode/policy.yaml`, or its permission store. This matters for an operate-mode task
-whose policy protects a kube context or a namespace: with no kubeconfig to read and no environment variable
-set, an unnamed context or namespace resolves to `"*"`, and a policy that protects `"*"` denies everything.
-A task that means to exercise a protected-target denial must therefore either have the model name its
-context and namespace explicitly (matching the fixtures recorded for it), or write a policy that protects
-nothing and expect the call through.
+Every `eval run` builds the assistant with an isolated environment, not the operator's own: `KUBECONFIG`
+points at a path that does not exist, `HELM_KUBECONTEXT` and `HELM_NAMESPACE` are cleared, and `HOME` is a
+fresh, empty directory created for that run alone. No run reads the machine's real kubeconfig, its
+`~/.taracode/policy.yaml`, or its permission store. The recorder builds no assistant and runs with the host
+environment on purpose, since it needs the live cluster and its kubeconfig. This matters for an operate-mode
+task whose policy protects a kube context or a namespace: with no kubeconfig to read and no environment
+variable set, an unnamed context or namespace resolves to `"*"`, and a policy that protects `"*"` denies
+everything. A task that means to exercise a protected-target denial must therefore either have the model
+name its context and namespace explicitly (matching the fixtures recorded for it), or write a policy that
+protects nothing and expect the call through.
 
 Every run's transcript ends with a `## calls` block: one line per decided call, its canonical signature, the
 rule that allowed or denied it, and `MISS <signature>` on a call the replay could not find a fixture for;
@@ -136,9 +138,11 @@ the results JSON carries the same misses as `fixture miss: <signature>` notes on
 sees on a miss never names the task, so a run cannot accidentally teach a model which eval it is inside.
 
 A task that reaches its iteration cap does not end the turn empty-handed: the loop makes one final
-completion with no tools offered, so the answer still carries whatever the model found before the cap. Eval
-runs cap `num_predict` at 4096 tokens by default, where the interactive REPL leaves it at 0 (the model's own
-default), so a run's wall time stays bounded even when a small model would otherwise ramble past its answer.
+completion with no tools offered, so the answer still carries whatever the model found before the cap. The
+`iterations` field in a task's results counts completions, including that final tool-free one, so a capped
+run reports `max_iterations + 1`. Eval runs cap `num_predict` at 4096 tokens by default, where the
+interactive REPL leaves it at 0 (the model's own default), so a run's wall time stays bounded even when a
+small model would otherwise ramble past its answer.
 
 ## Adding a task
 
@@ -190,10 +194,7 @@ Every run pins `temperature` to 0 and defaults `think` to `auto`, the same defau
 In replay mode (`eval run`), nothing the model calls actually executes except the five file tools, and even
 those run only inside a throwaway per-task directory; every other tool is answered from a recorded fixture,
 so a run never touches the real network or the real sandbox. Operate-mode tasks write their own
-`policy.yaml` into the run directory, but taracode's normal policy loading still merges in a
-`~/.taracode/policy.yaml` from the machine running the eval, if one exists there. That means an operate-mode
-result can be influenced by whoever's machine produced it. Generate the scoreboard from a machine with no
-`~/.taracode/policy.yaml` of its own.
+`policy.yaml` into the run directory.
 
 ## Known limitations
 
@@ -212,3 +213,8 @@ result can be influenced by whoever's machine produced it. Generate the scoreboa
   kept attached to their value the way the selector flags (`-l`, `--selector`, `--field-selector`) are, so
   the flag and its value can end up in different positions among a signature's sorted extra args. Record
   both spellings a model might use for these until they join the attached list.
+- A kubectl object supplied through `-f`, `-k` or stdin is not read by the classifier, so a namespace named
+  only inside that object is never a protected target.
+- A `deny.commands` pattern is an anchored whole-command glob: a prefixed command (`env X=1 kubectl ...`)
+  does not match a pattern written for the bare command, even though the protected-target checks still see
+  through the prefix and apply as usual.
