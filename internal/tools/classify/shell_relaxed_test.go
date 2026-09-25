@@ -58,6 +58,9 @@ var relaxedReads = []string{
 	`kubectl get pods --all-namespaces -o jsonpath="{..image}"`,
 	"kubectl get pods -o jsonpath='{range .items[*]}{..image}{end}'",
 	`awk '{print $1 ".." $2}' f`, "git log {main..dev}", "cat {..}",
+	// final review: --worktree is a boolean flag in git (like --local), so the key after it is the one
+	// positional and git config --worktree <key> reads it
+	"git config --worktree user.name",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -72,7 +75,7 @@ var relaxedMutations = map[string]string{
 	"gcloud logging write mylog hello": "write", "gcloud delete describe-x": "delete",
 	"git config user.email me@example.com": "config", "git config --unset user.email": "config",
 	"git config -e": "config", "git config set user.email me@example.com": "config",
-	"ifconfig en0 inet 10.0.0.2": "ifconfig", "ifconfig en0 down": "ifconfig",
+	"ifconfig en0 inet 192.0.2.2": "ifconfig", "ifconfig en0 down": "ifconfig",
 	// fix round 1, C1 (replaced by P3-R13 in round 2): $_ is never tracked, so it always injects,
 	// exactly as before Task 4; the six control-word probes below still hold, by the simpler rule
 	"for x in 1; do echo -delete; done; find . $_": "find", "if true; then echo -delete; fi; find . $_": "find",
@@ -165,6 +168,17 @@ var relaxedMutations = map[string]string{
 	"a0=-delete; find . $a{0..-9223372036854775808}": "find",
 	"a0=-o; sort $a{0..9223372036854775807} out f":   "sort",
 	"a1=-delete; find . $a{4294967297..4294967297}":  "find",
+	// final review: awk continues a statement across a backslash-newline and after a comma, && or ||,
+	// so a newline does not end the print's redirect scope; each of these writes the file (macOS awk,
+	// POSIX awk and gawk alike)
+	"awk 'BEGIN{print \"x\" \\\n > \"/etc/cron.d/x\"}'": "awk", "awk 'BEGIN{print \"a\",\n\"b\" > \"/etc/cron.d/x\"}'": "awk",
+	"awk 'BEGIN{print \"a\" &&\n\"b\" > \"/etc/cron.d/x\"}'": "awk", "awk 'BEGIN{print \"a\" ||\n\"b\" > \"/etc/cron.d/x\"}'": "awk",
+	// final review: git config --worktree takes no value, so a key and a value after it write the
+	// repository configuration (core.hooksPath there moves every hook)
+	"git config --worktree user.name x": "config",
+	// final review: a -flag word configures an interface (macOS and BSD ifconfig clear IFDISABLED here,
+	// and -arp turns ARP off), so only IFACE or IFACE FAMILY is a query
+	"ifconfig en0 inet6 -ifdisabled": "ifconfig", "ifconfig en0 -arp": "ifconfig",
 }
 
 func TestRelaxedReads(t *testing.T) {
