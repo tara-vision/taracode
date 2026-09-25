@@ -61,6 +61,25 @@ func (p Policy) denyPattern(command string) (Verdict, bool) {
 const kubeRemedy = "run kubectl or helm as its own command with a literal --context and -n, or use the " +
 	"kubectl or helm tool"
 
+// CauseNamespaceObjects is the cause the classifier records when the namespace objects a kubectl
+// command changes make its namespace "*" (ruling P3-R69): several of them, a selection, or one next
+// to a -n that names another namespace. A literal -n or the kubectl tool does not pin that down, so
+// its deny names namespaceObjectRemedy instead of kubeRemedy.
+const CauseNamespaceObjects = "the command changes several namespaces or selects them, or names a namespace " +
+	"object and another namespace"
+
+// namespaceObjectRemedy is the remedy for CauseNamespaceObjects: one namespace object, and no -n that
+// names another namespace, is a namespace the policy can check.
+const namespaceObjectRemedy = "name a single namespace object, or drop -n"
+
+// namespaceRemedy is the remedy a "*" namespace's deny names for its cause.
+func namespaceRemedy(reason string) string {
+	if reason == CauseNamespaceObjects {
+		return namespaceObjectRemedy
+	}
+	return kubeRemedy
+}
+
 // causeClause is the parenthesised cause of a "*" target, empty when none was recorded.
 func causeClause(reason string) string {
 	if reason == "" {
@@ -82,7 +101,7 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 	if t.KubeNamespace == "*" && len(p.Protected.KubeNamespaces) > 0 {
 		return denied("protected.kube_namespaces", "the command touches every namespace (-A), several namespaces or "+
 			"one taracode cannot determine before it runs%s, including the protected %s; %s", causeClause(t.KubeReason),
-			strings.Join(p.Protected.KubeNamespaces, ", "), kubeRemedy), true
+			strings.Join(p.Protected.KubeNamespaces, ", "), namespaceRemedy(t.KubeReason)), true
 	}
 	if pat, ok := firstGlob(p.Protected.KubeNamespaces, t.KubeNamespace); ok {
 		return denied("protected.kube_namespaces",

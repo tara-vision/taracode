@@ -3,6 +3,7 @@ package tools
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -164,5 +165,85 @@ func TestThePreTagRoundLinesDenyUnderTheBuiltInPolicy(t *testing.T) {
 		if inv, v := evaluate(command); inv.Classification != policy.Read || !v.Allow || v.Rule != "read" {
 			t.Errorf("%q must stay a read: %+v %+v", command, inv, v)
 		}
+	}
+}
+
+// TestShellLabelChangesFollowKubectl (round 2, items 1 to 3) evaluates the reviewer's label and
+// annotate lines through the shell tool and policy.Default() in operate mode: a word before the first
+// KEY=VALUE or KEY- change is an object, so "-" and "=a" hide no kube-system, and the deny names the
+// namespace-object cause and its own remedy; ns/shop with a change is the one namespace shop.
+func TestShellLabelChangesFollowKubectl(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubeconfigKubectl)
+	processKubeconfig(t, false)
+	dir := t.TempDir()
+	shell := ShellTool(nil)
+	evaluate := func(command string) (policy.Invocation, policy.Verdict) {
+		inv := shell.Classify(map[string]any{"command": command}, dir)
+		inv.WorkingDir = dir
+		return inv, policy.Default().Evaluate(policy.ModeOperate, inv)
+	}
+	for _, command := range []string{"kubectl label ns - kube-system team=x", "kubectl annotate ns =a kube-system note=x",
+		"kubectl label ns -- - kube-system a=b"} {
+		if inv, v := evaluate(command); inv.Targets.KubeNamespace != "*" || v.Allow || v.Rule != "protected.kube_namespaces" {
+			t.Errorf("%q: targets %+v: %+v, want a protected.kube_namespaces deny", command, inv.Targets, v)
+		}
+	}
+	if _, v := evaluate("kubectl label ns - kube-system team=x"); !strings.HasSuffix(v.Reason,
+		"(the command changes several namespaces or selects them, or names a namespace object and another "+
+			"namespace), including the protected kube-system; name a single namespace object, or drop -n") {
+		t.Errorf("the deny names the namespace-object cause and remedy: %q", v.Reason)
+	}
+	for _, command := range []string{"kubectl label ns/shop team=x", "kubectl annotate namespace/shop note=x"} {
+		if inv, v := evaluate(command); inv.Targets.KubeNamespace != "shop" || !v.Allow || v.Rule != "policy" {
+			t.Errorf("%q: targets %+v: %+v, want the one namespace shop, on to the permission", command, inv.Targets, v)
+		}
+	}
+}
+
+// TestShellTargetWordsTheShellExpandsAreAny (round 2, item 5): sh expands an unquoted glob or brace in
+// a --context, -n or namespace-object word before kubectl reads it (kube-sys{tem,} becomes kube-system
+// kube-sys, kube-syst* matches a file named kube-system in the working directory), so the word is any
+// context or namespace and the protected ones deny it. The classifier sees words with their quotes
+// removed, so a quoted word counts as expanded too (fail closed: no namespace holds these characters).
+// A word sh expands in a namespace-object command ({ns,kube-system} is ns kube-system) can name another
+// namespace object, which the classifier reads as "*" with its own cause; a brace in a pod name keeps
+// the -n target.
+func TestShellTargetWordsTheShellExpandsAreAny(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubeconfigKubectl)
+	processKubeconfig(t, false)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "kube-system"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const namespaces, contexts = "protected.kube_namespaces", "protected.kube_contexts"
+	const expanded, objects = "(a context or namespace word is expanded by the shell)",
+		"(a word the shell expands can name a namespace object), including the protected kube-system; run kubectl"
+	shell := ShellTool(nil)
+	for _, c := range []struct{ command, rule, reason string }{
+		{"kubectl delete --wait=false ns kube-sys{tem,}", namespaces, objects},
+		{"kubectl label ns kube-sys{tem,} x=y", namespaces, objects},
+		{"kubectl -n kube-sys{tem,} delete pod x", namespaces, expanded},
+		{"kubectl -n kube-syst* delete pod x", namespaces, expanded},
+		{"kubectl delete pod x -n kube-sys?em", namespaces, expanded},
+		{"kubectl delete pod x -n kube-sys[t]em", namespaces, expanded},
+		{"kubectl -n 'kube-sys{tem,}' delete pod x", namespaces, expanded},
+		{"helm uninstall web -n kube-sys{tem,}", namespaces, expanded},
+		{"kubectl --context pr{o,}d-eu delete pod x -n apps", contexts, expanded},
+		{"kubectl --context 'pr{o,}d-eu' delete pod x -n apps", contexts, expanded},
+		{"kubectl delete {ns,kube-system}", namespaces, objects},
+		{"kubectl delete n{s,} kube-system", namespaces, objects},
+		{"kubectl label {ns,kube-system} team=x", namespaces, objects},
+	} {
+		inv := shell.Classify(map[string]any{"command": c.command}, dir)
+		inv.WorkingDir = dir
+		if v := policy.Default().Evaluate(policy.ModeOperate, inv); v.Allow || v.Rule != c.rule ||
+			!strings.Contains(v.Reason, c.reason) {
+			t.Errorf("%q: targets %+v: %+v, want a %s deny naming %q", c.command, inv.Targets, v, c.rule, c.reason)
+		}
+	}
+	inv := shell.Classify(map[string]any{"command": "kubectl delete pod web-{1,2} -n shop"}, dir)
+	inv.WorkingDir = dir
+	if v := policy.Default().Evaluate(policy.ModeOperate, inv); inv.Targets.KubeNamespace != "shop" || !v.Allow {
+		t.Errorf("a brace in a pod name keeps the namespace shop: %+v %+v", inv.Targets, v)
 	}
 }

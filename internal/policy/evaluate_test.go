@@ -135,6 +135,30 @@ func TestAStarKubeTargetDenyNamesItsCauseAndRemedy(t *testing.T) {
 	}
 }
 
+// TestANamespaceObjectStarDenyNamesItsOwnRemedy (round 2, item 3): a "*" namespace that a command's
+// namespace objects make (CauseNamespaceObjects) is fixed by naming one namespace object without a -n
+// that names another, not by a literal -n or the kubectl tool, so its deny names that remedy. A "*"
+// context keeps the -n remedy even with that cause, and so does a "*" namespace with any other cause.
+func TestANamespaceObjectStarDenyNamesItsOwnRemedy(t *testing.T) {
+	const objectRemedy = "; name a single namespace object, or drop -n"
+	v := Default().Evaluate(ModeOperate, mutate("kubectl", "label", "kubectl label ns - kube-system team=x",
+		Targets{KubeContext: "kind-dev", KubeNamespace: "*", KubeReason: CauseNamespaceObjects}))
+	if v.Allow || v.Rule != "protected.kube_namespaces" || !strings.HasSuffix(v.Reason, objectRemedy) ||
+		!strings.Contains(v.Reason, "("+CauseNamespaceObjects+")") || strings.Contains(v.Reason, "literal --context") {
+		t.Fatalf("a namespace-object * deny names its cause and its own remedy: %+v", v)
+	}
+	ctx := Default().Evaluate(ModeOperate, mutate("kubectl", "label", "kubectl label ns - kube-system team=x",
+		Targets{KubeContext: "*", KubeNamespace: "*", KubeReason: CauseNamespaceObjects}))
+	if ctx.Rule != "protected.kube_contexts" || !strings.Contains(ctx.Reason, "literal --context and -n") {
+		t.Fatalf("a * context keeps the -n remedy: %+v", ctx)
+	}
+	other := Default().Evaluate(ModeOperate, mutate("shell", "", "kubectl delete pod web -n default -n kube-system",
+		Targets{KubeContext: "kind-dev", KubeNamespace: "*", KubeReason: "conflicting --context, -n or --kubeconfig values"}))
+	if !strings.Contains(other.Reason, "literal --context and -n") || strings.Contains(other.Reason, objectRemedy) {
+		t.Fatalf("another cause keeps the -n remedy: %+v", other)
+	}
+}
+
 // TestSeveralContextsHitProtectedContexts: a shell line that names more than one kube context
 // reports "*", which touches the protected contexts too (ruling P2-R34).
 func TestSeveralContextsHitProtectedContexts(t *testing.T) {

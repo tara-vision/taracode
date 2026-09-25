@@ -105,20 +105,39 @@ func typeNameAtHead(head kubectlHead, extra []string) (argv, rest []string) {
 func typeName(w string) string {
 	kind, name, ok := strings.Cut(w, ",")
 	if !ok || name == "" || strings.ContainsAny(name, ",/") || strings.Contains(kind, "/") ||
-		!isKubeResourceWord(kind) || isKubeResourceWord(name) || looksLikeResourceType(name) {
+		!isKubeResourceWord(kind) || isKubeResourceWord(name) || looksLikeResourceType(kind, name) {
 		return w
 	}
 	return kind + "/" + name
 }
 
-// looksLikeResourceType reports a word shaped like a resource type rather than an object name (ruling
-// P3-R69): a plural of letters only (certificates) or a group-qualified type (certificates.example.io).
-// A list such as pods,certificates then stays a list, whatever types the cluster has.
-func looksLikeResourceType(w string) bool {
-	if strings.Contains(w, ".") {
-		return true
+// looksLikeResourceType reports a second part shaped like a resource type rather than an object name,
+// so that every part of the list looks like a type and it stays a list, whatever types the cluster has
+// (ruling P3-R69): a group-qualified type (deployments.apps, certificates.cert-manager.io), or a plural
+// after a first part spelled as a plural (pods,certificates). After a short name or a singular, an
+// unknown word is the object's name (deploy,redis, sts,postgres, deploy,coredns), as it was before.
+func looksLikeResourceType(kind, name string) bool {
+	return strings.Contains(name, ".") || (pluralKind(kind) && pluralWord(name))
+}
+
+// pluralKind reports a resource type word spelled as the plural of a type kubectl knows (pods,
+// deployments, ingresses, networkpolicies), not a short name that ends in s (sts, ns).
+func pluralKind(w string) bool {
+	lower := strings.ToLower(w)
+	for _, p := range []struct{ plural, singular string }{{"ies", "y"}, {"es", ""}, {"s", ""}} {
+		if stem, ok := strings.CutSuffix(lower, p.plural); ok && kubeKinds[CanonicalKubeResource(stem+p.singular)] {
+			return true
+		}
 	}
-	return strings.HasSuffix(w, "s") && strings.IndexFunc(w, func(r rune) bool { return !unicode.IsLetter(r) }) < 0
+	return false
+}
+
+// pluralWord reports a word of letters that ends in a plural s: not ss, us or is, which end singular
+// words (ingress, prometheus, redis), since the plural of a type named so adds es.
+func pluralWord(w string) bool {
+	lower := strings.ToLower(w)
+	return strings.HasSuffix(lower, "s") && !strings.HasSuffix(lower, "ss") && !strings.HasSuffix(lower, "us") &&
+		!strings.HasSuffix(lower, "is") && strings.IndexFunc(lower, func(r rune) bool { return !unicode.IsLetter(r) }) < 0
 }
 
 // dropRepeatedCommand takes off args the command line a model repeats there: a leading kubectl that

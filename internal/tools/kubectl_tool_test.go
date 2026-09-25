@@ -146,3 +146,31 @@ func TestKubectlToolReadsAGlobalFlagPassedAsTheVerb(t *testing.T) {
 		t.Errorf("a --kubeconfig in the verb parameter must reach the resolver: %+v", inv.Targets)
 	}
 }
+
+// TestKubectlToolReadsLabelChangesAsKubectlDoes (round 2, items 1 to 3): the kubectl tool reads the
+// objects of label and annotate the way kubectl does. A name parameter "- kube-system" is two objects
+// (kubectl changes kube-system after a 404 on "-"), so the namespace is "*" and the protected namespace
+// denies it with the namespace-object remedy, not the -n one the tool call cannot act on. A TYPE/NAME
+// resource with a change is one namespace, which the built-in policy lets on to the permission.
+func TestKubectlToolReadsLabelChangesAsKubectlDoes(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubectl)
+	tool := KubectlTool()
+	evaluate := func(args map[string]any) (policy.Invocation, policy.Verdict) {
+		inv := tool.Classify(args, "/w")
+		return inv, policy.Default().Evaluate(policy.ModeOperate, inv)
+	}
+	inv, v := evaluate(map[string]any{"verb": "label", "resource": "ns", "name": "- kube-system", "args": "team=x"})
+	if inv.Command != "kubectl label ns - kube-system team=x" || inv.Targets.KubeNamespace != "*" || v.Allow ||
+		v.Rule != "protected.kube_namespaces" || !strings.HasSuffix(v.Reason, "; name a single namespace object, or drop -n") ||
+		!strings.Contains(v.Reason, "names a namespace object and another namespace)") {
+		t.Errorf("label ns - kube-system: %+v %+v", inv, v)
+	}
+	for _, args := range []map[string]any{
+		{"verb": "label", "resource": "ns/shop", "args": "team=x"},
+		{"verb": "annotate", "resource": "namespace/shop", "args": "note=x"},
+	} {
+		if inv, v := evaluate(args); inv.Targets.KubeNamespace != "shop" || !v.Allow || v.Rule != "policy" {
+			t.Errorf("%v: %+v %+v, want the one namespace shop, on to the permission", args, inv.Targets, v)
+		}
+	}
+}
