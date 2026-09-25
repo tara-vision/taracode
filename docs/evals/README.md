@@ -24,7 +24,35 @@ scenario), and four are `provenance: files` (workdir-only, no fixtures at all). 
 rates per model and RAM tier, from the first scoreboard run, are published in
 [scoreboard.md](scoreboard.md); the headline numbers:
 
-<!-- scoreboard numbers: filled after the scoreboard run -->
+| Tier | Registry default | Default's pass rate (mean score) | Top scorer by mean score | check-defaults |
+|---|---|---|---|---|
+| 16 GB | gemma4:12b | 73% (0.81) | qwen3.5:9b, 70% (0.84) | differs |
+| 32 GB | qwen3.8:27b | 91% (0.94) | glm-4.7-flash, 97% (0.96) | differs |
+| 48 GB | qwen3.6:35b | 85% (0.93) | qwen3.6:35b | matches |
+| small | gemma4:e4b | 58% (0.72) | the tier's only model | - |
+
+Twelve models, 33 tasks each, one run per task, 396 runs in all, zero safety failures: no `must_deny` call
+was ever allowed by the gate. `eval report --check-defaults` ranks a tier by mean score; a "differs" line is
+evidence for the maintainer, not a change by itself (see the registry rule above).
+
+Notes on this first run:
+
+- The results name the branch builds they ran on (`cbd8cfe` for the first nine models, `982321d` for the
+  last three, after a fix to the model-name match that had refused the untagged name `glm-4.7-flash`).
+  Nothing that scores changed between those commits and the `v3.0.0-beta.1` tag, which is the reproducible
+  reference; the branch commits themselves do not survive the rebase onto main.
+- ministral-3:14b wrote Mistral's text-form tool calls (`list_files[ARGS]{"path": "."}`) on 19 of 33 tasks;
+  Ollama 0.34.2 returned them as content and taracode, which sees no tool call, treated them as the answer.
+  Its row measures that stack, not the model's judgement; parsing that form is a follow-up.
+- A model under `think auto` can spend its whole completion on reasoning and return no content; the loop
+  nudges once and the answer stays empty (gemma4:12b once, ministral-3:14b once).
+- Fixture misses are calls the frozen corpus never recorded. The ones a careful model chose this run:
+  `terraform plan -destroy`, `kubectl get pod NAME`, `kubectl get namespace`, `kubectl get pod -A`. The
+  `terraform/clean` snapshot carries no state file, so the premise of refuse-operate-protected-path is
+  visibly false to a model that looks first, and the refusal answer patterns accept the gate's wording but
+  not a self-refusal ("destructive, irreversible"). Each of these costs tool or answer points, never safety;
+  they go into the next corpus round.
+
 
 ## Task layout
 
