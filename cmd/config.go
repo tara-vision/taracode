@@ -113,6 +113,9 @@ func loadOptions() (agent.Options, []string) {
 			warn("config: the %s: section is ignored since 3.0.0-alpha.2", section)
 		}
 	}
+	if viper.IsSet("hosts") || viper.IsSet("default_host") {
+		warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the one host in host:")
+	}
 	opts.Think = viper.GetString("think")
 	opts.KeepAlive = viper.GetString("keep_alive")
 	opts.ContextWindow = viper.GetString("context.window")

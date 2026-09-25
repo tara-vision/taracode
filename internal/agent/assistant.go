@@ -70,9 +70,6 @@ type Assistant struct {
 	// Last AI response (for suggestion detection)
 	lastResponse string
 
-	// Multi-host fallback support (v2.0)
-	hostPool *provider.HostPool
-
 	// Ollama context window check (v2.1.0)
 	serverContextChecked bool // true once /api/ps has answered for the current model
 	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
@@ -489,11 +486,6 @@ func (a *Assistant) ClearAudit() error {
 // GetProvider returns the LLM provider
 func (a *Assistant) GetProvider() provider.Provider {
 	return a.provider
-}
-
-// SetHostPool sets the host pool for multi-host fallback support (v2.0)
-func (a *Assistant) SetHostPool(pool *provider.HostPool) {
-	a.hostPool = pool
 }
 
 // GetSessionUsage returns current token usage stats

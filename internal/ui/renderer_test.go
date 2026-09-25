@@ -161,7 +161,6 @@ func TestFormatToolStatusCoversEveryBuiltinTool(t *testing.T) {
 		{"scan", map[string]interface{}{"scanner": "trivy", "target": "nginx:1.27"}, "", "trivy scan nginx:1.27"},
 		{"scan", map[string]interface{}{"scanner": "gitleaks"}, "", "gitleaks scan current directory"},
 		{"web_fetch", map[string]interface{}{"url": "https://example.com/docs/page"}, "", "Fetched example.com"},
-		{"get_datetime", map[string]interface{}{}, "", "Checked the date and time"},
 		{"github.list_issues", map[string]interface{}{}, "", "github.list_issues completed"},
 	}
 	for _, tc := range cases {

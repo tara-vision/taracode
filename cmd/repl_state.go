@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/spf13/viper"
@@ -14,13 +13,12 @@ import (
 	"github.com/tara-vision/taracode/internal/history"
 	"github.com/tara-vision/taracode/internal/mcp"
 	"github.com/tara-vision/taracode/internal/memory"
-	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
 	"github.com/tara-vision/taracode/internal/upgrade"
 )
 
 // repl is the state of one interactive session: the assistant, the managers that exist once a
-// project is initialised, the host pool and the readline instance. Command handlers are methods
+// project is initialised and the readline instance. Command handlers are methods
 // on it, so re-creating the assistant (/init, /model, /reload, /clear) goes through replaceAssistant.
 type repl struct {
 	asst      *agent.Assistant
@@ -35,11 +33,10 @@ type repl struct {
 	absDir      string // current absolute directory
 	initialised bool
 
-	history  *history.Manager
-	memory   *memory.Manager
-	mcp      *mcp.Manager
-	hostPool *provider.HostPool
-	updates  chan *upgrade.CheckResult
+	history *history.Manager
+	memory  *memory.Manager
+	mcp     *mcp.Manager
+	updates chan *upgrade.CheckResult
 }
 
 // options returns the settings a freshly re-created assistant should use: r.opts with Mode pinned
@@ -75,33 +72,14 @@ func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
 }
 
 // newREPL builds the session in the order the old startREPL did: connection, assistant (with the
-// tool wiring), banner, mode, project managers, update check, MCP, host pool, readline.
+// tool wiring), banner, mode, project managers, update check, MCP, readline.
 func newREPL() (*repl, error) {
 	opts, warnings := loadOptions()
-	hostsCfg := GetHostsConfig()
-	multiHost := !hostsCfg.IsEmpty() && len(hostsCfg.Hosts) > 1
-	if multiHost {
-		if defaultHost, ok := hostsCfg.GetDefaultHost(); ok {
-			if opts.Host == "" {
-				opts.Host = defaultHost.URL
-			}
-			if opts.APIKey == "" && defaultHost.APIKey != "" {
-				opts.APIKey = defaultHost.APIKey
-			}
-			if opts.Vendor == "" && defaultHost.Vendor != "" {
-				opts.Vendor = defaultHost.Vendor
-			}
-			if opts.Model == "" && len(defaultHost.Models) > 0 {
-				opts.Model = defaultHost.Models[0]
-			}
-		}
-	}
 	if opts.Host == "" {
 		return nil, fmt.Errorf("LLM server host not found.\nSet it via:\n" +
 			"  - Environment variable: export TARACODE_HOST=http://localhost:11434\n" +
 			"  - Config file: ~/.taracode/config.yaml\n" +
-			"  - Command flag: --host http://localhost:11434\n" +
-			"  - Multi-host config: hosts: section in config.yaml")
+			"  - Command flag: --host http://localhost:11434")
 	}
 	workingDir, err := os.Getwd()
 	if err != nil {
@@ -140,9 +118,6 @@ func newREPL() (*repl, error) {
 		CheckForUpdateAsync(Version, r.updates)
 	}
 	r.startMCP() // moved: 199-219, callback registers into r.asst at call time
-	if multiHost {
-		r.startHostPool() // moved: 225-245 (NewHostPool, ConnectAll 60 s, StartHealthChecks, count line, SetHostPool)
-	}
 	if err := r.openReadline(); err != nil {
 		return nil, err
 	}
@@ -224,11 +199,8 @@ func (r *repl) openReadline() error {
 	return nil
 }
 
-// close releases the host pool and the terminal.
+// close releases the terminal.
 func (r *repl) close() {
-	if r.hostPool != nil {
-		r.hostPool.Close()
-	}
 	if r.rl != nil {
 		_ = r.rl.Close()
 	}
@@ -262,25 +234,4 @@ func (r *repl) printNotInitialised() {
 	fmt.Println("Not initialised: nothing is saved (sessions, memory, history off); " +
 		"run /init to enable them and operate mode.")
 	fmt.Println()
-}
-
-// startHostPool connects the configured hosts, starts background health checks and wires the pool
-// into the assistant for automatic fallback (moved from the old startREPL, lines 219-240).
-func (r *repl) startHostPool() {
-	hostsCfg := GetHostsConfig()
-	r.hostPool = provider.NewHostPool(hostsCfg)
-	connectCtx, connectCancel := context.WithTimeout(context.Background(), 60*time.Second)
-	if err := r.hostPool.ConnectAll(connectCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: some hosts failed to connect: %v\n", err)
-	}
-	connectCancel()
-
-	r.hostPool.StartHealthChecks(context.Background())
-
-	fmt.Printf("%s Multi-host mode: %d/%d hosts connected\n",
-		ui.SuccessStyle.Render(ui.IconSuccess),
-		r.hostPool.HealthyCount(),
-		r.hostPool.HostCount())
-
-	r.asst.SetHostPool(r.hostPool)
 }

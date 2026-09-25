@@ -2,18 +2,17 @@ package agent
 
 import (
 	"bytes"
-	gocontext "context"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/policy"
-	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -162,7 +161,7 @@ func TestToolOutputIsTruncated(t *testing.T) {
 func TestMaxIterationsStopsTheLoop(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.maxIterations = 2
-	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "get_datetime", Args: map[string]any{}}}}
+	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{}}}}
 	srv.Turns = []ollamatest.Turn{call, call, call}
 
 	if err := a.ProcessMessage("loop forever"); err != nil {
@@ -356,35 +355,18 @@ func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
 	}
 }
 
-// TestHostFailoverRetriesOnTheFallbackHost covers the v2.0 multi-host retry: a dead primary host
-// makes the turn switch to the pool's fallback and answer from there.
-func TestHostFailoverRetriesOnTheFallbackHost(t *testing.T) {
-	backup := ollamatest.New(t)
-	backup.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}}}
-	backup.Turns = []ollamatest.Turn{{Content: "Answered by the fallback."}}
+// TestDateQuestionsCarryTheCurrentDateTime covers the date/time injection that answers "what
+// time is it" without a tool since 3.1.0: the question gets the real clock appended, every other
+// message passes through untouched.
+func TestDateQuestionsCarryTheCurrentDateTime(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
 
-	cfg := provider.NewHostsConfig()
-	cfg.DefaultHost = "primary"
-	cfg.Hosts["primary"] = provider.HostConfig{Name: "primary", URL: deadHost, Vendor: "ollama", Fallback: "backup"}
-	cfg.Hosts["backup"] = provider.HostConfig{Name: "backup", URL: backup.URL, Vendor: "ollama"}
-	pool := provider.NewHostPool(cfg)
-	if err := pool.Connect(gocontext.Background(), "backup"); err != nil {
-		t.Fatalf("connect backup: %v", err)
+	got := a.injectDatetimeIfNeeded("What time is it?")
+	if !strings.Contains(got, "[System: the current date and time") || !strings.Contains(got, time.Now().Format("2006-01-02")) {
+		t.Fatalf("date question not annotated: %q", got)
 	}
-
-	a := newForTest(t.TempDir(), "gemma4:12b", deadHost, false)
-	a.permissions = policy.AllowAll()
-	a.SetHostPool(pool)
-
-	if err := a.ProcessMessage("anyone home?"); err != nil {
-		t.Fatal(err)
-	}
-
-	if a.GetLastResponse() != "Answered by the fallback." {
-		t.Fatalf("last response = %q", a.GetLastResponse())
-	}
-	if n := countPath(backup, "/api/chat"); n != 1 {
-		t.Fatalf("fallback host saw %d chat requests, want 1", n)
+	if got := a.injectDatetimeIfNeeded("list the pods"); got != "list the pods" {
+		t.Fatalf("plain message changed: %q", got)
 	}
 }
 
@@ -466,9 +448,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return <-done
 }
-
-// deadHost is a loopback port nothing listens on, so requests fail with "connection refused".
-const deadHost = "http://127.0.0.1:1"
 
 // lastChatBody returns the body of the last /api/chat request; the server context check that
 // closes every turn records a /api/ps request after it.

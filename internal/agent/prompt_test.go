@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
@@ -42,6 +43,19 @@ func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 	want := fmt.Sprintf("Current working directory: %s", dir)
 	if !strings.HasSuffix(prompt, want) {
 		t.Fatalf("prompt does not end with the working directory line:\n%s", prompt)
+	}
+}
+
+// TestBuildSystemPromptCarriesTodaysDate covers the date line every prompt carries since 3.1.0,
+// when the get_datetime tool was retired: the model learns today's date from the prompt instead of
+// spending a tool call on it, so certificate expiry, event age and release recency reasoning start
+// from the right day.
+func TestBuildSystemPromptCarriesTodaysDate(t *testing.T) {
+	prompt := buildSystemPrompt(t.TempDir(), nil, policy.ModeInvestigate, 0)
+
+	want := "Today is " + time.Now().Format("Monday, 2006-01-02")
+	if !strings.Contains(prompt, want) {
+		t.Fatalf("prompt missing %q:\n%s", want, prompt)
 	}
 }
 
@@ -94,12 +108,12 @@ func TestPromptAndSchemasFitTheContextBudget(t *testing.T) {
 	}
 }
 
-// TestSetModeSwitchesToolsAndPrompt covers SetMode: investigate exposes the fourteen read-form
-// tools, operate all sixteen, the system prompt (and the conversation's system message) carries the
+// TestSetModeSwitchesToolsAndPrompt covers SetMode: investigate exposes the thirteen read-form
+// tools, operate all fifteen, the system prompt (and the conversation's system message) carries the
 // mode line, and operate without project storage is refused.
 func TestSetModeSwitchesToolsAndPrompt(t *testing.T) {
 	a, _ := newTestAssistant(t, false)
-	if a.Mode() != policy.ModeInvestigate || len(a.toolDefs) != 14 {
+	if a.Mode() != policy.ModeInvestigate || len(a.toolDefs) != 13 {
 		t.Fatalf("start: mode %q, %d tools", a.Mode(), len(a.toolDefs))
 	}
 	if err := a.SetMode(policy.ModeOperate); err == nil || !strings.Contains(err.Error(), "/init") {
@@ -117,13 +131,13 @@ func TestSetModeSwitchesToolsAndPrompt(t *testing.T) {
 	if err := a.SetMode(policy.ModeOperate); err != nil {
 		t.Fatalf("SetMode(operate) = %v", err)
 	}
-	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 || a.ToolRegistry().Available(a.Mode()) != 16 {
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 15 || a.ToolRegistry().Available(a.Mode()) != 15 {
 		t.Fatalf("operate: mode %q, %d tools", a.Mode(), len(a.toolDefs))
 	}
 	if !strings.Contains(a.systemPrompt, "Mode: operate") || a.conversation[0].Content != a.systemPrompt {
 		t.Fatalf("the prompt must carry the mode:\n%s", a.conversation[0].Content)
 	}
-	if err := a.SetMode(policy.ModeInvestigate); err != nil || len(a.toolDefs) != 14 ||
+	if err := a.SetMode(policy.ModeInvestigate); err != nil || len(a.toolDefs) != 13 ||
 		!strings.Contains(a.systemPrompt, "Mode: investigate") {
 		t.Fatalf("back to investigate: %v, %d tools", err, len(a.toolDefs))
 	}
@@ -139,7 +153,7 @@ func TestSetModeRejectsUnknownModesAndALockedPolicy(t *testing.T) {
 	if err := a.SetMode("yolo"); err == nil || !strings.Contains(err.Error(), "invalid mode") {
 		t.Fatalf("SetMode(yolo) = %v", err)
 	}
-	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 {
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 15 {
 		t.Fatal("an unknown mode must change nothing")
 	}
 

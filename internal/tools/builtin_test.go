@@ -10,7 +10,7 @@ import (
 
 func TestBuiltinListAndSchemaBudget(t *testing.T) {
 	r := NewBuiltinRegistry(Options{}, Config{})
-	want := "read_file,list_files,search_files,write_file,edit_file,shell,git,kubectl,helm,terraform,docker,cloud,scan,web_search,web_fetch,get_datetime"
+	want := "read_file,list_files,search_files,write_file,edit_file,shell,git,kubectl,helm,terraform,docker,cloud,scan,web_search,web_fetch"
 	if got := strings.Join(r.Names(), ","); got != want {
 		t.Fatalf("tools %s", got)
 	}
@@ -19,14 +19,14 @@ func TestBuiltinListAndSchemaBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(raw) > 8192 {
-		t.Fatalf("the 16 schemas are %d bytes; the budget is 8192 (spec 5.3)", len(raw))
+		t.Fatalf("the 15 schemas are %d bytes; the budget is 8192 (spec 5.3)", len(raw))
 	}
-	if n := r.Available(policy.ModeInvestigate); n != 14 {
-		t.Errorf("investigate mode exposes %d tools, want 14", n)
+	if n := r.Available(policy.ModeInvestigate); n != 13 {
+		t.Errorf("investigate mode exposes %d tools, want 13", n)
 	}
 	offline := NewBuiltinRegistry(Options{Offline: true}, Config{})
-	if n := offline.Available(policy.ModeInvestigate); n != 12 {
-		t.Errorf("offline investigate mode exposes %d tools, want 12", n)
+	if n := offline.Available(policy.ModeInvestigate); n != 11 {
+		t.Errorf("offline investigate mode exposes %d tools, want 11", n)
 	}
 	for _, name := range r.Names() {
 		tool, _ := r.Get(name)

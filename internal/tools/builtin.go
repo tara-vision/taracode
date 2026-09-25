@@ -18,7 +18,7 @@ type Config struct {
 func Builtin(cfg Config) []*Tool {
 	return append(FileTools(),
 		ShellTool(cfg.Stream), GitTool(), KubectlTool(), HelmTool(), TerraformTool(), DockerTool(), CloudTool(),
-		ScanTool(cfg.DefaultSeverity), WebSearchTool(cfg.Search), WebFetchTool(), DateTimeTool())
+		ScanTool(cfg.DefaultSeverity), WebSearchTool(cfg.Search), WebFetchTool())
 }
 
 // NewBuiltinRegistry is the registry the binary uses: every built-in tool, with the options. The

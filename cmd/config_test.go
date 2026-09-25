@@ -81,6 +81,21 @@ mode: security
 	}
 }
 
+// TestLoadOptionsWarnsAboutTheRetiredHostsSection covers the 3.1.0 removal of the v2 multi-host
+// pool: a config that still carries hosts: or default_host: starts on host: and says so once.
+func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
+	resetConfig(t)
+	viper.SetConfigType("yaml")
+	retired := "host: http://localhost:11434\nhosts:\n  primary:\n    url: http://gpu:11434\ndefault_host: primary\n"
+	if err := viper.ReadConfig(strings.NewReader(retired)); err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	_, warnings := loadOptions()
+	if !strings.Contains(joined(warnings), "hosts: and default_host: are ignored since 3.1.0") {
+		t.Fatalf("no hosts warning: %v", warnings)
+	}
+}
+
 func TestLoadOptionsReadsTheV3Keys(t *testing.T) {
 	resetConfig(t)
 	viper.Set("model", "qwen-test")

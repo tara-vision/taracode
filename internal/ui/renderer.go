@@ -153,8 +153,6 @@ func readStatus(tool string, params map[string]interface{}, result string) strin
 		return searchStatus(param(params, "query"), result)
 	case "web_fetch":
 		return "Fetched " + urlHost(param(params, "url"))
-	case "get_datetime":
-		return "Checked the date and time"
 	}
 	return tool + " completed"
 }

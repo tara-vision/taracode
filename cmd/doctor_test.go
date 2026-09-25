@@ -66,33 +66,30 @@ func TestDoctorExitCode(t *testing.T) {
 	}
 }
 
-// TestResolveDoctorTarget covers the host and model resolution doctor shares with the REPL:
-// --host/--model (bound to viper) win outright, and otherwise the hosts: config's default host
-// fills in the host, API key, vendor and first listed model.
+// TestResolveDoctorTarget covers the host and model resolution doctor shares with the REPL: the
+// host, key, vendor and model come from the flags (bound to viper), the environment or config.yaml's
+// top-level keys. The v2 hosts: section is ignored since 3.1.0 and contributes nothing.
 func TestResolveDoctorTarget(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
 	viper.Set("host", "http://flag:1")
+	viper.Set("key", "k")
+	viper.Set("vendor", "ollama")
 	viper.Set("model", "flag-model")
-	viper.Set("hosts", map[string]any{
-		"primary": map[string]any{"url": "http://primary:2", "api_key": "k", "vendor": "ollama", "models": []any{"host-model"}},
-	})
-	viper.Set("default_host", "primary")
-
-	if h, _, _, m := resolveDoctorTarget(); h != "http://flag:1" || m != "flag-model" {
-		t.Fatalf("host = %q model = %q, want the --host/--model flags to win over the hosts: default", h, m)
-	}
-
-	viper.Reset()
-	viper.Set("hosts", map[string]any{
-		"primary": map[string]any{"url": "http://primary:2", "api_key": "k", "vendor": "ollama", "models": []any{"host-model"}},
-	})
+	viper.Set("hosts", map[string]any{"primary": map[string]any{"url": "http://primary:2", "models": []any{"host-model"}}})
 	viper.Set("default_host", "primary")
 
 	h, apiKey, vendor, m := resolveDoctorTarget()
-	if h != "http://primary:2" || apiKey != "k" || vendor != "ollama" || m != "host-model" {
-		t.Fatalf("resolveDoctorTarget() = (%q, %q, %q, %q), want the default host's values", h, apiKey, vendor, m)
+	if h != "http://flag:1" || apiKey != "k" || vendor != "ollama" || m != "flag-model" {
+		t.Fatalf("resolveDoctorTarget() = (%q, %q, %q, %q), want the top-level keys", h, apiKey, vendor, m)
+	}
+
+	viper.Reset()
+	viper.Set("hosts", map[string]any{"primary": map[string]any{"url": "http://primary:2"}})
+	viper.Set("default_host", "primary")
+	if h, _, _, _ := resolveDoctorTarget(); h != "" {
+		t.Fatalf("host = %q, want the retired hosts: section to be ignored", h)
 	}
 }
 

@@ -26,7 +26,7 @@ var doctorCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		targetHost, apiKey, vendor, configuredModel := resolveDoctorTarget()
 		if targetHost == "" {
-			return fmt.Errorf("LLM server host not found; set --host, TARACODE_HOST, or hosts: in config.yaml")
+			return fmt.Errorf("LLM server host not found; set --host, TARACODE_HOST, or host: in config.yaml")
 		}
 		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
@@ -43,31 +43,13 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
-// resolveDoctorTarget picks the host, API key, vendor and model to check: --host (or
-// TARACODE_HOST, or config.yaml's host:/model:) wins, otherwise the hosts: config's default host
-// supplies whatever is still missing. Same resolution startREPL runs at the top of the REPL.
-// "model" is a plain viper string key in v3 (--model is bound to it; the 2.x model: section is a
-// map, which viper.GetString turns into "").
+// resolveDoctorTarget picks the host, API key, vendor and model to check: --host and --model
+// (bound to viper), TARACODE_HOST, or config.yaml's top-level host:, key:, vendor: and model:
+// keys. Same resolution newREPL runs at the top of the REPL. "model" is a plain viper string key
+// in v3 (--model is bound to it; the 2.x model: section is a map, which viper.GetString turns
+// into "").
 func resolveDoctorTarget() (targetHost, apiKey, vendor, configuredModel string) {
-	targetHost = viper.GetString("host")
-	apiKey = viper.GetString("key")
-	vendor = viper.GetString("vendor")
-	configuredModel = viper.GetString("model")
-	if defaultHost, ok := GetHostsConfig().GetDefaultHost(); ok {
-		if targetHost == "" {
-			targetHost = defaultHost.URL
-		}
-		if apiKey == "" && defaultHost.APIKey != "" {
-			apiKey = defaultHost.APIKey
-		}
-		if vendor == "" && defaultHost.Vendor != "" {
-			vendor = defaultHost.Vendor
-		}
-		if configuredModel == "" && len(defaultHost.Models) > 0 {
-			configuredModel = defaultHost.Models[0]
-		}
-	}
-	return targetHost, apiKey, vendor, configuredModel
+	return viper.GetString("host"), viper.GetString("key"), viper.GetString("vendor"), viper.GetString("model")
 }
 
 // doctorResolveWindow is the resolveWindow function every Diagnose call in this file passes: the

@@ -10,44 +10,8 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/storage"
-	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
-
-// isHostRetryableError checks if an error indicates a host connection failure
-// that should trigger a fallback to another host (v2.0 multi-host support)
-func isHostRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, "connection refused") ||
-		strings.Contains(errMsg, "host is down") ||
-		strings.Contains(errMsg, "no such host") ||
-		strings.Contains(errMsg, "i/o timeout") ||
-		strings.Contains(errMsg, "dial tcp") ||
-		strings.Contains(errMsg, "network is unreachable") ||
-		strings.Contains(errMsg, "connection reset")
-}
-
-// switchToFallbackProvider attempts to switch to a healthy fallback host (v2.0)
-// Returns the name of the host switched to, or an error if no fallback available
-func (a *Assistant) switchToFallbackProvider() (string, error) {
-	if a.hostPool == nil {
-		return "", fmt.Errorf("no host pool configured")
-	}
-
-	prov, hostName, err := a.hostPool.GetDefaultWithFallback()
-	if err != nil {
-		return "", err
-	}
-
-	// Update provider and the llm client bound to it
-	a.provider = prov
-	a.llm = prov.LLM()
-
-	return hostName, nil
-}
 
 // ProcessMessage sends userMessage through the assistant with no images attached.
 func (a *Assistant) ProcessMessage(userMessage string) error {
@@ -215,18 +179,20 @@ func isDatetimeQuestion(msg string) bool {
 	return false
 }
 
-// injectDatetimeIfNeeded appends current datetime to the message if it's a date/time question
+// injectDatetimeIfNeeded appends the real clock to a date or time question, so the answer never
+// comes from the model's training data. The system prompt carries today's date for everything else.
 func (a *Assistant) injectDatetimeIfNeeded(userMessage string) string {
 	if !isDatetimeQuestion(userMessage) {
 		return userMessage
 	}
-	result, err := tools.DateTimeTool().Run(gocontext.Background(), nil, "")
-	if err != nil {
-		return userMessage
-	}
-	return userMessage +
-		"\n\n[System: Here is the current date/time from get_datetime tool - use this to answer the user's question]\n" +
-		result
+	return userMessage + "\n\n[System: the current date and time, use it to answer the question]\n" +
+		currentDateTime(time.Now())
+}
+
+// currentDateTime is the clock line the date injection appends: RFC 3339, weekday and zone.
+func currentDateTime(now time.Time) string {
+	zone, _ := now.Zone()
+	return fmt.Sprintf("%s (%s, %s)", now.Format(time.RFC3339), now.Weekday(), zone)
 }
 
 // buildUserMessage creates an OpenAI message with optional images
@@ -287,9 +253,6 @@ func (a *Assistant) completeWith(
 	req := llm.Request{Model: a.model, Messages: messages, Options: a.requestOptions(), Tools: tools}
 
 	res, err := a.chat(ctx, req)
-	if err != nil && a.hostPool != nil && isHostRetryableError(err) {
-		res, err = a.retryOnFallbackHost(ctx, req, err)
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -301,20 +264,6 @@ func (a *Assistant) completeWith(
 	a.turn.PromptTokens += res.Usage.PromptTokens
 	a.turn.CompletionTokens += res.Usage.CompletionTokens
 	return res, nil
-}
-
-// retryOnFallbackHost switches to a healthy host from the pool and repeats the request. When no
-// fallback is available the original error survives (v2.0 multi-host support).
-func (a *Assistant) retryOnFallbackHost(
-	ctx gocontext.Context, req llm.Request, cause error,
-) (*llm.Result, error) {
-	hostName, err := a.switchToFallbackProvider()
-	if err != nil {
-		_, _ = fmt.Fprintf(a.out, "\n%s Primary host unavailable, no fallback available: %v\n", ui.IconWarning, err)
-		return nil, cause
-	}
-	_, _ = fmt.Fprintf(a.out, "\n%s Primary host unavailable, switched to: %s\n", ui.IconWarning, hostName)
-	return a.chat(ctx, req)
 }
 
 // chat performs one request. Streaming assembles the answer behind the spinner and leaves the

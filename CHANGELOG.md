@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-25
+
+Fifteen tools and one host. `get_datetime` retires because the shell tool and the system prompt already cover
+it, and the v2 multi-host pool goes because one Ollama host is what taracode talks to.
+
+### Added
+- **Today's date in the system prompt.** Every prompt ends with the current day ("Today is Friday, 2026-09-25
+  (CEST)."), so certificate expiry, event age and release recency reasoning start from the right day without a
+  tool call. A date or time question still gets the exact clock appended to the message.
+
+### Changed
+- **Fifteen tools.** `get_datetime` is gone: `date` (and `TZ=<zone> date`) is on the shell tool's read-only
+  allowlist and its description names it. Investigate mode exposes thirteen tools, eleven with `offline`.
+- **The 16 GB tier is a three-run board.** gemma4:12b and qwen3.5:9b were re-run three times each and the
+  scoreboard carries the mean; gemma4:12b keeps the 16 GB default.
+- **`/model` lists the one host's models**, without a host column.
+
+### Removed
+- **The multi-host pool.** The v2.0 `hosts:` and `default_host:` config, the `/hosts` command, the background
+  health checks and the fallback retry are gone; taracode talks to the one host in `host:` (`--host`,
+  `TARACODE_HOST`). A config that still carries the section prints a one-time warning and starts on `host:`.
+- **The unused provider pool** (`internal/provider/pool.go`), dead since the native Ollama client.
+
+### Fixed
+- **The installer finds the latest version through the release redirect**, with the GitHub API and the docs
+  site as fallbacks, so an unauthenticated, rate-limited API no longer breaks `install.sh`.
+
 ## [3.0.0] - 2026-09-25
 
 The v3 line, stable. taracode is now a local-first DevOps operator: it investigates infrastructure by default,

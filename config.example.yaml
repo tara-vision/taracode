@@ -8,34 +8,11 @@
 # investigate, or the mode a policy file names). A 2.x file still starts taracode; each of these
 # prints a one-time migration warning after the startup banner.
 
-# LLM server host (required unless hosts: below is used)
+# LLM server host (required; --host and TARACODE_HOST override it)
 host: http://localhost:11434
 
 # API key (optional, for hosts that require one)
 key: ""
-
-# =============================================================================
-# MULTI-HOST CONFIGURATION
-# =============================================================================
-# Configure multiple LLM hosts with fallback support. When hosts: is set, host: above is ignored.
-#
-# hosts:
-#   primary:
-#     url: http://gpu-server:11434
-#     vendor: ollama                       # optional: ollama, vllm, llama.cpp (auto-detect if omitted)
-#     # api_key: ""                        # optional: API key if required
-#     models: [glm-4.7-flash, qwen3.6:35b] # optional: models available on this host
-#     timeout: 30s                         # connection timeout
-#     priority: 1                          # lower = higher priority
-#
-#   local:
-#     url: http://localhost:11434
-#     fallback: primary                    # use primary when this host is unavailable
-#     priority: 2
-#
-# default_host: primary
-#
-# Run /hosts in the REPL to see host status and health.
 
 # Model name (optional; auto-detected from the server when unset)
 # model: glm-4.7-flash

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/tara-vision/taracode/internal/memory"
@@ -179,7 +180,9 @@ func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode poli
 		}
 	}
 
-	// Add working directory context
+	// Today's date, so expiry, age and recency reasoning starts from the right day without a tool
+	// call (3.1.0, when get_datetime was retired); then the working directory.
+	prompt += "\n\nToday is " + time.Now().Format("Monday, 2006-01-02 (MST)") + "."
 	prompt += fmt.Sprintf("\n\nCurrent working directory: %s", workingDir)
 
 	return prompt
