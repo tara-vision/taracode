@@ -174,6 +174,17 @@ func TestShellKubeReadsAnExpandedNamespaceObject(t *testing.T) {
 		"kubectl -n shop {delete,ns,kube-system}",
 		"kubectl delete -- {ns,kube-system}",
 		"kubectl patch ns shop -p {\"a\":1,\"b\":2}",
+		// Round 3: the four namespace-object commands the re-review accepted as denies.
+		`kubectl patch ns shop -p '{"a":1,"b":2}'`,
+		`kubectl annotate ns shop cfg='{"a":1,"b":2}'`,
+		`kubectl label ns shop x=y -o jsonpath='{.items[*].metadata.name}'`,
+		"kubectl create ns 'team-{a,b}'",
+		// Round 3: an option's value still counts before the first object, and after a type/name word;
+		// an unknown option may take -f as its value; create reads a value ahead of its subcommand.
+		"kubectl delete --grace-period * pod web",
+		"kubectl delete pod/web --grace-period {0,ns/kube-system}",
+		"kubectl delete --unknown -f {ns,kube-system}",
+		"kubectl create --field-manager {x,ns} kube-system",
 	}
 	for _, cmd := range expanded {
 		kube := Shell(cmd).Kube
@@ -187,15 +198,36 @@ func TestShellKubeReadsAnExpandedNamespaceObject(t *testing.T) {
 		"kubectl apply -f namespaces/*.yaml -n shop": "shop",
 		"kubectl delete -f k8s/{a,b}.yaml -n shop":   "shop",
 		"kubectl delete ns shop":                     "shop",
+		// Round 3 (B1): no namespace object anywhere. kubectl refuses a resource argument next to -f,
+		// --filename, -k or --kustomize, create reads the kind from its subcommand, and a glob in the
+		// name slot after a literal type of another kind names objects of that kind only.
+		"kubectl apply -f *.yaml -n shop":                         "shop",
+		"kubectl apply -f '*.yaml' -n shop":                       "shop",
+		"kubectl apply -f *.yml":                                  "",
+		"kubectl delete -f *.yaml -n shop":                        "shop",
+		"kubectl create -f *.json -n shop":                        "shop",
+		"kubectl replace -f *.yaml -n shop":                       "shop",
+		"kubectl apply --filename *.yaml -n shop":                 "shop",
+		"kubectl apply -f n*.yaml -n shop":                        "shop",
+		"kubectl apply -f */deploy.yaml -n shop":                  "shop",
+		"kubectl create configmap cfg --from-file *.conf -n shop": "shop",
+		"kubectl delete pod -n shop *":                            "shop",
+		"kubectl apply -k overlays/* -n shop":                     "shop",
+		"kubectl apply -Rf k8s/*.yaml -n shop":                    "shop",
+		"kubectl patch deploy web --patch-file *.yaml -n shop":    "shop",
+		"kubectl delete pods -n shop web-? web-[0-9]":             "shop",
+		"kubectl delete pod web -n shop --grace-period *":         "shop",
+		"kubectl --weird x apply -f *.yaml -n shop":               "shop",
 	} {
 		if kube := Shell(cmd).Kube; len(kube) != 1 || kube[0].Namespace != want || kube[0].Cause != "" {
-			t.Errorf("%q: %+v, want the namespace %s", cmd, kube, want)
+			t.Errorf("%q: %+v, want the namespace %q", cmd, kube, want)
 		}
 	}
 	if kube := Shell("kubectl get {ns,pods} kube-system").Kube; len(kube) != 0 {
 		t.Errorf("a read has no kube target: %+v", kube)
 	}
-	for _, cmd := range []string{"{kubectl,delete} ns kube-system", "/usr/local/bin/kube{ctl,} delete ns kube-system"} {
+	for _, cmd := range []string{"{kubectl,delete} ns kube-system", "/usr/local/bin/kube{ctl,} delete ns kube-system",
+		"./setup.sh && mkdir -p tools/{kubectl,helm}", "./build.sh && cp bin/{kubectl,helm} /usr/local/bin/"} {
 		if kube := Shell(cmd).Kube; len(kube) != 1 || kube[0].Namespace != "*" || kube[0].Cause != causeUnknownProg {
 			t.Errorf("%q: %+v, want * as a kubectl the classifier does not read as the program", cmd, kube)
 		}

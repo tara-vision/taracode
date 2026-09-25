@@ -43,9 +43,11 @@ files keep working unchanged; `mcp:` is a new, optional policy section.
 - **Shell reads relaxed** after the classifier over-block review: a literal parameter-expansion default
   (`${x:-word}`, `${x-word}`) and an assignment-only segment ahead of a read stay reads; `cd`, `command -v`,
   a comparison or a quoted brace inside a `grep`/`awk`/`jq`/`sed` program argument, the `gcloud` read verbs
-  (including `logging read` and the other resource-group forms), a value-less `git config` read, and
-  `ifconfig` without an address no longer trip the mutate fallback; a `$(...)` command substitution that
-  only reads (a `for`-list, an `echo`) keeps its enclosing command a read too.
+  (including `logging read` and the other resource-group forms), a value-less `git config` read, and an
+  `ifconfig` query (no word, one word such as an interface or `-a`, or an interface and an address family;
+  any other form, `-a -v` and `-L en0` included, still configures) no longer trip the mutate fallback; a
+  `$(...)` command substitution that only reads (a `for`-list, an `echo`) keeps its enclosing command a read
+  too.
 - At the iteration cap, the agent now makes one final completion with no tools offered, so a session that
   runs out of iterations still answers with the findings so far instead of ending the turn empty-handed.
 - `mcp.ToTool(mgr, tool, readOnly)` takes the trust decision as an explicit parameter instead of reading it

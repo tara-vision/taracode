@@ -150,6 +150,11 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    a sourced file that can set `KUBECONFIG`, a script). kubectl or helm run from another program's string or
    file, such as `sh -c "kubectl ..."` or a script, is not seen; nor is one inside a double-quoted
    substitution (`"$(kubectl ...)"` or backticks in double quotes), though the unquoted `$(kubectl ...)` is.
+   A namespace a `kubectl` mutation changes as an object (`kubectl delete ns kube-system`,
+   `kubectl label ns/kube-system ...`) is the namespace it touches, and on a `shell` line such a command with
+   a glob or a brace list in any word, even a quoted JSON value (`kubectl patch ns shop -p '{"a":1,"b":2}'`),
+   counts as touching every namespace; the `kubectl` tool, which runs no shell, reads the same words
+   literally.
    Protected paths cover the file `write_file`
    or `edit_file` changes, the directory the `terraform` tool runs in, and in a `shell` command the targets of
    its redirects and the files it hands to a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`,

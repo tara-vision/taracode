@@ -216,8 +216,9 @@ func TestShellTargetWordsTheShellExpandsAreAny(t *testing.T) {
 		t.Fatal(err)
 	}
 	const namespaces, contexts = "protected.kube_namespaces", "protected.kube_contexts"
-	const expanded, objects = "(a context or namespace word is expanded by the shell)",
-		"(a word the shell expands can name a namespace object), including the protected kube-system; run kubectl"
+	const expanded, objects, program = "(a context or namespace word is expanded by the shell)",
+		"(a word the shell expands can name a namespace object), including the protected kube-system; use the " +
+			"kubectl tool, which runs no shell", "(a program before kubectl is not known)"
 	shell := ShellTool(nil)
 	for _, c := range []struct{ command, rule, reason string }{
 		{"kubectl delete --wait=false ns kube-sys{tem,}", namespaces, objects},
@@ -233,6 +234,16 @@ func TestShellTargetWordsTheShellExpandsAreAny(t *testing.T) {
 		{"kubectl delete {ns,kube-system}", namespaces, objects},
 		{"kubectl delete n{s,} kube-system", namespaces, objects},
 		{"kubectl label {ns,kube-system} team=x", namespaces, objects},
+		// Round 3: the seven the re-review accepted as denies, a namespace-object command with an
+		// expanded word (the kubectl tool reads a quoted JSON value literally) and a brace that names
+		// kubectl as a word on a line that runs something taracode cannot see into.
+		{`kubectl patch ns shop -p '{"a":1,"b":2}'`, namespaces, objects},
+		{`kubectl annotate ns shop cfg='{"a":1,"b":2}'`, namespaces, objects},
+		{`kubectl label ns shop x=y -o jsonpath='{.items[*].metadata.name}'`, namespaces, objects},
+		{"kubectl create ns 'team-{a,b}'", namespaces, objects},
+		{"./setup.sh && mkdir -p tools/{kubectl,helm}", contexts, program},
+		{"./build.sh && cp bin/{kubectl,helm} /usr/local/bin/", contexts, program},
+		{"{kubectl,delete} ns kube-system", contexts, program},
 	} {
 		inv := shell.Classify(map[string]any{"command": c.command}, dir)
 		inv.WorkingDir = dir
@@ -245,5 +256,80 @@ func TestShellTargetWordsTheShellExpandsAreAny(t *testing.T) {
 	inv.WorkingDir = dir
 	if v := policy.Default().Evaluate(policy.ModeOperate, inv); inv.Targets.KubeNamespace != "shop" || !v.Allow {
 		t.Errorf("a brace in a pod name keeps the namespace shop: %+v %+v", inv.Targets, v)
+	}
+}
+
+// TestShellExpansionsWithoutANamespaceObjectAsk pins the re-review's table of round 3 (B1): a kubectl
+// line whose glob or brace cannot name a namespace object keeps its namespace and goes on to the
+// permission under the built-in policy, and a read stays a read. The first eleven were protected-
+// namespace denies at cb74985: kubectl refuses a resource argument next to -f, --filename, -k or
+// --kustomize, create reads the kind from its subcommand, and a glob in the name slot after a literal
+// type of another kind names objects of that kind only. The rest never moved and guard the rule.
+func TestShellExpansionsWithoutANamespaceObjectAsk(t *testing.T) {
+	fakeBin(t, "kubectl", fakeKubeconfigKubectl)
+	fakeBin(t, "helm", fakeKubeconfigKubectl)
+	processKubeconfig(t, false)
+	dir := t.TempDir()
+	shell := ShellTool(nil)
+	const read = "read"
+	for _, c := range []struct{ command, want string }{
+		{"kubectl apply -f *.yaml -n shop", "shop"},
+		{"kubectl apply -f '*.yaml' -n shop", "shop"},
+		{"kubectl apply -f *.yml", "team-a"},
+		{"kubectl delete -f *.yaml -n shop", "shop"},
+		{"kubectl create -f *.json -n shop", "shop"},
+		{"kubectl replace -f *.yaml -n shop", "shop"},
+		{"kubectl apply --filename *.yaml -n shop", "shop"},
+		{"kubectl apply -f n*.yaml -n shop", "shop"},
+		{"kubectl apply -f */deploy.yaml -n shop", "shop"},
+		{"kubectl create configmap cfg --from-file *.conf -n shop", "shop"},
+		{"kubectl delete pod -n shop *", "shop"},
+		{"kubectl patch deploy web --patch-file *.yaml -n shop", "shop"},
+		{"kubectl apply -f=*.yaml -n shop", "shop"},
+		{"kubectl apply --filename=*.yaml -n shop", "shop"},
+		{"kubectl apply -f*.yaml -n shop", "shop"},
+		{`kubectl patch deployment web -n shop -p '{"spec":{"replicas":2}}'`, "shop"},
+		{`kubectl patch ns shop -p '{"a":1}'`, "shop"},
+		{`kubectl patch deployment web -n shop -p '{"spec":{"replicas":2,"paused":true}}'`, "shop"},
+		{`kubectl patch deployment web -n shop --type json -p '[{"op":"replace","path":"/spec/replicas","value":2}]'`,
+			"shop"},
+		{`kubectl patch deployment web -n shop -p '{"spec":{"template":{"spec":{"containers":[{"name":"web",` +
+			`"image":"nginx:1.27"}]}}}}'`, "shop"},
+		{`kubectl patch svc web -n shop -p '{"spec":{"ports":[{"port":80,"targetPort":8080}]}}'`, "shop"},
+		{`kubectl annotate deploy web -n shop cfg='{"a":1,"b":2}'`, "shop"},
+		{"kubectl label pods -n shop -l 'app in (web,api)' tier=front", "shop"},
+		{"kubectl delete pod web-{1,2} -n shop", "shop"},
+		{"kubectl delete pods 'web-[0-9]' -n shop", "shop"},
+		{"kubectl delete pod web -n shop -o jsonpath='{.metadata.name}'", "shop"},
+		{"kubectl apply -f web.yaml -n shop -o jsonpath='{.metadata.name}'", "shop"},
+		{"kubectl create deployment web --image nginx -n shop -o jsonpath='{.metadata.name}'", "shop"},
+		{"kubectl set image deploy/web web=nginx:1.{25,26} -n shop", "shop"},
+		{"kubectl delete pods -n shop --field-selector 'metadata.name=web-*'", "shop"},
+		{"kubectl create secret generic db -n shop --from-literal 'pw=a*b'", "shop"},
+		{"kubectl apply -f 'k8s/*.yaml' -n shop", "shop"},
+		{"kubectl apply -f ./*.yaml -n shop", "shop"},
+		{"kubectl apply -f https://example.com/k8s/*.yaml -n shop", "shop"},
+		{"kubectl apply -f deploy-*.yaml -n shop", "shop"},
+		{"kubectl apply -k overlays/* -n shop", "shop"},
+		{"kubectl create configmap cfg -n shop --from-file=*.conf", "shop"},
+		{"kubectl create configmap cfg -n shop --from-file conf/*.conf", "shop"},
+		{"helm upgrade web ./chart -n shop --set 'tags={a,b}'", "shop"},
+		{"kubectl get pods -o jsonpath='{.items[*].metadata.name}'", read},
+		{"kubectl get ns -o jsonpath='{.items[*].metadata.name}'", read},
+		{`kubectl get ns -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'`, read},
+		{"kubectl get pods -o custom-columns='NAME:.metadata.name,NS:.metadata.namespace'", read},
+		{"kubectl get {ns,pods} kube-system", read},
+	} {
+		inv := shell.Classify(map[string]any{"command": c.command}, dir)
+		inv.WorkingDir = dir
+		v := policy.Default().Evaluate(policy.ModeOperate, inv)
+		switch {
+		case c.want == read:
+			if inv.Classification != policy.Read || !v.Allow || v.Rule != "read" {
+				t.Errorf("%q must stay a read: %+v %+v", c.command, inv, v)
+			}
+		case !v.Allow || v.Rule != "policy" || inv.Targets.KubeNamespace != c.want:
+			t.Errorf("%q: targets %+v: %+v, want the namespace %s on to the permission", c.command, inv.Targets, v, c.want)
+		}
 	}
 }
