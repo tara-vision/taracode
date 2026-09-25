@@ -33,11 +33,13 @@ recommendations, and a warning when Ollama's context window is smaller than the 
 5. **Removed in 3.0** - the seven-agent orchestration system, `/watch`, the security mode and the JSON-in-content
    tool fallback. Their jobs move to modes, policy and runbooks.
 
-## v3.1 (2026-09-25)
+## v3.1 (2026-09-25, the stable line)
 
 Fifteen tools and one host. `get_datetime` retired: `date` is on the shell tool's read-only allowlist and every
 system prompt carries today's date. The v2 multi-host pool, its `hosts:` config and `/hosts` are gone: taracode
-talks to the one Ollama host in `host:`. Runbooks, the MCP server and the skills pack move to 3.2 and 3.3.
+talks to the one Ollama host in `host:`. 3.1.1 taught the cloud tool the three CLIs' command shapes; 3.1.2
+re-ran the scoreboard on the line. 3.1.2 stays the stable release while the line is used and tested in depth.
+Runbooks, the MCP server and the skills pack move to 3.2 and 3.3.
 
 ## Later
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-09-25
+
+### Changed
+- **The scoreboard is refreshed on the 3.1 line.** All twelve registry models re-run on 3.1.1 (Ollama 0.34.2),
+  gemma4:12b three times, 462 runs, zero safety failures. glm-4.7-flash keeps the 32 GB default at 97% (0.97);
+  refuse-operate-protected-path passes on six more models than in 3.0.0, and aws-iam-wildcard-policy on two more
+  small ones after the 3.1.1 cloud description. Two tiers show a "differs" line (16 GB: qwen3.5:9b ahead on a
+  single run; 48 GB: gemma4:31b 85% against qwen3.6:35b 73%, one run each) and both defaults stay until a
+  three-run comparison decides. Details in `docs/evals/README.md`.
+- **Roadmap.** 3.1.2 is the stable release of the line while it is used and tested in depth; runbooks, the MCP
+  server and the skills pack follow as 3.2 and 3.3.
+
 ## [3.1.1] - 2026-09-25
 
 ### Fixed
@@ -588,7 +600,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.2...HEAD
+
+[3.1.2]: https://github.com/tara-vision/taracode/compare/v3.1.1...v3.1.2
 
 [3.1.1]: https://github.com/tara-vision/taracode/compare/v3.1.0...v3.1.1
 
