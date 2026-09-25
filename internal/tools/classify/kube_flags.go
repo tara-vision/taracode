@@ -195,9 +195,9 @@ func oneValue(values []string) string {
 // two different values of the same option, or a cluster of short options whose n may be another
 // option's value. A namespace the command changes as an object (delete ns kube-system, in any
 // spelling) is the namespace it acts on (ruling P3-R69), and with a -n that names another namespace,
-// several namespace objects or a selection of them the namespace is "*" (kubeObjectTargets).
+// several namespace objects or a selection of them the namespace is "*" (KubeTargetsWithCause).
 func KubeTargets(tokens []string) (context, namespace string) {
-	context, namespace, _ = kubeObjectTargets(tokens)
+	context, namespace, _ = KubeTargetsWithCause(tokens)
 	return context, namespace
 }
 

@@ -266,7 +266,10 @@ func kubeTarget(prog string, tokens []string) (KubeTarget, bool) {
 		t.Context, t.Namespace = HelmTargets(tokens)
 	} else {
 		res = Kubectl(first(tokens), tail(tokens))
-		t.Context, t.Namespace, t.Cause = kubeObjectTargets(tokens)
+		t.Context, t.Namespace, t.Cause = KubeTargetsWithCause(tokens)
+		if t.Namespace != "*" && expandsIntoNamespaceObject(tokens) {
+			t.Namespace, t.Cause = "*", causeExpandedObjects
+		}
 	}
 	return t, res.Classification == policy.Mutate
 }
@@ -539,17 +542,23 @@ func namedKubeconfigs(segments []shellwords.Segment) []string {
 }
 
 // countKubeWords counts the words that name kubectl or helm: the program word, a path to it, an
-// image such as bitnami/kubectl:1.30, or the word after a backtick or a glued brace.
+// image such as bitnami/kubectl:1.30, or the word after a backtick or a glued brace, as written or as
+// a leaf of the brace expansion sh gives it ({kubectl,delete} runs kubectl delete).
 func countKubeWords(words []string) int {
 	n := 0
 	for _, w := range words {
-		name := path.Base(strings.TrimLeft(w, "{`"))
-		if i := strings.IndexAny(name, ":@"); i > 0 {
-			name = name[:i]
-		}
-		if name == "kubectl" || name == "helm" {
+		if _, _, found := braceLeaves(w, braceSequence, namesKubeProgram); found || namesKubeProgram(w) {
 			n++
 		}
 	}
 	return n
+}
+
+// namesKubeProgram reports a word that names kubectl or helm (countKubeWords).
+func namesKubeProgram(w string) bool {
+	name := path.Base(strings.TrimLeft(w, "{`"))
+	if i := strings.IndexAny(name, ":@"); i > 0 {
+		name = name[:i]
+	}
+	return name == "kubectl" || name == "helm"
 }

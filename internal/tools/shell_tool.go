@@ -142,11 +142,15 @@ func expandHome(p, home string) string {
 	return p
 }
 
+// causeShellExpansion is why a context or namespace the shell expands before kubectl or helm reads
+// it is "*".
+const causeShellExpansion = "a context or namespace word is expanded by the shell"
+
 // shellKubeTargets resolves the clusters the kubectl and helm mutations of a shell line act on, as
 // the kubectl and helm tools do (what a command does not name is HELM_KUBECONTEXT or HELM_NAMESPACE
 // for helm, then the current context or namespace of its kubeconfig, each kubeconfig read once), and
-// reports "*" for a value the shell computes at run time or when the line names more than one
-// context or namespace.
+// reports "*" for a value the shell computes or expands at run time or when the line names more than
+// one context or namespace.
 func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.KubeTarget) (
 	kubeContext, namespace, reason string,
 ) {
@@ -154,11 +158,14 @@ func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.Ku
 	contexts := make([]string, 0, len(refs))
 	namespaces := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		c, ns := runTimeAsAll(ref.Context), runTimeAsAll(ref.Namespace)
+		c, ns, cause := runTimeAsAll(ref.Context), runTimeAsAll(ref.Namespace), ref.Cause
+		if cause == "" && (c != ref.Context || ns != ref.Namespace) {
+			cause = causeShellExpansion
+		}
 		if ref.Helm {
 			c, ns = helmEnvTargets(c, ns)
 		}
-		t := resolver.targets(c, ns, ref.Kubeconfig, ref.Cause)
+		t := resolver.targets(c, ns, ref.Kubeconfig, cause)
 		contexts = append(contexts, t.KubeContext)
 		namespaces = append(namespaces, t.KubeNamespace)
 		if reason == "" {
@@ -168,9 +175,13 @@ func shellKubeTargets(ctx context.Context, workingDir string, refs []classify.Ku
 	return oneOrAll(contexts), oneOrAll(namespaces), reason
 }
 
-// runTimeAsAll maps a value the shell computes at run time ($CTX) to "*": it can be any.
+// runTimeAsAll maps a value the shell computes or expands at run time to "*", since it can be any: a
+// $CTX or a backtick, and a glob or a brace (sh expands kube-sys{tem,} to kube-system kube-sys, and
+// kube-syst* to the files it matches in the working directory). The classifier's words have their
+// quotes removed, so a quoted glob or brace, which sh leaves alone, is "*" too: that fails closed, and
+// no namespace can hold these characters.
 func runTimeAsAll(value string) string {
-	if strings.ContainsAny(value, "$`") {
+	if strings.ContainsAny(value, "$`*?[{") {
 		return "*"
 	}
 	return value

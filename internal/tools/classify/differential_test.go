@@ -72,7 +72,7 @@ func differentialCommands() []string {
 		shellReadCases, everydayReads, relaxedReads, distroKubectlWrapperReads,
 		c1HolesReads, i5CommandsReads, sameClassHolesReads, assignmentOnlySegmentReads,
 		sedBracketsReads, sedScriptFileReads, variableExpansionReads,
-		controlWordsReads, leadingGlobalFlagsReads,
+		controlWordsReads, leadingGlobalFlagsReads, namespaceObjectReads,
 	}
 	for _, list := range tables {
 		for _, c := range list {

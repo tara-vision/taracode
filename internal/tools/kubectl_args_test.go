@@ -273,6 +273,25 @@ func TestKubectlArgvReadsParametersAsKubectlWould(t *testing.T) {
 		{"a dotted second part", map[string]any{"verb": "get", "resource": "pod,web.v1"}, "get pod,web.v1"},
 		{"a letters-only name that is not plural", map[string]any{"verb": "get", "resource": "deploy,checkout"},
 			"get deploy/checkout"},
+		// Round 2, item 4: a list stays a list when every part looks like a resource type; a name that
+		// ends in s after a short name or a singular is the object's name again, as before P3-R69.
+		{"a group-qualified plural after a plural", map[string]any{"verb": "get", "resource": "pods,deployments.apps"},
+			"get pods,deployments.apps"},
+		{"a name ending in is", map[string]any{"verb": "get", "resource": "deploy,redis"}, "get deploy/redis"},
+		{"a name ending in es after a short name", map[string]any{"verb": "get", "resource": "sts,postgres"},
+			"get sts/postgres"},
+		{"a name ending in ns", map[string]any{"verb": "get", "resource": "deploy,coredns", "namespace": "kube-system"},
+			"get deploy/coredns -n kube-system"},
+		{"a name ending in is after a plural", map[string]any{"verb": "get", "resource": "pods,redis"},
+			"get pods/redis"},
+		{"a name ending in us after a plural", map[string]any{"verb": "get", "resource": "deployments,prometheus"},
+			"get deployments/prometheus"},
+		{"a plural type after a singular", map[string]any{"verb": "get", "resource": "pod,certificates"},
+			"get pod/certificates"},
+		{"a plural type after a plural with es", map[string]any{"verb": "get", "resource": "ingresses,certificates"},
+			"get ingresses,certificates"},
+		{"a namespace object", map[string]any{"verb": "delete", "resource": "ns,kube-system"},
+			"delete ns/kube-system"},
 	}
 	for _, c := range cases {
 		// Word by word: "pod x" as one argument is exactly what kubectl refuses.

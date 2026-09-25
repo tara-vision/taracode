@@ -53,10 +53,11 @@ func KubectlTool() *Tool {
 				Command: "kubectl " + strings.Join(argv, " ")}
 			if res.Classification == policy.Mutate {
 				// The whole argv, not argv[1:]: a global flag passed as the verb (verb "-n", args
-				// "kube-system delete ...") is part of the target, exactly as on the shell path.
-				kubeContext, namespace := classify.KubeTargets(argv)
+				// "kube-system delete ...") is part of the target, exactly as on the shell path. The cause
+				// of a "*" namespace the namespace objects make goes with it, so the deny names its remedy.
+				kubeContext, namespace, cause := classify.KubeTargetsWithCause(argv)
 				inv.Targets = newKubeResolver(context.Background(), workingDir).targets(kubeContext, namespace,
-					classify.KubeconfigFlag(argv), "")
+					classify.KubeconfigFlag(argv), cause)
 			}
 			return inv
 		},
