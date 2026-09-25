@@ -1,44 +1,44 @@
 {
   "generated_at": "2026-09-25",
-  "taracode": "v3.0.0-beta.1-1-gf484775",
+  "taracode": "v3.0.0",
   "corpus_tasks": 33,
   "tiers": [
     {
       "tier": "16",
       "rows": [
         {
-          "model": "qwen3.5:9b",
-          "default": false,
-          "pass_rate": 0.697,
-          "mean_score": 0.839,
-          "mean_iterations": 6.152,
-          "mean_wall_s": 7.239,
-          "fixture_miss_rate": 0.5,
+          "model": "gemma4:12b",
+          "default": true,
+          "pass_rate": 0.758,
+          "mean_score": 0.87,
+          "mean_iterations": 4.485,
+          "mean_wall_s": 11.92,
+          "fixture_miss_rate": 0.261,
           "by_area": {
             "cloud": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.833
+              "passed": 3,
+              "mean_score": 0.872
             },
             "docker": {
               "tasks": 4,
-              "passed": 3,
-              "mean_score": 0.875
+              "passed": 2,
+              "mean_score": 0.633
             },
             "helm": {
               "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
+              "passed": 2,
+              "mean_score": 0.9
             },
             "kubernetes": {
               "tasks": 9,
-              "passed": 5,
-              "mean_score": 0.783
+              "passed": 7,
+              "mean_score": 0.92
             },
             "refusal": {
               "tasks": 6,
-              "passed": 4,
-              "mean_score": 0.783
+              "passed": 3,
+              "mean_score": 0.761
             },
             "secrets": {
               "tasks": 3,
@@ -47,61 +47,61 @@
             },
             "terraform": {
               "tasks": 5,
-              "passed": 3,
-              "mean_score": 0.79
+              "passed": 5,
+              "mean_score": 1
             }
           },
-          "taracode": "v3.0.0-alpha.2-74-gcbd8cfe",
+          "taracode": "v3.0.0",
           "ollama": "0.34.2",
           "think": "auto",
           "date": "2026-09-25"
         },
         {
-          "model": "gemma4:12b",
-          "default": true,
-          "pass_rate": 0.727,
-          "mean_score": 0.807,
-          "mean_iterations": 4.545,
-          "mean_wall_s": 11.043,
-          "fixture_miss_rate": 0.31,
+          "model": "qwen3.5:9b",
+          "default": false,
+          "pass_rate": 0.758,
+          "mean_score": 0.853,
+          "mean_iterations": 6.182,
+          "mean_wall_s": 7.387,
+          "fixture_miss_rate": 0.458,
           "by_area": {
             "cloud": {
               "tasks": 3,
-              "passed": 3,
-              "mean_score": 0.967
+              "passed": 2,
+              "mean_score": 0.778
             },
             "docker": {
               "tasks": 4,
-              "passed": 2,
-              "mean_score": 0.571
+              "passed": 3,
+              "mean_score": 0.863
             },
             "helm": {
-              "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.867
-            },
-            "kubernetes": {
-              "tasks": 9,
-              "passed": 7,
-              "mean_score": 0.856
-            },
-            "refusal": {
-              "tasks": 6,
-              "passed": 3,
-              "mean_score": 0.717
-            },
-            "secrets": {
               "tasks": 3,
               "passed": 3,
               "mean_score": 0.944
             },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 6,
+              "mean_score": 0.844
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 4,
+              "mean_score": 0.778
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
             "terraform": {
               "tasks": 5,
               "passed": 4,
-              "mean_score": 0.8
+              "mean_score": 0.853
             }
           },
-          "taracode": "v3.0.0-alpha.2-74-gcbd8cfe",
+          "taracode": "v3.0.0",
           "ollama": "0.34.2",
           "think": "auto",
           "date": "2026-09-25"
