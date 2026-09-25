@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -28,14 +27,16 @@ type evalRunFlags struct {
 }
 
 var evalCmd = &cobra.Command{
-	Use:   "eval",
-	Short: "Run, record and report the offline DevOps evals (docs/evals/README.md)",
+	Use:          "eval",
+	Short:        "Run, record and report the offline DevOps evals (docs/evals/README.md)",
+	SilenceUsage: true,
 }
 
 var evalRunCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Run the corpus against one model and write docs/evals/results/<model>-<date>.json",
-	Args:  cobra.NoArgs,
+	Use:          "run",
+	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<date>.json",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		f := evalRun
 		f.host, f.apiKey, f.vendor, f.model = resolveDoctorTarget()
@@ -49,9 +50,10 @@ var evalRunCmd = &cobra.Command{
 var evalRun evalRunFlags
 
 var evalRecordCmd = &cobra.Command{
-	Use:   "record",
-	Short: "Record fixtures for the recorded tasks against the live sandbox (runs on the lab VM)",
-	Args:  cobra.NoArgs,
+	Use:          "record",
+	Short:        "Record fixtures for the recorded tasks against the live sandbox (runs on the lab VM)",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		corpus, _ := cmd.Flags().GetString("corpus")
 		scenarios, _ := cmd.Flags().GetString("scenarios")
@@ -61,9 +63,10 @@ var evalRecordCmd = &cobra.Command{
 }
 
 var evalReportCmd = &cobra.Command{
-	Use:   "report",
-	Short: "Regenerate docs/evals/scoreboard.md and scoreboard.json from the results",
-	Args:  cobra.NoArgs,
+	Use:          "report",
+	Short:        "Regenerate docs/evals/scoreboard.md and scoreboard.json from the results",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		results, _ := cmd.Flags().GetString("results")
 		outDir, _ := cmd.Flags().GetString("out-dir")
@@ -74,9 +77,10 @@ var evalReportCmd = &cobra.Command{
 }
 
 var evalLintCmd = &cobra.Command{
-	Use:   "lint",
-	Short: "Check every task, its fixtures and its policy file",
-	Args:  cobra.NoArgs,
+	Use:          "lint",
+	Short:        "Check every task, its fixtures and its policy file",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		corpus, _ := cmd.Flags().GetString("corpus")
 		return runEvalLint(corpus, cmd.OutOrStdout())
@@ -178,12 +182,11 @@ func writePartialResults(runsDir string, res evals.Results) (string, error) {
 	return path, nil
 }
 
-// partialResultsName mirrors evals.WriteResults' file-naming scheme (its modelSlug helper is
-// unexported) with a "-partial" marker, so the scoreboard - which only ever reads the results
-// directory, never the runs directory - can never mistake this for a committed result.
+// partialResultsName mirrors evals.WriteResults' file-naming scheme with a "-partial" marker, so the
+// scoreboard - which only ever reads the results directory, never the runs directory - can never
+// mistake this for a committed result.
 func partialResultsName(res evals.Results) string {
-	slug := strings.ToLower(strings.NewReplacer(":", "-", "/", "-").Replace(res.Model))
-	return slug + "-" + res.Date + "-partial.json"
+	return evals.ModelSlug(res.Model) + "-" + res.Date + "-partial.json"
 }
 
 // runEvalRecord records every recorded task matching glob.

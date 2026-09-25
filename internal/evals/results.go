@@ -93,8 +93,8 @@ type Summary struct {
 	ByArea          map[string]AreaSummary `json:"by_area"`
 }
 
-// modelSlug makes a model name safe for a file name.
-func modelSlug(model string) string {
+// ModelSlug makes a model name safe for a file name.
+func ModelSlug(model string) string {
 	return strings.ToLower(strings.NewReplacer(":", "-", "/", "-").Replace(model))
 }
 
@@ -107,11 +107,14 @@ func WriteResults(dir string, r Results) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, modelSlug(r.Model)+"-"+r.Date+".json")
+	path := filepath.Join(dir, ModelSlug(r.Model)+"-"+r.Date+".json")
 	return path, os.WriteFile(path, append(data, '\n'), 0o644) //nolint:gosec // repository content
 }
 
-// ReadResults reads every *.json under dir, sorted by model and then date.
+// ReadResults reads every *.json under dir, sorted by model and then date. A name ending in
+// "-partial.json" is a stopped run's partial results (writePartialResults, cmd/eval_cmd.go) and is
+// always skipped: the results directory the scoreboard reads should never hold one, but this is
+// defense in depth so a stray file is never read back as a committed result.
 func ReadResults(dir string) ([]Results, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -119,7 +122,7 @@ func ReadResults(dir string) ([]Results, error) {
 	}
 	var out []Results
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), "-partial.json") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // a results file the caller points at

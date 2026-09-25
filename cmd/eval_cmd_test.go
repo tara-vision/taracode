@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/tara-vision/taracode/internal/evals"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
@@ -24,6 +27,50 @@ func TestEvalLintReportsProblems(t *testing.T) {
 	err := runEvalLint(root, os.Stdout)
 	if err == nil || !strings.Contains(err.Error(), "1 problem") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestEvalCommandsSilenceUsageOnFailure pins the eval command and its four subcommands to
+// SilenceUsage, so a failing `eval lint` or `eval run` prints only the error, never cobra's usage
+// block. SilenceErrors stays unset, like the rest of cmd/ (main.go's own comment on Execute() relies
+// on cobra printing the error itself).
+func TestEvalCommandsSilenceUsageOnFailure(t *testing.T) {
+	for _, c := range []*cobra.Command{evalCmd, evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd} {
+		if !c.SilenceUsage {
+			t.Errorf("%s: SilenceUsage is false; a failing run would print the usage block too", c.Use)
+		}
+		if c.SilenceErrors {
+			t.Errorf("%s: SilenceErrors is true; the rest of cmd/ leaves it unset", c.Use)
+		}
+	}
+}
+
+// TestEvalLintCommandSilencesUsageOnFailure exercises the real cobra command, not just runEvalLint
+// (its testable core): a failing `eval lint` prints the error but never cobra's usage block.
+func TestEvalLintCommandSilencesUsageOnFailure(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "bad-task")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "task.yaml"), []byte("id: bad-task\narea: nope\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	rootCmd.SetArgs([]string{"eval", "lint", "--corpus", root})
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+	t.Cleanup(func() {
+		rootCmd.SetArgs(nil)
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+	})
+	err := rootCmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "1 problem") {
+		t.Fatalf("err=%v", err)
+	}
+	if strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("the usage block printed on a lint failure: %q", out.String())
 	}
 }
 
