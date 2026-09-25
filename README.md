@@ -348,7 +348,8 @@ See [config.example.yaml](config.example.yaml) for all options.
 
 Phase 2 of the v3 plan (investigate and operate modes, the sixteen classified tools, the policy engine,
 redaction and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in
-3.0.0-beta.1. Runbooks, the MCP server and the skills pack are next. See [ROADMAP.md](ROADMAP.md).
+3.0.0-beta.1, and 3.0.0 made the line stable. Runbooks, the MCP server and the skills pack are next, as 3.1 and
+3.2. See [ROADMAP.md](ROADMAP.md).
 
 ## Evals and the scoreboard
 

@@ -4,13 +4,13 @@ taracode is becoming the local-first DevOps operator: a terminal agent that inve
 default, changes it only through an explicit policy, runs on Ollama with any modern open model, and publishes
 a reproducible scoreboard of which local models can actually do DevOps work.
 
-## v2.1 (now)
+## v2.1 (2026-09-21, the previous stable line)
 
 Supported Go toolchain, clean vulnerability scan, lint and scan gates in CI, signed four-platform releases with
 checksums and provenance, deb and rpm packages, a Homebrew cask, an installer that verifies checksums, 2026 model
 recommendations, and a warning when Ollama's context window is smaller than the tool budget.
 
-## v3.0 (next, shipped in pre-releases)
+## v3.0 (stable since 3.0.0, 2026-09-25)
 
 1. **Native Ollama core** (shipped in 3.0.0-alpha.1) - `/api/chat` client with context-window control,
    thinking levels, structured output, capability detection; a model registry and `taracode doctor` that
@@ -28,7 +28,7 @@ recommendations, and a warning when Ollama's context window is smaller than the 
    in `docs/evals/scoreboard.md` and on code.tara.vision, refreshed every release. Carries two Phase 2 safety
    follow-ups forward: the shell-classifier differential harness (`make classify-diff`) and the MCP trust
    switch (`policy.mcp`).
-4. **Runbooks, MCP server and skills pack** - ten built-in runbooks on the existing checkpoint engine,
+4. **Runbooks, MCP server and skills pack** (3.1 and 3.2) - ten built-in runbooks on the existing checkpoint engine,
    `taracode mcp serve` for Claude Code, OpenCode, Codex and Pi users, and skills in the Agent Skills format.
 5. **Removed in 3.0** - the seven-agent orchestration system, `/watch`, the security mode and the JSON-in-content
    tool fallback. Their jobs move to modes, policy and runbooks.
