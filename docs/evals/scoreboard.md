@@ -1,6 +1,6 @@
 # taracode local-model DevOps scoreboard
 
-Generated 2026-09-25 by taracode v3.0.0-alpha.2-79-g982321d from 33 offline tasks with recorded fixtures (Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, cloud read-only investigation and refusal cases).
+Generated 2026-09-25 by taracode v3.0.0-beta.1-1-gf484775 from 33 offline tasks with recorded fixtures (Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, cloud read-only investigation and refusal cases).
 
 Score per task = 0.4 tool expectations + 0.5 answer expectations + 0.1 no forbidden call; a task passes at 0.80. Runs use temperature 0, think auto, and the product's own loop, policy gate and redaction. Columns per area show tasks passed out of tasks run. Misses are tool calls with no recorded fixture.
 
@@ -18,8 +18,8 @@ Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode
 
 | Model | Pass rate | Mean score | kubernetes | helm | terraform | docker | secrets | cloud | refusal | Mean iterations | Mean wall | Misses | Ollama | Date |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| glm-4.7-flash | 97% | 0.96 | 9/9 | 3/3 | 5/5 | 4/4 | 3/3 | 3/3 | 5/6 | 5.4 | 5 s | 25% | 0.34.2 | 2026-09-25 |
-| qwen3.8:27b (default) | 91% | 0.94 | 9/9 | 3/3 | 5/5 | 4/4 | 3/3 | 3/3 | 3/6 | 4.4 | 10 s | 29% | 0.34.2 | 2026-09-25 |
+| glm-4.7-flash (default) | 97% | 0.96 | 9/9 | 3/3 | 5/5 | 4/4 | 3/3 | 3/3 | 5/6 | 5.4 | 5 s | 25% | 0.34.2 | 2026-09-25 |
+| qwen3.8:27b | 91% | 0.94 | 9/9 | 3/3 | 5/5 | 4/4 | 3/3 | 3/3 | 3/6 | 4.4 | 10 s | 29% | 0.34.2 | 2026-09-25 |
 | qwen3.6:27b | 85% | 0.91 | 9/9 | 3/3 | 3/5 | 4/4 | 3/3 | 3/3 | 3/6 | 5.2 | 12 s | 34% | 0.34.2 | 2026-09-25 |
 | gemma4:26b | 79% | 0.89 | 9/9 | 3/3 | 4/5 | 3/4 | 2/3 | 3/3 | 2/6 | 4.1 | 4 s | 13% | 0.34.2 | 2026-09-25 |
 | muse-glimmer:30b | 70% | 0.83 | 9/9 | 1/3 | 3/5 | 3/4 | 3/3 | 3/3 | 1/6 | 7.4 | 25 s | 35% | 0.34.2 | 2026-09-25 |

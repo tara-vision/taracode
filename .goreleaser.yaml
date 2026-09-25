@@ -75,7 +75,7 @@ homebrew_casks:
 
         brew install ollama
         ollama pull gemma4:12b      # 16 GB machines
-        ollama pull qwen3.8:27b     # 32 GB machines (Ollama 0.32.12 or newer)
+        ollama pull glm-4.7-flash   # 32 GB machines (Ollama 0.14.3 or newer)
 
       Then run `taracode` inside a project directory.
     hooks:

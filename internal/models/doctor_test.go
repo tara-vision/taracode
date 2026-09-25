@@ -39,7 +39,7 @@ func TestDiagnoseReportsServerModelsAndRecommendation(t *testing.T) {
 		t.Fatalf("context section: %+v", rep)
 	}
 	rec, ok := rep.Recommendation()
-	if !ok || rec.Name != "qwen3.8:27b" || rep.RecommendationInstalled {
+	if !ok || rec.Name != "glm-4.7-flash" || rep.RecommendationInstalled {
 		t.Fatalf("recommendation: %+v %v", rec, ok)
 	}
 	if got := rep.Tools["kubectl"]; got != "/usr/bin/kubectl" {
@@ -49,7 +49,7 @@ func TestDiagnoseReportsServerModelsAndRecommendation(t *testing.T) {
 		t.Fatalf("missing tool should be empty: %q", got)
 	}
 	text := rep.Render()
-	for _, want := range []string{"Ollama 0.34.2", "32 GB", "gemma4:12b", "tools thinking vision", "ollama pull qwen3.8:27b", "terraform: not found"} {
+	for _, want := range []string{"Ollama 0.34.2", "32 GB", "gemma4:12b", "tools thinking vision", "ollama pull glm-4.7-flash", "terraform: not found"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("render lacks %q:\n%s", want, text)
 		}
