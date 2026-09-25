@@ -17,13 +17,13 @@ import (
 // for: a miss (ruling P3-R58).
 var ErrNoFixture = errors.New("no recorded data for this call")
 
-// Replay serves tool calls from a task's fixtures (spec 5.3). Only the five file tools and
-// get_datetime ever execute for real, inside the run directory; the four with a path argument are
-// confined to it, reads included, symlinks resolved. Every other tool and every dry run replays
-// from the fixture store; a call with no fixture is a tool error and a counted miss, and an indexed
-// fixture whose file cannot be read is a distinct, counted corpus defect rather than a miss. The
-// errors the model sees never name the task (ruling P3-R58): a model quoted the task id back as the
-// policy that blocked it, and task ids share words with their own answer patterns.
+// Replay serves tool calls from a task's fixtures (spec 5.3). Only the five file tools ever execute
+// for real, inside the run directory and confined to it, reads included, symlinks resolved. Every
+// other tool and every dry run replays from the fixture store; a call with no fixture is a tool
+// error and a counted miss, and an indexed fixture whose file cannot be read is a distinct, counted
+// corpus defect rather than a miss. The errors the model sees never name the task (ruling P3-R58):
+// a model quoted the task id back as the policy that blocked it, and task ids share words with
+// their own answer patterns.
 type Replay struct {
 	store  *Store
 	runDir string
@@ -42,14 +42,10 @@ type ReplayCall struct {
 	Err       error // the error the replay returned, nil when it served an output; wraps ErrNoFixture on a miss
 }
 
-// realTools run for real inside the run directory.
+// realTools are the five file tools: they run for real inside the run directory and are confined
+// to it, reads included (ruling P3-R24). Every other tool replays from the fixture store.
 var realTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true, "write_file": true,
-	"edit_file": true, "get_datetime": true}
-
-// confinedTools are the realTools that take a path and so must be confined to the run directory,
-// reads included (ruling P3-R24); get_datetime takes no path.
-var confinedTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true,
-	"write_file": true, "edit_file": true}
+	"edit_file": true}
 
 // NewReplay returns a replay for one task run in runDir.
 func NewReplay(store *Store, runDir string) *Replay {
@@ -59,10 +55,7 @@ func NewReplay(store *Store, runDir string) *Replay {
 // Middleware is the tools.Middleware of this replay.
 func (r *Replay) Middleware(call tools.Call, next tools.Executor) tools.Executor {
 	if realTools[call.Tool] && !call.DryRun {
-		if confinedTools[call.Tool] {
-			return r.confined(call.Tool, next)
-		}
-		return next // get_datetime: no path to confine
+		return r.confined(call.Tool, next)
 	}
 	return r.replay(call)
 }

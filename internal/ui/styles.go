@@ -53,21 +53,20 @@ var (
 
 // Icon constants
 const (
-	IconSuccess  = "✓"
-	IconError    = "✗"
-	IconArrow    = "→"
-	IconWarning  = "⚠"
-	IconInfo     = "ℹ"
-	IconFolder   = "📁"
-	IconSession  = "📝"
-	IconTip      = "💡"
-	IconStar     = "🌟"
-	IconThinking = "⠋"
-	IconImage    = "📷"
-	IconCloud    = "☁️"
-	IconLock     = "🔒"
-	IconShield   = "🛡"
-	IconDanger   = "⛔"
+	IconSuccess = "✓"
+	IconError   = "✗"
+	IconArrow   = "→"
+	IconWarning = "⚠"
+	IconInfo    = "ℹ"
+	IconFolder  = "📁"
+	IconSession = "📝"
+	IconTip     = "💡"
+	IconStar    = "🌟"
+	IconImage   = "📷"
+	IconCloud   = "☁️"
+	IconLock    = "🔒"
+	IconShield  = "🛡"
+	IconDanger  = "⛔"
 )
 
 // Display constants

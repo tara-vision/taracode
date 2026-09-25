@@ -81,6 +81,53 @@ mode: security
 	}
 }
 
+// TestLoadOptionsWarnsAboutTheRetiredHostsSection covers the 3.1.0 removal of the v2 multi-host
+// pool: a config that still carries hosts: or default_host: starts on host: and says so once.
+func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
+	resetConfig(t)
+	viper.SetConfigType("yaml")
+	retired := "host: http://localhost:11434\nhosts:\n  primary:\n    url: http://gpu:11434\ndefault_host: primary\n"
+	if err := viper.ReadConfig(strings.NewReader(retired)); err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	opts, warnings := loadOptions()
+	if opts.Host != "http://localhost:11434" || !strings.Contains(joined(warnings), "hosts: and default_host: are ignored since 3.1.0") {
+		t.Fatalf("host %q, warnings %v", opts.Host, warnings)
+	}
+
+	// Only the retired section: its default host carries the session, with a warning that names it.
+	resetConfig(t)
+	viper.SetConfigType("yaml")
+	hostsOnly := "hosts:\n  local:\n    url: http://localhost:11434\n    priority: 2\n  gpu:\n    url: http://gpu:11434\n" +
+		"    priority: 1\ndefault_host: gpu\n"
+	if err := viper.ReadConfig(strings.NewReader(hostsOnly)); err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	opts, warnings = loadOptions()
+	if opts.Host != "http://gpu:11434" || !strings.Contains(joined(warnings), "using http://gpu:11434") {
+		t.Fatalf("host %q, warnings %v", opts.Host, warnings)
+	}
+
+	// No default_host: the lowest priority wins, ties by name.
+	resetConfig(t)
+	viper.SetConfigType("yaml")
+	noDefault := "hosts:\n  local:\n    url: http://localhost:11434\n    priority: 2\n  gpu:\n    url: http://gpu:11434\n    priority: 1\n"
+	if err := viper.ReadConfig(strings.NewReader(noDefault)); err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	if opts, _ = loadOptions(); opts.Host != "http://gpu:11434" {
+		t.Fatalf("host %q, want the lowest priority", opts.Host)
+	}
+
+	// A section with no usable url: the error names the fix.
+	resetConfig(t)
+	viper.Set("hosts", map[string]any{"gpu": map[string]any{"priority": 1}})
+	if err := noHost(); !strings.Contains(err.Error(), "host: in ~/.taracode/config.yaml") ||
+		!strings.Contains(err.Error(), "hosts: is ignored since 3.1.0") {
+		t.Fatalf("noHost() = %v", err)
+	}
+}
+
 func TestLoadOptionsReadsTheV3Keys(t *testing.T) {
 	resetConfig(t)
 	viper.Set("model", "qwen-test")

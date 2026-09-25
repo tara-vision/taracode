@@ -37,7 +37,7 @@ func withTimeout(ctx context.Context, d time.Duration) (context.Context, context
 func ShellTool(stream io.Writer) *Tool {
 	return &Tool{
 		Name: "shell", ReadForm: true,
-		Description: "Run a shell command in the working directory. Read-only commands (cat, grep, ps, df, dig, jq, " +
+		Description: "Run a shell command in the working directory. Read-only commands (cat, grep, ps, df, dig, jq, date, " +
 			"kubectl get, git status, ...) work in investigate mode; anything else needs operate mode.",
 		Params: []Param{
 			{Name: "command", Type: "string", Description: "The command line", Required: true},

@@ -1,4 +1,4 @@
-// Package tools is the registry of what the model can call: sixteen built-in tools plus MCP tools,
+// Package tools is the registry of what the model can call: fifteen built-in tools plus MCP tools,
 // each carrying its schema, a classifier that says whether one invocation reads or mutates, and a
 // context-aware executor. The registry exposes only read-form tools in investigate mode, redacts
 // every output and records file mutations in the history.

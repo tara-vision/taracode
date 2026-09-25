@@ -250,7 +250,7 @@ func TestPolicyModeGoesThroughSetMode(t *testing.T) {
 	}
 	a.storage = st
 	a.applyStartupMode(Options{})
-	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 16 {
+	if a.Mode() != policy.ModeOperate || len(a.toolDefs) != 15 {
 		t.Fatalf("operate from the policy with storage: %q, %d tools", a.Mode(), len(a.toolDefs))
 	}
 }

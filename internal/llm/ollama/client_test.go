@@ -162,7 +162,7 @@ func TestToolCallIDsAreUniqueAcrossChatCalls(t *testing.T) {
 // still decode as valid JSON downstream rather than being left empty.
 func TestToolCallWithNoArgumentsDefaultsToAnEmptyObject(t *testing.T) {
 	srv, c := newClient(t)
-	srv.Turns = []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{{Name: "get_datetime", Args: nil}}}}
+	srv.Turns = []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{{Name: "get_status", Args: nil}}}}
 	res, err := c.Chat(context.Background(), llm.Request{Model: "m"}, nil)
 	if err != nil {
 		t.Fatal(err)

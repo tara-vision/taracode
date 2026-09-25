@@ -100,11 +100,11 @@ type Task struct {
 
 var taskID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// builtinTools are the sixteen tools a matcher or a recorded call may name.
+// builtinTools are the fifteen tools a matcher or a recorded call may name.
 var builtinTools = map[string]bool{
 	"read_file": true, "list_files": true, "search_files": true, "write_file": true, "edit_file": true,
 	"shell": true, "git": true, "kubectl": true, "helm": true, "terraform": true, "docker": true, "cloud": true,
-	"scan": true, "web_search": true, "web_fetch": true, "get_datetime": true,
+	"scan": true, "web_search": true, "web_fetch": true,
 }
 
 // LoadTask reads and validates <dir>/task.yaml; the directory name must equal the id.

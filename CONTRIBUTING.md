@@ -127,7 +127,7 @@ taracode/
 ├── internal/
 │   ├── agent/                 # The agentic loop: classify, policy, audit, dry run, permission, execute
 │   ├── policy/                # Modes, the policy YAML and its merge, the permission store
-│   ├── tools/                 # The sixteen built-in tools and their registry
+│   ├── tools/                 # The fifteen built-in tools and their registry
 │   │   ├── classify/          # Per-invocation read/mutate classifiers (git, kubectl, helm, terraform, ...)
 │   │   ├── shellwords/        # Shell command-line tokenizer
 │   │   ├── redact/            # Secret redaction of tool output
@@ -150,7 +150,7 @@ taracode/
 
 ## Adding New Tools
 
-taracode ships sixteen tools (`internal/tools/builtin.go`); there is no `definitions.go` or separate
+taracode ships fifteen tools (`internal/tools/builtin.go`); there is no `definitions.go` or separate
 registration step left from the old 58-tool set.
 
 1. Add your tool as a `*tools.Tool` (name, description, params, a `Classify` function that returns

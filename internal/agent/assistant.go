@@ -70,8 +70,8 @@ type Assistant struct {
 	// Last AI response (for suggestion detection)
 	lastResponse string
 
-	// Multi-host fallback support (v2.0)
-	hostPool *provider.HostPool
+	// The day the system prompt was built on; a turn on a later day rebuilds it (3.1.0).
+	promptDay string
 
 	// Ollama context window check (v2.1.0)
 	serverContextChecked bool // true once /api/ps has answered for the current model
@@ -265,6 +265,7 @@ func New(opts Options) (*Assistant, error) {
 
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode, a.memoryBudget())
+	a.promptDay = promptDate(time.Now())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
@@ -443,6 +444,7 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	}
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode, a.memoryBudget())
+	a.promptDay = promptDate(time.Now())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
@@ -489,11 +491,6 @@ func (a *Assistant) ClearAudit() error {
 // GetProvider returns the LLM provider
 func (a *Assistant) GetProvider() provider.Provider {
 	return a.provider
-}
-
-// SetHostPool sets the host pool for multi-host fallback support (v2.0)
-func (a *Assistant) SetHostPool(pool *provider.HostPool) {
-	a.hostPool = pool
 }
 
 // GetSessionUsage returns current token usage stats

@@ -35,7 +35,7 @@
 - **Investigate-first** - Read-only by default, and never prompts you in that mode
 - **Policy-gated operate mode** - Mutations pass through protected targets, deny patterns and required
   dry runs before a remembered permission or a prompt decides
-- **Sixteen classified tools** - Every call is classified read or mutate from its arguments, not its name
+- **Fifteen classified tools** - Every call is classified read or mutate from its arguments, not its name
 - **Redaction and an audit log** - Secrets are stripped from tool output before anything sees it; every
   mutation is recorded
 - **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
@@ -218,8 +218,8 @@ as a PEM private key block, is redacted in the tool result but not in the live v
 
 ### Tools
 
-Sixteen tools replace the old 58; every call is classified read or mutate from its arguments, not from the
-tool's name. Investigate mode exposes the tools that have a read form (fourteen, twelve when `offline` is set).
+Fifteen tools replace the old 58; every call is classified read or mutate from its arguments, not from the
+tool's name. Investigate mode exposes the tools that have a read form (thirteen, eleven when `offline` is set).
 
 | Tool | Arguments (summary) | Read when | Mutate when |
 |---|---|---|---|
@@ -228,7 +228,7 @@ tool's name. Investigate mode exposes the tools that have a read form (fourteen,
 | `search_files` | pattern, path, glob, max | always | never |
 | `write_file` | path, content | never | always |
 | `edit_file` | path, old, new, preview | never | always |
-| `shell` | command, timeout | command matches the read-only allowlist (cat, ls, grep, find, ps, df, du, curl GET, dig, nslookup, jq, git read verbs, kubectl read verbs, terraform read verbs, ...) | otherwise |
+| `shell` | command, timeout | command matches the read-only allowlist (cat, ls, grep, find, ps, df, du, date, curl GET, dig, nslookup, jq, git read verbs, kubectl read verbs, terraform read verbs, ...) | otherwise |
 | `git` | args | status, diff, log, show, branch (list), blame | add, commit, stash, checkout, reset, push, merge, rebase |
 | `kubectl` | verb, resource, name, namespace, context, args, output | get, describe, logs, events, top, explain, api-resources, version, diff, dry-run | apply, delete, patch, edit, scale, rollout, exec, cp, drain, cordon |
 | `helm` | args | list, status, get, history, show, template, lint, diff | install, upgrade, rollback, uninstall |
@@ -238,7 +238,6 @@ tool's name. Investigate mode exposes the tools that have a read form (fourteen,
 | `scan` | scanner (trivy, gitleaks, tfsec, kubesec, dependency), target, severity | always | never |
 | `web_search` | query, max | always (external, disabled by `offline`) | never |
 | `web_fetch` | url | always (external, disabled by `offline`) | never |
-| `get_datetime` | format, timezone | always | never |
 
 MCP tools join the same registry. With `mcp.trust_read_only_hint: true` (the default) a server that
 annotates a tool `readOnlyHint: true` gives it a read form; every other MCP tool is a mutation and
@@ -267,7 +266,6 @@ Remember project-specific knowledge across sessions:
 | `/sessions` | List all sessions |
 | `/clear` | Clear the conversation (new session) |
 | `/model` | Switch between available models |
-| `/hosts [check\|reconnect]` | Multi-host status and health |
 | `/think [auto\|off\|on\|low\|medium\|high]` | Show or set the reasoning mode |
 | `/mode [investigate\|operate]` | Show or switch the operating mode |
 | `/permissions [allow\|deny\|ask <tool\|all>\|reset]` | Remembered answers for mutations |
@@ -294,20 +292,8 @@ Remember project-specific knowledge across sessions:
 Create `~/.taracode/config.yaml`:
 
 ```yaml
-# Single host (simple setup)
+# The Ollama host (--host and TARACODE_HOST override it)
 host: http://localhost:11434
-
-# Multi-host setup - for multiple Ollama servers
-hosts:
-  primary:
-    url: http://gpu-server:11434
-    models: [ glm-4.7-flash, gemma4:12b ]
-    priority: 1
-  local:
-    url: http://localhost:11434
-    fallback: primary      # Use primary if local is down
-    priority: 2
-default_host: primary
 
 # Generation options for the main chat
 generation:
@@ -346,10 +332,10 @@ See [config.example.yaml](config.example.yaml) for all options.
 
 ## Roadmap
 
-Phase 2 of the v3 plan (investigate and operate modes, the sixteen classified tools, the policy engine,
-redaction and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in
-3.0.0-beta.1, and 3.0.0 made the line stable. Runbooks, the MCP server and the skills pack are next, as 3.1 and
-3.2. See [ROADMAP.md](ROADMAP.md).
+Phase 2 of the v3 plan (investigate and operate modes, the classified tools, the policy engine, redaction
+and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in 3.0.0-beta.1,
+and 3.0.0 made the line stable. 3.1.0 settled the tool set at fifteen and the connection at one Ollama host.
+Runbooks, the MCP server and the skills pack are next, as 3.2 and 3.3. See [ROADMAP.md](ROADMAP.md).
 
 ## Evals and the scoreboard
 

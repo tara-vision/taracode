@@ -2,18 +2,17 @@ package agent
 
 import (
 	"bytes"
-	gocontext "context"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
 	"github.com/tara-vision/taracode/internal/policy"
-	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -162,7 +161,7 @@ func TestToolOutputIsTruncated(t *testing.T) {
 func TestMaxIterationsStopsTheLoop(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.maxIterations = 2
-	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "get_datetime", Args: map[string]any{}}}}
+	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{}}}}
 	srv.Turns = []ollamatest.Turn{call, call, call}
 
 	if err := a.ProcessMessage("loop forever"); err != nil {
@@ -356,35 +355,72 @@ func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
 	}
 }
 
-// TestHostFailoverRetriesOnTheFallbackHost covers the v2.0 multi-host retry: a dead primary host
-// makes the turn switch to the pool's fallback and answer from there.
-func TestHostFailoverRetriesOnTheFallbackHost(t *testing.T) {
-	backup := ollamatest.New(t)
-	backup.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}}}
-	backup.Turns = []ollamatest.Turn{{Content: "Answered by the fallback."}}
-
-	cfg := provider.NewHostsConfig()
-	cfg.DefaultHost = "primary"
-	cfg.Hosts["primary"] = provider.HostConfig{Name: "primary", URL: deadHost, Vendor: "ollama", Fallback: "backup"}
-	cfg.Hosts["backup"] = provider.HostConfig{Name: "backup", URL: backup.URL, Vendor: "ollama"}
-	pool := provider.NewHostPool(cfg)
-	if err := pool.Connect(gocontext.Background(), "backup"); err != nil {
-		t.Fatalf("connect backup: %v", err)
+// TestDateQuestionsCarryTheCurrentDateTime covers the date/time injection that answers "what
+// time is it" without a tool since 3.1.0: a date or time question gets the real clock appended,
+// matched on whole words so "timeout", "uptime", "downtime" and "update today's" pass through
+// untouched like every other message.
+func TestDateQuestionsCarryTheCurrentDateTime(t *testing.T) {
+	now := time.Date(2026, 9, 25, 13, 10, 14, 0, time.FixedZone("CEST", 2*3600))
+	if got := currentDateTime(now); got != "2026-09-25T13:10:14+02:00 (Friday, CEST)" {
+		t.Fatalf("currentDateTime = %q", got)
 	}
 
-	a := newForTest(t.TempDir(), "gemma4:12b", deadHost, false)
-	a.permissions = policy.AllowAll()
-	a.SetHostPool(pool)
+	got := injectDatetimeIfNeeded("What time is it?", now)
+	want := "What time is it?\n\n[System: the current date and time, use it to answer the question]\n" +
+		"2026-09-25T13:10:14+02:00 (Friday, CEST)"
+	if got != want {
+		t.Fatalf("date question = %q", got)
+	}
+	for _, q := range []string{"What day is it?", "tell me the time", "Current date?", "what's today"} {
+		if !isDatetimeQuestion(q) {
+			t.Errorf("%q not seen as a date question", q)
+		}
+	}
+	for _, plain := range []string{
+		"list the pods", "what's the current timeout on the ingress?", "can you update today's expired certs?",
+		"why is there downtime now?", "is the uptime now above 99.9%?",
+	} {
+		if got := injectDatetimeIfNeeded(plain, now); got != plain {
+			t.Errorf("plain message changed: %q", got)
+		}
+	}
+}
 
-	if err := a.ProcessMessage("anyone home?"); err != nil {
+// TestTheTurnSendsTheAnnotatedDateQuestion covers the wiring: the annotated message, not the bare
+// one, is what the model receives.
+func TestTheTurnSendsTheAnnotatedDateQuestion(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{{Content: "It is now."}}
+
+	if err := a.ProcessMessage("what time is it?"); err != nil {
 		t.Fatal(err)
 	}
 
-	if a.GetLastResponse() != "Answered by the fallback." {
-		t.Fatalf("last response = %q", a.GetLastResponse())
+	if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "[System: the current date and time") {
+		t.Fatalf("the model did not get the clock: %q", msg)
 	}
-	if n := countPath(backup, "/api/chat"); n != 1 {
-		t.Fatalf("fallback host saw %d chat requests, want 1", n)
+}
+
+// TestThePromptDateRefreshesWhenTheDayChanges covers a REPL left open past midnight: the prompt's
+// "Today is" line is rebuilt at the first turn of a new day, so the model never reasons from
+// yesterday.
+func TestThePromptDateRefreshesWhenTheDayChanges(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+	a.promptDay = "2000-01-01"
+
+	if err := a.ProcessMessage("hi"); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	if a.promptDay != promptDate(now) {
+		t.Fatalf("promptDay = %q, want %q", a.promptDay, promptDate(now))
+	}
+	messages, _ := lastChatBody(t, srv)["messages"].([]any)
+	system, _ := messages[0].(map[string]any)
+	if content, _ := system["content"].(string); !strings.Contains(content, dateLine(now)) {
+		t.Fatalf("system prompt sent without today's date line:\n%s", content)
 	}
 }
 
@@ -466,9 +502,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return <-done
 }
-
-// deadHost is a loopback port nothing listens on, so requests fail with "connection refused".
-const deadHost = "http://127.0.0.1:1"
 
 // lastChatBody returns the body of the last /api/chat request; the server context check that
 // closes every turn records a /api/ps request after it.

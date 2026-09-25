@@ -162,9 +162,8 @@ func TestReplayDryRunsAndTerraformPlanState(t *testing.T) {
 }
 
 // TestReplayConfinesEveryFileToolIncludingReads covers ruling P3-R24: read_file, list_files and
-// search_files must be confined exactly like write_file and edit_file; only get_datetime has no
-// path to confine. An empty path for list_files/search_files still resolves to the run directory
-// itself and must pass.
+// search_files must be confined exactly like write_file and edit_file. An empty path for
+// list_files/search_files still resolves to the run directory itself and must pass.
 func TestReplayConfinesEveryFileToolIncludingReads(t *testing.T) {
 	_, reg, runDir := replayRegistry(t)
 	ctx := context.Background()

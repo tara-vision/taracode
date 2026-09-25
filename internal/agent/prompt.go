@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/tara-vision/taracode/internal/memory"
@@ -12,7 +13,7 @@ import (
 )
 
 // personaPrompt is the one system prompt. The mode line, the project files, memories, the active
-// plan and the working directory are appended at build time. It is split into concatenated
+// plan, today's date and the working directory are appended at build time. It is split into concatenated
 // literals (rather than one multi-line raw string) only to keep source lines under the repo's
 // line-length limit; the assembled value is the text spec 4 specifies, unchanged.
 const personaPrompt = "You are taracode, a local-first DevOps operator running on the user's machine. You " +
@@ -44,9 +45,21 @@ const operateLine = "Mode: operate. Mutating calls go through the user's policy:
 // maxContextFileBytes caps TARACODE.md and AGENTS.md in the prompt.
 const maxContextFileBytes = 16 * 1024
 
+// dateLine is the prompt's date line: weekday, day and zone, nothing finer, so the prompt stays
+// stable within a day; the turn rebuilds it when promptDay falls behind.
+func dateLine(now time.Time) string {
+	return "Today is " + now.Format("Monday, 2006-01-02 (MST).")
+}
+
+// promptDate is the day a prompt was built on, the value Assistant.promptDay keeps.
+func promptDate(now time.Time) string {
+	return now.Format("2006-01-02")
+}
+
 // RefreshSystemPrompt rebuilds the system prompt to include any new memories or context
 func (a *Assistant) RefreshSystemPrompt() {
 	a.systemPrompt = buildSystemPrompt(a.workingDir, a.storage, a.mode, a.memoryBudget())
+	a.promptDay = promptDate(time.Now())
 	// Update system message in conversation
 	if len(a.conversation) > 0 && a.conversation[0].Role == openai.ChatMessageRoleSystem {
 		a.conversation[0].Content = a.systemPrompt
@@ -179,7 +192,9 @@ func buildSystemPrompt(workingDir string, storageMgr *storage.Manager, mode poli
 		}
 	}
 
-	// Add working directory context
+	// Today's date, so expiry, age and recency reasoning starts from the right day without a tool
+	// call (3.1.0, when get_datetime was retired); then the working directory.
+	prompt += "\n\n" + dateLine(time.Now())
 	prompt += fmt.Sprintf("\n\nCurrent working directory: %s", workingDir)
 
 	return prompt

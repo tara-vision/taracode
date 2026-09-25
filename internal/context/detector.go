@@ -17,7 +17,7 @@ type ProjectTypeInfo struct {
 }
 
 // ToolMapping maps frameworks/tools to relevant taracode tools. Values are v3 tool names only
-// (ruling P2-R4): the sixteen tools the registry actually exposes, not the finer-grained v2 verbs
+// (ruling P2-R4): the fifteen tools the registry actually exposes, not the finer-grained v2 verbs
 // (terraform_plan, kubectl_get and so on) that taracode no longer has as separate tools.
 var ToolMapping = map[string][]string{
 	// Infrastructure as Code

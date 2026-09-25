@@ -111,7 +111,7 @@ func init() {
 // runEvalRun is the testable core of `eval run`.
 func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if f.host == "" {
-		return errors.New("LLM server host not found; set --host, TARACODE_HOST, or hosts: in config.yaml")
+		return noHost()
 	}
 	if f.model == "" {
 		return errors.New("set --model: evals run one named model at a time")
