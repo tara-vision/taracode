@@ -155,7 +155,7 @@ func TestShellFailsClosedOnI5Commands(t *testing.T) {
 		{"terraform fmt -diff", "fmt"},
 		{"terraform fmt -check=false", "fmt"},
 		{"ip link set lo up", "ip link set"},
-		{"ip route add 10.0.0.0/8 dev lo", "ip route add"},
+		{"ip route add 192.0.2.0/24 dev lo", "ip route add"},
 		{"ip addr flush dev eth0", "ip addr flush"},
 		{"awk '{print | \"sh\"}' x", "awk"},
 		{"awk 'BEGIN { \"date\" | getline d }'", "awk"},
@@ -284,7 +284,7 @@ func TestShellFailsClosedOnSameClassHoles(t *testing.T) {
 		{"ifconfig lo0 down", "ifconfig"},
 		{"hostname new-name", "hostname"},
 		{"dmesg -C", "dmesg"},
-		{"ss -K dst 10.0.0.1", "ss"},
+		{"ss -K dst 192.0.2.1", "ss"},
 	})
 	checkReads(t, sameClassHolesReads)
 }

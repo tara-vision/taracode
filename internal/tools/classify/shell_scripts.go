@@ -307,7 +307,10 @@ var awkKeywords = map[string]bool{"print": true, "printf": true, "return": true,
 
 // awkWritesFile reports a > that redirects output: outside parentheses, string and regular
 // expression literals and comments, not the first byte of >=, in a statement that began with print
-// or printf. Anywhere else (a pattern, an if condition, an assignment) > compares.
+// or printf. Anywhere else (a pattern, an if condition, an assignment) > compares. A keyword resets
+// operand the way awkCodeOutsideLiterals does, so a / right after print or printf opens a regular
+// expression literal rather than reading as division; a ;, {, } or ) inside that literal then no
+// longer ends the print statement or closes a paren, and a redirect after it stays in scope.
 func awkWritesFile(program string) bool {
 	depth, printing, operand := 0, false, false
 	word := ""
@@ -316,6 +319,9 @@ func awkWritesFile(program string) bool {
 		if !isAwkWordByte(c) && word != "" {
 			if word == "print" || word == "printf" {
 				printing = true
+			}
+			if awkKeywords[word] {
+				operand = false
 			}
 			word = ""
 		}
