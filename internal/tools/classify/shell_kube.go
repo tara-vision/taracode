@@ -187,7 +187,7 @@ func (l *kubeLine) kubeCommand(prog string, w wrapped, env []string) {
 		}
 		t.Cause = l.opaqueCause(w, envUnknown)
 	default:
-		if t.Context == "*" || t.Namespace == "*" {
+		if (t.Context == "*" || t.Namespace == "*") && t.Cause == "" {
 			t.Cause = causeConflicting // two --context or -n values, or an ambiguous short cluster
 		}
 	}
@@ -266,7 +266,7 @@ func kubeTarget(prog string, tokens []string) (KubeTarget, bool) {
 		t.Context, t.Namespace = HelmTargets(tokens)
 	} else {
 		res = Kubectl(first(tokens), tail(tokens))
-		t.Context, t.Namespace = KubeTargets(tokens)
+		t.Context, t.Namespace, t.Cause = kubeObjectTargets(tokens)
 	}
 	return t, res.Classification == policy.Mutate
 }

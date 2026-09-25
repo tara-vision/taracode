@@ -446,3 +446,102 @@ func TestKubectlArgumentErrorIsRefusedInInvestigateMode(t *testing.T) {
 		t.Fatal("a refused scale must not run")
 	}
 }
+
+// TestANamespaceObjectIsProtectedInEverySpelling pins ruling P3-R69 through the loop in operate mode
+// under the built-in policy: deleting kube-system as a namespace object is denied by the protected
+// namespace in every spelling, in the tool (one-word, multi-word and comma forms) and on a shell line;
+// deleting another namespace is denied by the deny pattern, read canonically; a read of kube-system
+// runs. Nothing that is denied reaches kubectl.
+func TestANamespaceObjectIsProtectedInEverySpelling(t *testing.T) {
+	ranMarker := fakeKubeTools(t)
+	setProcessKubeconfig(t, false)
+	const protected, denyPattern = "protected.kube_namespaces", "deny.commands"
+	denied := []struct {
+		tool string
+		args map[string]any
+		rule string
+	}{
+		{"kubectl", map[string]any{"verb": "delete", "args": "namespace/kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "namespace/kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "ns", "name": "kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "args": "ns kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "ns kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete ns", "name": "kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "ns,kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "namespaces", "name": "kube-system", "namespace": "default"},
+			protected},
+		{"kubectl", map[string]any{"verb": "label", "resource": "ns", "name": "kube-system", "args": "team=x"}, protected},
+		{"shell", map[string]any{"command": "kubectl delete ns kube-system"}, protected},
+		{"shell", map[string]any{"command": "kubectl delete namespace/kube-system"}, protected},
+		{"shell", map[string]any{"command": "kubectl delete namespaces kube-system --wait=false"}, protected},
+		{"shell", map[string]any{"command": "kubectl -n default delete ns/kube-system"}, protected},
+		{"shell", map[string]any{"command": "kubectl delete -- ns kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "args": "-- ns kube-system"}, protected},
+		{"shell", map[string]any{"command": "kubectl delete --raw /api/v1/namespaces/kube-system"}, protected},
+		{"kubectl", map[string]any{"verb": "delete", "resource": "ns", "name": "shop"}, denyPattern},
+		{"shell", map[string]any{"command": "kubectl delete ns/shop"}, denyPattern},
+	}
+	turns := make([]ollamatest.Turn, 0, len(denied)+2)
+	for _, d := range denied {
+		turns = append(turns, toolCall(d.tool, d.args))
+	}
+	turns = append(turns, toolCall("kubectl", map[string]any{"verb": "get", "resource": "ns", "name": "kube-system"}),
+		ollamatest.Turn{Content: "ok"})
+	a, srv, _ := gateAssistant(t, policy.ModeOperate, turns...)
+	var events []ToolEvent
+	a.observer = func(ev ToolEvent) { events = append(events, ev) }
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("remove the namespaces") })
+	if len(events) != len(denied)+1 {
+		t.Fatalf("events %+v", events)
+	}
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != len(denied) {
+		t.Fatalf("audit %+v", recs)
+	}
+	for i, d := range denied {
+		if ev := events[i]; ev.Allowed || ev.Rule != d.rule {
+			t.Errorf("%s %v: event %+v, want a %s deny", d.tool, d.args, ev, d.rule)
+		}
+		if recs[i].Decision != "deny" || recs[i].Rule != d.rule {
+			t.Errorf("%s %v: audit %+v", d.tool, d.args, recs[i])
+		}
+	}
+	if read := events[len(denied)]; !read.Allowed || read.Rule != "read" {
+		t.Errorf("kubectl get ns kube-system stays a read: %+v", read)
+	}
+	if msgs := toolMessages(t, srv); msgs[len(msgs)-1] != "pods" {
+		t.Errorf("the read runs: %q", msgs[len(msgs)-1])
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("a denied namespace deletion must not run")
+	}
+}
+
+// TestANamespaceDeleteWithoutProtectionReachesThePrompt: with no protected namespace and no deny
+// pattern, deleting a namespace is an ordinary mutation that asks, targeting that namespace.
+func TestANamespaceDeleteWithoutProtectionReachesThePrompt(t *testing.T) {
+	ranMarker := fakeKubeTools(t)
+	setProcessKubeconfig(t, false)
+	a, _, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("kubectl", map[string]any{"verb": "delete", "resource": "namespace", "name": "shop"}),
+		ollamatest.Turn{Content: "ok"})
+	a.pol = policy.Policy{Version: policy.CurrentVersion, Mode: policy.ModeOperate}
+	a.permissions, _, _ = policy.LoadPermissions("")
+	var asked []policy.Invocation
+	a.confirmPermission = func(inv policy.Invocation, _ map[string]any) ui.PermissionChoice {
+		asked = append(asked, inv)
+		return ui.PermissionChoice{Allowed: true}
+	}
+	var events []ToolEvent
+	a.observer = func(ev ToolEvent) { events = append(events, ev) }
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("remove the shop namespace") })
+	if len(asked) != 1 || asked[0].Verb != "delete" || asked[0].Targets.KubeNamespace != "shop" {
+		t.Fatalf("the deletion must ask, targeting shop: %+v", asked)
+	}
+	if len(events) != 1 || !events[0].Allowed || events[0].Rule != "policy" {
+		t.Fatalf("events %+v", events)
+	}
+	if _, err := os.Stat(ranMarker); err != nil {
+		t.Fatal("an allowed deletion runs")
+	}
+}

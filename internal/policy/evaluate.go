@@ -27,14 +27,33 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 	if v, denied := p.protectedTarget(inv); denied {
 		return v
 	}
-	if inv.Command != "" {
-		for _, pattern := range p.Deny.Commands {
-			if matchGlob(pattern, collapse(inv.Command)) {
-				return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", inv.Command, pattern)}
-			}
-		}
+	if v, denied := p.denyPattern(inv.Command); denied {
+		return v
 	}
 	return Verdict{Allow: true, Rule: "policy", DryRun: p.dryRunFor(inv)}
+}
+
+// denyPattern matches the deny patterns against the command as written and against its canonical
+// form (ruling P3-R69), where kubectl resource aliases are spelled out and type/name is type then
+// name; a pattern is read the same way, so kubectl delete namespace * refuses kubectl delete ns/x and
+// a pattern written with an alias refuses the long form. The raw match keeps every pattern working as
+// it did.
+func (p Policy) denyPattern(command string) (Verdict, bool) {
+	if command == "" {
+		return Verdict{}, false
+	}
+	raw := collapse(command)
+	canonical := canonicalKubeCommand(raw)
+	for _, pattern := range p.Deny.Commands {
+		if matchGlob(pattern, raw) {
+			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", command, pattern)}, true
+		}
+		if matchGlob(canonicalKubeCommand(collapse(pattern)), canonical) {
+			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q (read as %q) matches the deny pattern %q",
+				command, canonical, pattern)}, true
+		}
+	}
+	return Verdict{}, false
 }
 
 // kubeRemedy tells the model how to turn a "*" kube target into one taracode can pin down, so it does
