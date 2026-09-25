@@ -61,6 +61,9 @@ var relaxedReads = []string{
 	// final review: --worktree is a boolean flag in git (like --local), so the key after it is the one
 	// positional and git config --worktree <key> reads it
 	"git config --worktree user.name",
+	// round 2: a / after an operand ($1) is division, not a regex, so this prints a quotient and
+	// stays a read even though a regex right after print now opens a literal
+	"awk '{print $1 / 2}' f",
 }
 
 // relaxedMutations pin the neighbours of each relaxation: the command that must stay a mutation,
@@ -179,6 +182,11 @@ var relaxedMutations = map[string]string{
 	// final review: a -flag word configures an interface (macOS and BSD ifconfig clear IFDISABLED here,
 	// and -arp turns ARP off), so only IFACE or IFACE FAMILY is a query
 	"ifconfig en0 inet6 -ifdisabled": "ifconfig", "ifconfig en0 -arp": "ifconfig",
+	// round 2: a / right after print or printf opens a regex literal, so a ;, {, } or ) inside it no
+	// longer ends the print statement early; the redirect after the literal stays in scope and writes
+	"awk 'BEGIN{print /;/ \"a\" >> \"g\"}'": "awk", "awk 'BEGIN{print /x;y/ > \"f\"}'": "awk",
+	"awk 'BEGIN{print /a}b/ > \"f\"}'": "awk", "awk 'BEGIN{print /a{b/ > \"f\"}'": "awk",
+	"awk 'BEGIN{printf /x;y/ > \"f\"}'": "awk",
 }
 
 func TestRelaxedReads(t *testing.T) {
