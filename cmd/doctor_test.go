@@ -68,7 +68,8 @@ func TestDoctorExitCode(t *testing.T) {
 
 // TestResolveDoctorTarget covers the host and model resolution doctor shares with the REPL: the
 // host, key, vendor and model come from the flags (bound to viper), the environment or config.yaml's
-// top-level keys. The v2 hosts: section is ignored since 3.1.0 and contributes nothing.
+// top-level keys. The v2 hosts: section is ignored since 3.1.0, except that its default host still
+// fills an empty host: so a 3.0 file keeps starting.
 func TestResolveDoctorTarget(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
@@ -88,8 +89,8 @@ func TestResolveDoctorTarget(t *testing.T) {
 	viper.Reset()
 	viper.Set("hosts", map[string]any{"primary": map[string]any{"url": "http://primary:2"}})
 	viper.Set("default_host", "primary")
-	if h, _, _, _ := resolveDoctorTarget(); h != "" {
-		t.Fatalf("host = %q, want the retired hosts: section to be ignored", h)
+	if h, _, _, _ := resolveDoctorTarget(); h != "http://primary:2" {
+		t.Fatalf("host = %q, want the retired section's default host when host: is unset", h)
 	}
 }
 

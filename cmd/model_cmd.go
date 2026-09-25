@@ -59,14 +59,14 @@ func handleModelSwitch(r *repl) {
 
 // collectAvailableModels lists the models of the assistant's host. ok is false when listing
 // failed; the error is already printed.
-func collectAvailableModels(asst *agent.Assistant) (allModels []provider.ModelInfo, ok bool) {
-	modelList, err := asst.ListModels()
+func collectAvailableModels(asst *agent.Assistant) (list []provider.ModelInfo, ok bool) {
+	list, err := asst.ListModels()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.EnhanceError(err))
 		fmt.Println()
 		return nil, false
 	}
-	return modelList, true
+	return list, true
 }
 
 // buildModelSelectorItems renders one selector line per model: a "*" marker for the current model

@@ -14,7 +14,7 @@ type Config struct {
 	DefaultSeverity string               // scan severity filter when the call names none
 }
 
-// Builtin returns the sixteen tools in the order spec 5.3 lists them.
+// Builtin returns the fifteen tools in the order spec 5.3 lists them.
 func Builtin(cfg Config) []*Tool {
 	return append(FileTools(),
 		ShellTool(cfg.Stream), GitTool(), KubectlTool(), HelmTool(), TerraformTool(), DockerTool(), CloudTool(),

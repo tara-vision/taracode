@@ -4,6 +4,7 @@ import (
 	gocontext "context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -55,7 +56,11 @@ func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string,
 		}
 	}()
 	// Auto-inject datetime for date/time questions so the LLM has the answer
-	userMessage = a.injectDatetimeIfNeeded(userMessage)
+	now := time.Now()
+	if a.promptDay != promptDate(now) { // a session left open past midnight gets today's date line
+		a.RefreshSystemPrompt()
+	}
+	userMessage = injectDatetimeIfNeeded(userMessage, now)
 
 	a.recordMessage(storage.ConversationMessage{Role: "user", Content: userMessage, Timestamp: time.Now()})
 	a.conversation = append(a.conversation, buildUserMessage(userMessage, images))
@@ -144,55 +149,32 @@ func (a *Assistant) answerAtCap(ctx gocontext.Context) error {
 	return nil
 }
 
-// isDatetimeQuestion checks if a message is asking about current date/time
+// datetimeQuestion matches the phrasings of a date or time question, on whole words, so
+// "timeout", "uptime", "downtime" and "update today's" never count.
+var datetimeQuestion = regexp.MustCompile(`(?i)\b(` + strings.Join([]string{
+	"what day is", "what date is", "what time is", "what's the date", "what's the time", "what is the date",
+	"what is the time", "what is today", "what's today", "current date", "current time", "today's date",
+	"day of the week", "day is today", "day is tomorrow", "date today", "time now", "what day are we",
+	"tell me the date", "tell me the time", "tell me what day", "tell me what time",
+}, "|") + `)\b`)
+
+// isDatetimeQuestion reports a message that asks for the current date or time.
 func isDatetimeQuestion(msg string) bool {
-	lower := strings.ToLower(strings.TrimSpace(msg))
-	patterns := []string{
-		"what day is",
-		"what date is",
-		"what time is",
-		"what's the date",
-		"what's the time",
-		"what is the date",
-		"what is the time",
-		"what is today",
-		"what's today",
-		"current date",
-		"current time",
-		"today's date",
-		"day of the week",
-		"day is today",
-		"day is tomorrow",
-		"date today",
-		"time now",
-		"what day are we",
-		"tell me the date",
-		"tell me the time",
-		"tell me what day",
-		"tell me what time",
-	}
-	for _, p := range patterns {
-		if strings.Contains(lower, p) {
-			return true
-		}
-	}
-	return false
+	return datetimeQuestion.MatchString(msg)
 }
 
 // injectDatetimeIfNeeded appends the real clock to a date or time question, so the answer never
 // comes from the model's training data. The system prompt carries today's date for everything else.
-func (a *Assistant) injectDatetimeIfNeeded(userMessage string) string {
+func injectDatetimeIfNeeded(userMessage string, now time.Time) string {
 	if !isDatetimeQuestion(userMessage) {
 		return userMessage
 	}
-	return userMessage + "\n\n[System: the current date and time, use it to answer the question]\n" +
-		currentDateTime(time.Now())
+	return userMessage + "\n\n[System: the current date and time, use it to answer the question]\n" + currentDateTime(now)
 }
 
 // currentDateTime is the clock line the date injection appends: RFC 3339, weekday and zone.
 func currentDateTime(now time.Time) string {
-	zone, _ := now.Zone()
-	return fmt.Sprintf("%s (%s, %s)", now.Format(time.RFC3339), now.Weekday(), zone)
+	return now.Format(time.RFC3339 + " (Monday, MST)")
 }
 
 // buildUserMessage creates an OpenAI message with optional images

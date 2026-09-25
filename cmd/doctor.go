@@ -26,7 +26,7 @@ var doctorCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		targetHost, apiKey, vendor, configuredModel := resolveDoctorTarget()
 		if targetHost == "" {
-			return fmt.Errorf("LLM server host not found; set --host, TARACODE_HOST, or host: in config.yaml")
+			return noHost()
 		}
 		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
@@ -43,13 +43,14 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
-// resolveDoctorTarget picks the host, API key, vendor and model to check: --host and --model
-// (bound to viper), TARACODE_HOST, or config.yaml's top-level host:, key:, vendor: and model:
-// keys. Same resolution newREPL runs at the top of the REPL. "model" is a plain viper string key
-// in v3 (--model is bound to it; the 2.x model: section is a map, which viper.GetString turns
-// into "").
+// resolveDoctorTarget picks the host, API key, vendor and model doctor and eval run check: the
+// --host, --key, --vendor and --model flags (bound to viper), the TARACODE_* environment, or
+// config.yaml's top-level host:, key:, vendor: and model: keys, with a retired hosts: section's
+// default host filling an empty host:. Same resolution loadOptions runs for the REPL. "model" is
+// a plain viper string key in v3 (--model is bound to it; the 2.x model: section is a map, which
+// viper.GetString turns into "").
 func resolveDoctorTarget() (targetHost, apiKey, vendor, configuredModel string) {
-	return viper.GetString("host"), viper.GetString("key"), viper.GetString("vendor"), viper.GetString("model")
+	return resolveHost(), viper.GetString("key"), viper.GetString("vendor"), viper.GetString("model")
 }
 
 // doctorResolveWindow is the resolveWindow function every Diagnose call in this file passes: the

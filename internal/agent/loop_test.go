@@ -356,17 +356,71 @@ func TestBackupThenApplyFailureWarnsOnScreen(t *testing.T) {
 }
 
 // TestDateQuestionsCarryTheCurrentDateTime covers the date/time injection that answers "what
-// time is it" without a tool since 3.1.0: the question gets the real clock appended, every other
-// message passes through untouched.
+// time is it" without a tool since 3.1.0: a date or time question gets the real clock appended,
+// matched on whole words so "timeout", "uptime", "downtime" and "update today's" pass through
+// untouched like every other message.
 func TestDateQuestionsCarryTheCurrentDateTime(t *testing.T) {
-	a, _ := newTestAssistant(t, false)
-
-	got := a.injectDatetimeIfNeeded("What time is it?")
-	if !strings.Contains(got, "[System: the current date and time") || !strings.Contains(got, time.Now().Format("2006-01-02")) {
-		t.Fatalf("date question not annotated: %q", got)
+	now := time.Date(2026, 9, 25, 13, 10, 14, 0, time.FixedZone("CEST", 2*3600))
+	if got := currentDateTime(now); got != "2026-09-25T13:10:14+02:00 (Friday, CEST)" {
+		t.Fatalf("currentDateTime = %q", got)
 	}
-	if got := a.injectDatetimeIfNeeded("list the pods"); got != "list the pods" {
-		t.Fatalf("plain message changed: %q", got)
+
+	got := injectDatetimeIfNeeded("What time is it?", now)
+	want := "What time is it?\n\n[System: the current date and time, use it to answer the question]\n" +
+		"2026-09-25T13:10:14+02:00 (Friday, CEST)"
+	if got != want {
+		t.Fatalf("date question = %q", got)
+	}
+	for _, q := range []string{"What day is it?", "tell me the time", "Current date?", "what's today"} {
+		if !isDatetimeQuestion(q) {
+			t.Errorf("%q not seen as a date question", q)
+		}
+	}
+	for _, plain := range []string{
+		"list the pods", "what's the current timeout on the ingress?", "can you update today's expired certs?",
+		"why is there downtime now?", "is the uptime now above 99.9%?",
+	} {
+		if got := injectDatetimeIfNeeded(plain, now); got != plain {
+			t.Errorf("plain message changed: %q", got)
+		}
+	}
+}
+
+// TestTheTurnSendsTheAnnotatedDateQuestion covers the wiring: the annotated message, not the bare
+// one, is what the model receives.
+func TestTheTurnSendsTheAnnotatedDateQuestion(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{{Content: "It is now."}}
+
+	if err := a.ProcessMessage("what time is it?"); err != nil {
+		t.Fatal(err)
+	}
+
+	if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "[System: the current date and time") {
+		t.Fatalf("the model did not get the clock: %q", msg)
+	}
+}
+
+// TestThePromptDateRefreshesWhenTheDayChanges covers a REPL left open past midnight: the prompt's
+// "Today is" line is rebuilt at the first turn of a new day, so the model never reasons from
+// yesterday.
+func TestThePromptDateRefreshesWhenTheDayChanges(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+	a.promptDay = "2000-01-01"
+
+	if err := a.ProcessMessage("hi"); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now()
+	if a.promptDay != promptDate(now) {
+		t.Fatalf("promptDay = %q, want %q", a.promptDay, promptDate(now))
+	}
+	messages, _ := lastChatBody(t, srv)["messages"].([]any)
+	system, _ := messages[0].(map[string]any)
+	if content, _ := system["content"].(string); !strings.Contains(content, dateLine(now)) {
+		t.Fatalf("system prompt sent without today's date line:\n%s", content)
 	}
 }
 

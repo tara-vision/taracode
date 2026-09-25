@@ -27,10 +27,18 @@ it, and the v2 multi-host pool goes because one Ollama host is what taracode tal
 ### Removed
 - **The multi-host pool.** The v2.0 `hosts:` and `default_host:` config, the `/hosts` command, the background
   health checks and the fallback retry are gone; taracode talks to the one host in `host:` (`--host`,
-  `TARACODE_HOST`). A config that still carries the section prints a one-time warning and starts on `host:`.
+  `TARACODE_HOST`). A config that still carries the section prints a one-time warning; when `host:` is
+  empty, the section's default host carries the run so a 3.0 file keeps starting.
 - **The unused provider pool** (`internal/provider/pool.go`), dead since the native Ollama client.
 
 ### Fixed
+- **`date` that sets the clock is a mutation.** `date -s`, `date --set` and a bare setting operand
+  (`date 0101000020`, `date -f fmt new_date`) classify as mutations; every printing form (`+%s`, `-u`, `-d`,
+  `-r`, BSD `-j`) stays a read. Before, a root shell could set the system clock in investigate mode.
+- **Date questions are matched on whole words**, so "timeout", "uptime", "downtime" and "update today's"
+  no longer get the clock appended.
+- **The prompt's date follows the day.** A session left open past midnight rebuilds its system prompt at the
+  first turn of the new day.
 - **The installer finds the latest version through the release redirect**, with the GitHub API and the docs
   site as fallbacks, so an unauthenticated, rate-limited API no longer breaks `install.sh`.
 
@@ -568,7 +576,11 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.0...HEAD
+
+[3.1.0]: https://github.com/tara-vision/taracode/compare/v3.0.0...v3.1.0
+
+[3.0.0]: https://github.com/tara-vision/taracode/compare/v3.0.0-beta.1...v3.0.0
 
 [3.0.0-beta.1]: https://github.com/tara-vision/taracode/compare/v3.0.0-alpha.2...v3.0.0-beta.1
 

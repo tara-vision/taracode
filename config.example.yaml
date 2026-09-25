@@ -5,8 +5,10 @@
 # model.num_predict); model: <name> takes its place now, and those three keys move under
 # generation:. security.default_severity is scan.default_severity now. The agents: and watch:
 # sections are no longer read. mode: devops/security became investigate/operate (unset starts in
-# investigate, or the mode a policy file names). A 2.x file still starts taracode; each of these
-# prints a one-time migration warning after the startup banner.
+# investigate, or the mode a policy file names). The 3.0 hosts: and default_host: section is no
+# longer read either (3.1.0): its default host fills an empty host: for the run. A 2.x or 3.0
+# file still starts taracode; each of these prints a one-time migration warning after the
+# startup banner.
 
 # LLM server host (required; --host and TARACODE_HOST override it)
 host: http://localhost:11434

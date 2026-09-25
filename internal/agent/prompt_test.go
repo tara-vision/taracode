@@ -51,9 +51,13 @@ func TestBuildSystemPromptAppendsWorkingDirectory(t *testing.T) {
 // spending a tool call on it, so certificate expiry, event age and release recency reasoning start
 // from the right day.
 func TestBuildSystemPromptCarriesTodaysDate(t *testing.T) {
-	prompt := buildSystemPrompt(t.TempDir(), nil, policy.ModeInvestigate, 0)
+	fixed := time.Date(2026, 9, 25, 13, 10, 14, 0, time.FixedZone("CEST", 2*3600))
+	if got := dateLine(fixed); got != "Today is Friday, 2026-09-25 (CEST)." {
+		t.Fatalf("dateLine = %q", got)
+	}
 
-	want := "Today is " + time.Now().Format("Monday, 2006-01-02")
+	want := dateLine(time.Now())
+	prompt := buildSystemPrompt(t.TempDir(), nil, policy.ModeInvestigate, 0)
 	if !strings.Contains(prompt, want) {
 		t.Fatalf("prompt missing %q:\n%s", want, prompt)
 	}

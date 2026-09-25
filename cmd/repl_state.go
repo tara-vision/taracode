@@ -19,7 +19,7 @@ import (
 
 // repl is the state of one interactive session: the assistant, the managers that exist once a
 // project is initialised and the readline instance. Command handlers are methods
-// on it, so re-creating the assistant (/init, /model, /reload, /clear) goes through replaceAssistant.
+// on it, so re-creating the assistant (/init, /reload, /clear) goes through replaceAssistant.
 type repl struct {
 	asst      *agent.Assistant
 	renderer  *ui.Renderer
@@ -52,7 +52,7 @@ func (r *repl) options() agent.Options {
 
 // replaceAssistant swaps in a freshly built assistant and re-wires everything agent.New does
 // not know about on its own: the history manager and the tools of every connected MCP server (the
-// new assistant has a brand new, empty tool registry). Every /init, /reload, /clear and /model
+// new assistant has a brand new, empty tool registry). Every /init, /reload and /clear
 // re-creation goes through this one helper, so neither wiring can be silently dropped at one call
 // site while staying wired at another (ruling P2-R18; both were lost on every re-creation in v2).
 func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
@@ -76,10 +76,8 @@ func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
 func newREPL() (*repl, error) {
 	opts, warnings := loadOptions()
 	if opts.Host == "" {
-		return nil, fmt.Errorf("LLM server host not found.\nSet it via:\n" +
-			"  - Environment variable: export TARACODE_HOST=http://localhost:11434\n" +
-			"  - Config file: ~/.taracode/config.yaml\n" +
-			"  - Command flag: --host http://localhost:11434")
+		printWarnings(warnings) // the config was read; say what was ignored before saying what is missing
+		return nil, noHost()
 	}
 	workingDir, err := os.Getwd()
 	if err != nil {

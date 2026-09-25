@@ -43,7 +43,8 @@ var readProgramFlags = map[string]writeFlags{
 
 // readProgramWrites catches the write forms of the read-listed programs: the options in
 // readProgramFlags, and the operands that make uniq and xxd write a file, arch run a program,
-// hostname rename the host and ifconfig configure an interface. ok is false when the read stands.
+// hostname rename the host, ifconfig configure an interface and date set the clock. ok is false
+// when the read stands.
 func readProgramWrites(prog string, rest []string) (Result, bool) {
 	if f, ok := readProgramFlags[prog]; ok {
 		matched := shortFlag(rest, f.short, f.valued)
@@ -56,6 +57,12 @@ func readProgramWrites(prog string, rest []string) (Result, bool) {
 			return mutate(prog, f.reason), true
 		}
 	}
+	return readProgramOperandWrites(prog, rest)
+}
+
+// readProgramOperandWrites is the operand half of readProgramWrites: the words, not the options,
+// that turn a read-listed program into a write.
+func readProgramOperandWrites(prog string, rest []string) (Result, bool) {
 	switch prog {
 	case "uniq":
 		if len(operands(rest, "-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars")) > 1 {
@@ -78,8 +85,50 @@ func readProgramWrites(prog string, rest []string) (Result, bool) {
 		if ifconfigConfigures(rest) {
 			return mutate(prog, "ifconfig with more than an interface name and a family configures it"), true
 		}
+	case "date":
+		if dateSetsClock(rest) {
+			return mutate(prog, "date with -s, --set, -f or a clock operand sets the system clock"), true
+		}
 	}
 	return Result{}, false
+}
+
+// dateSetsClock reports the date forms that set the system clock instead of printing it: -s and
+// --set (GNU, value attached or separate, --set abbreviated), -f fmt new_date (BSD, unless -j,
+// which only parses) and a bare clock operand (GNU MMDDhhmm[[CC]YY][.ss], BSD
+// [[[mm]dd]HH]MM[[cc]yy][.ss]) unless -j. -d, -r, -v, --date, --file and --reference take a value
+// to display. A word that is not digit-shaped, an expansion included, cannot set the clock on
+// either implementation.
+func dateSetsClock(rest []string) bool {
+	if hasGNUFlag(rest, nil, "--set") {
+		return true
+	}
+	for _, t := range rest {
+		if strings.HasPrefix(t, "-s") {
+			return true
+		}
+	}
+	if hasFlag(rest, "-j") {
+		return false
+	}
+	if hasFlag(rest, "-f") {
+		return true
+	}
+	for _, op := range operands(rest, "-d", "--date", "-r", "--reference", "-v", "--file") {
+		if isClockOperand(op) {
+			return true
+		}
+	}
+	return false
+}
+
+// isClockOperand is the digit shape of a clock setting: digits, with an optional .ss.
+func isClockOperand(op string) bool {
+	digits, seconds, dotted := strings.Cut(op, ".")
+	if dotted && (seconds == "" || strings.Trim(seconds, "0123456789") != "") {
+		return false
+	}
+	return digits != "" && strings.Trim(digits, "0123456789") == ""
 }
 
 // ifconfigConfigures reports words that change an interface rather than query it. A query is one

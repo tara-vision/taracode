@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cast"
@@ -57,7 +59,7 @@ func loadOptions() (agent.Options, []string) {
 	var warnings []string
 	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
 
-	opts.Host = viper.GetString("host")
+	opts.Host = resolveHost()
 	opts.APIKey = viper.GetString("key")
 	opts.Vendor = viper.GetString("vendor")
 	opts.Streaming = !viper.GetBool("no_stream")
@@ -114,7 +116,12 @@ func loadOptions() (agent.Options, []string) {
 		}
 	}
 	if viper.IsSet("hosts") || viper.IsSet("default_host") {
-		warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the one host in host:")
+		if viper.GetString("host") == "" && opts.Host != "" {
+			warn("config: hosts: and default_host: are ignored since 3.1.0; using %s from the retired section as host: "+
+				"for this run, set host: to keep it", opts.Host)
+		} else {
+			warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the one host in host:")
+		}
 	}
 	opts.Think = viper.GetString("think")
 	opts.KeepAlive = viper.GetString("keep_alive")
@@ -143,4 +150,57 @@ func printWarnings(warnings []string) {
 	for _, w := range warnings {
 		fmt.Println("  " + strings.TrimSpace(w))
 	}
+}
+
+// resolveHost is the one host taracode talks to: host: (--host, TARACODE_HOST), or, when that is
+// empty, the default host of a 3.0 hosts: section so such a file keeps starting after the pool's
+// removal in 3.1.0.
+func resolveHost() string {
+	if host := viper.GetString("host"); host != "" {
+		return host
+	}
+	url, _ := legacyHostURL()
+	return url
+}
+
+// legacyHostURL is the url of the default host of a retired hosts: section: default_host when it
+// names one, otherwise the host with the lowest priority (unset counts as 10, ties by name). ok is
+// false when the section names no usable url.
+func legacyHostURL() (url string, ok bool) {
+	hosts := viper.GetStringMap("hosts")
+	if len(hosts) == 0 {
+		return "", false
+	}
+	pick := viper.GetString("default_host")
+	if _, known := hosts[pick]; !known {
+		names := make([]string, 0, len(hosts))
+		for name := range hosts {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		pick, best := "", 0
+		for _, name := range names {
+			priority := 10
+			if key := "hosts." + name + ".priority"; viper.IsSet(key) {
+				priority = viper.GetInt(key)
+			}
+			if pick == "" || priority < best {
+				pick, best = name, priority
+			}
+		}
+		url = viper.GetString("hosts." + pick + ".url")
+		return url, url != ""
+	}
+	url = viper.GetString("hosts." + pick + ".url")
+	return url, url != ""
+}
+
+// noHost is the error every entry point returns when no host is configured. A retired hosts:
+// section gets a pointer to host:, the one migration a 3.0 file needs.
+func noHost() error {
+	msg := "LLM server host not found; set --host, TARACODE_HOST, or host: in ~/.taracode/config.yaml"
+	if viper.IsSet("hosts") {
+		msg += " (hosts: is ignored since 3.1.0; put your default host's url in host:)"
+	}
+	return errors.New(msg)
 }

@@ -70,6 +70,9 @@ type Assistant struct {
 	// Last AI response (for suggestion detection)
 	lastResponse string
 
+	// The day the system prompt was built on; a turn on a later day rebuilds it (3.1.0).
+	promptDay string
+
 	// Ollama context window check (v2.1.0)
 	serverContextChecked bool // true once /api/ps has answered for the current model
 	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
@@ -262,6 +265,7 @@ func New(opts Options) (*Assistant, error) {
 
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, storageMgr, a.mode, a.memoryBudget())
+	a.promptDay = promptDate(time.Now())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
@@ -440,6 +444,7 @@ func newForTest(workingDir, model, host string, streaming bool) *Assistant {
 	}
 	a.refreshTools()
 	a.systemPrompt = buildSystemPrompt(workingDir, nil, a.mode, a.memoryBudget())
+	a.promptDay = promptDate(time.Now())
 	a.conversation = []openai.ChatCompletionMessage{{
 		Role:    openai.ChatMessageRoleSystem,
 		Content: a.systemPrompt,
