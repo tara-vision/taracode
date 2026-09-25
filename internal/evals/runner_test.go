@@ -388,10 +388,35 @@ func TestRunnerAveragesEveryCountPerRun(t *testing.T) {
 	}
 }
 
-// TestRunnerRefusesAModelTheEngineDoesNotServe pins ruling P3-R49: the engine's show resolves the
-// untagged "gemma4", but its model list names only gemma4:latest, so the assistant would fall back
-// to the first listed model and score it under gemma4's name. Run must fail before any model request.
+// TestRunnerRefusesAModelTheEngineDoesNotServe pins ruling P3-R49: the engine lists no "gemma4" in any
+// spelling (only gemma4:12b, a different model), so the run must fail before any model request instead
+// of scoring a fallback under gemma4's name. The runner's own show check fails first; checkAssistant
+// stays behind it for an engine whose show resolves more than its list names.
 func TestRunnerRefusesAModelTheEngineDoesNotServe(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := ollamatest.New(t)
+	srv.Models = []ollamatest.ModelSpec{
+		{Name: "aaa:1b", Capabilities: []string{"completion", "tools"}, ContextLength: 4096},
+		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768},
+	}
+	srv.Turns = []ollamatest.Turn{{Content: "ready"}, {Content: "OOMKilled memory limit"}}
+	opts := runOptions(srv, "")
+	opts.Model = "gemma4"
+	_, err := Run(context.Background(), tasks, opts)
+	if err == nil || !strings.Contains(err.Error(), "gemma4") {
+		t.Fatalf("err=%v", err)
+	}
+	for _, r := range srv.Requests {
+		if r.Path == "/api/chat" {
+			t.Fatalf("a model request went out for %v", r.Body["model"])
+		}
+	}
+}
+
+// TestRunnerAcceptsAnUntaggedNameTheEngineListsAsLatest pins ruling P3-R74: Ollama lists a model pulled
+// without a tag as name:latest, and the untagged name is the same model, so Run proceeds and every model
+// request carries the name as given.
+func TestRunnerAcceptsAnUntaggedNameTheEngineListsAsLatest(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	srv := ollamatest.New(t)
 	srv.Models = []ollamatest.ModelSpec{
@@ -401,14 +426,21 @@ func TestRunnerRefusesAModelTheEngineDoesNotServe(t *testing.T) {
 	srv.Turns = []ollamatest.Turn{{Content: "ready"}, {Content: "OOMKilled memory limit"}}
 	opts := runOptions(srv, "")
 	opts.Model = "gemma4"
-	_, err := Run(context.Background(), tasks, opts)
-	if err == nil || !strings.Contains(err.Error(), "aaa:1b") || !strings.Contains(err.Error(), "gemma4") {
-		t.Fatalf("err=%v", err)
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatalf("Run: %v", err)
 	}
+	chats := 0
 	for _, r := range srv.Requests {
-		if r.Path == "/api/chat" {
-			t.Fatalf("a model request went out for %v", r.Body["model"])
+		if r.Path != "/api/chat" {
+			continue
 		}
+		chats++
+		if got := r.Body["model"]; got != "gemma4" {
+			t.Fatalf("model request went out for %v, want gemma4", got)
+		}
+	}
+	if chats == 0 {
+		t.Fatal("no model request went out")
 	}
 }
 

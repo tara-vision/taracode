@@ -276,7 +276,7 @@ func New(opts Options) (*Assistant, error) {
 
 // sameModel reports whether a and b name the same Ollama model once its implicit tag is accounted
 // for: Ollama treats a name given without a tag as "name:latest" and lists it that way from
-// /api/tags, so a bare "glm-4.7-flash" and a listed "glm-4.7-flash:latest" must compare equal. Only
+// /api/tags, so a bare "name" and a listed "name:latest" must compare equal (ruling P3-R74). Only
 // one trailing ":latest" is stripped from each side (Ollama never double-tags a real model name),
 // so "x:latest:latest" is compared as "x:latest", not collapsed any further.
 func sameModel(a, b string) bool {
