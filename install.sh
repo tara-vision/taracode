@@ -51,11 +51,27 @@ detect_arch() {
     esac
 }
 
-# Get latest version from GitHub
+# Get the latest stable version. The release page's redirect needs no API call, so it is never
+# rate-limited; the GitHub API (60 unauthenticated calls per hour per address, easily spent behind an
+# office NAT or in CI) and the docs site's version endpoint are the fallbacks. Prints nothing on failure.
 get_latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
-        grep '"tag_name":' |
-        sed -E 's/.*"([^"]+)".*/\1/'
+    local url tag
+    url=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)
+    tag="${url##*/tag/}"
+    if [ -n "$tag" ] && [ "$tag" != "$url" ]; then
+        printf '%s\n' "$tag"
+        return 0
+    fi
+    tag=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null |
+        grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+    if [ -n "$tag" ]; then
+        printf '%s\n' "$tag"
+        return 0
+    fi
+    tag=$(curl -fsSL "https://code.tara.vision/api/version" 2>/dev/null |
+        grep -o '"version":"[^"]*"' | sed -E 's/.*:"([^"]+)"/\1/' || true)
+    [ -n "$tag" ] && printf '%s\n' "$tag"
+    return 0
 }
 
 # sha256_of <file> - print the SHA-256 of a file

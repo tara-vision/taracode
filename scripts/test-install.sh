@@ -45,12 +45,54 @@ else
     echo "FAIL: missing entry rejected without the expected message: $out"; exit 1
 fi
 
-# A version lookup that returns no tag_name (for example a rate-limited GitHub API reply)
-# must yield an empty version, not kill the script, so main can print its own error.
-curl() { printf '{"message":"API rate limit exceeded"}'; }
-if version=$( ( set -euo pipefail; get_latest_version || true ) ) && [ -z "$version" ]; then
-    echo "PASS: version lookup failure yields an empty version"
+# The version lookup tries the release page's redirect first (no API call, never rate-limited), then
+# the GitHub API, then the docs site's version endpoint; every source failing must yield an empty
+# version, not kill the script, so main can print its own error. The curl stub branches on the URL.
+lookup() { ( set -euo pipefail; get_latest_version || true ); }
+
+curl() {
+    case "$*" in
+        *releases/latest*api.github*|*api.github*) printf '{"message":"API rate limit exceeded"}' ;;
+        *github.com/*/releases/latest*) printf 'https://github.com/tara-vision/taracode/releases/tag/v9.9.9' ;;
+        *) return 22 ;;
+    esac
+}
+if version=$(lookup) && [ "$version" = "v9.9.9" ]; then
+    echo "PASS: the release page redirect names the version without the API"
 else
-    echo "FAIL: version lookup failure did not yield an empty version: '$version'"; exit 1
+    echo "FAIL: redirect lookup gave '$version'"; exit 1
 fi
-unset -f curl
+
+curl() {
+    case "$*" in
+        *api.github.com*) printf '{"tag_name": "v8.8.8", "name": "v8.8.8"}' ;;
+        *github.com/*/releases/latest*) return 22 ;;
+        *) return 22 ;;
+    esac
+}
+if version=$(lookup) && [ "$version" = "v8.8.8" ]; then
+    echo "PASS: the GitHub API is the fallback when the redirect fails"
+else
+    echo "FAIL: API fallback gave '$version'"; exit 1
+fi
+
+curl() {
+    case "$*" in
+        *code.tara.vision/api/version*) printf '{"version":"v7.7.7","name":"taracode"}' ;;
+        *api.github.com*) printf '{"message":"API rate limit exceeded"}' ;;
+        *) return 22 ;;
+    esac
+}
+if version=$(lookup) && [ "$version" = "v7.7.7" ]; then
+    echo "PASS: the docs site's version endpoint is the last fallback"
+else
+    echo "FAIL: site fallback gave '$version'"; exit 1
+fi
+
+curl() { printf '{"message":"API rate limit exceeded"}'; }
+if version=$(lookup) && [ -z "$version" ]; then
+    echo "PASS: every source failing yields an empty version"
+else
+    echo "FAIL: total lookup failure did not yield an empty version: '$version'"; exit 1
+fi
+unset -f curl lookup
