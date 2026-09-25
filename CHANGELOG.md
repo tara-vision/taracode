@@ -29,14 +29,13 @@ files keep working unchanged; `mcp:` is a new, optional policy section.
 - **The MCP `mcp:` policy section** (`trust_read_only_hint`, `read_only`): with the default
   `trust_read_only_hint: true`, a server's `readOnlyHint: true` still gives its tool a read form; set it to
   `false` for a server you do not trust and list the tools that may read under `read_only`, per server, by
-  name or glob. `/policy show` prints the section; `taracode doctor` names untrusted servers.
+  name or glob. `/policy show` prints the section.
 - **The classifier differential harness** (`internal/tools/classify/differential_test.go`, `make
   classify-diff`, a CI job) - runs every read-classified shell command from the classifier's own table tests
   against shim binaries and a sentinel file tree, and fails if any of them changed the tree, created a file,
   or shelled out to anything but a read verb.
-- Ansible: `servers/aramis/taracode/sandbox.yml` provisions the eval sandbox on the taracode VM (kind,
-  kubectl, helm, terraform, trivy, gitleaks, the docker compose plugin) and exports
-  `TARACODE_EVALS_PRIVATE_NAMES`.
+- The lab sandbox playbook (private ansible repository) provisions kind, kubectl, helm, terraform, trivy,
+  gitleaks and the docker compose plugin on the recorder VM and exports `TARACODE_EVALS_PRIVATE_NAMES`.
 - CI: a `classify-diff` job runs the differential harness on Ubuntu; the coverage gate adds `internal/evals`
   at the 80 percent floor.
 
@@ -64,8 +63,9 @@ files keep working unchanged; `mcp:` is a new, optional policy section.
   command substitution, a `#` glued to a closing paren, a backslash-newline continuation, a run of empty
   parameter references before a `-`, brace expansion rebuilding a line's variable name, a quoted brace
   inside `${...}`, and integer overflow in a `{a..b}` brace sequence.
-- Multi-word `kubectl` and `terraform` parameters (a namespace, context or directory containing a space) now
-  run as separate `argv` words instead of one shell-joined token.
+- The `kubectl` verb, resource and name parameters and the `terraform` command parameter now run as separate
+  `argv` words instead of one shell-joined token; a namespace, context or directory parameter is still
+  passed through whole, even when it contains a space.
 - The MCP adapter's denial reason for an untrusted tool no longer tells a read-only-hinted tool that it "is
   not marked read-only"; the message now matches whichever trust rule actually applied.
 
