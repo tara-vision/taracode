@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -273,6 +274,15 @@ func New(opts Options) (*Assistant, error) {
 	return a, nil
 }
 
+// sameModel reports whether a and b name the same Ollama model once its implicit tag is accounted
+// for: Ollama treats a name given without a tag as "name:latest" and lists it that way from
+// /api/tags, so a bare "glm-4.7-flash" and a listed "glm-4.7-flash:latest" must compare equal. Only
+// one trailing ":latest" is stripped from each side (Ollama never double-tags a real model name),
+// so "x:latest:latest" is compared as "x:latest", not collapsed any further.
+func sameModel(a, b string) bool {
+	return strings.TrimSuffix(a, ":latest") == strings.TrimSuffix(b, ":latest")
+}
+
 // chooseModel picks the model New uses: the persisted one while the server still lists it, then the
 // configured one, then the first the server lists. When the server cannot list its models the
 // persisted or configured name is trusted.
@@ -284,7 +294,7 @@ func chooseModel(
 	// Helper to check if model exists in available models
 	modelAvailable := func(name string) bool {
 		for _, m := range models {
-			if m == name {
+			if sameModel(m, name) {
 				return true
 			}
 		}
