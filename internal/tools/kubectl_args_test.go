@@ -79,6 +79,9 @@ func TestKubectlArgvUndoesACommandRepeatedInArgs(t *testing.T) {
 			map[string]any{"verb": "get", "resource": "configmap", "args": "get configmap config"}, "get configmap config"},
 		{"a container named like a command after the repeated verb",
 			map[string]any{"verb": "logs", "name": "web", "args": "logs web proxy"}, "logs web proxy"},
+		// Ruling P3-R69 item 3: a name copy followed by the verb itself is not another verb.
+		{"a name copy followed by the verb", map[string]any{"verb": "delete", "resource": "pod", "name": "web",
+			"args": "web delete"}, "delete pod web delete"},
 		{"flags only, untouched", map[string]any{"verb": "get", "resource": "pods", "namespace": "apps",
 			"output": "wide", "args": "-l app=web"}, "get pods -n apps -o wide -l app=web"},
 	}
@@ -262,6 +265,14 @@ func TestKubectlArgvReadsParametersAsKubectlWould(t *testing.T) {
 		{"a first part that is not a type", map[string]any{"verb": "get", "resource": "x,pod"}, "get x,pod"},
 		{"a comma after a flag is not the head", map[string]any{"verb": "get", "args": "-n platform pod,x"},
 			"get -n platform pod,x"},
+		// Ruling P3-R69 item 3: a second part shaped like a resource type keeps the list.
+		{"a plural type the kinds lack", map[string]any{"verb": "get", "resource": "pods,certificates"},
+			"get pods,certificates"},
+		{"a group-qualified type", map[string]any{"verb": "get", "resource": "pods,certificates.cert-manager.io"},
+			"get pods,certificates.cert-manager.io"},
+		{"a dotted second part", map[string]any{"verb": "get", "resource": "pod,web.v1"}, "get pod,web.v1"},
+		{"a letters-only name that is not plural", map[string]any{"verb": "get", "resource": "deploy,checkout"},
+			"get deploy/checkout"},
 	}
 	for _, c := range cases {
 		// Word by word: "pod x" as one argument is exactly what kubectl refuses.

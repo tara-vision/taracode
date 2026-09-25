@@ -193,10 +193,12 @@ func oneValue(values []string) string {
 // KubeTargets reads the context and namespace a kubectl command names, from the tokens before a
 // lone "--" (after it they belong to the command a container runs). "*" means every namespace (-A),
 // two different values of the same option, or a cluster of short options whose n may be another
-// option's value.
+// option's value. A namespace the command changes as an object (delete ns kube-system, in any
+// spelling) is the namespace it acts on (ruling P3-R69), and with a -n that names another namespace,
+// several namespace objects or a selection of them the namespace is "*" (kubeObjectTargets).
 func KubeTargets(tokens []string) (context, namespace string) {
-	f := parseKubeFlags(tokens, "--context")
-	return oneValue(f.contexts), f.namespace()
+	context, namespace, _ = kubeObjectTargets(tokens)
+	return context, namespace
 }
 
 // HelmTargets reads the kube context (--kube-context) and namespace (-n, --namespace; -A and

@@ -3,7 +3,9 @@ package tools
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
@@ -97,22 +99,34 @@ func typeNameAtHead(head kubectlHead, extra []string) (argv, rest []string) {
 }
 
 // typeName is type/name for a type,name word whose first part is a resource type and whose second is
-// not: kubectl reads pod,x as a list of two resource types and refuses x, so the model meant the pod
-// named x. Any other word, a list of resource types (pods,services) included, stays as it is.
+// not and does not look like one: kubectl reads pod,x as a list of two resource types and refuses x,
+// so the model meant the pod named x. Any other word, a list of resource types (pods,services)
+// included, stays as it is.
 func typeName(w string) string {
 	kind, name, ok := strings.Cut(w, ",")
 	if !ok || name == "" || strings.ContainsAny(name, ",/") || strings.Contains(kind, "/") ||
-		!isKubeResourceWord(kind) || isKubeResourceWord(name) {
+		!isKubeResourceWord(kind) || isKubeResourceWord(name) || looksLikeResourceType(name) {
 		return w
 	}
 	return kind + "/" + name
+}
+
+// looksLikeResourceType reports a word shaped like a resource type rather than an object name (ruling
+// P3-R69): a plural of letters only (certificates) or a group-qualified type (certificates.example.io).
+// A list such as pods,certificates then stays a list, whatever types the cluster has.
+func looksLikeResourceType(w string) bool {
+	if strings.Contains(w, ".") {
+		return true
+	}
+	return strings.HasSuffix(w, "s") && strings.IndexFunc(w, func(r rune) bool { return !unicode.IsLetter(r) }) < 0
 }
 
 // dropRepeatedCommand takes off args the command line a model repeats there: a leading kubectl that
 // more words follow, then the verb, then the resource and the name when those parameters are set.
 // Args that then start with another kubectl command are an argument error, since args holds only
 // extra flags, unless args repeated the verb or the resource: the model already wrote its verb, so a
-// command word after the copies is a name (get configmap config, ruling P3-R65). A verb given as a
+// command word after the copies is a name (get configmap config, ruling P3-R65), and so is the verb
+// itself after a name copy (web delete, ruling P3-R69). A verb given as a
 // global flag (verb "-n", args "kube-system delete pod x") makes args the rest of a command line of
 // its own, which is left as written.
 func dropRepeatedCommand(words []string, verb, resource, name string) ([]string, error) {
@@ -127,7 +141,8 @@ func dropRepeatedCommand(words []string, verb, resource, name string) ([]string,
 		words = words[1:]
 	}
 	words, droppedResource := dropRepeatedObject(words, resource, name)
-	if !repeated && !droppedResource && len(words) > 0 && kubectlCommands[words[0]] && !kubectlSubcommandVerbs[verb] {
+	if !repeated && !droppedResource && len(words) > 0 && words[0] != verb && kubectlCommands[words[0]] &&
+		!kubectlSubcommandVerbs[verb] {
 		return nil, fmt.Errorf("args starts with %q but verb is %q; args holds only extra flags "+
 			"(for example -l app=web --tail=100), never the verb, resource, name, namespace or context", words[0], verb)
 	}
@@ -260,38 +275,19 @@ var kubectlCommands = map[string]bool{
 // config set, kubectl help get), so their args are never read as another verb.
 var kubectlSubcommandVerbs = map[string]bool{"config": true, "help": true, "alpha": true}
 
-// kubeResourceAliases map the short names and plurals of the common resource types to one canonical
-// singular name.
-var kubeResourceAliases = map[string]string{
-	"po": "pod", "pods": "pod", "deploy": "deployment", "deployments": "deployment", "svc": "service",
-	"services": "service", "cm": "configmap", "configmaps": "configmap", "ns": "namespace", "namespaces": "namespace",
-	"no": "node", "nodes": "node", "ing": "ingress", "ingresses": "ingress", "sts": "statefulset",
-	"statefulsets": "statefulset", "ds": "daemonset", "daemonsets": "daemonset", "rs": "replicaset",
-	"replicasets": "replicaset", "pvc": "persistentvolumeclaim", "persistentvolumeclaims": "persistentvolumeclaim",
-	"pv": "persistentvolume", "persistentvolumes": "persistentvolume", "sa": "serviceaccount",
-	"serviceaccounts": "serviceaccount", "ev": "event", "events": "event", "secrets": "secret", "jobs": "job",
-	"cj": "cronjob", "cronjobs": "cronjob", "ep": "endpoints", "hpa": "horizontalpodautoscaler",
-	"horizontalpodautoscalers": "horizontalpodautoscaler", "netpol": "networkpolicy", "networkpolicies": "networkpolicy",
-	"sc": "storageclass", "storageclasses": "storageclass", "crd": "customresourcedefinition",
-	"crds": "customresourcedefinition", "customresourcedefinitions": "customresourcedefinition",
-}
-
 // CanonicalKubeResource is the canonical name of a resource type word: lower case, with the common
 // short names and plurals mapped to the singular (po and pods are pod, deploy is deployment). A word
-// the table does not know stays as written, lower-cased.
+// the table does not know stays as written, lower-cased. The table is policy's (ruling P3-R69), the
+// one the deny patterns read commands with.
 func CanonicalKubeResource(r string) string {
-	lower := strings.ToLower(r)
-	if c, ok := kubeResourceAliases[lower]; ok {
-		return c
-	}
-	return lower
+	return policy.CanonicalKubeResource(r)
 }
 
 // kubeKinds are the resource type words kubectl knows without custom resources: the canonical names of
 // the alias table and the other built-in types, with the short names the table lacks.
 var kubeKinds = func() map[string]bool {
 	kinds := map[string]bool{}
-	for _, c := range kubeResourceAliases {
+	for _, c := range policy.KubeResourceKinds() {
 		kinds[c] = true
 	}
 	for _, k := range []string{"all", "role", "rolebinding", "clusterrole", "clusterrolebinding", "limitrange",
