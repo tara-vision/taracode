@@ -7,10 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-25
+
+The v3 line, stable. taracode is now a local-first DevOps operator: it investigates infrastructure by default,
+changes it only through an explicit policy, talks to Ollama natively, and ships a reproducible scoreboard of
+which local models can do the work. This section gathers everything since 2.1.0; the three pre-releases below
+(3.0.0-alpha.1, alpha.2 and beta.1) carry the detail. Breaking for 2.x users: the tool set, the modes, the
+configuration layout and the permission store changed; see "Migration from 2.1.0" at the end.
+
+### Added
+- **Investigate and operate modes.** Investigate (the default) exposes read-only tools and never prompts.
+  Operate exposes every tool and routes each mutation through the policy: protected targets (contexts,
+  namespaces, paths) are hard denies in every spelling taracode can read, deny patterns are refused,
+  `kubectl apply`, `terraform apply` and `helm upgrade` dry-run first, then the remembered permission or a
+  prompt decides. `/mode investigate|operate`, `--mode`.
+- **Policy files.** `.taracode/policy.yaml` merged over `~/.taracode/policy.yaml`, a built-in policy when
+  neither exists, `/init` writes a starter, `/policy show`, and `taracode doctor` reports the policy status;
+  a broken policy locks the session to investigate mode. An optional `mcp:` section decides which MCP tools
+  count as reads.
+- **Sixteen tools with a per-call read/mutate classifier** (read_file, list_files, search_files, write_file,
+  edit_file, shell, git, kubectl, helm, terraform, docker, cloud, scan, web_search, web_fetch, get_datetime),
+  replacing the 58-tool set. A shell pipeline is a read only when every command is on the read-only list with
+  no file redirect; the classifier's read verdicts are checked by a differential harness that runs them for
+  real in a sentinel tree (`make classify-diff`, a CI job).
+- **Terraform plans as summaries**, **redaction** of secrets in every tool output before the model, the
+  session or the screen sees it, and an **audit log** (`.taracode/audit.jsonl`) of every mutate-classified
+  call with its decision and rule; `/audit`.
+- **Native Ollama client** (`/api/chat`, streaming, thinking, native tool calls, context-window control),
+  `think` and `/think`, `context.window`, and a **model registry** with `taracode doctor` recommending a model
+  for the host's RAM tier and diagnosing the server, the installed models and the external CLIs.
+- **The eval suite and the scoreboard.** `taracode eval run|record|report|lint` replays 33 offline DevOps
+  tasks (Kubernetes, Helm, Terraform, Docker, secrets, cloud and refusal cases) from recorded fixtures through
+  the product's own loop, classifier, gate and redaction, and scores them; the first board across twelve
+  models is in `docs/evals/scoreboard.md` and on code.tara.vision/evals. Headless hooks (`agent.Options.Output`,
+  `PermissionDecider`, `ToolObserver`, `tools.Options.Middleware`, `Assistant.LastTurn()`) let any embedder
+  drive a session the same way.
+- `AGENTS.md` as project context next to `TARACODE.md`; `--offline`; a scripted fake Ollama server for tests;
+  CI gates for an 800-line file limit, per-package coverage floors and repository hygiene.
+
 ### Changed
-- The 32 GB registry default is `glm-4.7-flash` (first scoreboard: 97% pass, 0.96 mean, against `qwen3.8:27b`
-  at 91% and 0.94); `taracode doctor`, the README, the installer's next steps and the release notes recommend it.
-  `qwen3.8:27b` stays in the registry.
+- **Configuration v3:** `model` is a string, sampling moved to `generation:`, `security.default_severity` to
+  `scan.default_severity`, new `mode` and `offline`, `context.max_tool_iterations` defaults to 20. A 2.x
+  `model:` section is read with a warning; `agents:` and `watch:` are ignored with a warning.
+- **Recommended models:** `gemma4:12b` (16 GB), `glm-4.7-flash` (32 GB, the top of the first scoreboard at
+  97% of tasks passed; `qwen3.8:27b` stays in the registry) and `qwen3.6:35b` (48 GB and up).
+- On Ollama, a model without the `tools` capability is refused instead of falling back to JSON-in-content
+  tool calls; the fallback serves vLLM and llama.cpp only. A model named without a tag matches the engine's
+  `name:latest`.
+- `/init` no longer gates the REPL; `.taracode/permissions.json` is version 3; `web_fetch` refuses loopback,
+  private, link-local and carrier-grade NAT addresses; tools take a context and their own timeout; the REPL is
+  one command table with a generated `/help`; the loop package is `internal/agent`.
+- At the iteration cap the agent makes one last completion with no tools offered and answers with the
+  findings so far.
+
+### Removed
+- The seven-agent system and the orchestrator, `/agent`, `/watch`, `/task` and the task templates, security
+  mode (`/mode security`, `/audit export html`), the JSON-in-content fallback for Ollama, the four prompt
+  variants, the permission categories, and 42 of the 58 tools (folded into shell, git, kubectl, helm,
+  terraform, docker, cloud and scan). Runbooks return in 3.1 on a new engine; until then `/plan` reports
+  that no plan is active.
+
+### Fixed
+- Eleven fail-open shapes in the shell classifier found by review and by execution (quoted `case` patterns,
+  glued comments, backslash-newline continuations, empty parameter references before a `-`, brace
+  expansion, `${...}` quoting, brace-sequence overflow, `awk` redirects after a continued line or a regex
+  literal, `git config --worktree`, `ifconfig` flags), each pinned by a table row the differential harness runs.
+- A namespace object is a protected target in every kubectl spelling, including kubectl's own rule for
+  `label`/`annotate` pairs and words the shell would expand; deny patterns match the canonical command.
+- Malformed operate-mode kubectl calls are refused at the gate with their verb and targets kept instead of
+  reaching the policy empty; kubectl and terraform parameters run as separate `argv` words.
+- A tool call blocked by a gate no longer prints a success line under the refusal; declining an edit preview
+  reaches the model as the tool result.
+
+### Known limitations
+- Objects given to kubectl through `-f`, `-k` or stdin, kubectl inside a quoted `sh -c '...'` or `"$(...)"`,
+  and a program or option word with an unquoted glob are not read by the classifier; deny patterns are
+  anchored whole-command globs. In operate mode every mutation still prompts unless a permission was saved.
+  The full list is in docs/evals/README.md and README.md.
+
+### Migration from 2.1.0
+- `~/.taracode/config.yaml`: rename the `model:` section to `generation:` and set `model: <name>`; rename
+  `security.default_severity` to `scan.default_severity`; delete `agents:` and `watch:`.
+- Delete `.taracode/permissions.json` (or let taracode ignore it once) and answer the prompts again.
+- Scripts that relied on `/task`, `/agent` or `/watch` have no replacement in this release; the runbook
+  engine arrives in 3.1.
+- Nothing else is required. Existing policy files from the pre-releases keep working unchanged.
 
 ## [3.0.0-beta.1] - 2026-09-25
 
