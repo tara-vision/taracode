@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0-beta.1] - DATE
+## [3.0.0-beta.1] - 2026-09-25
 
 Third pre-release of the v3 line (ROADMAP.md, Phase 3 "Evals"). Non-breaking: existing config and policy
 files keep working unchanged; `mcp:` is a new, optional policy section.
