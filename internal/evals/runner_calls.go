@@ -128,7 +128,7 @@ func transcriptWriter(opts RunOptions, taskID string, run int) (io.Writer, func(
 	if opts.Runs > 1 {
 		name = fmt.Sprintf("%s.run%d.log", taskID, run)
 	}
-	dir := filepath.Join(opts.RunsDir, modelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
+	dir := filepath.Join(opts.RunsDir, ModelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
 	f, err := createTranscript(dir, name)
 	if err != nil {
 		warn := func() { _, _ = fmt.Fprintf(opts.Out, "warning: transcripts are not written: %v\n", err) }

@@ -31,8 +31,28 @@ func TestWriteAndReadResults(t *testing.T) {
 	if err != nil || len(all) != 1 || all[0].Model != "qwen3.8:27b" || all[0].Tasks[0].Score != 0.9 {
 		t.Fatalf("%+v %v", all, err)
 	}
-	if modelSlug("hf.co/org/model:Q4") != "hf.co-org-model-q4" {
-		t.Fatal(modelSlug("hf.co/org/model:Q4"))
+	if ModelSlug("hf.co/org/model:Q4") != "hf.co-org-model-q4" {
+		t.Fatal(ModelSlug("hf.co/org/model:Q4"))
+	}
+}
+
+// TestReadResultsSkipsPartialFiles: a "-partial.json" file in the results directory (it belongs in the
+// runs directory, never here, but this is defense in depth) is never read back as a committed result.
+func TestReadResultsSkipsPartialFiles(t *testing.T) {
+	dir := t.TempDir()
+	r := Results{Model: "gemma4:12b", Date: "2026-09-26",
+		Tasks:   []TaskResult{{ID: "a", Area: "kubernetes", Score: 0.9, Pass: true}},
+		Summary: Summary{PassRate: 1, MeanScore: 0.9, ByArea: map[string]AreaSummary{}}}
+	if _, err := WriteResults(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	partial := filepath.Join(dir, ModelSlug(r.Model)+"-"+r.Date+"-partial.json")
+	if err := os.WriteFile(partial, []byte(`{"model":"gemma4:12b"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	all, err := ReadResults(dir)
+	if err != nil || len(all) != 1 || all[0].Model != "gemma4:12b" {
+		t.Fatalf("all=%+v err=%v", all, err)
 	}
 }
 

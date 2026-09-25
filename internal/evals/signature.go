@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
@@ -157,12 +158,13 @@ var kubectlValueFlags = map[string]string{"-n": "namespace", "--namespace": "nam
 // port-forward, cordon, ...) take a name, which is never canonicalized.
 var resourceVerbs = map[string]bool{"get": true, "describe": true, "delete": true, "edit": true, "patch": true,
 	"scale": true, "annotate": true, "label": true, "wait": true, "top": true, "explain": true, "expose": true,
-	"autoscale": true, "taint": true, "rollout": false}
+	"autoscale": true, "taint": true}
 
-// canonicalResource names a resource type the way the kubectl tool compares one
-// (tools.CanonicalKubeResource), so the signature and the tool agree on what one type is.
+// canonicalResource names a resource type the way the kubectl tool and the classifier do
+// (policy.CanonicalKubeResource, the shared alias table every one of them reads), so the signature and
+// the tool agree on what one type is.
 func canonicalResource(r string) string {
-	return tools.CanonicalKubeResource(r)
+	return policy.CanonicalKubeResource(r)
 }
 
 // kubectlSignature renders "kubectl <verb> <resource>[/<name>] [-n ns] [--context c] [-o out]

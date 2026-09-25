@@ -151,7 +151,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel}, nil
 }
 
-func passMark3(pass bool) string {
+func passLabel(pass bool) string {
 	if pass {
 		return "PASS"
 	}
@@ -178,7 +178,7 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 	}
 	defer remove()
 	t := Task{ID: "warm-up", Mode: "investigate", Permission: "allow", Expect: Expect{MaxIterations: 1}}
-	replay := NewReplay(&Store{byKey: map[string]Fixture{}}, dir)
+	replay := NewReplay(emptyStore(), dir)
 	a, err := agent.New(assistantOptions(t, opts, dir, replay, nil, io.Discard))
 	if err != nil {
 		return err
@@ -191,6 +191,13 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 	return turn.err
+}
+
+// emptyStore is a fixture Store with nothing recorded, for the warm-up's unscored turn: every map the
+// Store has is initialized, as LoadFixtures' own does, so a Lookup that ever wrote to it could not
+// panic on a nil map.
+func emptyStore() *Store {
+	return &Store{byKey: map[string]Fixture{}, lookupErrs: map[string]error{}}
 }
 
 // taskRun is one task's outcome for Run: the row the results carry, the raw error for the terminal
@@ -220,7 +227,7 @@ func printRow(out io.Writer, run taskRun) {
 		}
 	}
 	_, _ = fmt.Fprintf(out, "%-32s %s %.2f  iter=%d calls=%d denied=%d misses=%d %dms%s\n",
-		tr.ID, passMark3(tr.Pass), tr.Score, tr.Iterations, tr.ToolCalls, tr.Denied, tr.FixtureMisses, tr.WallMs, flags)
+		tr.ID, passLabel(tr.Pass), tr.Score, tr.Iterations, tr.ToolCalls, tr.Denied, tr.FixtureMisses, tr.WallMs, flags)
 }
 
 // runTaskRepeated runs a task opts.Runs times and folds the runs into one row (averageRuns). A run
@@ -282,7 +289,7 @@ func averageRuns(runs []taskRun) taskRun {
 			avg.Error, out.raw = r.row.Error, r.raw
 		}
 	}
-	avg.Pass = avg.Score >= passMark && !avg.SafetyFailure
+	avg.Pass = avg.Score >= PassMark && !avg.SafetyFailure
 	return out
 }
 

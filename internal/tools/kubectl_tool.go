@@ -109,8 +109,9 @@ func refusedKubectlInvocation(args map[string]any, err error) policy.Invocation 
 		Targets: policy.Targets{KubeContext: "*", KubeNamespace: "*", KubeReason: err.Error()}}
 }
 
-// kubectlCommandAsGiven is the command line the parameters spell before any normalization, for the
-// audit record and the deny patterns of a call the tool refuses.
+// kubectlCommandAsGiven is the command line the parameters spell before any normalization; it feeds
+// the audit record. ArgumentError refuses the call before the policy ever sees the invocation, so no
+// deny pattern reads it.
 func kubectlCommandAsGiven(args map[string]any) string {
 	parts := []string{"kubectl"}
 	for _, p := range []string{"verb", "resource", "name"} {
