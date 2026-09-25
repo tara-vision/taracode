@@ -21,25 +21,40 @@ The corpus currently has 33 tasks across seven areas: nine kubernetes, three hel
 docker, three secrets, three cloud and six refusal. Twenty-five are `provenance: recorded` against the live
 sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
 scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates and fixture-miss
-rates per model and RAM tier, from the first scoreboard run, are published in
-[scoreboard.md](scoreboard.md); the headline numbers:
+rates per model and RAM tier are published in [scoreboard.md](scoreboard.md), refreshed for 3.1.2 with the
+3.1.1 binary; the headline numbers:
 
 | Tier | Registry default | Default's pass rate (mean score) | Top scorer by mean score | check-defaults |
 |---|---|---|---|---|
-| 16 GB | gemma4:12b | 76% (0.87), three runs | gemma4:12b (qwen3.5:9b 76%, 0.85, three runs) | matches |
-| 32 GB | qwen3.8:27b (then) | 91% (0.94) | glm-4.7-flash, 97% (0.96) | differs |
-| 48 GB | qwen3.6:35b | 85% (0.93) | qwen3.6:35b | matches |
-| small | gemma4:e4b | 58% (0.72) | the tier's only model | - |
+| 16 GB | gemma4:12b | 82% (0.88), three runs | qwen3.5:9b, 85% (0.92), one run | differs |
+| 32 GB | glm-4.7-flash | 97% (0.97) | glm-4.7-flash | matches |
+| 48 GB | qwen3.6:35b | 73% (0.85) | gemma4:31b, 85% (0.89) | differs |
+| small | gemma4:e4b | 73% (0.79) | the tier's only model | - |
 
-Twelve models, 33 tasks each, one run per task, 396 runs in all, zero safety failures: no `must_deny` call
-was ever allowed by the gate. `eval report --check-defaults` ranks a tier by mean score; a "differs" line is
-evidence for the maintainer, not a change by itself (see the registry rule above). On this evidence the 32 GB
-default moved to glm-4.7-flash for 3.0.0. The 16 GB tier was re-run with `--runs 3` for its two contenders the
-same day: gemma4:12b 76% / 0.87 with 26% misses against qwen3.5:9b 76% / 0.85 with 46% misses, so gemma4:12b keeps
-the default; the single-run split (73% / 0.81 against 70% / 0.84) was noise.
+Twelve models, 33 tasks each, one run per task except gemma4:12b (three), 462 runs in all, zero safety
+failures: no `must_deny` call was ever allowed by the gate. `eval report --check-defaults` ranks a tier by mean
+score; a "differs" line is evidence for the maintainer, not a change by itself (see the registry rule above).
+Two tiers differ on this board and both defaults stay for now: the 16 GB split repeats the 3.0.0 pattern
+(qwen3.5:9b ahead on a single run, with 45% fixture misses against gemma4:12b's 26% over three runs), and the
+48 GB gap (gemma4:31b 85% against qwen3.6:35b 73%, one run each, on a tier the 3.0.0 board had level at 85%)
+needs a three-run comparison before a default moves. That re-run was started and stopped early on 2026-09-25;
+it is the next piece of evidence to collect.
 
-Notes on this first run:
+Notes on the 3.1 run (2026-09-25, taracode 3.1.1, Ollama 0.34.2):
 
+- Against the 3.0.0 board, refuse-operate-protected-path passes on six more models and aws-iam-wildcard-policy
+  on two more small ones (the 3.1.1 cloud description names `iam list-roles`); the other per-task flips go both
+  ways, within single-run noise.
+- ministral-3:14b still writes Mistral's text-form tool calls, which Ollama returns as content; its row measures
+  that stack, not the model's judgement. Parsing that form is still a follow-up.
+- gemma4:12b's row is the mean of three runs (`--runs 3`); every other row is one run.
+
+Notes on the first run (3.0.0):
+
+- 396 runs, zero safety failures. On its evidence the 32 GB default moved to glm-4.7-flash for 3.0.0. The 16 GB
+  tier was re-run with `--runs 3` for its two contenders the same day: gemma4:12b 76% / 0.87 with 26% misses
+  against qwen3.5:9b 76% / 0.85 with 46% misses, so gemma4:12b kept the default; the single-run split (73% / 0.81
+  against 70% / 0.84) was noise.
 - The results name the branch builds they ran on (`cbd8cfe` for the first nine models, `982321d` for the
   last three, after a fix to the model-name match that had refused the untagged name `glm-4.7-flash`).
   Nothing that scores changed between those commits and the `v3.0.0-beta.1` tag, which is the reproducible
