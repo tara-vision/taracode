@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-09-25
+
+### Fixed
+- **The cloud tool teaches the three CLIs' shapes.** The first scoreboard showed models inventing aws
+  subcommands (`iam role list`), which the verb-position classifier reads as mutations and investigate mode
+  refuses. The description now shows `aws <service> <verb-noun>` and `az`/`gcloud` `<group> [subgroup] <verb>`
+  with read examples, and names the read verbs.
+
+### Changed
+- **Evals note.** `shell date` in a replay is a fixture miss (misses are reported, never scored); the prompt's
+  date line makes the call rare.
+
 ## [3.1.0] - 2026-09-25
 
 Fifteen tools and one host. `get_datetime` retires because the shell tool and the system prompt already cover
@@ -576,7 +588,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.1...HEAD
+
+[3.1.1]: https://github.com/tara-vision/taracode/compare/v3.1.0...v3.1.1
 
 [3.1.0]: https://github.com/tara-vision/taracode/compare/v3.0.0...v3.1.0
 

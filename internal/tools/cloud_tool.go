@@ -18,8 +18,11 @@ var cloudProviders = map[string]bool{"aws": true, "az": true, "gcloud": true}
 func CloudTool() *Tool {
 	return &Tool{
 		Name: "cloud", ReadForm: true,
-		Description: "Run a cloud CLI: provider aws, az or gcloud; args is everything after the binary, for example " +
-			"\"ec2 describe-instances --region eu-west-1\".",
+		Description: "Run a cloud CLI; args is everything after the binary. aws <service> <verb-noun>: " +
+			"\"iam list-roles\", \"iam get-role --role-name x\", \"s3 ls\", \"ec2 describe-instances --region eu-west-1\". " +
+			"az and gcloud <group> [subgroup] <verb>: \"vm list\", \"storage account show -n x\", " +
+			"\"compute instances list\", \"projects get-iam-policy x\". describe, get, list, ls and show read; " +
+			"anything else mutates.",
 		Params: []Param{
 			{Name: "provider", Type: "string", Description: "aws, az or gcloud",
 				Enum: []string{"aws", "az", "gcloud"}, Required: true},
