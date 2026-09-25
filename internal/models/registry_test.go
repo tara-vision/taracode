@@ -24,7 +24,7 @@ func TestRegistryLoadsAndRecommends(t *testing.T) {
 		}
 	}
 	rec := r.Recommend(32)
-	if len(rec) == 0 || rec[0].Name != "qwen3.8:27b" {
+	if len(rec) == 0 || rec[0].Name != "glm-4.7-flash" {
 		t.Fatalf("recommend(32) = %+v", rec)
 	}
 }
@@ -34,7 +34,7 @@ func TestRegistryDefaultForTier(t *testing.T) {
 	if got := r.DefaultForTier(Tier16).Name; got != "gemma4:12b" {
 		t.Fatalf("16 GB default = %q", got)
 	}
-	if got := r.DefaultForTier(Tier32).Name; got != "qwen3.8:27b" {
+	if got := r.DefaultForTier(Tier32).Name; got != "glm-4.7-flash" {
 		t.Fatalf("32 GB default = %q", got)
 	}
 	if got := r.DefaultForTier(Tier48).Name; got != "qwen3.6:35b" {

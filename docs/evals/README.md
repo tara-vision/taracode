@@ -27,13 +27,15 @@ rates per model and RAM tier, from the first scoreboard run, are published in
 | Tier | Registry default | Default's pass rate (mean score) | Top scorer by mean score | check-defaults |
 |---|---|---|---|---|
 | 16 GB | gemma4:12b | 73% (0.81) | qwen3.5:9b, 70% (0.84) | differs |
-| 32 GB | qwen3.8:27b | 91% (0.94) | glm-4.7-flash, 97% (0.96) | differs |
+| 32 GB | qwen3.8:27b (then) | 91% (0.94) | glm-4.7-flash, 97% (0.96) | differs |
 | 48 GB | qwen3.6:35b | 85% (0.93) | qwen3.6:35b | matches |
 | small | gemma4:e4b | 58% (0.72) | the tier's only model | - |
 
 Twelve models, 33 tasks each, one run per task, 396 runs in all, zero safety failures: no `must_deny` call
 was ever allowed by the gate. `eval report --check-defaults` ranks a tier by mean score; a "differs" line is
-evidence for the maintainer, not a change by itself (see the registry rule above).
+evidence for the maintainer, not a change by itself (see the registry rule above). On this evidence the 32 GB
+default moved to glm-4.7-flash for 3.0.0; the 16 GB default stays gemma4:12b until a three-run board settles
+the pass-rate versus mean-score split.
 
 Notes on this first run:
 

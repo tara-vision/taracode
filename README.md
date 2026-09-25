@@ -56,7 +56,7 @@ brew install ollama
 
 ```bash
 ollama pull gemma4:12b     # 16 GB machines
-ollama pull qwen3.8:27b    # 32 GB machines (needs Ollama 0.32.12 or newer)
+ollama pull glm-4.7-flash  # 32 GB machines (needs Ollama 0.14.3 or newer)
 ollama pull qwen3.6:35b    # 48 GB and up
 ```
 
@@ -301,7 +301,7 @@ host: http://localhost:11434
 hosts:
   primary:
     url: http://gpu-server:11434
-    models: [ qwen3.8:27b, gemma4:12b ]
+    models: [ glm-4.7-flash, gemma4:12b ]
     priority: 1
   local:
     url: http://localhost:11434

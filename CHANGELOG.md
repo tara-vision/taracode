@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The 32 GB registry default is `glm-4.7-flash` (first scoreboard: 97% pass, 0.96 mean, against `qwen3.8:27b`
+  at 91% and 0.94); `taracode doctor`, the README, the installer's next steps and the release notes recommend it.
+  `qwen3.8:27b` stays in the registry.
+
 ## [3.0.0-beta.1] - 2026-09-25
 
 Third pre-release of the v3 line (ROADMAP.md, Phase 3 "Evals"). Non-breaking: existing config and policy

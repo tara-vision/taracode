@@ -42,7 +42,7 @@ taracode requires a local LLM backend. Ollama is recommended:
 brew install ollama
 
 # Pull recommended model
-ollama pull qwen3.8:27b     # gemma4:12b on 16 GB machines
+ollama pull glm-4.7-flash   # gemma4:12b on 16 GB machines
 
 # Run taracode
 ./taracode

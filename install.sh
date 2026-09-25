@@ -161,7 +161,7 @@ main() {
     echo "  Next steps:"
     echo "    1. Install Ollama:  brew install ollama    (or https://ollama.com/download)"
     echo "    2. Pull a model:    ollama pull gemma4:12b   # 16 GB machines"
-    echo "                        ollama pull qwen3.8:27b  # 32 GB machines"
+    echo "                        ollama pull glm-4.7-flash  # 32 GB machines"
     echo "    3. Run taracode:    cd your-project && taracode"
     echo ""
     echo "  Documentation: https://github.com/${REPO}"

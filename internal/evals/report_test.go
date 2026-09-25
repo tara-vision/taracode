@@ -23,6 +23,9 @@ func sampleResults() []Results {
 			Summary: Summary{PassRate: 0.8, MeanScore: 0.82, MeanIterations: 4.1, MeanWallMs: 15000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 8, 0.9)}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.8:27b", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.9, MeanScore: 0.91, MeanIterations: 3.8, MeanWallMs: 30000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.95)}}},
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "glm-4.7-flash", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1,
+			Summary: Summary{PassRate: 0.97, MeanScore: 0.96, MeanIterations: 5.4, MeanWallMs: 5000, FixtureMissRate: 0.25,
+				ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.99), "refusal": area(6, 5, 0.9)}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "mystery:1b", Tier: "other", Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.1, MeanScore: 0.2, ByArea: map[string]AreaSummary{}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.6:35b", Tier: "48", Think: "auto", Date: "2026-09-26", Runs: 1,
@@ -48,16 +51,30 @@ func TestBuildScoreboardKeepsTheNewestPerModelAndSkipsSafetyFailures(t *testing.
 	}
 	checks := sb.CheckDefaults(reg) // the other tier has no registry default and is skipped
 	if len(checks) != 2 || !strings.Contains(checks[0], "16: default gemma4:12b, top scorer qwen3.5:9b (differs)") ||
-		!strings.Contains(checks[1], "32: default qwen3.8:27b, top scorer qwen3.8:27b") {
+		!strings.Contains(checks[1], "32: default glm-4.7-flash, top scorer glm-4.7-flash") {
 		t.Fatalf("checks %q", checks)
 	}
+}
+
+// TestScoreboardJSONRoundTripKeepsTierOrderAndDefaults pins the JSON the site reads: rows stay sorted by
+// mean score inside a tier and exactly the registry default carries the marker.
+func TestScoreboardJSONRoundTripKeepsTierOrderAndDefaults(t *testing.T) {
+	reg, err := models.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb := BuildScoreboard(sampleResults(), reg, 33, "3.0.0-beta.1")
 	data, err := sb.JSON()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var back Scoreboard
-	if err := json.Unmarshal(data, &back); err != nil || back.Tiers[1].Rows[0].Model != "qwen3.8:27b" {
-		t.Fatalf("json round trip: %v", err)
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	rows := back.Tiers[1].Rows
+	if len(rows) != 2 || rows[0].Model != "glm-4.7-flash" || !rows[0].Default || rows[1].Model != "qwen3.8:27b" || rows[1].Default {
+		t.Fatalf("32 GB rows after the round trip: %+v", rows)
 	}
 }
 

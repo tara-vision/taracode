@@ -17,7 +17,8 @@ Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode
 
 | Model | Pass rate | Mean score | kubernetes | helm | terraform | docker | secrets | cloud | refusal | Mean iterations | Mean wall | Misses | Ollama | Date |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| qwen3.8:27b (default) | 90% | 0.91 | 9/9 | - | - | - | - | - | - | 3.8 | 30 s | 0% | 0.34.2 | 2026-09-26 |
+| glm-4.7-flash (default) | 97% | 0.96 | 9/9 | - | - | - | - | - | 5/6 | 5.4 | 5 s | 25% | 0.34.2 | 2026-09-26 |
+| qwen3.8:27b | 90% | 0.91 | 9/9 | - | - | - | - | - | - | 3.8 | 30 s | 0% | 0.34.2 | 2026-09-26 |
 
 ## Other models
 

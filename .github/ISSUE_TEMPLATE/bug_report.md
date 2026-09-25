@@ -29,7 +29,7 @@ What actually happened.
 - **taracode version**: [run `taracode --version`]
 - **OS**: [e.g., macOS 14.2, Ubuntu 22.04]
 - **Ollama version**: [run `ollama --version`]
-- **Model**: [e.g., qwen3.8:27b]
+- **Model**: [e.g., glm-4.7-flash]
 
 ## Logs / Error Output
 

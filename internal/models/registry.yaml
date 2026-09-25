@@ -44,7 +44,6 @@ entries:
     context: 262144
     capabilities: [tools, thinking, vision]
     tier: "32"
-    default: true
     min_ollama: 0.32.12
     notes: Strongest agentic results in its class (Terminal-Bench 2.1, SWE-bench Pro).
   - name: qwen3.6:27b
@@ -80,7 +79,9 @@ entries:
     context: 198000
     capabilities: [tools, thinking]
     tier: "32"
+    default: true
     min_ollama: 0.14.3
+    notes: Top of the 32 GB tier on the first taracode scoreboard (97% pass, 0.96 mean); a 30B MoE with 3B active.
   - name: qwen3.6:35b
     family: qwen3.6
     params: 35B-A3B
