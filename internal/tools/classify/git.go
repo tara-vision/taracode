@@ -64,6 +64,9 @@ func Git(tokens []string) Result {
 // list subcommands read; --unset, --add, --replace-all, --rename-section, --remove-section, -e,
 // --edit or a set, unset, edit, rename-section or remove-section subcommand write; a single
 // remaining positional is the key of a plain read, and anything else (a key and a value) writes it.
+// The values of --file, -f, --blob, --type and --default are skipped; --worktree, like --local, takes
+// none, so the word after it is a key (the value of an option not listed counts as a positional,
+// which fails closed).
 func gitConfigResult(verb string, rest []string) Result {
 	if hasFlag(rest, "--get", "--get-all", "--get-regexp", "--list", "-l") || in(first(rest), "get", "list") {
 		return read(verb)
@@ -72,7 +75,7 @@ func gitConfigResult(verb string, rest []string) Result {
 		"-e", "--edit") || in(first(rest), "set", "unset", "edit", "rename-section", "remove-section") {
 		return mutate(verb, "git config with --unset, --add, --edit or a set subcommand writes configuration")
 	}
-	if len(positionals(rest, "--file", "-f", "--blob", "--type", "--default", "--worktree")) == 1 {
+	if len(positionals(rest, "--file", "-f", "--blob", "--type", "--default")) == 1 {
 		return read(verb) // git config <key> reads the key
 	}
 	return mutate(verb, "git config <key> <value> writes configuration")

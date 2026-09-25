@@ -82,12 +82,13 @@ func readProgramWrites(prog string, rest []string) (Result, bool) {
 	return Result{}, false
 }
 
-// ifconfigConfigures reports operands that change an interface rather than query it: more than an
-// interface name and a family (inet, inet6, ether, link, media).
+// ifconfigConfigures reports words that change an interface rather than query it. A query is one
+// word at most (an interface name, or an option such as -a) or exactly an interface name and a
+// family (inet, inet6, ether, link, media); anything more configures. A -flag word counts like any
+// other: on macOS and BSD, ifconfig en0 inet6 -ifdisabled clears IFDISABLED.
 func ifconfigConfigures(rest []string) bool {
-	ops := operands(rest)
-	query := len(ops) == 2 && in(ops[1], "inet", "inet6", "ether", "link", "media")
-	return len(ops) > 1 && !query
+	query := len(rest) == 2 && in(rest[1], "inet", "inet6", "ether", "link", "media")
+	return len(rest) > 1 && !query
 }
 
 // ipReadCommands are the ip commands that only display.

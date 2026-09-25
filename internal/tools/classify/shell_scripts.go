@@ -345,9 +345,11 @@ func awkWritesFile(program string) bool {
 }
 
 // awkStatementEnds reports the bytes that end a statement, after which print or printf no longer
-// governs a later >: a semicolon, a block boundary or a newline.
+// governs a later >: a semicolon or a block boundary. A newline is not one: awk continues a statement
+// across a backslash-newline and after a comma, && or ||, so a > on the next line still redirects the
+// print. A comparison on a line after a print therefore counts as a redirect, which fails closed.
 func awkStatementEnds(c byte) bool {
-	return c == ';' || c == '{' || c == '}' || c == '\n'
+	return c == ';' || c == '{' || c == '}'
 }
 
 // awkRedirectsAt reports whether the byte at i is a > that redirects output: outside parentheses
