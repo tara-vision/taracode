@@ -71,6 +71,10 @@ func (r *repl) replaceAssistant(newAsst *agent.Assistant) {
 	r.refreshPrompt()
 }
 
+// checkForUpdate starts the startup update check; a variable so tests can answer it without the
+// network.
+var checkForUpdate = CheckForUpdateAsync
+
 // newREPL builds the session in the order the old startREPL did: connection, assistant (with the
 // tool wiring), banner, mode, project managers, update check, MCP, readline.
 func newREPL() (*repl, error) {
@@ -113,7 +117,7 @@ func newREPL() (*repl, error) {
 		r.printNotInitialised() // moved: the yellow "Project Not Initialized" box (141-155)
 	}
 	if viper.GetBool("upgrade.auto_check") && !opts.Offline {
-		CheckForUpdateAsync(Version, r.updates)
+		checkForUpdate(Version, r.updates)
 	}
 	r.startMCP() // moved: 199-219, callback registers into r.asst at call time
 	if err := r.openReadline(); err != nil {

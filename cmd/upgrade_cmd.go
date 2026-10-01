@@ -126,6 +126,15 @@ func handleUpgradeCheck(verbose bool) {
 	fmt.Println()
 }
 
+// runPrompt asks the upgrade's confirmation and installUpgrade performs the upgrade; variables so
+// tests can answer the prompt without a terminal and never replace the binary that runs them.
+var (
+	runPrompt      = func(p *promptui.Prompt) (string, error) { return p.Run() }
+	installUpgrade = func(checker *upgrade.Checker, result *upgrade.CheckResult) error {
+		return upgrade.NewInstaller(checker).Upgrade(result)
+	}
+)
+
 // handleUpgradeNow performs the upgrade
 func handleUpgradeNow() {
 	fmt.Println()
@@ -159,7 +168,7 @@ func handleUpgradeNow() {
 		Default:   "y",
 	}
 
-	_, err = prompt.Run()
+	_, err = runPrompt(&prompt)
 	if err != nil {
 		fmt.Println("Upgrade cancelled")
 		fmt.Println()
@@ -169,8 +178,7 @@ func handleUpgradeNow() {
 	fmt.Println()
 
 	// Perform upgrade
-	installer := upgrade.NewInstaller(checker)
-	if err := installer.Upgrade(result); err != nil {
+	if err := installUpgrade(checker, result); err != nil {
 		fmt.Printf("%s Upgrade failed: %v\n", ui.IconError, err)
 		fmt.Println()
 		fmt.Println("You can try upgrading manually:")
