@@ -104,8 +104,12 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	if err := warmUp(ctx, opts); err != nil {
 		return Results{}, fmt.Errorf("warm-up: %w", err)
 	}
-	res.Engine = loadedEngine(ctx, opts) // the warm-up has loaded the model, so the engine can describe it
-	res.GPUMemoryMiB = measuredGPU(ctx, opts)
+	engine, others := loadedEngine(ctx, opts) // the warm-up has loaded the model, so the engine can describe it
+	res.Engine = engine
+	res.GPUMemoryMiB = measuredGPU(ctx, opts, engine, others)
+	if opts.GPUProbe != "" {
+		defer unloadAfter(ctx, opts) // or the next run's probe would measure this model too
+	}
 	for _, t := range tasks {
 		if err := ctx.Err(); err != nil {
 			return withSummary(res, tasks), err

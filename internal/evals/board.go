@@ -11,7 +11,8 @@ import (
 // label and cover the whole corpus. A model the engine reported as not entirely on the GPU is listed
 // apart, since the board's promise is "runs entirely on this GPU", and so is a result that ran only
 // part of the corpus (a --tasks subset), which is never comparable. A result with no engine block
-// stays in the ranking with empty memory columns.
+// stays in the ranking: its fit was never checked, and its memory column holds what the run measured,
+// if anything.
 type HardwareBoard struct {
 	Hardware  string `json:"hardware"`
 	Rows      []Row  `json:"rows"`
@@ -102,7 +103,7 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 			if r.GPUPercent != nil {
 				pct = *r.GPUPercent
 			}
-			fmt.Fprintf(&b, "- %s: %.1f GB loaded, %d%% on the GPU, pass rate %.0f%%\n",
+			fmt.Fprintf(&b, "- %s: the engine reports %.1f GB loaded, %d%% on the GPU, pass rate %.0f%%\n",
 				mdText(r.Model), r.SizeGB, pct, r.PassRate*100)
 		}
 	}
@@ -146,7 +147,10 @@ func (h HardwareBoard) memoryNote() string {
 		return "VRAM is the GPU memory in use with the model loaded, measured on the machine at the context window " +
 			"the run asked for."
 	}
-	return "VRAM is the engine's own estimate (~), not a measurement: run with --gpu-probe to measure it."
+	if estimated > 0 {
+		return "VRAM is the engine's own estimate (~), not a measurement: run with --gpu-probe to measure it."
+	}
+	return "No run on this board measured or reported its memory."
 }
 
 // facts is the board's one-line summary: how many models are ranked, which engine versions and

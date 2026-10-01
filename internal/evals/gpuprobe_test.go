@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ func TestParseProbeAddsUpTheLines(t *testing.T) {
 		{"one number", "23676\n", 23676, true},
 		{"one line per process", "20000\n3676\n", 23676, true},
 		{"the unit and blank lines", " 23676 MiB \n\n", 23676, true},
+		{"windows line endings", "20000\r\n3676\r\n", 23676, true},
+		{"a line that is only the unit", "MiB\n23676\n", 0, false},
 		{"nothing", "", 0, false},
 		{"only blank lines", "\n\n", 0, false},
 		{"zero", "0\n", 0, false},
@@ -53,9 +56,9 @@ func TestProbeGPURunsTheCommandInTheGivenEnvironment(t *testing.T) {
 func TestProbeGPUReportsAFailingCommand(t *testing.T) {
 	env := []string{"PATH=" + os.Getenv("PATH")}
 	for name, command := range map[string]string{
-		"a non-zero exit":      "echo 100; exit 3",
-		"no such command":      "definitely-not-a-command-taracode",
-		"output that is not a": "echo not-a-number",
+		"a non-zero exit":             "echo 100; exit 3",
+		"no such command":             "definitely-not-a-command-taracode",
+		"output that is not a number": "echo not-a-number",
 	} {
 		if got, err := probeGPU(context.Background(), command, env); err == nil || got != 0 {
 			t.Errorf("%s: probeGPU = %d, %v; want an error and 0", name, got, err)
@@ -140,6 +143,9 @@ func TestRunSurvivesAFailingProbe(t *testing.T) {
 	if !strings.Contains(out.String(), "warning: no measured GPU memory in the results") {
 		t.Fatalf("no warning: %q", out.String())
 	}
+	if strings.Contains(out.String(), "/secret/path") {
+		t.Fatalf("the terminal repeats the probe's stderr: %q", out.String())
+	}
 	if !strings.Contains(out.String(), ", 9.3 GB (100% GPU)") {
 		t.Fatalf("without a measurement the last line keeps the engine's figure: %q", out.String())
 	}
@@ -214,11 +220,21 @@ func TestBoardSaysWhenNothingWasMeasured(t *testing.T) {
 	}
 }
 
-// TestParseProbeClipsALongLineInItsError: the warning names what the probe printed, never at length.
-func TestParseProbeClipsALongLineInItsError(t *testing.T) {
-	_, err := parseProbe(strings.Repeat("x", 500) + "\n")
-	if err == nil || len(err.Error()) > 160 || !strings.Contains(err.Error(), strings.Repeat("x", 40)+"...") {
+// TestParseProbeNeverRepeatsWhatTheProbePrinted: a probe's output can name a host or a path (an ssh
+// error sent to stdout, a remote shell's greeting), so the error says which line is wrong and never
+// what it holds.
+func TestParseProbeNeverRepeatsWhatTheProbePrinted(t *testing.T) {
+	_, err := parseProbe("23676\nssh: connect to host gpu-01.corp.example port 22: refused /home/op/.ssh\n")
+	if err == nil || !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("err = %v", err)
+	}
+	for _, leak := range []string{"gpu-01", "corp.example", "/home/op", "ssh"} {
+		if strings.Contains(err.Error(), leak) {
+			t.Fatalf("the error repeats the probe's output (%q): %v", leak, err)
+		}
+	}
+	if _, err := parseProbe(""); err == nil || !strings.Contains(err.Error(), "printed nothing") {
+		t.Fatalf("an empty output: %v", err)
 	}
 }
 
@@ -261,5 +277,141 @@ func TestBoardWithEveryRowMeasuredSaysOnlyThat(t *testing.T) {
 	}
 	if strings.Contains(md, "marked ~") || strings.Contains(md, "~") {
 		t.Errorf("a board with every row measured still talks about estimates:\n%s", md)
+	}
+}
+
+// TestRunDoesNotRepeatAProbesOutputOnTheTerminal: what a probe prints instead of a number may name a
+// host; the warning says which line is wrong, not what it holds.
+func TestRunDoesNotRepeatAProbesOutputOnTheTerminal(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := loadedGemma(t)
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	opts.GPUProbe = "echo connect to host gpu-01.corp.example refused"
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "warning: no measured GPU memory") || strings.Contains(out.String(), "gpu-01") {
+		t.Fatalf("output %q", out.String())
+	}
+}
+
+// TestRunDoesNotMeasureWhileAnotherModelIsLoaded: the GPU's figure would include the other model, so
+// the run says so and records no measurement; the probe is not even run.
+func TestRunDoesNotMeasureWhileAnotherModelIsLoaded(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := loadedGemma(t)
+	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "other:7b", Size: 5_000_000_000, SizeVRAM: 5_000_000_000})
+	marker := filepath.Join(t.TempDir(), "probed")
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	opts.GPUProbe = `: > "` + marker + `"; echo 23676`
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.GPUMemoryMiB != 0 || res.Engine == nil {
+		t.Fatalf("measured %d, engine %+v", res.GPUMemoryMiB, res.Engine)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("the probe ran although another model was loaded")
+	}
+	want := "warning: no measured GPU memory in the results: 1 other model is loaded on the engine"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("missing %q in %q", want, out.String())
+	}
+}
+
+// TestAProbedRunUnloadsItsModelWhenItEnds: a model left on the GPU would be inside the next run's
+// measurement, so a run that measures cleans up after itself; a run without a probe leaves the
+// engine as it is.
+func TestAProbedRunUnloadsItsModelWhenItEnds(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	plain := loadedGemma(t)
+	if _, err := Run(context.Background(), tasks, runOptions(plain, "")); err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.Unloaded) != 0 {
+		t.Fatalf("a run without a probe unloaded %v", plain.Unloaded)
+	}
+	probed := loadedGemma(t)
+	opts := runOptions(probed, "")
+	opts.GPUProbe = "echo 23676"
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed.Unloaded) != 1 || probed.Unloaded[0] != "gemma4:12b" {
+		t.Fatalf("a probed run unloaded %v, want its own model once", probed.Unloaded)
+	}
+}
+
+// TestRunRefusesAMeasurementFarBelowTheEnginesEstimate: a probe that asks the wrong machine, the
+// wrong GPU or prints another unit gives a figure far below even the engine's own estimate. It is
+// not recorded as a measurement.
+func TestRunRefusesAMeasurementFarBelowTheEnginesEstimate(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	for probe, measured := range map[string]int64{"echo 23": 0, "echo 4400": 0, "echo 4500": 4500, "echo 23676": 23676} {
+		srv := loadedGemma(t) // the engine estimates 9.3 GB, about 8869 MiB
+		var out bytes.Buffer
+		opts := runOptions(srv, "")
+		opts.Out = &out
+		opts.GPUProbe = probe
+		res, err := Run(context.Background(), tasks, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.GPUMemoryMiB != measured {
+			t.Errorf("%s: recorded %d, want %d", probe, res.GPUMemoryMiB, measured)
+		}
+		if warned := strings.Contains(out.String(), "less than half of the engine's own estimate"); warned != (measured == 0) {
+			t.Errorf("%s: warned=%v: %q", probe, warned, out.String())
+		}
+	}
+}
+
+// TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled: a cancelled run is not a probe that timed out.
+func TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out bytes.Buffer
+	got := measuredGPU(ctx, RunOptions{GPUProbe: "echo 5", Out: &out}, nil, 0)
+	if got != 0 || out.Len() != 0 {
+		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
+	}
+}
+
+// TestMeasuredGPUWorksWithoutARunScope: outside Run the probe gets the process environment.
+func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
+	t.Setenv("PROBE_VALUE", "777")
+	var out bytes.Buffer
+	if got := measuredGPU(context.Background(), RunOptions{GPUProbe: `echo "$PROBE_VALUE"`, Out: &out}, nil, 0); got != 777 {
+		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
+	}
+}
+
+// TestBoardWithNoMemoryFigureAtAllSaysSo: nothing measured and nothing reported is not "an estimate".
+func TestBoardWithNoMemoryFigureAtAllSaysSo(t *testing.T) {
+	md := testBoard(t, []Results{hardwareResult("unknown-engine:1b", "other", 0.5, 0.5, 0, nil)}, testCorpus).Markdown()
+	if strings.Contains(md, "estimate") || !strings.Contains(md, "No run on this board measured or reported its memory.") {
+		t.Errorf("the note for a board with no memory figure:\n%s", md)
+	}
+}
+
+// TestUnloadAfterIsBestEffort: with no engine to ask (no host), the clean-up gives up at once and
+// quietly; with one, it asks for the run's own model and nothing else.
+func TestUnloadAfterIsBestEffort(t *testing.T) {
+	start := time.Now()
+	unloadAfter(context.Background(), RunOptions{Model: "gemma4:12b"})
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("giving up took %s", elapsed)
+	}
+	srv := loadedGemma(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the run's own context is done; the clean-up still happens
+	unloadAfter(ctx, runOptions(srv, ""))
+	if len(srv.Unloaded) != 1 || srv.Unloaded[0] != "gemma4:12b" {
+		t.Fatalf("unloaded %v", srv.Unloaded)
 	}
 }

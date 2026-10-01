@@ -72,43 +72,44 @@ func cleanToken(s string) string {
 
 // engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
 // for, or that name with ":latest" (ruling P3-R74). It fails when the engine does not answer, does
-// not list the model as loaded, or reports no size for it.
-func engineInfo(ctx context.Context, opts RunOptions) (*EngineInfo, error) {
+// not list the model as loaded, or reports no size for it. others is how many other models the
+// engine has loaded, -1 when the engine did not say: a GPU measurement would include them.
+func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others int, err error) {
 	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, engineCallTimeout)
 	defer cancel()
 	loaded, err := prov.LLM().Loaded(callCtx)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	for _, m := range loaded {
 		if m.Name != opts.Model && m.Name != opts.Model+":latest" {
 			continue
 		}
 		if m.Size <= 0 {
-			return nil, fmt.Errorf("the engine reports no size for %s", m.Name)
+			return nil, len(loaded) - 1, fmt.Errorf("the engine reports no size for %s", m.Name)
 		}
 		return &EngineInfo{
 			SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
 			ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
 			ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
-		}, nil
+		}, len(loaded) - 1, nil
 	}
-	return nil, fmt.Errorf("the engine does not list %s as loaded", opts.Model)
+	return nil, len(loaded), fmt.Errorf("the engine does not list %s as loaded", opts.Model)
 }
 
 // loadedEngine is engineInfo for Run. The block is measurement metadata, so a failure is one warning
 // on the terminal and never the run's.
-func loadedEngine(ctx context.Context, opts RunOptions) *EngineInfo {
-	info, err := engineInfo(ctx, opts)
+func loadedEngine(ctx context.Context, opts RunOptions) (info *EngineInfo, others int) {
+	info, others, err := engineInfo(ctx, opts)
 	if err != nil {
 		_, _ = fmt.Fprintf(opts.Out, "warning: no engine block in the results: %v\n", err)
-		return nil
+		return nil, others
 	}
-	return info
+	return info, others
 }
 
 // gpuPercent is the share of the loaded model on the GPU: 100 only when all of it is, otherwise the

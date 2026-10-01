@@ -10,18 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.1] - 2026-10-01
 
 ### Fixed
-- **A board's memory column is measured, not estimated.** 3.2.0 took a model's memory from the engine's
-  list of loaded models. That figure is the engine's own estimate, and on Ollama 0.35 it can be far below
-  what the GPU holds: one model was reported at 1.2 GB although its weights alone are 18.6 GB on disk.
-  `taracode eval run --gpu-probe "<command>"` now runs a command of yours once the model is loaded and
-  records the GPU memory it prints, in MiB (`gpu_memory_mib`, in the results and on each scoreboard row).
-  The board's VRAM column shows that figure; a row that only has the engine's estimate is marked with `~`,
-  and the board says which of the two it holds.
+- **A board's memory column can be measured, and an estimate is marked as one.** 3.2.0 took a model's
+  memory from the engine's list of loaded models. That figure is the engine's own estimate, and on Ollama
+  0.35 it can be far below what the GPU holds: one model was reported at 1.2 GB although its weights alone
+  are 18.6 GB on disk. `taracode eval run --gpu-probe "<command>"` now runs a command of yours once the
+  model is loaded and records the GPU memory it prints, in MiB (`gpu_memory_mib`, in the results and on
+  each scoreboard row). The board's VRAM column shows that figure; a row that only has the engine's
+  estimate is marked with `~`, and the board says which of the two it holds. Without the flag nothing is
+  measured and every figure is a marked estimate.
+- A run with a probe records no measurement, and says why, when the engine has another model loaded, when
+  the probe fails, or when its figure is below half of the engine's own estimate. It unloads its model
+  when it ends, so the next run's probe finds an empty GPU.
 
 ### Changed
 - **VRAM is printed in GiB**, the unit a card's size is given in, instead of decimal gigabytes. The
   engine's figures in `scoreboard.json` (`size_gb`, `vram_gb`) keep their unit and their meaning.
-- The last line of `eval run` names the measured memory first and the engine's figure after it.
+- The last line of `eval run` names the measured memory first and the engine's figure after it; the "did
+  not fit" lines say that their size is the engine's report; `eval report` counts ranked rows "without
+  engine data" instead of "without memory data".
 
 ## [3.2.0] - 2026-10-01
 

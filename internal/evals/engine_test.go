@@ -273,7 +273,7 @@ func TestShortDigest(t *testing.T) {
 
 // TestEngineInfoFailsWithoutAHost: the capture reports why it has nothing, it never panics.
 func TestEngineInfoFailsWithoutAHost(t *testing.T) {
-	info, err := engineInfo(context.Background(), RunOptions{Model: "gemma4:12b"})
+	info, _, err := engineInfo(context.Background(), RunOptions{Model: "gemma4:12b"})
 	if info != nil || err == nil {
 		t.Fatalf("info %+v, err %v", info, err)
 	}

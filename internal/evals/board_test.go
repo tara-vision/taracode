@@ -158,7 +158,7 @@ func TestEmptyRankingPrintsNoTable(t *testing.T) {
 	md := testBoard(t, []Results{cpuOnly}, testCorpus).Markdown()
 	for _, want := range []string{
 		"No model ran entirely on this GPU.",
-		"- cpu-only:1b: 5.0 GB loaded, 0% on the GPU, pass rate 90%",
+		"- cpu-only:1b: the engine reports 5.0 GB loaded, 0% on the GPU, pass rate 90%",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
@@ -247,7 +247,7 @@ func TestScoreboardMarkdownPutsTheHardwareBoardFirst(t *testing.T) {
 		"| 1 | laguna-xs-2.1 | - | 97% | 0.95 | 120 | 5 s | ~19.2 GiB | Q4_K_M | 1 |",
 		"| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 1 |",
 		"| 5 | unknown-engine:1b | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
-		"- huge:70b: 44.0 GB loaded, 75% on the GPU, pass rate 99%",
+		"- huge:70b: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 99%",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)

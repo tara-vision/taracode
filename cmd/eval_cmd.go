@@ -103,8 +103,8 @@ func init() {
 			"(never a host name or an address)")
 	evalRunCmd.Flags().StringVar(&evalRun.gpuProbe, "gpu-probe", "",
 		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded, e.g. "+
-			"\"nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits\"; the engine's own figure "+
-			"is an estimate")
+			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; the engine's own "+
+			"figure is an estimate. The run unloads its model when it ends")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
@@ -266,7 +266,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
 	}
 	for _, board := range sb.Boards {
-		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without memory data), %d did not fit, %d on part of the corpus\n",
+		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without engine data), %d did not fit, %d on part of the corpus\n",
 			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
 	}
 	if checkDefaults {

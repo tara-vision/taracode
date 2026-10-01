@@ -278,11 +278,20 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 	}
 }
 
-// TestEvalRunHasTheGPUProbeFlag: the flag exists, defaults to no probe and says which unit it wants.
+// TestEvalRunHasTheGPUProbeFlag: the flag exists, defaults to no probe, says which unit it wants,
+// and fills the field the run reads.
 func TestEvalRunHasTheGPUProbeFlag(t *testing.T) {
 	flag := evalRunCmd.Flags().Lookup("gpu-probe")
 	if flag == nil || flag.DefValue != "" || !strings.Contains(flag.Usage, "MiB") {
 		t.Fatalf("the --gpu-probe flag: %+v", flag)
+	}
+	before := evalRun
+	t.Cleanup(func() { evalRun = before })
+	if err := evalRunCmd.Flags().Parse([]string{"--gpu-probe", "echo 1"}); err != nil {
+		t.Fatal(err)
+	}
+	if evalRun.gpuProbe != "echo 1" {
+		t.Fatalf("--gpu-probe filled %+v", evalRun)
 	}
 }
 
@@ -305,7 +314,7 @@ func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
 	if err := runEvalReport(results, outDir, t.TempDir(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	want := "board NVIDIA RTX 5090 (32 GB): 2 ranked (1 without memory data), 0 did not fit, 0 on part of the corpus"
+	want := "board NVIDIA RTX 5090 (32 GB): 2 ranked (1 without engine data), 0 did not fit, 0 on part of the corpus"
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("output %q", out.String())
 	}
