@@ -51,7 +51,7 @@ Notes on the 3.2 run (2026-10-01, taracode 3.2.1, Ollama 0.35.0):
   because its memory column came from the engine (see below). Between the two runs the number of tasks a
   model passed moved by up to four (devstral-small-2:24b, gemma4:e4b, gpt-oss:20b, laguna-xs-2.1 and
   qwen3.5:9b by three, ornith:35b by four), by 1.8 on average, and by two or fewer for twelve of the
-  eighteen. Which tasks passed moved more: 79 of the 594 outcomes flipped, up to nine for one model. Treat
+  eighteen. Which tasks passed moved more: 79 of the 594 outcomes flipped, up to nine for two models. Treat
   rows within four tasks of each other as a tie. Tokens per second differed by 0.5% on average, 2.5% at
   most.
 - Memory is measured. 3.2.1 reads the GPU memory of the engine's process with `--gpu-probe` (nvidia-smi on
