@@ -72,8 +72,9 @@ func SandboxedPath(target, currentRelDir, projectRoot string) (newRelDir, newAbs
 		resolvedRoot = projectRoot
 	}
 
-	// Verify resolved path is within project root
-	if !strings.HasPrefix(resolvedAbs, resolvedRoot) {
+	// Verify resolved path is within project root: the root itself or a path below it. A plain string
+	// prefix would also accept a sibling whose name starts with the root's name (app-secrets next to app).
+	if !within(resolvedRoot, resolvedAbs) {
 		return "", "", fmt.Errorf("path escapes project root (symlink detected)")
 	}
 
@@ -90,6 +91,15 @@ func SandboxedPath(target, currentRelDir, projectRoot string) (newRelDir, newAbs
 	}
 
 	return newRel, newAbs, nil
+}
+
+// within reports whether path is root or lies below it. Both must be absolute and cleaned.
+func within(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // FormatPrompt creates the REPL prompt with optional directory indicator.
