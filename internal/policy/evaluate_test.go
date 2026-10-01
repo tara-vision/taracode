@@ -25,6 +25,7 @@ func TestEvaluateOrder(t *testing.T) {
 		{"protected namespace", ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeNamespace: "kube-system"}), false, "protected.kube_namespaces", ""},
 		{"protected path", ModeOperate, mutate("write_file", "", "", Targets{Paths: []string{"/w/infra/terraform.tfstate"}}), false, "protected.paths", ""},
 		{"policy file is protected", ModeOperate, mutate("edit_file", "", "", Targets{Paths: []string{"/w/.taracode/policy.yaml"}}), false, "protected.paths", ""},
+		{"git internals are protected relative to the working directory", ModeOperate, mutate("write_file", "", "", Targets{Paths: []string{"/w/.git/config"}}), false, "protected.paths", ""},
 		{"deny pattern", ModeOperate, mutate("terraform", "destroy", "terraform destroy -auto-approve", Targets{}), false, "deny.commands", ""},
 		{"deny pattern is case-insensitive and whitespace-tolerant", ModeOperate, mutate("shell", "", "kubectl  delete   namespace  Foo", Targets{}), false, "deny.commands", ""},
 		{"kubectl apply needs a dry run", ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeContext: "dev", KubeNamespace: "apps"}), true, "policy", "kubectl_apply"},
