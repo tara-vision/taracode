@@ -12,6 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://github.com/sponsors/tara-vision"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor tara-vision"></a>
   <a href="https://github.com/tara-vision/taracode/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/tara-vision/taracode/ci.yml?branch=main&style=for-the-badge&logo=github&label=CI" alt="CI"></a>
+  <a href="https://app.codecov.io/github/tara-vision/taracode"><img src="https://img.shields.io/codecov/c/github/tara-vision/taracode?branch=main&style=for-the-badge&logo=codecov&logoColor=white&label=coverage" alt="Coverage"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version"></a>
 </p>
 
