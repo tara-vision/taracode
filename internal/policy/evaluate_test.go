@@ -58,6 +58,11 @@ func TestEvaluateCloudAccountsAndHostsMatchCommandTokens(t *testing.T) {
 	if v := p.Evaluate(ModeOperate, mutate("shell", "", "ssh core.bank.internal reboot", Targets{Hosts: []string{"core.bank.internal"}})); v.Allow || v.Rule != "protected.hosts" {
 		t.Errorf("host: %+v", v)
 	}
+	// A protected host is also found when it is only a word of the command line: the classifier does
+	// not have to have extracted it as a target.
+	if v := p.Evaluate(ModeOperate, mutate("shell", "", "scp dump.sql core.bank.internal", Targets{})); v.Allow || v.Rule != "protected.hosts" {
+		t.Errorf("host named only on the command line: %+v", v)
+	}
 }
 
 func TestDryRunCanBeSwitchedOffPerKind(t *testing.T) {

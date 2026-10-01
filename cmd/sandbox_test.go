@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -375,4 +376,61 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestSandboxedPathRefusesASymlinkIntoASiblingWithTheSameNamePrefix: "inside the project root" means
+// the root itself or a path below it. Comparing the two as strings let a symlink into a sibling
+// directory whose name starts with the root's name (app-secrets next to app) pass as inside.
+func TestSandboxedPathRefusesASymlinkIntoASiblingWithTheSameNamePrefix(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "app")
+	sibling := filepath.Join(base, "app-secrets")
+	inside := filepath.Join(root, "docs")
+	for _, dir := range []string{root, sibling, inside} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(sibling, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(inside, filepath.Join(root, "docs-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := SandboxedPath("link", "", root); err == nil || !strings.Contains(err.Error(), "escapes project root") {
+		t.Fatalf("a symlink into the sibling %s was accepted: %v", sibling, err)
+	}
+	if rel, abs, err := SandboxedPath("docs-link", "", root); err != nil || rel != "docs-link" || abs != filepath.Join(root, "docs-link") {
+		t.Fatalf("a symlink that stays inside the root: rel %q abs %q err %v", rel, abs, err)
+	}
+	if rel, _, err := SandboxedPath("docs", "", root); err != nil || rel != "docs" {
+		t.Fatalf("a plain directory inside the root: rel %q err %v", rel, err)
+	}
+	if rel, _, err := SandboxedPath("..", "docs", root); err != nil || rel != "" {
+		t.Fatalf("back to the root itself: rel %q err %v", rel, err)
+	}
+}
+
+// TestWithin: a path is inside a root when it is the root or lies below it; a name that merely starts
+// with the root's name is a sibling, and a path that cannot be related to the root is outside.
+func TestWithin(t *testing.T) {
+	cases := []struct {
+		root, path string
+		want       bool
+	}{
+		{"/srv/app", "/srv/app", true},
+		{"/srv/app", "/srv/app/docs/x", true},
+		{"/srv/app", "/srv/app-secrets", false},
+		{"/srv/app", "/srv/application/x", false},
+		{"/srv/app", "/srv", false},
+		{"/srv/app", "/etc", false},
+		{"/", "/etc", true},
+		{"app", "/srv/app", false},
+	}
+	for _, c := range cases {
+		if got := within(c.root, c.path); got != c.want {
+			t.Errorf("within(%q, %q) = %v, want %v", c.root, c.path, got, c.want)
+		}
+	}
 }

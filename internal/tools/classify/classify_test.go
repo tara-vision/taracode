@@ -126,6 +126,13 @@ func TestCloud(t *testing.T) {
 		{"aws", "logs tail /aws/x --since 1h", policy.Read, ""}, {"aws", "ec2 wait instance-running", policy.Read, ""},
 		{"aws", "s3 cp a s3://b", policy.Mutate, ""}, {"aws", "ec2 terminate-instances --instance-ids i-1", policy.Mutate, ""},
 		{"aws", "configure list", policy.Read, ""}, {"aws", "configure set region x", policy.Mutate, ""},
+		{"aws", "configure", policy.Mutate, ""}, {"aws", "configure --profile prod", policy.Mutate, "prod"},
+		{"aws", "login", policy.Mutate, ""}, {"aws", "logout", policy.Mutate, ""}, {"aws", "sso", policy.Mutate, ""},
+		{"aws", "help", policy.Read, ""}, {"aws", "--version", policy.Read, ""}, {"aws", "", policy.Read, ""},
+		{"aws", "sso logout", policy.Mutate, ""}, {"aws", "ec2 create-default-vpc", policy.Mutate, ""},
+		{"aws", "s3api delete-bucket --bucket=x", policy.Mutate, ""},
+		{"aws", "s3api select-object-content --bucket b --key k --expression e --expression-type SQL " +
+			"--input-serialization {} --output-serialization {} out.json", policy.Mutate, ""},
 		{"az", "group list", policy.Read, ""}, {"az", "vm show -n x -g y --subscription sub-1", policy.Read, "sub-1"},
 		{"az", "aks get-credentials -n x -g y", policy.Mutate, ""}, {"az", "vm delete -n x -g y", policy.Mutate, ""},
 		{"az", "account set -s x", policy.Mutate, "x"}, {"az", "login", policy.Mutate, ""},
