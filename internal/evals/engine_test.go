@@ -255,3 +255,26 @@ func TestCleanHardware(t *testing.T) {
 		}
 	}
 }
+
+func TestShortDigest(t *testing.T) {
+	cases := map[string]string{
+		"sha256:0123456789abcdef0123": "0123456789ab", // cut to twelve
+		"4475827791A2":                "4475827791A2",
+		"sha256:abc123":               "abc123", // shorter than twelve stays whole
+		"sha256:not-hex":              "",
+		"":                            "",
+	}
+	for in, want := range cases {
+		if got := shortDigest(in); got != want {
+			t.Errorf("shortDigest(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestEngineInfoFailsWithoutAHost: the capture reports why it has nothing, it never panics.
+func TestEngineInfoFailsWithoutAHost(t *testing.T) {
+	info, err := engineInfo(context.Background(), RunOptions{Model: "gemma4:12b"})
+	if info != nil || err == nil {
+		t.Fatalf("info %+v, err %v", info, err)
+	}
+}

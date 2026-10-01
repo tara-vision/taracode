@@ -299,3 +299,23 @@ func TestBoardMarkdownEscapesWhatAResultsFileCarries(t *testing.T) {
 		}
 	}
 }
+
+// TestUncheckedCountsRankedRowsWithoutMemoryData: a ranked row the engine described nothing for was
+// never checked for fit, and the report says how many there are.
+func TestUncheckedCountsRankedRowsWithoutMemoryData(t *testing.T) {
+	board := testBoard(t, hardwareResults(), testCorpus).Boards[0]
+	if got := board.Unchecked(); got != 1 { // unknown-engine:1b
+		t.Fatalf("unchecked %d, want 1", got)
+	}
+	if got := (HardwareBoard{}).Unchecked(); got != 0 {
+		t.Fatalf("an empty board counts %d unchecked rows", got)
+	}
+}
+
+// TestBoardNamesTheSmallTier: the registry's small tier has no size, so the Tier column says "small".
+func TestBoardNamesTheSmallTier(t *testing.T) {
+	md := testBoard(t, []Results{hardwareResult("gemma4:e4b", "small", 0.7, 0.8, 150, onGPU())}, testCorpus).Markdown()
+	if !strings.Contains(md, "| 1 | gemma4:e4b | small | 70% | 0.80 | 150 | 5 s | 1.0 GB | Q4_K_M | 1 |") {
+		t.Fatalf("the small tier is not named:\n%s", md)
+	}
+}
