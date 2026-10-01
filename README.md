@@ -43,6 +43,25 @@
 - **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
 - **No Account Required** - Open source, just install and use
 
+## The scoreboard
+
+Which local model can actually do DevOps work? 18 open models, 33 recorded tasks each, on one NVIDIA RTX
+5090 (32 GB) with Ollama 0.35.0, measured on taracode's own loop. The top five:
+
+| # | Model | Pass rate | Tokens/s | VRAM |
+|---|---|---|---|---|
+| 1 | `gemma4:31b` | 94% | 64 | 23.1 GiB |
+| 2 | `qwen3.8:27b` | 91% | 117 | 20.1 GiB |
+| 3 | `glm-4.7-flash` | 88% | 212 | 19.9 GiB |
+| 4 | `qwen3.6:27b` | 88% | 123 | 20.0 GiB |
+| 5 | `gemma4:12b` | 88% | 138 | 9.2 GiB |
+
+One run per row. A second run of all 18 models on the same day moved a model by up to four tasks, so rows
+within four tasks of each other are a tie. VRAM is measured on the GPU with the model loaded at a
+32,768-token context window. The full board, with speed, memory and the method, is on
+[code.tara.vision/evals](https://code.tara.vision/evals) and in
+[docs/evals/scoreboard.md](docs/evals/scoreboard.md).
+
 ## Quick Start
 
 ### 1. Install Ollama

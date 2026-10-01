@@ -20,25 +20,58 @@ commits a registry default change from the evidence).
 The corpus currently has 33 tasks across seven areas: nine kubernetes, three helm, five terraform, four
 docker, three secrets, three cloud and six refusal. Twenty-five are `provenance: recorded` against the live
 sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
-scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates and fixture-miss
-rates per model and RAM tier are published in [scoreboard.md](scoreboard.md), refreshed for 3.1.2 with the
-3.1.1 binary; the headline numbers:
+scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates, speed and
+memory per model are published in [scoreboard.md](scoreboard.md). The current board was measured on one
+NVIDIA RTX 5090 (32 GB) with taracode 3.2.1 and Ollama 0.35.0: 18 models, one run each, 594 task runs and
+zero safety failures (no `must_deny` call was ever allowed by the gate). The top five:
 
-| Tier | Registry default | Default's pass rate (mean score) | Top scorer by mean score | check-defaults |
+| # | Model | Pass rate | Tokens/s | VRAM |
 |---|---|---|---|---|
-| 16 GB | gemma4:12b | 82% (0.88), three runs | qwen3.5:9b, 85% (0.92), one run | differs |
-| 32 GB | glm-4.7-flash | 97% (0.97) | glm-4.7-flash | matches |
-| 48 GB | qwen3.6:35b | 73% (0.85) | gemma4:31b, 85% (0.89) | differs |
-| small | gemma4:e4b | 73% (0.79) | the tier's only model | - |
+| 1 | `gemma4:31b` | 94% | 64 | 23.1 GiB |
+| 2 | `qwen3.8:27b` | 91% | 117 | 20.1 GiB |
+| 3 | `glm-4.7-flash` | 88% | 212 | 19.9 GiB |
+| 4 | `qwen3.6:27b` | 88% | 123 | 20.0 GiB |
+| 5 | `gemma4:12b` | 88% | 138 | 9.2 GiB |
 
-Twelve models, 33 tasks each, one run per task except gemma4:12b (three), 462 runs in all, zero safety
-failures: no `must_deny` call was ever allowed by the gate. `eval report --check-defaults` ranks a tier by mean
-score; a "differs" line is evidence for the maintainer, not a change by itself (see the registry rule above).
-Two tiers differ on this board and both defaults stay for now: the 16 GB split repeats the 3.0.0 pattern
-(qwen3.5:9b ahead on a single run, with 45% fixture misses against gemma4:12b's 26% over three runs), and the
-48 GB gap (gemma4:31b 85% against qwen3.6:35b 73%, one run each, on a tier the 3.0.0 board had level at 85%)
-needs a three-run comparison before a default moves. That re-run was started and stopped early on 2026-09-25;
-it is the next piece of evidence to collect.
+`eval report --check-defaults` ranks a tier by mean score and printed three lines. A "differs" line is
+evidence for the maintainer, not a change by itself: a registry default does not move without a decision.
+
+- `16: default gemma4:12b, top scorer gemma4:12b`: the default is the tier's best row.
+- `32: default glm-4.7-flash, top scorer qwen3.8:27b (differs)`: one task apart (30 against 29, mean score
+  0.95 against 0.94), which is inside the run-to-run spread; in the first run of the day both passed 31.
+- `48: default qwen3.6:35b, top scorer gemma4:31b (differs)`: 31 tasks against 26 here, 32 against 25 in the
+  first run of the day, and 85% against 73% on the 3.1.2 board. This is the one gap on the board that is
+  outside the spread.
+
+Notes on the 3.2 run (2026-10-01, taracode 3.2.1, Ollama 0.35.0):
+
+- Every row is one run. The whole board was run twice that day; the first run, with 3.2.0, is not published
+  because its memory column came from the engine (see below). Between the two runs the tasks a model passed
+  moved by up to four (devstral-small-2:24b, gemma4:e4b, gpt-oss:20b, laguna-xs-2.1 and qwen3.5:9b by
+  three, ornith:35b by four), by 1.8 on average, and by two or fewer for twelve of the eighteen. Treat rows
+  within four tasks of each other as a tie. Tokens per second differed by 0.5% on average, 2.5% at most.
+- Memory is measured. 3.2.1 reads the GPU memory of the engine's process with `--gpu-probe` (nvidia-smi on
+  the engine's host) once the model is loaded. The engine's own figure was below the measurement for all
+  eighteen models: by 0.6 to 4.2 GiB for seventeen of them, and by 18.5 GiB for gemma4:26b, which the
+  engine reports at 1.2 GB while its process holds 19.6 GiB.
+- Six models outside the registry were run as challengers: granite4.1:30b 88%, ornith:35b 82%,
+  nemotron-cascade-2:30b 76%, laguna-xs-2.1 67%, gpt-oss:20b 58% and devstral-small-2:24b 42%. A seventh,
+  north-mini-code-1.0, has no row: Ollama 0.35.0 fails on its first request with "CUDA error: an illegal
+  memory access was encountered".
+- The engine changed under the registry models. On Ollama 0.34.2 (the 3.1.2 board) glm-4.7-flash passed
+  97%; on 0.35.0 it passed 91% and 94% in two single runs before this board, 94% in the day's first full
+  run and 88% here. In the two earlier single runs `container-crashed` failed because the model opened
+  with a piped `docker ps` or a kubectl call the corpus never recorded; on this board it missed
+  compose-service-down, helm-release-failed, refuse-operate-deny-pattern and secrets-repo-sweep.
+- ministral-3:14b still writes Mistral's text-form tool calls, which Ollama returns as content: it answers
+  twenty-two of the thirty-three tasks without a tool call and stays at 27%, the same as on the 3.1.2
+  board. Its row measures that stack, not the model's judgement.
+- Fixture misses a careful model chose this run, from the notes of the top five rows: `terraform init
+  -backend=false` and `terraform validate` before reading a plan, `kubectl get pod -A`, `kubectl get
+  namespace`, `kubectl get event --sort-by=.lastTimestamp`, `kubectl logs` on the failing pod,
+  `aws s3api get-bucket-public-access-block`, `aws iam get-policy-version`, `aws iam list-roles`,
+  `docker compose ps`, and a `gitleaks` scan. Each costs tool or answer points, never safety; they go into
+  the next corpus round.
 
 Notes on the 3.1 run (2026-09-25, taracode 3.1.1, Ollama 0.34.2):
 
