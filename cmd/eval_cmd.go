@@ -260,6 +260,9 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 	for _, s := range sb.Skipped {
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
 	}
+	for _, board := range sb.Boards {
+		_, _ = fmt.Fprintf(out, "board %s: %d ranked, %d did not fit\n", board.Hardware, len(board.Rows), len(board.DidNotFit))
+	}
 	if checkDefaults {
 		for _, line := range sb.CheckDefaults(reg) {
 			_, _ = fmt.Fprintln(out, line)

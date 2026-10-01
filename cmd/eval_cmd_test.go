@@ -273,3 +273,26 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 		t.Fatalf("results %+v, engine %+v", r, r.Engine)
 	}
 }
+
+// TestEvalReportPrintsTheHardwareBoards: the report names each board it wrote and how many models it ranks.
+func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
+	results, outDir := t.TempDir(), t.TempDir()
+	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Date: "2026-10-01", Runs: 1,
+		Hardware: "NVIDIA RTX 5090 (32 GB)",
+		Engine:   &evals.EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768},
+		Summary:  evals.Summary{PassRate: 1, MeanScore: 1, TokensPerS: 95, ByArea: map[string]evals.AreaSummary{}}}
+	if _, err := evals.WriteResults(results, r); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runEvalReport(results, outDir, t.TempDir(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "board NVIDIA RTX 5090 (32 GB): 1 ranked, 0 did not fit") {
+		t.Fatalf("output %q", out.String())
+	}
+	md, err := os.ReadFile(filepath.Join(outDir, "scoreboard.md"))
+	if err != nil || !strings.Contains(string(md), "## NVIDIA RTX 5090 (32 GB)") {
+		t.Fatalf("%v %q", err, md)
+	}
+}

@@ -11,13 +11,15 @@ import (
 	"github.com/tara-vision/taracode/internal/models"
 )
 
-// Scoreboard is the report (spec 10): the newest results per model, grouped by registry tier.
+// Scoreboard is the report (spec 10): the newest results per model, ranked per hardware label and
+// grouped by registry tier.
 type Scoreboard struct {
-	GeneratedAt string      `json:"generated_at"`
-	Taracode    string      `json:"taracode"`
-	CorpusTasks int         `json:"corpus_tasks"`
-	Tiers       []TierBoard `json:"tiers"`
-	Skipped     []string    `json:"skipped,omitempty"` // results left out and why
+	GeneratedAt string          `json:"generated_at"`
+	Taracode    string          `json:"taracode"`
+	CorpusTasks int             `json:"corpus_tasks"`
+	Boards      []HardwareBoard `json:"boards,omitempty"` // one ranking per hardware label the results carry
+	Tiers       []TierBoard     `json:"tiers"`
+	Skipped     []string        `json:"skipped,omitempty"` // results left out and why
 }
 
 // TierBoard is one tier's rows, best mean score first.
@@ -26,10 +28,12 @@ type TierBoard struct {
 	Rows []Row  `json:"rows"`
 }
 
-// Row is one model's line.
+// Row is one model's line. The fields after Date are empty for a result that has no hardware label,
+// no engine block or no timings, and are then left out of the JSON.
 type Row struct {
 	Model           string                 `json:"model"`
 	Default         bool                   `json:"default"`
+	Tier            string                 `json:"tier,omitempty"`
 	PassRate        float64                `json:"pass_rate"`
 	MeanScore       float64                `json:"mean_score"`
 	MeanIterations  float64                `json:"mean_iterations"`
@@ -40,6 +44,42 @@ type Row struct {
 	Ollama          string                 `json:"ollama"`
 	Think           string                 `json:"think"`
 	Date            string                 `json:"date"`
+	Runs            int                    `json:"runs,omitempty"`
+	Hardware        string                 `json:"hardware,omitempty"`
+	TokensPerS      float64                `json:"tokens_per_s,omitempty"`
+	SuiteWallS      float64                `json:"suite_wall_s,omitempty"` // the task wall times added up
+	SizeGB          float64                `json:"size_gb,omitempty"`      // the loaded model, decimal gigabytes
+	VRAMGB          float64                `json:"vram_gb,omitempty"`      // the part of it on the GPU
+	GPUPercent      *int                   `json:"gpu_percent,omitempty"`  // nil when the engine reported nothing
+	ContextLength   int                    `json:"context_length,omitempty"`
+	Quantization    string                 `json:"quantization,omitempty"`
+	ParameterSize   string                 `json:"parameter_size,omitempty"`
+	Digest          string                 `json:"digest,omitempty"`
+}
+
+// newRow is one model's line from its results: the summary, the run's header and, when the engine
+// reported the loaded model, its memory in decimal gigabytes (the unit `ollama ps` prints).
+func newRow(r Results, tier string, isDefault bool) Row {
+	byArea := map[string]AreaSummary{}
+	if r.Summary.ByArea != nil {
+		byArea = maps.Clone(r.Summary.ByArea)
+	}
+	row := Row{
+		Model: r.Model, Default: isDefault, Tier: tier,
+		PassRate: r.Summary.PassRate, MeanScore: r.Summary.MeanScore, MeanIterations: r.Summary.MeanIterations,
+		MeanWallS:       round3(r.Summary.MeanWallMs / 1000),
+		FixtureMissRate: r.Summary.FixtureMissRate,
+		ByArea:          byArea,
+		Taracode:        r.Taracode, Ollama: r.Ollama, Think: r.Think, Date: r.Date,
+		Runs: r.Runs, Hardware: r.Hardware, TokensPerS: r.Summary.TokensPerS,
+		SuiteWallS: round1(r.Summary.MeanWallMs * float64(len(r.Tasks)) / 1000),
+	}
+	if e := r.Engine; e != nil {
+		pct := e.GPUPercent
+		row.SizeGB, row.VRAMGB, row.GPUPercent = round1(float64(e.SizeBytes)/1e9), round1(float64(e.VRAMBytes)/1e9), &pct
+		row.ContextLength, row.Quantization, row.ParameterSize, row.Digest = e.ContextLength, e.Quantization, e.ParameterSize, e.Digest
+	}
+	return row
 }
 
 // tierOrder is the display order; unknown tiers go last.
@@ -69,6 +109,7 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 		}
 	}
 	byTier := map[string][]Row{}
+	var allRows []Row
 	for _, r := range newest {
 		tier := r.Tier
 		isDefault := false
@@ -78,28 +119,11 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 		if tier == "" {
 			tier = "other"
 		}
-		byArea := r.Summary.ByArea
-		if byArea == nil {
-			byArea = map[string]AreaSummary{}
-		} else {
-			byArea = maps.Clone(byArea)
-		}
-		row := Row{
-			Model:           r.Model,
-			Default:         isDefault,
-			PassRate:        r.Summary.PassRate,
-			MeanScore:       r.Summary.MeanScore,
-			MeanIterations:  r.Summary.MeanIterations,
-			MeanWallS:       round3(r.Summary.MeanWallMs / 1000),
-			FixtureMissRate: r.Summary.FixtureMissRate,
-			ByArea:          byArea,
-			Taracode:        r.Taracode,
-			Ollama:          r.Ollama,
-			Think:           r.Think,
-			Date:            r.Date,
-		}
+		row := newRow(r, tier, isDefault)
 		byTier[tier] = append(byTier[tier], row)
+		allRows = append(allRows, row)
 	}
+	sb.Boards = buildBoards(allRows)
 	for tier, rows := range byTier {
 		sort.Slice(rows, func(i, j int) bool {
 			if rows[i].MeanScore != rows[j].MeanScore {
@@ -163,6 +187,9 @@ func (s Scoreboard) Markdown() string {
 	fmt.Fprintf(&b, "%s\n\n", scoring)
 	fmt.Fprintf(&b, "Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode eval report`. "+
 		"Results live in `docs/evals/results/`.\n")
+	for _, board := range s.Boards {
+		b.WriteString(board.markdown())
+	}
 	for _, tier := range s.Tiers {
 		fmt.Fprintf(&b, "\n## %s\n\n", tierTitle(tier.Tier))
 		b.WriteString("| Model | Pass rate | Mean score |")
