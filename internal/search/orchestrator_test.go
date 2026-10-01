@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 )
@@ -48,6 +49,9 @@ func TestOrchestratorCreation(t *testing.T) {
 }
 
 func TestOrchestratorSearch(t *testing.T) {
+	if os.Getenv("TARACODE_LIVE_TESTS") == "" {
+		t.Skip("live search test: set TARACODE_LIVE_TESTS=1")
+	}
 	config := DefaultConfig()
 	config.Timeout = 30 * time.Second
 	orch := NewOrchestrator(config)
@@ -80,6 +84,9 @@ func TestOrchestratorEmptyQuery(t *testing.T) {
 }
 
 func TestOrchestratorIsAvailable(t *testing.T) {
+	if os.Getenv("TARACODE_LIVE_TESTS") == "" {
+		t.Skip("live search test: set TARACODE_LIVE_TESTS=1")
+	}
 	config := DefaultConfig()
 	orch := NewOrchestrator(config)
 
