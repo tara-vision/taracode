@@ -64,7 +64,8 @@ func serveFakeMCP(in io.Reader, out io.Writer) {
 func fakeMCPServer(name string, autoConnect bool) mcp.MCPServerConfig {
 	return mcp.MCPServerConfig{
 		Name: name, Command: os.Args[0], Args: []string{"-test.run=^TestFakeMCPServerProcess$"},
-		Env: map[string]string{fakeMCPEnv: "1"}, AutoConnect: autoConnect, Timeout: 20 * time.Second,
+		Env:         map[string]string{fakeMCPEnv: "1", "GORACE": strings.TrimSpace(os.Getenv("GORACE") + " atexit_sleep_ms=0")},
+		AutoConnect: autoConnect, Timeout: 20 * time.Second,
 	}
 }
 
