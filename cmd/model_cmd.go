@@ -98,7 +98,7 @@ func runModelSelector(items []string) (idx int, selected bool) {
 		Size:  15,
 	}
 
-	idx, _, err := prompt.Run()
+	idx, _, err := runSelect(&prompt)
 	if err != nil {
 		// User cancelled
 		fmt.Println("Model switch cancelled.")

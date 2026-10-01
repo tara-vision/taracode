@@ -366,20 +366,27 @@ func namesFromHost(short string) []string {
 	return names
 }
 
+// lookupHostname and lookupCNAME are os.Hostname and net.DefaultResolver.LookupCNAME; tests replace
+// them so the default deny list is built without the machine's name or a DNS query.
+var (
+	lookupHostname = os.Hostname
+	lookupCNAME    = net.DefaultResolver.LookupCNAME
+)
+
 // defaultPrivateNames builds privateNames' default list: the host's short and full names, the
 // resolv.conf search domains, and the global unicast addresses of its physical network interfaces.
 // The host's own short name (os.Hostname) must be known, or a recording cannot proceed at all; every
 // other source is best effort, so a machine missing a CNAME record, a resolv.conf, or any interfaces
 // still gets a usable, if shorter, deny list rather than failing the recording.
 func defaultPrivateNames() ([]string, error) {
-	short, err := os.Hostname()
+	short, err := lookupHostname()
 	if err != nil {
 		return nil, fmt.Errorf("look up the host name: %w", err)
 	}
 	names := namesFromHost(short)
 	lookupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if full, cnameErr := net.DefaultResolver.LookupCNAME(lookupCtx, short); cnameErr == nil {
+	if full, cnameErr := lookupCNAME(lookupCtx, short); cnameErr == nil {
 		if trimmed := strings.TrimSuffix(full, "."); trimmed != "" && !strings.EqualFold(trimmed, short) {
 			names = append(names, trimmed)
 		}

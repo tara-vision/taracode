@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -48,7 +47,7 @@ func (i *Installer) upgradeViaHomebrew() error {
 	fmt.Println("Upgrading via Homebrew...")
 
 	// First update the tap
-	cmd := exec.Command("brew", "update")
+	cmd := execCommand("brew", "update")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -56,7 +55,7 @@ func (i *Installer) upgradeViaHomebrew() error {
 	}
 
 	// Then upgrade taracode
-	cmd = exec.Command("brew", "upgrade", "taracode")
+	cmd = execCommand("brew", "upgrade", "taracode")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -70,7 +69,7 @@ func (i *Installer) upgradeViaHomebrew() error {
 func (i *Installer) upgradeViaGo() error {
 	fmt.Println("Upgrading via go install...")
 
-	cmd := exec.Command("go", "install", "github.com/tara-vision/taracode@latest")
+	cmd := execCommand("go", "install", "github.com/tara-vision/taracode@latest")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
@@ -91,7 +90,7 @@ func (i *Installer) upgradeViaBinary(downloadURL string) error {
 	fmt.Printf("Downloading from %s...\n", downloadURL)
 
 	// Get the current executable path
-	execPath, err := os.Executable()
+	execPath, err := executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
@@ -138,7 +137,7 @@ func (i *Installer) upgradeViaBinary(downloadURL string) error {
 	}
 
 	// Verify the downloaded binary works
-	cmd := exec.Command(tmpPath, "--version")
+	cmd := execCommand(tmpPath, "--version")
 	if output, err := cmd.Output(); err != nil {
 		return fmt.Errorf("downloaded binary verification failed: %w", err)
 	} else {
@@ -171,7 +170,7 @@ func (i *Installer) upgradeViaBinary(downloadURL string) error {
 func (i *Installer) replaceWithSudo(srcPath, dstPath string) error {
 	fmt.Println("Need elevated permissions to install...")
 
-	cmd := exec.Command("sudo", "mv", srcPath, dstPath)
+	cmd := execCommand("sudo", "mv", srcPath, dstPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

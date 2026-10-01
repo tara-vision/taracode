@@ -2,12 +2,16 @@ package search
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestDuckDuckGoSearch(t *testing.T) {
+	if os.Getenv("TARACODE_LIVE_TESTS") == "" {
+		t.Skip("live search test: set TARACODE_LIVE_TESTS=1")
+	}
 	ddg := NewDuckDuckGo()
 
 	// Test provider name
@@ -66,6 +70,9 @@ func TestDuckDuckGoEmptyQuery(t *testing.T) {
 }
 
 func TestDuckDuckGoIsAvailable(t *testing.T) {
+	if os.Getenv("TARACODE_LIVE_TESTS") == "" {
+		t.Skip("live search test: set TARACODE_LIVE_TESTS=1")
+	}
 	ddg := NewDuckDuckGo()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

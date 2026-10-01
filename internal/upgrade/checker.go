@@ -20,6 +20,14 @@ const (
 	RequestTimeout = 10 * time.Second
 )
 
+// execCommand, lookPath and executable are the command and process hooks the install detection and
+// the installer use; variables so tests can stand in for brew, go, sudo and the running binary.
+var (
+	execCommand = exec.Command
+	lookPath    = exec.LookPath
+	executable  = os.Executable
+)
+
 // Checker handles version checking
 type Checker struct {
 	currentVersion string
@@ -145,7 +153,7 @@ func (c *Checker) DetectInstallMethod() InstallMethod {
 	}
 
 	// Check if binary is in /usr/local/bin (typical curl install location)
-	execPath, err := os.Executable()
+	execPath, err := executable()
 	if err == nil {
 		if strings.HasPrefix(execPath, "/usr/local/bin") {
 			return InstallMethodCurl
@@ -158,13 +166,13 @@ func (c *Checker) DetectInstallMethod() InstallMethod {
 // isHomebrewInstall checks if taracode was installed via Homebrew
 func (c *Checker) isHomebrewInstall() bool {
 	// Check if brew command exists
-	_, err := exec.LookPath("brew")
+	_, err := lookPath("brew")
 	if err != nil {
 		return false
 	}
 
 	// Check if taracode is in Homebrew's Cellar
-	cmd := exec.Command("brew", "list", "--versions", "taracode")
+	cmd := execCommand("brew", "list", "--versions", "taracode")
 	output, err := cmd.Output()
 	if err != nil {
 		return false
@@ -175,7 +183,7 @@ func (c *Checker) isHomebrewInstall() bool {
 
 // isGoInstall checks if taracode was installed via go install
 func (c *Checker) isGoInstall() bool {
-	execPath, err := os.Executable()
+	execPath, err := executable()
 	if err != nil {
 		return false
 	}

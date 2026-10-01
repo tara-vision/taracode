@@ -372,6 +372,10 @@ func getFilesRecursive(dir string) ([]string, error) {
 	return items, err
 }
 
+// runSelect runs a promptui list (the @ file picker and the /model picker) and returns the chosen
+// index and item; a variable so tests can answer it without a terminal.
+var runSelect = func(s *promptui.Select) (int, string, error) { return s.Run() }
+
 // selectFile shows interactive file picker and returns selected file path
 func selectFile(workingDir string) (string, error) {
 	files, err := getFilesRecursive(workingDir)
@@ -408,7 +412,7 @@ func selectFile(workingDir string) (string, error) {
 		HideSelected:      true,
 	}
 
-	_, result, err := prompt.Run()
+	_, result, err := runSelect(&prompt)
 	if err != nil {
 		return "", err
 	}
