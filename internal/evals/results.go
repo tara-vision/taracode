@@ -16,19 +16,23 @@ import (
 
 // Results is one model's run over the corpus (spec 9).
 type Results struct {
-	Taracode    string       `json:"taracode"`
-	Ollama      string       `json:"ollama"`
-	Model       string       `json:"model"`
-	Tier        string       `json:"tier"`
-	Think       string       `json:"think"`
-	Temperature float64      `json:"temperature"`
-	Date        string       `json:"date"`
-	Runs        int          `json:"runs"`
-	Host        string       `json:"host"`
-	Hardware    string       `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
-	Engine      *EngineInfo  `json:"engine,omitempty"`   // the loaded model as the engine reports it
-	Tasks       []TaskResult `json:"tasks"`
-	Summary     Summary      `json:"summary"`
+	Taracode    string      `json:"taracode"`
+	Ollama      string      `json:"ollama"`
+	Model       string      `json:"model"`
+	Tier        string      `json:"tier"`
+	Think       string      `json:"think"`
+	Temperature float64     `json:"temperature"`
+	Date        string      `json:"date"`
+	Runs        int         `json:"runs"`
+	Host        string      `json:"host"`
+	Hardware    string      `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
+	Engine      *EngineInfo `json:"engine,omitempty"`   // the loaded model as the engine reports it
+	// GPUMemoryMiB is the GPU memory in use with the model loaded, as the operator's probe measured it
+	// on the machine (--gpu-probe); 0 when nothing was measured. The engine's own figures above are
+	// estimates and can be far from it.
+	GPUMemoryMiB int64        `json:"gpu_memory_mib,omitempty"`
+	Tasks        []TaskResult `json:"tasks"`
+	Summary      Summary      `json:"summary"`
 }
 
 // TaskResult is one task's row. The scores and the counts are per run: with --runs N each is the

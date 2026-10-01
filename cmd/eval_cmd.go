@@ -24,7 +24,7 @@ type evalRunFlags struct {
 	runs                        int
 	timeout                     time.Duration
 	out, runsDir, hostLabel     string
-	hardware                    string
+	hardware, gpuProbe          string
 }
 
 var evalCmd = &cobra.Command{
@@ -101,6 +101,10 @@ func init() {
 	evalRunCmd.Flags().StringVar(&evalRun.hardware, "hardware", "",
 		"label for the machine the engine runs on, at most 60 characters, e.g. \"NVIDIA RTX 5090 (32 GB)\" "+
 			"(never a host name or an address)")
+	evalRunCmd.Flags().StringVar(&evalRun.gpuProbe, "gpu-probe", "",
+		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded, e.g. "+
+			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; the engine's own "+
+			"figure is an estimate. The run unloads its model when it ends")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
@@ -136,7 +140,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	}
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
-		Version: Version, RunsDir: f.runsDir, Out: out})
+		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
@@ -262,7 +266,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
 	}
 	for _, board := range sb.Boards {
-		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without memory data), %d did not fit, %d on part of the corpus\n",
+		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without engine data), %d did not fit, %d on part of the corpus\n",
 			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
 	}
 	if checkDefaults {

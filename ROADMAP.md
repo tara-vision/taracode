@@ -45,7 +45,9 @@ Runbooks, the MCP server and the skills pack move to 3.3 and 3.4.
 
 Every eval run measures speed and memory next to the score: tokens per second from the engine's own
 timings, and the loaded model's size with the share of it on the GPU. A run can name the machine it was
-measured on, and the report ranks every model per machine above the RAM-tier tables.
+measured on, and the report ranks every model per machine above the RAM-tier tables. 3.2.1 measures the
+GPU memory on the machine itself (`--gpu-probe`), after the engine's own figure turned out to be an
+estimate that can be far off.
 
 ## Later
 

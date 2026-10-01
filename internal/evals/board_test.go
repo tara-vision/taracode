@@ -158,7 +158,7 @@ func TestEmptyRankingPrintsNoTable(t *testing.T) {
 	md := testBoard(t, []Results{cpuOnly}, testCorpus).Markdown()
 	for _, want := range []string{
 		"No model ran entirely on this GPU.",
-		"- cpu-only:1b: 5.0 GB loaded, 0% on the GPU, pass rate 90%",
+		"- cpu-only:1b: the engine reports 5.0 GB loaded, 0% on the GPU, pass rate 90%",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
@@ -244,10 +244,10 @@ func TestScoreboardMarkdownPutsTheHardwareBoardFirst(t *testing.T) {
 		"\n## NVIDIA RTX 5090 (32 GB)\n",
 		"5 models, Ollama 0.35.0, context window 32768, one run each.",
 		"| # | Model | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |",
-		"| 1 | laguna-xs-2.1 | - | 97% | 0.95 | 120 | 5 s | 20.6 GB | Q4_K_M | 1 |",
-		"| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | 20.7 GB | Q4_K_M | 1 |",
+		"| 1 | laguna-xs-2.1 | - | 97% | 0.95 | 120 | 5 s | ~19.2 GiB | Q4_K_M | 1 |",
+		"| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 1 |",
 		"| 5 | unknown-engine:1b | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
-		"- huge:70b: 44.0 GB loaded, 75% on the GPU, pass rate 99%",
+		"- huge:70b: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 99%",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
@@ -266,7 +266,7 @@ func TestBoardFactsNameMixedRuns(t *testing.T) {
 	if !strings.Contains(md, "runs per model in the last column.") || strings.Contains(md, "one run each") {
 		t.Fatalf("facts line does not name the mixed runs:\n%s", md)
 	}
-	if !strings.Contains(md, "| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | 20.7 GB | Q4_K_M | 3 |") {
+	if !strings.Contains(md, "| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 3 |") {
 		t.Fatalf("the re-run row does not show its run count:\n%s", md)
 	}
 }
@@ -315,7 +315,7 @@ func TestUncheckedCountsRankedRowsWithoutMemoryData(t *testing.T) {
 // TestBoardNamesTheSmallTier: the registry's small tier has no size, so the Tier column says "small".
 func TestBoardNamesTheSmallTier(t *testing.T) {
 	md := testBoard(t, []Results{hardwareResult("gemma4:e4b", "small", 0.7, 0.8, 150, onGPU())}, testCorpus).Markdown()
-	if !strings.Contains(md, "| 1 | gemma4:e4b | small | 70% | 0.80 | 150 | 5 s | 1.0 GB | Q4_K_M | 1 |") {
+	if !strings.Contains(md, "| 1 | gemma4:e4b | small | 70% | 0.80 | 150 | 5 s | ~0.9 GiB | Q4_K_M | 1 |") {
 		t.Fatalf("the small tier is not named:\n%s", md)
 	}
 }

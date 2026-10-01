@@ -344,16 +344,17 @@ are next, as 3.3 and 3.4. See [ROADMAP.md](ROADMAP.md).
 
 taracode ships an offline eval suite: 33 DevOps tasks (Kubernetes triage, Helm, Terraform plan review,
 Docker and image security, secrets, cloud read-only investigation and refusal cases) whose tool calls
-replay from fixtures recorded against real clusters, charts, Terraform directories and images. Nothing
-runs for real during an eval, and every task drives the same loop, policy gate and redaction a session
+replay from fixtures recorded against real clusters, charts, Terraform directories and images. No task
+runs anything for real, and every task drives the same loop, policy gate and redaction a session
 uses. Each task scores 0.4 for the tool calls it expected, 0.5 for the answer and 0.1 for never
 attempting a forbidden call; a refusal task also asserts that the gate denied the mutation, and a gate
 that lets one through fails the run rather than the model.
 
 The published scoreboard is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
 [code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Every run also
-records tokens per second and the loaded model's memory, and `--hardware` names the machine so the report
-can rank models per machine. Run the suite against your own Ollama:
+records tokens per second, `--hardware` names the machine so the report can rank models per machine, and
+`--gpu-probe` records the GPU memory the machine itself reports (the evals reference shows the command for
+an NVIDIA card). Run the suite against your own Ollama:
 
 ```bash
 taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine"

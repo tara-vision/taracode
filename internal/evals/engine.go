@@ -72,43 +72,50 @@ func cleanToken(s string) string {
 
 // engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
 // for, or that name with ":latest" (ruling P3-R74). It fails when the engine does not answer, does
-// not list the model as loaded, or reports no size for it.
-func engineInfo(ctx context.Context, opts RunOptions) (*EngineInfo, error) {
+// not list the model as loaded, or reports no size for it. others is how many other models the
+// engine holds on the GPU, -1 when the engine did not say: a GPU measurement would include them. A
+// model the engine keeps entirely in system memory takes nothing on the GPU and is not counted.
+func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others int, err error) {
 	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, engineCallTimeout)
 	defer cancel()
 	loaded, err := prov.LLM().Loaded(callCtx)
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
+	err = fmt.Errorf("the engine does not list %s as loaded (if it has another name there, use the one "+
+		"`ollama list` prints)", opts.Model)
 	for _, m := range loaded {
-		if m.Name != opts.Model && m.Name != opts.Model+":latest" {
-			continue
+		switch {
+		case m.Name != opts.Model && m.Name != opts.Model+":latest":
+			if m.SizeVRAM > 0 {
+				others++
+			}
+		case m.Size <= 0:
+			err = fmt.Errorf("the engine reports no size for %s", m.Name)
+		default:
+			info, err = &EngineInfo{
+				SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
+				ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
+				ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
+			}, nil
 		}
-		if m.Size <= 0 {
-			return nil, fmt.Errorf("the engine reports no size for %s", m.Name)
-		}
-		return &EngineInfo{
-			SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
-			ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
-			ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
-		}, nil
 	}
-	return nil, fmt.Errorf("the engine does not list %s as loaded", opts.Model)
+	return info, others, err
 }
 
 // loadedEngine is engineInfo for Run. The block is measurement metadata, so a failure is one warning
 // on the terminal and never the run's.
-func loadedEngine(ctx context.Context, opts RunOptions) *EngineInfo {
-	info, err := engineInfo(ctx, opts)
+func loadedEngine(ctx context.Context, opts RunOptions) (info *EngineInfo, others int) {
+	info, others, err := engineInfo(ctx, opts)
 	if err != nil {
 		_, _ = fmt.Fprintf(opts.Out, "warning: no engine block in the results: %v\n", err)
-		return nil
+		return nil, others
 	}
-	return info
+	return info, others
 }
 
 // gpuPercent is the share of the loaded model on the GPU: 100 only when all of it is, otherwise the
@@ -154,14 +161,21 @@ func generationRate(results []TaskResult) float64 {
 	return round1(tokens / (ms / 1000))
 }
 
-// speedAndMemory is the tail of a run's last line: the generation rate and the loaded model's
-// memory, each only when the engine reported it.
+// speedAndMemory is the tail of a run's last line: the generation rate, the GPU memory the probe
+// measured and the loaded model's memory as the engine reports it, each only when there is one.
 func speedAndMemory(res Results) string {
 	out := ""
 	if res.Summary.TokensPerS > 0 {
 		out += fmt.Sprintf(", %.0f tok/s", res.Summary.TokensPerS)
 	}
-	if e := res.Engine; e != nil {
+	e := res.Engine
+	switch {
+	case res.GPUMemoryMiB > 0 && e != nil:
+		out += fmt.Sprintf(", %.1f GiB on the GPU (engine reports %.1f GB, %d%% GPU)",
+			gib(res.GPUMemoryMiB), float64(e.SizeBytes)/1e9, e.GPUPercent)
+	case res.GPUMemoryMiB > 0:
+		out += fmt.Sprintf(", %.1f GiB on the GPU", gib(res.GPUMemoryMiB))
+	case e != nil:
 		out += fmt.Sprintf(", %.1f GB (%d%% GPU)", float64(e.SizeBytes)/1e9, e.GPUPercent)
 	}
 	return out

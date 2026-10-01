@@ -77,7 +77,7 @@ func TestRunWritesNoSpeedOrEngineKeysWhenTheEngineReportsNone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"tokens_per_s", "eval_ms", "prompt_eval_ms", "hardware", "engine"} {
+	for _, key := range []string{"tokens_per_s", "eval_ms", "prompt_eval_ms", "hardware", "engine", "gpu_memory_mib"} {
 		if strings.Contains(string(data), `"`+key+`"`) {
 			t.Errorf("%s is written although the run has none: %s", key, data)
 		}
@@ -273,7 +273,7 @@ func TestShortDigest(t *testing.T) {
 
 // TestEngineInfoFailsWithoutAHost: the capture reports why it has nothing, it never panics.
 func TestEngineInfoFailsWithoutAHost(t *testing.T) {
-	info, err := engineInfo(context.Background(), RunOptions{Model: "gemma4:12b"})
+	info, _, err := engineInfo(context.Background(), RunOptions{Model: "gemma4:12b"})
 	if info != nil || err == nil {
 		t.Fatalf("info %+v, err %v", info, err)
 	}

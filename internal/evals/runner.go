@@ -23,6 +23,7 @@ type RunOptions struct {
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
 	Hardware                    string           // the results' hardware field, the operator's label; "" = none
+	GPUProbe                    string           // a command that prints the GPU memory in use in MiB; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
@@ -33,9 +34,11 @@ type RunOptions struct {
 }
 
 // runScope is what one Run keeps across its tasks: the real home directory, read before HOME is
-// isolated, so the results can be scrubbed of it (ruling P3-R45), and the once-only transcript warning.
+// isolated, so the results can be scrubbed of it (ruling P3-R45), the environment as it was before
+// the isolation, which the GPU probe runs in, and the once-only transcript warning.
 type runScope struct {
 	home       string
+	env        []string
 	transcript sync.Once
 }
 
@@ -86,7 +89,7 @@ func withDefaults(o RunOptions) RunOptions {
 func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
 	home, _ := os.UserHomeDir()
-	opts.scope = &runScope{home: home}
+	opts.scope = &runScope{home: home, env: os.Environ()}
 	restore, err := isolateEnv()
 	if err != nil {
 		return Results{}, fmt.Errorf("isolating the environment: %w", err)
@@ -101,7 +104,12 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	if err := warmUp(ctx, opts); err != nil {
 		return Results{}, fmt.Errorf("warm-up: %w", err)
 	}
-	res.Engine = loadedEngine(ctx, opts) // the warm-up has loaded the model, so the engine can describe it
+	engine, others := loadedEngine(ctx, opts) // the warm-up has loaded the model, so the engine can describe it
+	res.Engine = engine
+	res.GPUMemoryMiB = measuredGPU(ctx, opts, engine, others)
+	if opts.GPUProbe != "" {
+		defer unloadAfter(ctx, opts) // or the next run's probe would measure this model too
+	}
 	for _, t := range tasks {
 		if err := ctx.Err(); err != nil {
 			return withSummary(res, tasks), err
