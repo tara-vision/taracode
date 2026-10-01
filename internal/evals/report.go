@@ -50,18 +50,20 @@ type Row struct {
 	Tasks           int                    `json:"tasks,omitempty"` // tasks the result covers
 	Hardware        string                 `json:"hardware,omitempty"`
 	TokensPerS      float64                `json:"tokens_per_s,omitempty"`
-	SuiteWallS      float64                `json:"suite_wall_s,omitempty"` // the task wall times added up
-	SizeGB          float64                `json:"size_gb,omitempty"`      // the loaded model, decimal gigabytes
-	VRAMGB          float64                `json:"vram_gb,omitempty"`      // the part of it on the GPU
-	GPUPercent      *int                   `json:"gpu_percent,omitempty"`  // nil when the engine reported nothing
+	SuiteWallS      float64                `json:"suite_wall_s,omitempty"`   // the task wall times added up
+	SizeGB          float64                `json:"size_gb,omitempty"`        // the loaded model, decimal gigabytes
+	VRAMGB          float64                `json:"vram_gb,omitempty"`        // the part of it on the GPU
+	GPUMemoryMiB    int64                  `json:"gpu_memory_mib,omitempty"` // measured on the machine; 0 = not measured
+	GPUPercent      *int                   `json:"gpu_percent,omitempty"`    // nil when the engine reported nothing
 	ContextLength   int                    `json:"context_length,omitempty"`
 	Quantization    string                 `json:"quantization,omitempty"`
 	ParameterSize   string                 `json:"parameter_size,omitempty"`
 	Digest          string                 `json:"digest,omitempty"`
 }
 
-// newRow is one model's line from its results: the summary, the run's header and, when the engine
-// reported the loaded model, its memory in decimal gigabytes (the unit `ollama ps` prints).
+// newRow is one model's line from its results: the summary, the run's header, the GPU memory the
+// operator's probe measured and, when the engine reported the loaded model, its own estimate in
+// decimal gigabytes (the unit `ollama ps` prints).
 func newRow(r Results, tier string, isDefault bool) Row {
 	byArea := map[string]AreaSummary{}
 	if r.Summary.ByArea != nil {
@@ -75,7 +77,8 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		ByArea:          byArea,
 		Taracode:        r.Taracode, Ollama: r.Ollama, Think: r.Think, Date: r.Date,
 		Runs: r.Runs, Tasks: len(r.Tasks), Hardware: r.Hardware, TokensPerS: r.Summary.TokensPerS,
-		SuiteWallS: round1(r.Summary.MeanWallMs * float64(len(r.Tasks)) / 1000),
+		SuiteWallS:   round1(r.Summary.MeanWallMs * float64(len(r.Tasks)) / 1000),
+		GPUMemoryMiB: r.GPUMemoryMiB,
 	}
 	if e := r.Engine; e != nil {
 		pct := e.GPUPercent

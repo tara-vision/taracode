@@ -234,8 +234,8 @@ func TestEvalRunRejectsABadHardwareLabel(t *testing.T) {
 	}
 }
 
-// TestEvalRunWritesTheHardwareLabelAndTheEngineBlock: the trimmed label and what the engine reports
-// about the loaded model reach the results file.
+// TestEvalRunWritesTheHardwareLabelAndTheEngineBlock: the trimmed label, what the engine reports
+// about the loaded model and what the --gpu-probe command measured reach the results file.
 func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 	corpus := t.TempDir()
 	dir := filepath.Join(corpus, "partial-defect")
@@ -260,7 +260,8 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 		SizeVRAM: 9_300_000_000, Quantization: "Q4_K_M"}}
 	out := t.TempDir()
 	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
-		timeout: 30 * time.Second, out: out, hostLabel: "lab", hardware: "  NVIDIA RTX 5090 (32 GB) "}
+		timeout: 30 * time.Second, out: out, hostLabel: "lab", hardware: "  NVIDIA RTX 5090 (32 GB) ",
+		gpuProbe: "echo 9500"}
 	if err := runEvalRun(f, io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -271,6 +272,17 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 	r := all[0]
 	if r.Hardware != "NVIDIA RTX 5090 (32 GB)" || r.Engine == nil || r.Engine.GPUPercent != 100 || r.Engine.Quantization != "Q4_K_M" {
 		t.Fatalf("results %+v, engine %+v", r, r.Engine)
+	}
+	if r.GPUMemoryMiB != 9500 {
+		t.Fatalf("the measured GPU memory is %d, want 9500", r.GPUMemoryMiB)
+	}
+}
+
+// TestEvalRunHasTheGPUProbeFlag: the flag exists, defaults to no probe and says which unit it wants.
+func TestEvalRunHasTheGPUProbeFlag(t *testing.T) {
+	flag := evalRunCmd.Flags().Lookup("gpu-probe")
+	if flag == nil || flag.DefValue != "" || !strings.Contains(flag.Usage, "MiB") {
+		t.Fatalf("the --gpu-probe flag: %+v", flag)
 	}
 }
 

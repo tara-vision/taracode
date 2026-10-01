@@ -17,6 +17,8 @@ LAB_MODEL ?= gemma4:12b
 
 # Label for the machine the lab engine runs on, written to the results, for example
 # LAB_HARDWARE="NVIDIA RTX 5090 (32 GB)". Empty writes none. Never a host name.
+# To measure the GPU memory as well, pass the probe through EVAL_ARGS, for example
+# EVAL_ARGS='--gpu-probe "ssh <engine host> nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits"'.
 LAB_HARDWARE ?=
 
 # Recorder host: the SSH alias of the lab VM and the directory the corpus is synced to.

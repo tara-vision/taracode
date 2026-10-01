@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-10-01
+
+### Fixed
+- **A board's memory column is measured, not estimated.** 3.2.0 took a model's memory from the engine's
+  list of loaded models. That figure is the engine's own estimate, and on Ollama 0.35 it can be far below
+  what the GPU holds: one model was reported at 1.2 GB although its weights alone are 18.6 GB on disk.
+  `taracode eval run --gpu-probe "<command>"` now runs a command of yours once the model is loaded and
+  records the GPU memory it prints, in MiB (`gpu_memory_mib`, in the results and on each scoreboard row).
+  The board's VRAM column shows that figure; a row that only has the engine's estimate is marked with `~`,
+  and the board says which of the two it holds.
+
+### Changed
+- **VRAM is printed in GiB**, the unit a card's size is given in, instead of decimal gigabytes. The
+  engine's figures in `scoreboard.json` (`size_gb`, `vram_gb`) keep their unit and their meaning.
+- The last line of `eval run` names the measured memory first and the engine's figure after it.
+
 ## [3.2.0] - 2026-10-01
 
 ### Added
@@ -626,7 +642,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.1...HEAD
+
+[3.2.1]: https://github.com/tara-vision/taracode/compare/v3.2.0...v3.2.1
 
 [3.2.0]: https://github.com/tara-vision/taracode/compare/v3.1.2...v3.2.0
 

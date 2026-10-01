@@ -172,7 +172,8 @@ git-ignored.
 ## Speed, memory and the hardware board
 
 Since 3.2.0 a run also records how fast the engine generated and how much memory the loaded model took,
-and a results file can say which machine it ran on.
+and a results file can say which machine it ran on. Since 3.2.1 the memory can be measured on the GPU
+itself, which is the figure a board shows.
 
 - **Tokens per second** (`summary.tokens_per_s`) is the completion tokens of every task divided by the
   generation time of every task, both as the engine reports them (`eval_count` and `eval_duration` on
@@ -181,12 +182,22 @@ and a results file can say which machine it ran on.
   prompt processing: prompt caching makes it swing from task to task. A task the engine timed nothing for
   is left out of the rate, and a run with no timings at all gets no rate. (`eval run` needs Ollama in any
   case: it asks the engine for the model's capabilities first, which vLLM and llama.cpp cannot answer.)
-- **Memory** (`engine`) is read from the engine once, right after the warm-up has loaded the model: the
-  bytes the loaded model occupies at the context window taracode asked for (32,768 tokens by default), the
-  bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when the whole model is on
-  the GPU; anything less is rounded down. The block also names the quantization, the parameter size and
-  the first twelve characters of the model digest, so a row says which weights it measured. If the engine
-  does not list the model as loaded, the run prints a warning and goes on without the block.
+- **Measured memory** (`gpu_memory_mib`) comes from the machine. With `--gpu-probe "<command>"` taracode
+  runs your command once, right after the warm-up has loaded the model at the context window it asked for
+  (32,768 tokens by default), and records the number it prints: the GPU memory in use, in MiB. For an
+  NVIDIA card that is `nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits` (one line
+  per process, added up), behind `ssh <engine host>` when the engine runs on another machine. The command
+  is yours: it runs through the shell on the machine you start taracode on, in your own environment, has
+  fifteen seconds, and must print whole numbers of MiB and nothing else. A probe that fails costs one
+  warning, never the run. Measure with nothing else loaded on the GPU, or the figure includes it.
+- **Reported memory** (`engine`) is what the engine says about the loaded model, read once at the same
+  moment: its size, the bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when
+  the engine places the whole model on the GPU; anything less is rounded down, and that is what decides
+  "did not fit". The sizes themselves are the engine's own estimate, not a measurement: on Ollama 0.35 the
+  estimate is often gigabytes below what the GPU holds, and for some models it is not usable at all. Never
+  answer "does it fit my card" from it. The block also names the quantization, the parameter size and the
+  first twelve characters of the model digest, so a row says which weights it measured. If the engine does
+  not list the model as loaded, the run prints a warning and goes on without the block.
 - **Hardware** (`hardware`) is a label you declare with `--hardware`, for example
   `--hardware "NVIDIA RTX 5090 (32 GB)"`. The engine does not name its GPU, so taracode does not guess.
   The label is public: it describes the machine and never addresses it. One line, at most 60 characters,
@@ -197,7 +208,10 @@ newest results carry that label, ranked by pass rate, then mean score, then toke
 of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
 not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
 such as a `--tasks` subset. A result with no `engine` block stays ranked with empty memory columns, and
-the report says how many rows that is. VRAM is shown in decimal gigabytes, the unit `ollama ps` prints.
+the report says how many rows that is. The VRAM column is in GiB, the unit a card's size is given in (a
+24 GB card holds 24 GiB): the measured figure where the run has one, otherwise the engine's estimate
+marked with `~`. The "did not fit" lines keep the engine's own figures in decimal gigabytes, the unit
+`ollama ps` prints.
 
 One model has one row: its newest results. Boards from several machines for the same model are not
 supported yet, so a results file from another machine would replace the published row.
@@ -206,12 +220,15 @@ supported yet, so a results file from another machine would replace the publishe
 
 ```bash
 ollama pull glm-4.7-flash
-taracode eval run --host http://localhost:11434 --model glm-4.7-flash --hardware "your GPU or machine"
+taracode eval run --host http://localhost:11434 --model glm-4.7-flash --hardware "your GPU or machine" \
+  --gpu-probe "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits"
 taracode eval report --out-dir /tmp/board
 ```
 
 Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. Nothing runs
-for real and nothing leaves the machine. A model takes two to fifteen minutes on a current GPU. Share the
+for real and nothing leaves the machine. Leave `--gpu-probe` out on a machine without `nvidia-smi` (or
+give it a command that prints the GPU memory in use in MiB): the board then shows the engine's estimate,
+marked with `~`. A model takes two to fifteen minutes on a current GPU. Share the
 results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
 `docs/evals/results/` wait until the report can hold one model on several machines.
 

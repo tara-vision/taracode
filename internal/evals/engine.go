@@ -154,14 +154,21 @@ func generationRate(results []TaskResult) float64 {
 	return round1(tokens / (ms / 1000))
 }
 
-// speedAndMemory is the tail of a run's last line: the generation rate and the loaded model's
-// memory, each only when the engine reported it.
+// speedAndMemory is the tail of a run's last line: the generation rate, the GPU memory the probe
+// measured and the loaded model's memory as the engine reports it, each only when there is one.
 func speedAndMemory(res Results) string {
 	out := ""
 	if res.Summary.TokensPerS > 0 {
 		out += fmt.Sprintf(", %.0f tok/s", res.Summary.TokensPerS)
 	}
-	if e := res.Engine; e != nil {
+	e := res.Engine
+	switch {
+	case res.GPUMemoryMiB > 0 && e != nil:
+		out += fmt.Sprintf(", %.1f GiB on the GPU (engine reports %.1f GB, %d%% GPU)",
+			gib(res.GPUMemoryMiB), float64(e.SizeBytes)/1e9, e.GPUPercent)
+	case res.GPUMemoryMiB > 0:
+		out += fmt.Sprintf(", %.1f GiB on the GPU", gib(res.GPUMemoryMiB))
+	case e != nil:
 		out += fmt.Sprintf(", %.1f GB (%d%% GPU)", float64(e.SizeBytes)/1e9, e.GPUPercent)
 	}
 	return out

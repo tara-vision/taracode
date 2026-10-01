@@ -77,7 +77,7 @@ func TestRunWritesNoSpeedOrEngineKeysWhenTheEngineReportsNone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"tokens_per_s", "eval_ms", "prompt_eval_ms", "hardware", "engine"} {
+	for _, key := range []string{"tokens_per_s", "eval_ms", "prompt_eval_ms", "hardware", "engine", "gpu_memory_mib"} {
 		if strings.Contains(string(data), `"`+key+`"`) {
 			t.Errorf("%s is written although the run has none: %s", key, data)
 		}

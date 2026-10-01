@@ -84,13 +84,13 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 	fmt.Fprintf(&b, "\n## %s\n\n", mdText(h.Hardware))
 	if len(h.Rows) > 0 {
 		fmt.Fprintf(&b, "%s Ranked by pass rate, then mean score, then tokens per second. Tokens/s is the engine's own "+
-			"generation rate; VRAM is the loaded model at the context window the run asked for.\n\n", h.facts())
+			"generation rate. %s\n\n", h.facts(), h.memoryNote())
 		b.WriteString("| # | Model | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |\n")
 		b.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
 		for i, r := range h.Rows {
 			fmt.Fprintf(&b, "| %d | %s | %s | %.0f%% | %.2f | %s | %.0f s | %s | %s | %d |\n",
 				i+1, mdText(r.Model), tierShort(r.Tier), r.PassRate*100, r.MeanScore, numberOrDash(r.TokensPerS, "%.0f", ""),
-				r.MeanWallS, numberOrDash(r.VRAMGB, "%.1f", " GB"), textOrDash(mdText(r.Quantization)), r.Runs)
+				r.MeanWallS, r.vram(), textOrDash(mdText(r.Quantization)), r.Runs)
 		}
 	} else if len(h.DidNotFit) > 0 {
 		b.WriteString("No model ran entirely on this GPU.\n")
@@ -113,6 +113,40 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 		}
 	}
 	return b.String()
+}
+
+// vram is a row's memory cell, in GiB, the unit a card's size is given in: the figure the operator's
+// probe measured on the machine, else the engine's own estimate marked with "~", else a dash.
+func (r Row) vram() string {
+	switch {
+	case r.GPUMemoryMiB > 0:
+		return fmt.Sprintf("%.1f GiB", gib(r.GPUMemoryMiB))
+	case r.VRAMGB > 0:
+		return fmt.Sprintf("~%.1f GiB", r.VRAMGB*1e9/(1<<30))
+	}
+	return "-"
+}
+
+// memoryNote says what the ranking's VRAM column holds: measurements, estimates, or both.
+func (h HardwareBoard) memoryNote() string {
+	measured, estimated := 0, 0
+	for _, r := range h.Rows {
+		switch {
+		case r.GPUMemoryMiB > 0:
+			measured++
+		case r.VRAMGB > 0:
+			estimated++
+		}
+	}
+	switch {
+	case measured > 0 && estimated > 0:
+		return "VRAM is the GPU memory in use with the model loaded, measured on the machine at the context window " +
+			"the run asked for. A figure marked ~ is the engine's own estimate, not a measurement."
+	case measured > 0:
+		return "VRAM is the GPU memory in use with the model loaded, measured on the machine at the context window " +
+			"the run asked for."
+	}
+	return "VRAM is the engine's own estimate (~), not a measurement: run with --gpu-probe to measure it."
 }
 
 // facts is the board's one-line summary: how many models are ranked, which engine versions and

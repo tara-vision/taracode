@@ -352,11 +352,12 @@ that lets one through fails the run rather than the model.
 
 The published scoreboard is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
 [code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Every run also
-records tokens per second and the loaded model's memory, and `--hardware` names the machine so the report
-can rank models per machine. Run the suite against your own Ollama:
+records tokens per second, `--hardware` names the machine so the report can rank models per machine, and
+`--gpu-probe` records the GPU memory the machine itself reports. Run the suite against your own Ollama:
 
 ```bash
-taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine"
+taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine" \
+  --gpu-probe "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits"
 taracode eval report
 ```
 
