@@ -147,7 +147,7 @@ func convertToOpenAIToolCalls(records []storage.ToolCallRecord) []openai.ToolCal
 	return toolCalls
 }
 
-// GenerateSummary creates an AI-generated summary of the current session
+// GenerateSummary creates a model-generated summary of the current session
 // Returns the summary string, or an error if generation fails.
 // This is designed to be called on session exit and should not block for too long.
 func (a *Assistant) GenerateSummary() (string, error) {

@@ -50,7 +50,7 @@ nfpms:
     vendor: Tara Vision, LLC
     homepage: https://github.com/tara-vision/taracode
     maintainer: "Tara Vision, LLC <contact@tara.vision>"
-    description: DevOps and Cloud AI assistant for Kubernetes, Terraform, Docker and multi-cloud, running locally with Ollama
+    description: DevOps and Cloud SI (AI) assistant for Kubernetes, Terraform, Docker and multi-cloud, running locally with Ollama
     license: MIT
     formats:
       - deb
@@ -66,7 +66,7 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: https://github.com/tara-vision/taracode
-    description: DevOps and Cloud AI assistant that runs locally with Ollama
+    description: DevOps and Cloud SI (AI) assistant that runs locally with Ollama
     license: MIT
     binaries:
       - taracode

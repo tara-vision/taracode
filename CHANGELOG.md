@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.4] - 2026-10-01
+
+### Changed
+- taracode speaks of SI, super intelligence, the new name for AI: in the CLI help, the welcome line, the
+  installer, the package descriptions and the README. Only wording changes; nothing the model sees is
+  touched, so the board's results stand.
+- `/tools` lists "available tools", and `/init` says TARACODE.md holds the project context for taracode.
+- The README Quick Start names its memory tiers as RAM (16, 32 and 48 GB of RAM), so they are not read as
+  GPU memory next to the hardware board.
+
 ## [3.2.3] - 2026-10-01
 
 ### Changed
@@ -703,7 +713,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.3...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.4...HEAD
+
+[3.2.4]: https://github.com/tara-vision/taracode/compare/v3.2.3...v3.2.4
 
 [3.2.3]: https://github.com/tara-vision/taracode/compare/v3.2.2...v3.2.3
 

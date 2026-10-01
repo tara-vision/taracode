@@ -311,7 +311,7 @@ func (m *Manager) RenameSession(id, newName string) error {
 	return m.saveSessionIndex()
 }
 
-// UpdateSessionSummary sets the AI-generated summary for a session (supports partial ID prefix matching)
+// UpdateSessionSummary sets the model-generated summary for a session (supports partial ID prefix matching)
 func (m *Manager) UpdateSessionSummary(id, summary string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

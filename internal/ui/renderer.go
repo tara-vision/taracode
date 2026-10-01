@@ -50,7 +50,7 @@ func NewRendererWithConfig(config *Config) *Renderer {
 func (r *Renderer) WelcomeMessage() string {
 	var sb strings.Builder
 	title := TitleStyle.Render(IconCloud + " Tara Code")
-	subtitle := Subtle.Render("DevOps & Cloud AI Assistant")
+	subtitle := Subtle.Render("DevOps & Cloud SI Assistant")
 	fmt.Fprintf(&sb, "%s - %s\n", title, subtitle)
 	sb.WriteString(Subtle.Render("Type '/help' for commands, 'exit' to quit"))
 	sb.WriteString("\n")

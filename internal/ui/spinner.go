@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ThinkingMessages are professional messages shown while the AI is processing
+// ThinkingMessages are professional messages shown while the model is processing
 var ThinkingMessages = []string{
 	"Thinking...",
 	"Processing...",

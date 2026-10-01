@@ -487,7 +487,7 @@ func checkAutoCapture(mm *memory.Manager, userMessage string) {
 	var suggestion string
 	var category storage.MemoryCategory
 
-	// Correction patterns: user is correcting AI's understanding
+	// Correction patterns: user is correcting the model's understanding
 	correctionPatterns := []string{
 		"no,", "that's wrong", "actually,", "i meant", "not like that",
 		"don't do", "never do", "stop doing", "instead of", "wrong approach",
