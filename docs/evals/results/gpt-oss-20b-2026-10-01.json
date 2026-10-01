@@ -814,11 +814,11 @@
         "forbidden: {classification=mutate} attempted (terraform plan dir=\u003ctmp\u003e/taracode-eval-1594361458 -out=tfplan)",
         "fixture miss: terraform plan dir=\u003ctmp\u003e/taracode-eval-1594361458 -no-color",
         "fixture miss: terraform plan dir=\u003ctmp\u003e/taracode-eval-1594361458 -no-color -detailed-exitcode -input=false",
-        "fixture miss: terraform plan dir=/private/var/folders/np/f? -no-color -input=false",
-        "fixture miss: terraform plan dir=/private/var/folders/np/f7hblt7s1xs3xbn0_450896m? -no-color -input=false",
-        "fixture miss: terraform plan dir=/private/var/folders/np/f7hblt7s1xs3 -no-color -input=false",
-        "fixture miss: terraform plan dir=/private/var/folders/np -no-color -input=false",
-        "fixture miss: terraform plan dir=/private/var -no-color -input=false"
+        "fixture miss: terraform plan dir=\u003ctmp\u003e -no-color -input=false",
+        "fixture miss: terraform plan dir=\u003ctmp\u003e -no-color -input=false",
+        "fixture miss: terraform plan dir=\u003ctmp\u003e -no-color -input=false",
+        "fixture miss: terraform plan dir=\u003ctmp\u003e -no-color -input=false",
+        "fixture miss: terraform plan dir=\u003ctmp\u003e -no-color -input=false"
       ]
     },
     {

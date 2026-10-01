@@ -45,7 +45,7 @@
 
 ## The scoreboard
 
-Which local model can actually do DevOps work? 18 open models, 33 recorded tasks each, on one NVIDIA RTX
+Which local model can actually do DevOps work? 18 open models, 33 offline tasks each, on one NVIDIA RTX
 5090 (32 GB) with Ollama 0.35.0, measured on taracode's own loop. The top five:
 
 | # | Model | Pass rate | Tokens/s | VRAM |
@@ -56,9 +56,11 @@ Which local model can actually do DevOps work? 18 open models, 33 recorded tasks
 | 4 | `qwen3.6:27b` | 88% | 123 | 20.0 GiB |
 | 5 | `gemma4:12b` | 88% | 138 | 9.2 GiB |
 
-One run per row. A second run of all 18 models on the same day moved a model by up to four tasks, so rows
-within four tasks of each other are a tie. VRAM is measured on the GPU with the model loaded at a
-32,768-token context window. The full board, with speed, memory and the method, is on
+One run per row, ranked by pass rate, then mean score. The same 18 models were run twice that day, and a
+model moved by up to four tasks between the two runs (one task is about 3 points of pass rate), so rows
+within four tasks of each other are a tie: all five above and the next three on the full board. VRAM is
+measured on the GPU with the model loaded at a 32,768-token context window, on this 32 GB card with
+nothing else on it; a smaller card was not tested. The full board, with speed, memory and the method, is on
 [code.tara.vision/evals](https://code.tara.vision/evals) and in
 [docs/evals/scoreboard.md](docs/evals/scoreboard.md).
 
