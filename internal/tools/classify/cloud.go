@@ -30,6 +30,27 @@ var cloudFileWriters = []string{"get-credentials", "get-object", "get-object-tor
 	"get-sdk", "get-media", "get-clip", "get-snapshot-block", "get-thing-shadow", "get-raw-message-content",
 	"get-package-version-asset", "select-object-content"}
 
+// awsOutfileOperations are more aws operations, named by service and verb, that stream their response
+// into the outfile operand they require although the verb reads like a read. They come from the AWS
+// CLI's service models (awscli 2.36.46): every read-prefixed operation whose output payload is a blob,
+// the shape the CLI gives an outfile operand. They are keyed by service because the same verb is a
+// plain read in other services (lambda get-function, rolesanywhere get-profile).
+var awsOutfileOperations = []string{
+	"agenttoolkit get-skill-file", "appconfig get-configuration", "appconfig get-hosted-configuration-version",
+	"appconfigdata get-latest-configuration", "appsync get-introspection-schema",
+	"cloudfront get-connection-function", "cloudfront get-function", "codeguruprofiler get-profile",
+	"datazone get-lineage-event", "geo-maps get-glyphs", "geo-maps get-sprites", "geo-maps get-static-map",
+	"geo-maps get-style-descriptor", "geo-maps get-tile", "iotwireless get-position-estimate",
+	"iotwireless get-resource-position", "kinesis-video-archived-media get-media-for-fragment-list",
+	"lakeformation get-work-unit-results", "location get-map-glyphs", "location get-map-sprites",
+	"location get-map-style-descriptor", "location get-map-tile", "medialive describe-input-device-thumbnail",
+	"medical-imaging get-image-frame", "medical-imaging get-image-set-metadata", "omics get-read-set",
+	"omics get-reference", "s3api get-object-annotation", "sagemaker-geospatial get-tile",
+	"schemas get-code-binding-source", "tnb get-sol-function-package-content",
+	"tnb get-sol-function-package-descriptor", "tnb get-sol-network-package-content",
+	"tnb get-sol-network-package-descriptor",
+}
+
 // Cloud classifies a provider CLI invocation by the verb in the position each CLI uses.
 func Cloud(provider string, tokens []string) Result {
 	switch provider {
@@ -127,7 +148,7 @@ func awsVerb(tokens []string) Result {
 			"local credentials)")
 	}
 	service, verb := pos[0], pos[1]
-	if in(verb, cloudFileWriters...) {
+	if in(verb, cloudFileWriters...) || in(service+" "+verb, awsOutfileOperations...) {
 		return mutate(verb, "aws "+service+" "+verb+" writes a file")
 	}
 	if service == "configure" {

@@ -31,8 +31,11 @@ security sweep of the classifier; there is no report of any of them being used. 
 - **Operations that read like a check and still act** are mutations: `gcloud ... simulate-maintenance-event`,
   every aws `test-*` operation except the four known to only evaluate their input, and the Cognito call
   that sends a verification message.
-- **`aws s3api select-object-content` writes a file.** It streams the query result into the output file it
-  requires, as `get-object` does, which was already a mutation; it was classified as a read.
+- **aws operations that write their response to a file were reads.** `aws s3api select-object-content` and
+  34 more operations named like reads (`cloudfront get-function`, `appconfig get-configuration`, `omics
+  get-read-set`, ...) stream their response into the output file they require, as `get-object` (already a
+  mutation) does. The list comes from the AWS CLI's own service models. The same verb in another service,
+  such as `lambda get-function`, is still a read.
 - **`cd` cannot leave the project through a look-alike sibling.** The REPL's `cd` checked that the resolved
   target starts with the project root as a string, so a symlink into a sibling directory whose name begins
   with the root's name (`app-secrets` next to `app`) was accepted. The check is now "the root itself or a
