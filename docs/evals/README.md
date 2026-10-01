@@ -178,8 +178,9 @@ and a results file can say which machine it ran on.
   generation time of every task, both as the engine reports them (`eval_count` and `eval_duration` on
   Ollama). It is the engine's own generation rate, thinking tokens included, with no network time and no
   tool time in it. Each task keeps its raw `eval_ms` and `prompt_eval_ms`. There is no summary rate for
-  prompt processing: prompt caching makes it swing from task to task. An engine that reports no timings
-  (vLLM, llama.cpp) gets no rate.
+  prompt processing: prompt caching makes it swing from task to task. A task the engine timed nothing for
+  is left out of the rate, and a run with no timings at all gets no rate. (`eval run` needs Ollama in any
+  case: it asks the engine for the model's capabilities first, which vLLM and llama.cpp cannot answer.)
 - **Memory** (`engine`) is read from the engine once, right after the warm-up has loaded the model: the
   bytes the loaded model occupies at the context window taracode asked for (32,768 tokens by default), the
   bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when the whole model is on
@@ -188,12 +189,15 @@ and a results file can say which machine it ran on.
   does not list the model as loaded, the run prints a warning and goes on without the block.
 - **Hardware** (`hardware`) is a label you declare with `--hardware`, for example
   `--hardware "NVIDIA RTX 5090 (32 GB)"`. The engine does not name its GPU, so taracode does not guess.
-  The label is public: never put a host name in it.
+  The label is public: it describes the machine and never addresses it. One line, at most 60 characters,
+  no URL and no IP address; runs of spaces collapse, so one machine is one board.
 
 `taracode eval report` builds one board per hardware label, above the RAM-tier tables: every model whose
-newest results carry that label, ranked by pass rate, then mean score, then tokens per second. A model
-that was not entirely on the GPU is listed under the ranking as "did not fit" instead of being ranked.
-VRAM is shown in decimal gigabytes, the unit `ollama ps` prints.
+newest results carry that label, ranked by pass rate, then mean score, then tokens per second. Two kinds
+of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
+not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
+such as a `--tasks` subset. A result with no `engine` block stays ranked with empty memory columns, and
+the report says how many rows that is. VRAM is shown in decimal gigabytes, the unit `ollama ps` prints.
 
 One model has one row: its newest results. Boards from several machines for the same model are not
 supported yet, so a results file from another machine would replace the published row.

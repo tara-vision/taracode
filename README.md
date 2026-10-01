@@ -351,9 +351,9 @@ attempting a forbidden call; a refusal task also asserts that the gate denied th
 that lets one through fails the run rather than the model.
 
 The published scoreboard is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
-[code.tara.vision/evals](https://code.tara.vision/evals)): one ranked board per machine it was measured on,
-then the same results by RAM tier. Every run also records tokens per second and the loaded model's memory.
-Run the suite against your own Ollama:
+[code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Every run also
+records tokens per second and the loaded model's memory, and `--hardware` names the machine so the report
+can rank models per machine. Run the suite against your own Ollama:
 
 ```bash
 taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine"
