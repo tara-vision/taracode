@@ -69,6 +69,7 @@ type Server struct {
 	Turns    []Turn
 	Models   []ModelSpec
 	Loaded   []LoadedSpec
+	PsStatus int // a status other than 0 or 200 makes /api/ps answer an error body
 	Version  string
 	Requests []RecordedRequest
 	Unloaded []string
@@ -225,6 +226,13 @@ func (s *Server) show(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ps(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
+	if s.PsStatus != 0 && s.PsStatus != http.StatusOK {
+		// The body names an address and a home path on purpose: a caller must publish neither.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(s.PsStatus)
+		_, _ = fmt.Fprint(w, `{"error":"ps failed at http://10.1.2.3:11434 reading /home/ollama/.ollama"}`)
+		return
+	}
 	models := make([]map[string]any, 0, len(s.Loaded))
 	for _, m := range s.Loaded {
 		size := m.Size

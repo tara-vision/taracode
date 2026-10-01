@@ -284,11 +284,17 @@ func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
 	if _, err := evals.WriteResults(results, r); err != nil {
 		t.Fatal(err)
 	}
+	unchecked := r // a labelled result the engine described nothing for: ranked, but its fit was never checked
+	unchecked.Model, unchecked.Engine = "qwen3.5:9b", nil
+	if _, err := evals.WriteResults(results, unchecked); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	if err := runEvalReport(results, outDir, t.TempDir(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "board NVIDIA RTX 5090 (32 GB): 1 ranked, 0 did not fit") {
+	want := "board NVIDIA RTX 5090 (32 GB): 2 ranked (1 without memory data), 0 did not fit, 0 on part of the corpus"
+	if !strings.Contains(out.String(), want) {
 		t.Fatalf("output %q", out.String())
 	}
 	md, err := os.ReadFile(filepath.Join(outDir, "scoreboard.md"))

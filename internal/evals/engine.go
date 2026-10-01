@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -27,21 +28,46 @@ type EngineInfo struct {
 	Digest        string `json:"digest,omitempty"`
 }
 
-// CleanHardware trims a run's hardware label and refuses one that is longer than MaxHardwareLabel
-// characters or is not a single line of printable characters. The label is the operator's own
-// description of the machine ("NVIDIA RTX 5090 (32 GB)"): the engine does not name its GPU. It is
-// public, like the host label, so it must never be a host name.
+// CleanHardware trims a run's hardware label, collapses its inner runs of spaces (so one machine is
+// one board), and refuses a label that is not valid UTF-8, is not a single line of printable
+// characters, is longer than MaxHardwareLabel characters, or carries a URL or an IP address. The
+// label is the operator's own description of the machine ("NVIDIA RTX 5090 (32 GB)"): the engine
+// does not name its GPU. It is public, like the host label, so it describes the machine and never
+// addresses it.
 func CleanHardware(label string) (string, error) {
-	label = strings.TrimSpace(label)
-	if utf8.RuneCountInString(label) > MaxHardwareLabel {
-		return "", fmt.Errorf("the hardware label is longer than %d characters", MaxHardwareLabel)
+	if !utf8.ValidString(label) {
+		return "", errors.New("the hardware label is not valid UTF-8")
 	}
+	label = strings.TrimSpace(label)
 	for _, r := range label {
 		if !unicode.IsPrint(r) {
 			return "", errors.New("the hardware label must be one line of printable characters")
 		}
 	}
+	label = strings.Join(strings.Fields(label), " ")
+	if utf8.RuneCountInString(label) > MaxHardwareLabel {
+		return "", fmt.Errorf("the hardware label is longer than %d characters", MaxHardwareLabel)
+	}
+	if strings.Contains(label, "://") || ipLiteral.MatchString(label) {
+		return "", errors.New("the hardware label describes the machine, it must not address it: no URL, no IP address")
+	}
 	return label, nil
+}
+
+// engineToken is what a quantization or a parameter size may look like in a results file. These
+// strings come from the engine and are published, so one that looks like anything else is dropped
+// (ruling P3-R45: a results file never carries an engine address or a host path).
+var engineToken = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
+
+// hexDigest is a model digest once the sha256: prefix is gone.
+var hexDigest = regexp.MustCompile(`^[0-9a-fA-F]+$`)
+
+// cleanToken is s when it is a plain engine token, else "".
+func cleanToken(s string) string {
+	if engineToken.MatchString(s) {
+		return s
+	}
+	return ""
 }
 
 // engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
@@ -67,8 +93,8 @@ func engineInfo(ctx context.Context, opts RunOptions) (*EngineInfo, error) {
 		}
 		return &EngineInfo{
 			SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
-			ContextLength: m.ContextLength, Quantization: m.Quantization, ParameterSize: m.ParameterSize,
-			Digest: shortDigest(m.Digest),
+			ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
+			ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
 		}, nil
 	}
 	return nil, fmt.Errorf("the engine does not list %s as loaded", opts.Model)
@@ -89,7 +115,7 @@ func loadedEngine(ctx context.Context, opts RunOptions) *EngineInfo {
 // percentage rounded down, so a model that is almost entirely on the GPU never reads as fitting.
 func gpuPercent(size, vram int64) int {
 	switch {
-	case size <= 0:
+	case size <= 0 || vram <= 0:
 		return 0
 	case vram >= size:
 		return 100
@@ -97,20 +123,28 @@ func gpuPercent(size, vram int64) int {
 	return int(vram * 100 / size)
 }
 
-// shortDigest is the first twelve hex characters of a model digest, without the sha256: prefix.
+// shortDigest is the first twelve hex characters of a model digest, without the sha256: prefix; ""
+// when what the engine sent is not hex.
 func shortDigest(digest string) string {
 	digest = strings.TrimPrefix(digest, "sha256:")
+	if !hexDigest.MatchString(digest) {
+		return ""
+	}
 	if len(digest) > 12 {
 		return digest[:12]
 	}
 	return digest
 }
 
-// generationRate is the completion tokens of every task over the generation time of every task, as
-// the engine reported both; 0 when it reported no generation time.
+// generationRate is the completion tokens over the generation time of every task the engine timed,
+// as it reported both; 0 when it timed none. A task with tokens and no time is left out, so its
+// tokens are never divided by the other tasks' time.
 func generationRate(results []TaskResult) float64 {
 	var tokens, ms float64
 	for _, r := range results {
+		if r.EvalMs <= 0 {
+			continue
+		}
 		tokens += float64(r.CompletionTokens)
 		ms += float64(r.EvalMs)
 	}

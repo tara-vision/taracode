@@ -147,3 +147,19 @@ func TestFinalChunkCarriesDurationsAndPsCarriesDetails(t *testing.T) {
 		t.Fatalf("ps entry %v", m)
 	}
 }
+
+// TestPsStatusAnswersAnError: a test can make the fake fail /api/ps the way a broken engine would.
+func TestPsStatusAnswersAnError(t *testing.T) {
+	srv := New(t)
+	srv.PsStatus = http.StatusInternalServerError
+	resp, err := http.Get(srv.URL + "/api/ps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if resp.StatusCode != http.StatusInternalServerError || body["error"] == "" || body["error"] == nil {
+		t.Fatalf("status %d, body %v", resp.StatusCode, body)
+	}
+}

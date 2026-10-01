@@ -28,8 +28,10 @@ type TierBoard struct {
 	Rows []Row  `json:"rows"`
 }
 
-// Row is one model's line. The fields after Date are empty for a result that has no hardware label,
-// no engine block or no timings, and are then left out of the JSON.
+// Row is one model's line. Tier, Runs, Tasks and SuiteWallS are set for every result, so the JSON of
+// a board built from older results gains those keys too (readers pick keys by name). Hardware, the
+// rate and the memory fields are empty for a result that has no label, no timings or no engine
+// block, and are then left out of the JSON.
 type Row struct {
 	Model           string                 `json:"model"`
 	Default         bool                   `json:"default"`
@@ -45,6 +47,7 @@ type Row struct {
 	Think           string                 `json:"think"`
 	Date            string                 `json:"date"`
 	Runs            int                    `json:"runs,omitempty"`
+	Tasks           int                    `json:"tasks,omitempty"` // tasks the result covers
 	Hardware        string                 `json:"hardware,omitempty"`
 	TokensPerS      float64                `json:"tokens_per_s,omitempty"`
 	SuiteWallS      float64                `json:"suite_wall_s,omitempty"` // the task wall times added up
@@ -71,7 +74,7 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		FixtureMissRate: r.Summary.FixtureMissRate,
 		ByArea:          byArea,
 		Taracode:        r.Taracode, Ollama: r.Ollama, Think: r.Think, Date: r.Date,
-		Runs: r.Runs, Hardware: r.Hardware, TokensPerS: r.Summary.TokensPerS,
+		Runs: r.Runs, Tasks: len(r.Tasks), Hardware: r.Hardware, TokensPerS: r.Summary.TokensPerS,
 		SuiteWallS: round1(r.Summary.MeanWallMs * float64(len(r.Tasks)) / 1000),
 	}
 	if e := r.Engine; e != nil {
@@ -124,7 +127,7 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 		byTier[tier] = append(byTier[tier], row)
 		allRows = append(allRows, row)
 	}
-	sb.Boards = buildBoards(allRows)
+	sb.Boards = buildBoards(allRows, corpusTasks)
 	for tier, rows := range byTier {
 		sort.Slice(rows, func(i, j int) bool {
 			if rows[i].MeanScore != rows[j].MeanScore {
@@ -189,7 +192,7 @@ func (s Scoreboard) Markdown() string {
 	fmt.Fprintf(&b, "Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode eval report`. "+
 		"Results live in `docs/evals/results/`.\n")
 	for _, board := range s.Boards {
-		b.WriteString(board.markdown())
+		b.WriteString(board.markdown(s.CorpusTasks))
 	}
 	for _, tier := range s.Tiers {
 		fmt.Fprintf(&b, "\n## %s\n\n", tierTitle(tier.Tier))
@@ -200,7 +203,7 @@ func (s Scoreboard) Markdown() string {
 		b.WriteString(" Mean iterations | Mean wall | Misses | Ollama | Date |\n")
 		b.WriteString("|---|---|---|" + strings.Repeat("---|", len(areaOrder)) + "---|---|---|---|---|\n")
 		for _, r := range tier.Rows {
-			name := r.Model
+			name := mdText(r.Model)
 			if r.Default {
 				name += " (default)"
 			}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -277,5 +278,40 @@ func TestLoadedReportsSizeQuantizationAndDigest(t *testing.T) {
 	}
 	if loaded[2].Size != 1_000_000_000 { // a spec with no Size reports its SizeVRAM as the size
 		t.Errorf("spec without a size %+v", loaded[2])
+	}
+}
+
+// TestChatSurvivesOddDurationValues: a timing is measurement metadata, so a server that sends a float
+// or a string for it still gets its reply through, the float truncated and the string read as zero.
+func TestChatSurvivesOddDurationValues(t *testing.T) {
+	const final = `{"model":"m","message":{"role":"assistant","content":"ok"},"done":true,"done_reason":"stop",` +
+		`"prompt_eval_count":5,"eval_count":2,"prompt_eval_duration":1.5e8,"eval_duration":"oops"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(final + "\n"))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, http.DefaultClient)
+	for _, onEvent := range []func(llm.Event) error{nil, func(llm.Event) error { return nil }} {
+		res, err := c.Chat(context.Background(), llm.Request{Model: "m"}, onEvent)
+		if err != nil {
+			t.Fatalf("stream=%v: %v", onEvent != nil, err)
+		}
+		if res.Content != "ok" || res.Usage.PromptDuration != 150*time.Millisecond || res.Usage.EvalDuration != 0 ||
+			res.Usage.CompletionTokens != 2 {
+			t.Fatalf("stream=%v: %+v", onEvent != nil, res)
+		}
+	}
+}
+
+func TestNanosDecodesLeniently(t *testing.T) {
+	cases := map[string]time.Duration{
+		`123456789`: 123456789, `1.2e8`: 120000000, `123.9`: 123, `0`: 0,
+		`"x"`: 0, `-5`: 0, `null`: 0, `1e30`: 0, `{}`: 0, `true`: 0,
+	}
+	for in, want := range cases {
+		var n nanos
+		if err := json.Unmarshal([]byte(in), &n); err != nil || time.Duration(n) != want {
+			t.Errorf("%s decoded to %d (err %v), want %d", in, n, err, want)
+		}
 	}
 }

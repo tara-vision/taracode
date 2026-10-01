@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -98,7 +99,13 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 		{"one byte short of the GPU",
 			[]ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 10_000_000_000, SizeVRAM: 9_999_999_999}},
 			&EngineInfo{SizeBytes: 10_000_000_000, VRAMBytes: 9_999_999_999, GPUPercent: 99, ContextLength: 32768}, false},
+		{"odd engine strings are dropped, not published",
+			[]ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000, SizeVRAM: 9_300_000_000,
+				Quantization: "Q4 | at http://10.1.2.3:11434", ParameterSize: "11.9B", Digest: "sha256:not-hex-at-all"}},
+			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
+				ParameterSize: "11.9B"}, false},
 		{"another model is loaded", []ollamatest.LoadedSpec{{Name: "other:1b", Size: 1, SizeVRAM: 1}}, nil, true},
+		{"the engine reports no size", []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768}}, nil, true},
 		{"nothing is loaded", nil, nil, true},
 	}
 	for _, c := range cases {
@@ -119,7 +126,55 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 			if warned := strings.Contains(out.String(), "warning: no engine block"); warned != c.warning {
 				t.Fatalf("warning=%v, want %v: %q", warned, c.warning, out.String())
 			}
+			if c.want != nil { // the run's last line says what the model takes and where it sits
+				memory := fmt.Sprintf(", %.1f GB (%d%% GPU)", float64(c.want.SizeBytes)/1e9, c.want.GPUPercent)
+				if !strings.Contains(out.String(), memory) {
+					t.Fatalf("the last line lacks %q: %q", memory, out.String())
+				}
+			}
 		})
+	}
+}
+
+// TestRunSurvivesAFailingEngineCall: when the engine cannot describe its loaded models, the run goes
+// on without the block, warns once on the terminal, and writes nothing of the engine's error into
+// the results.
+func TestRunSurvivesAFailingEngineCall(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
+	srv.PsStatus = 500
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The task still ran to its end and was scored: the failed engine call cost nothing but the block.
+	if res.Engine != nil || strings.Count(out.String(), "warning: no engine block") != 1 ||
+		len(res.Tasks) != 1 || res.Tasks[0].Error != "" || res.Tasks[0].Answer != 1 {
+		t.Fatalf("engine %+v, output %q, tasks %+v", res.Engine, out.String(), res.Tasks)
+	}
+	data, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"10.1.2.3", "/home/ollama", srv.URL} {
+		if strings.Contains(string(data), leak) {
+			t.Errorf("the results carry %q from the engine's error: %s", leak, data)
+		}
+	}
+}
+
+// TestGenerationRateSkipsTasksWithNoEngineTime: tokens of a task the engine timed nothing for must
+// not be divided by the other tasks' time.
+func TestGenerationRateSkipsTasksWithNoEngineTime(t *testing.T) {
+	rows := []TaskResult{{CompletionTokens: 1000, EvalMs: 10_000}, {CompletionTokens: 1000}}
+	if got := generationRate(rows); got != 100 {
+		t.Fatalf("rate %v, want 100", got)
+	}
+	if got := generationRate([]TaskResult{{CompletionTokens: 1000}}); got != 0 {
+		t.Fatalf("rate %v with no timed task, want 0", got)
 	}
 }
 
@@ -163,6 +218,7 @@ func TestGPUPercentIsAHundredOnlyWhenEverythingIsOnTheGPU(t *testing.T) {
 		{1000, 996, 99},
 		{40_000_000_000, 30_000_000_000, 75},
 		{10, 0, 0},
+		{10, -3, 0},
 		{10, 11, 100},
 		{0, 0, 0},
 	}
@@ -181,6 +237,11 @@ func TestCleanHardware(t *testing.T) {
 		{"  NVIDIA RTX 5090 (32 GB) ", "NVIDIA RTX 5090 (32 GB)", false},
 		{"", "", false},
 		{"Apple M4 Max, 64 GB", "Apple M4 Max, 64 GB", false},
+		{"NVIDIA   RTX  5090", "NVIDIA RTX 5090", false}, // inner runs of spaces collapse, so one machine is one board
+		{"RTX\xff5090", "", true},                        // not valid UTF-8
+		{"http://10.0.0.3:11434", "", true},              // a URL is an address, not a label
+		{"the box at 10.0.0.3", "", true},                // so is a bare IP address
+		{"gpu://somewhere", "", true},
 		{strings.Repeat("x", 60), strings.Repeat("x", 60), false},
 		{strings.Repeat("x", 61), "", true},
 		{"two\nlines", "", true},

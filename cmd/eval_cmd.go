@@ -99,7 +99,8 @@ func init() {
 	evalRunCmd.Flags().StringVar(&evalRun.hostLabel, "host-label", "lab",
 		"label for the results' host field (never a host name)")
 	evalRunCmd.Flags().StringVar(&evalRun.hardware, "hardware", "",
-		"label for the machine the engine runs on, e.g. \"NVIDIA RTX 5090 (32 GB)\" (never a host name)")
+		"label for the machine the engine runs on, at most 60 characters, e.g. \"NVIDIA RTX 5090 (32 GB)\" "+
+			"(never a host name or an address)")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
@@ -261,8 +262,8 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
 	}
 	for _, board := range sb.Boards {
-		_, _ = fmt.Fprintf(out, "board %s: %d ranked, %d did not fit\n",
-			board.Hardware, len(board.Rows), len(board.DidNotFit))
+		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without memory data), %d did not fit, %d on part of the corpus\n",
+			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
 	}
 	if checkDefaults {
 		for _, line := range sb.CheckDefaults(reg) {
