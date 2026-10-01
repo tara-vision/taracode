@@ -493,10 +493,10 @@ func captureStdout(t *testing.T, fn func()) string {
 		_, _ = io.Copy(&buf, reader)
 		done <- buf.String()
 	}()
-
-	fn()
-
-	os.Stdout = original
+	func() {
+		defer func() { os.Stdout = original }() // also when fn fails the test
+		fn()
+	}()
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
