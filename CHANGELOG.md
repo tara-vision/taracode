@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-10-01
+
+### Changed
+- Tests cover every package: statement coverage goes from 62.8% to 98.9%. No behaviour changes; 3.2.3
+  does what 3.2.2 does.
+- The test suite runs without the network: the four live search tests run only when
+  `TARACODE_LIVE_TESTS` is set.
+
 ## [3.2.2] - 2026-10-01
 
 ### Security
@@ -695,7 +703,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.3...HEAD
+
+[3.2.3]: https://github.com/tara-vision/taracode/compare/v3.2.2...v3.2.3
 
 [3.2.2]: https://github.com/tara-vision/taracode/compare/v3.2.1...v3.2.2
 
