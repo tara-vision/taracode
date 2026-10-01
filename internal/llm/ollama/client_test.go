@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -217,5 +218,64 @@ func TestChatContextCancel(t *testing.T) {
 	cancel()
 	if _, err := c.Chat(ctx, llm.Request{Model: "m"}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+// TestChatReportsTheEngineDurations: the final chunk's prompt_eval_duration and eval_duration reach
+// Usage on the streamed and on the non-streamed path.
+func TestChatReportsTheEngineDurations(t *testing.T) {
+	want := llm.Usage{PromptTokens: 20, CompletionTokens: 7,
+		PromptDuration: 150 * time.Millisecond, EvalDuration: 70 * time.Millisecond}
+	for _, stream := range []bool{true, false} {
+		srv, c := newClient(t)
+		srv.Turns = []ollamatest.Turn{{Content: "ok", PromptTokens: 20, CompletionTokens: 7,
+			PromptEvalDuration: 150 * time.Millisecond, EvalDuration: 70 * time.Millisecond}}
+		var streamed *llm.Usage
+		var onEvent func(llm.Event) error
+		if stream {
+			onEvent = func(e llm.Event) error {
+				if e.Kind == llm.EventUsage {
+					streamed = e.Usage
+				}
+				return nil
+			}
+		}
+		res, err := c.Chat(context.Background(), llm.Request{Model: "m"}, onEvent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Usage != want {
+			t.Errorf("stream=%v: usage %+v, want %+v", stream, res.Usage, want)
+		}
+		if stream && (streamed == nil || *streamed != want) {
+			t.Errorf("streamed usage %+v, want %+v", streamed, want)
+		}
+	}
+}
+
+// TestLoadedReportsSizeQuantizationAndDigest: /api/ps says how much of a loaded model is on the GPU
+// and which weights it is.
+func TestLoadedReportsSizeQuantizationAndDigest(t *testing.T) {
+	srv, c := newClient(t)
+	srv.Loaded = []ollamatest.LoadedSpec{
+		{Name: "glm-4.7-flash:latest", ContextLength: 32768, Size: 20_720_000_000, SizeVRAM: 20_720_000_000,
+			Quantization: "Q4_K_M", ParameterSize: "29.9B", Digest: "4475827791a2aaaabbbb"},
+		{Name: "big:70b", ContextLength: 32768, Size: 40_000_000_000, SizeVRAM: 30_000_000_000},
+		{Name: "legacy:1b", ContextLength: 4096, SizeVRAM: 1_000_000_000},
+	}
+	loaded, err := c.Loaded(context.Background())
+	if err != nil || len(loaded) != 3 {
+		t.Fatalf("loaded=%+v err=%v", loaded, err)
+	}
+	want := llm.LoadedModel{Name: "glm-4.7-flash:latest", ContextLength: 32768, Size: 20_720_000_000,
+		SizeVRAM: 20_720_000_000, Quantization: "Q4_K_M", ParameterSize: "29.9B", Digest: "4475827791a2aaaabbbb"}
+	if loaded[0] != want {
+		t.Errorf("first %+v, want %+v", loaded[0], want)
+	}
+	if loaded[1].Size != 40_000_000_000 || loaded[1].SizeVRAM != 30_000_000_000 {
+		t.Errorf("partly offloaded model %+v", loaded[1])
+	}
+	if loaded[2].Size != 1_000_000_000 { // a spec with no Size reports its SizeVRAM as the size
+		t.Errorf("spec without a size %+v", loaded[2])
 	}
 }

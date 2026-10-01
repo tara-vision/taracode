@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -49,12 +50,24 @@ type chatRequest struct {
 }
 
 type chatChunk struct {
-	Message         message `json:"message"`
-	Done            bool    `json:"done"`
-	DoneReason      string  `json:"done_reason"`
-	PromptEvalCount int     `json:"prompt_eval_count"`
-	EvalCount       int     `json:"eval_count"`
-	Error           string  `json:"error"`
+	Message            message `json:"message"`
+	Done               bool    `json:"done"`
+	DoneReason         string  `json:"done_reason"`
+	PromptEvalCount    int     `json:"prompt_eval_count"`
+	EvalCount          int     `json:"eval_count"`
+	PromptEvalDuration int64   `json:"prompt_eval_duration"` // nanoseconds
+	EvalDuration       int64   `json:"eval_duration"`        // nanoseconds
+	Error              string  `json:"error"`
+}
+
+// usage is the final chunk's token counts and timings.
+func (c chatChunk) usage() llm.Usage {
+	return llm.Usage{
+		PromptTokens:     c.PromptEvalCount,
+		CompletionTokens: c.EvalCount,
+		PromptDuration:   time.Duration(c.PromptEvalDuration),
+		EvalDuration:     time.Duration(c.EvalDuration),
+	}
 }
 
 // toWire converts a request into Ollama's JSON shape.

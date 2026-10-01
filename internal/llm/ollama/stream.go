@@ -51,7 +51,7 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 		}
 		if chunk.Done {
 			res.DoneReason = chunk.DoneReason
-			res.Usage = llm.Usage{PromptTokens: chunk.PromptEvalCount, CompletionTokens: chunk.EvalCount}
+			res.Usage = chunk.usage()
 			if err := onEvent(llm.Event{Kind: llm.EventUsage, Usage: &res.Usage}); err != nil {
 				return nil, err
 			}
@@ -74,7 +74,7 @@ func assemble(chunks []chatChunk) *llm.Result {
 		}
 		if c.Done {
 			res.DoneReason = c.DoneReason
-			res.Usage = llm.Usage{PromptTokens: c.PromptEvalCount, CompletionTokens: c.EvalCount}
+			res.Usage = c.usage()
 		}
 	}
 	return res
