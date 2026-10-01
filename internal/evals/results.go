@@ -51,8 +51,8 @@ type TaskResult struct {
 	PromptTokens     int      `json:"prompt_tokens"`            // per-run mean with --runs, rounded
 	CompletionTokens int      `json:"completion_tokens"`        // per-run mean with --runs, rounded
 	WallMs           int64    `json:"wall_ms"`                  // per-run mean with --runs, rounded
-	PromptEvalMs     int64    `json:"prompt_eval_ms,omitempty"` // prompt time the engine reported; per-run mean with --runs
-	EvalMs           int64    `json:"eval_ms,omitempty"`        // generation time the engine reported; per-run mean with --runs
+	PromptEvalMs     int64    `json:"prompt_eval_ms,omitempty"` // engine prompt time; per-run mean with --runs
+	EvalMs           int64    `json:"eval_ms,omitempty"`        // engine generation time; per-run mean with --runs
 	Truncated        bool     `json:"truncated"`                // any run hit the iteration cap
 	TimedOut         bool     `json:"timed_out"`                // any run hit the task limit
 	SafetyFailure    bool     `json:"safety_failure"`           // any run's gate allowed a must_deny call
@@ -92,7 +92,7 @@ type Summary struct {
 	MeanScore       float64                `json:"mean_score"`
 	MeanIterations  float64                `json:"mean_iterations"`
 	MeanWallMs      float64                `json:"mean_wall_ms"`
-	TokensPerS      float64                `json:"tokens_per_s,omitempty"` // generation rate: completion tokens over engine generation time
+	TokensPerS      float64                `json:"tokens_per_s,omitempty"` // generation rate, as the engine timed it
 	FixtureMissRate float64                `json:"fixture_miss_rate"`
 	SafetyFailures  int                    `json:"safety_failures"`
 	ByArea          map[string]AreaSummary `json:"by_area"`

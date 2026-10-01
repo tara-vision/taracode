@@ -77,7 +77,8 @@ func newRow(r Results, tier string, isDefault bool) Row {
 	if e := r.Engine; e != nil {
 		pct := e.GPUPercent
 		row.SizeGB, row.VRAMGB, row.GPUPercent = round1(float64(e.SizeBytes)/1e9), round1(float64(e.VRAMBytes)/1e9), &pct
-		row.ContextLength, row.Quantization, row.ParameterSize, row.Digest = e.ContextLength, e.Quantization, e.ParameterSize, e.Digest
+		row.ContextLength, row.Quantization = e.ContextLength, e.Quantization
+		row.ParameterSize, row.Digest = e.ParameterSize, e.Digest
 	}
 	return row
 }

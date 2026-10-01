@@ -43,6 +43,15 @@ func boardModels(rows []Row) []string {
 	return out
 }
 
+// glmRowWrong is TestBuildScoreboardRanksAHardwareBoard's check of one whole row, split out to keep
+// the test under the gocyclo threshold.
+func glmRowWrong(r Row) bool {
+	return r.Tier != "32" || !r.Default || r.TokensPerS != 140 || r.VRAMGB != 20.7 || r.SizeGB != 20.7 ||
+		r.GPUPercent == nil || *r.GPUPercent != 100 || r.ContextLength != 32768 || r.Quantization != "Q4_K_M" ||
+		r.ParameterSize != "29.9B" || r.Digest != "4475827791a2" || r.Runs != 1 || r.SuiteWallS != 10 ||
+		r.Hardware != testHardware
+}
+
 func TestBuildScoreboardRanksAHardwareBoard(t *testing.T) {
 	reg, err := models.Load()
 	if err != nil {
@@ -62,11 +71,7 @@ func TestBuildScoreboardRanksAHardwareBoard(t *testing.T) {
 	if dnf := board.DidNotFit; len(dnf) != 1 || dnf[0].Model != "huge:70b" || *dnf[0].GPUPercent != 75 || dnf[0].SizeGB != 44 {
 		t.Fatalf("did not fit %+v", dnf)
 	}
-	glm := board.Rows[1]
-	if glm.Tier != "32" || !glm.Default || glm.TokensPerS != 140 || glm.VRAMGB != 20.7 || glm.SizeGB != 20.7 ||
-		*glm.GPUPercent != 100 || glm.ContextLength != 32768 || glm.Quantization != "Q4_K_M" ||
-		glm.ParameterSize != "29.9B" || glm.Digest != "4475827791a2" || glm.Runs != 1 || glm.SuiteWallS != 10 ||
-		glm.Hardware != testHardware {
+	if glm := board.Rows[1]; glmRowWrong(glm) {
 		t.Fatalf("row %+v", glm)
 	}
 	if e := board.Rows[4]; e.GPUPercent != nil || e.VRAMGB != 0 || e.SizeGB != 0 {

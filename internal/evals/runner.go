@@ -22,7 +22,7 @@ type RunOptions struct {
 	Runs                        int              // repetitions per task, default 1
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
-	Hardware                    string           // the results' hardware field: the operator's label for the machine, "" = none
+	Hardware                    string           // the results' hardware field, the operator's label; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
