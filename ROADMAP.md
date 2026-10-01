@@ -28,7 +28,7 @@ recommendations, and a warning when Ollama's context window is smaller than the 
    in `docs/evals/scoreboard.md` and on code.tara.vision, refreshed every release. Carries two Phase 2 safety
    follow-ups forward: the shell-classifier differential harness (`make classify-diff`) and the MCP trust
    switch (`policy.mcp`).
-4. **Runbooks, MCP server and skills pack** (3.2 and 3.3) - ten built-in runbooks on the existing checkpoint engine,
+4. **Runbooks, MCP server and skills pack** (3.3 and 3.4) - ten built-in runbooks on the existing checkpoint engine,
    `taracode mcp serve` for Claude Code, OpenCode, Codex and Pi users, and skills in the Agent Skills format.
 5. **Removed in 3.0** - the seven-agent orchestration system, `/watch`, the security mode and the JSON-in-content
    tool fallback. Their jobs move to modes, policy and runbooks.
@@ -39,7 +39,13 @@ Fifteen tools and one host. `get_datetime` retired: `date` is on the shell tool'
 system prompt carries today's date. The v2 multi-host pool, its `hosts:` config and `/hosts` are gone: taracode
 talks to the one Ollama host in `host:`. 3.1.1 taught the cloud tool the three CLIs' command shapes; 3.1.2
 re-ran the scoreboard on the line. 3.1.2 stays the stable release while the line is used and tested in depth.
-Runbooks, the MCP server and the skills pack move to 3.2 and 3.3.
+Runbooks, the MCP server and the skills pack move to 3.3 and 3.4.
+
+## v3.2 (2026-10-01, the hardware board)
+
+Every eval run measures speed and memory next to the score: tokens per second from the engine's own
+timings, and the loaded model's size with the share of it on the GPU. A run can name the machine it was
+measured on, and the report ranks every model per machine above the RAM-tier tables.
 
 ## Later
 

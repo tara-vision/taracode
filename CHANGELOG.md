@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-01
+
+### Added
+- **The hardware board.** `taracode eval run --hardware "<label>"` writes the machine a run was measured on
+  into the results, and `taracode eval report` builds one ranked board per label above the RAM-tier tables:
+  pass rate first, then mean score, then tokens per second. A model that was not entirely on the GPU is
+  listed as "did not fit" instead of being ranked.
+- **Speed and memory in every eval run.** A run records the engine's own generation timings per task
+  (`eval_ms`, `prompt_eval_ms`) and one generation rate per model (`summary.tokens_per_s`), and reads the
+  loaded model from the engine after the warm-up: its size at the context window taracode asks for, the
+  share of it on the GPU, the quantization and the model digest (`engine`). A results file with no
+  timings, no engine block and no label has the same shape as before, and older files keep loading.
+- `LAB_HARDWARE` for `make eval-lab` and `make scoreboard`.
+
+### Changed
+- **Roadmap.** 3.2 is the hardware board; runbooks, the MCP server and the skills pack follow as 3.3 and
+  3.4.
+
 ## [3.1.2] - 2026-09-25
 
 ### Changed
