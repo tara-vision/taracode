@@ -73,7 +73,8 @@ func cleanToken(s string) string {
 // engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
 // for, or that name with ":latest" (ruling P3-R74). It fails when the engine does not answer, does
 // not list the model as loaded, or reports no size for it. others is how many other models the
-// engine has loaded, -1 when the engine did not say: a GPU measurement would include them.
+// engine holds on the GPU, -1 when the engine did not say: a GPU measurement would include them. A
+// model the engine keeps entirely in system memory takes nothing on the GPU and is not counted.
 func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others int, err error) {
 	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
@@ -85,20 +86,25 @@ func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others 
 	if err != nil {
 		return nil, -1, err
 	}
+	err = fmt.Errorf("the engine does not list %s as loaded (if it has another name there, use the one "+
+		"`ollama list` prints)", opts.Model)
 	for _, m := range loaded {
-		if m.Name != opts.Model && m.Name != opts.Model+":latest" {
-			continue
+		switch {
+		case m.Name != opts.Model && m.Name != opts.Model+":latest":
+			if m.SizeVRAM > 0 {
+				others++
+			}
+		case m.Size <= 0:
+			err = fmt.Errorf("the engine reports no size for %s", m.Name)
+		default:
+			info, err = &EngineInfo{
+				SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
+				ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
+				ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
+			}, nil
 		}
-		if m.Size <= 0 {
-			return nil, len(loaded) - 1, fmt.Errorf("the engine reports no size for %s", m.Name)
-		}
-		return &EngineInfo{
-			SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
-			ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
-			ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
-		}, len(loaded) - 1, nil
 	}
-	return nil, len(loaded), fmt.Errorf("the engine does not list %s as loaded", opts.Model)
+	return info, others, err
 }
 
 // loadedEngine is engineInfo for Run. The block is measurement metadata, so a failure is one warning

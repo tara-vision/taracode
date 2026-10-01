@@ -188,13 +188,15 @@ itself, which is the figure a board shows.
   NVIDIA card that is `nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits` (one line
   per process, added up), behind `ssh -o BatchMode=yes <engine host>` when the engine runs on another
   machine. The command is yours: it runs through the shell on the machine you start taracode on, in your
-  own environment, has fifteen seconds, and must print whole numbers of MiB and nothing else. It has no
-  terminal, so it cannot prompt: no password, no host-key question (`ssh -o BatchMode=yes`, `sudo -n`).
-  Nothing that keeps the figure from being a measurement fails the run; each costs one warning and leaves
-  the results without one: a probe that fails, another model loaded on the engine (the GPU's figure would
-  include it), or a figure below half of the engine's own estimate (a probe that asks another machine,
-  another GPU, or prints another unit). A run with a probe unloads its model when it ends, so runs can
-  follow each other.
+  own environment, has fifteen seconds, and must print whole numbers of MiB and nothing else. It cannot
+  prompt: no password, no host-key question (`ssh -o BatchMode=yes`, `sudo -n`). Nothing that keeps the
+  figure from being a measurement fails the run; each costs one warning and leaves the results without
+  one: a probe that fails, an engine that does not list the model as loaded, another model the engine
+  holds on the GPU (the figure would include it), or a figure below half of the engine's own estimate (a
+  probe that asks another machine, another GPU, or prints another unit). A run with a probe unloads its
+  model when it ends, so runs can follow each other. Measure with nothing else using the GPU: the guard
+  sees only this engine's models, and another engine, a notebook or a desktop session is inside the
+  figure.
 - **Reported memory** (`engine`) is what the engine says about the loaded model, read once at the same
   moment: its size, the bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when
   the engine places the whole model on the GPU; anything less is rounded down, and that is what decides
@@ -213,10 +215,10 @@ newest results carry that label, ranked by pass rate, then mean score, then toke
 of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
 not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
 such as a `--tasks` subset. A result with no `engine` block stays ranked, since nothing says it did not
-fit, and the report says how many rows that is ("without engine data"). The VRAM column is in GiB, the unit a card's size is given in (a
-24 GB card holds 24 GiB): the measured figure where the run has one, otherwise the engine's estimate
-marked with `~`. The "did not fit" lines keep the engine's own figures, named as such, in decimal
-gigabytes, the unit `ollama ps` prints.
+fit, and the report says how many rows that is ("without engine data"). The VRAM column is in GiB, the
+unit a card's size is given in (a 24 GB card holds 24 GiB): the measured figure where the run has one,
+otherwise the engine's estimate marked with `~`. The "did not fit" lines keep the engine's own figures,
+named as such, in decimal gigabytes, the unit `ollama ps` prints.
 
 One model has one row: its newest results. Boards from several machines for the same model are not
 supported yet, so a results file from another machine would replace the published row.

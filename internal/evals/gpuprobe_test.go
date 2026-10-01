@@ -238,25 +238,71 @@ func TestParseProbeNeverRepeatsWhatTheProbePrinted(t *testing.T) {
 	}
 }
 
-// TestRunNamesTheMeasuredMemoryAloneWhenTheEngineDescribesNothing: the probe does not depend on the
-// engine's own report.
-func TestRunNamesTheMeasuredMemoryAloneWhenTheEngineDescribesNothing(t *testing.T) {
+// TestRunMeasuresOnlyAModelTheEngineListsAsLoaded: when the engine does not describe the model as
+// loaded (nothing is listed, or it is listed under another name), what the GPU holds cannot be tied
+// to the model, so nothing is recorded and the probe is not run. The warning says what to do about a
+// name the engine does not know, and never calls the run's own model "another model".
+func TestRunMeasuresOnlyAModelTheEngineListsAsLoaded(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer}) // nothing listed as loaded
-	var out bytes.Buffer
+	for name, loaded := range map[string][]ollamatest.LoadedSpec{
+		"nothing is listed":         nil,
+		"listed under another name": {{Name: "library/gemma4:12b", Size: 9_300_000_000, SizeVRAM: 9_300_000_000}},
+	} {
+		srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
+		srv.Loaded = loaded
+		marker := filepath.Join(t.TempDir(), "probed")
+		var out bytes.Buffer
+		opts := runOptions(srv, "")
+		opts.Out = &out
+		opts.GPUProbe = `: > "` + marker + `"; echo 23676`
+		res, err := Run(context.Background(), tasks, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Engine != nil || res.GPUMemoryMiB != 0 {
+			t.Errorf("%s: engine %+v, measured %d", name, res.Engine, res.GPUMemoryMiB)
+		}
+		if _, statErr := os.Stat(marker); statErr == nil {
+			t.Errorf("%s: the probe ran", name)
+		}
+		for _, want := range []string{
+			"warning: no engine block in the results: the engine does not list gemma4:12b as loaded",
+			"use the one `ollama list` prints",
+			"warning: no measured GPU memory in the results: the engine did not describe gemma4:12b as loaded",
+		} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("%s: missing %q in %q", name, want, out.String())
+			}
+		}
+		if strings.Contains(out.String(), "other model") {
+			t.Errorf("%s: the run's own model is called another model: %q", name, out.String())
+		}
+	}
+}
+
+// TestSpeedAndMemoryNamesAMeasurementAlone: a results file can hold a measurement and no engine
+// block (an older run, a hand-kept file); the last line then names the measurement alone.
+func TestSpeedAndMemoryNamesAMeasurementAlone(t *testing.T) {
+	got := speedAndMemory(Results{GPUMemoryMiB: 23676, Summary: Summary{TokensPerS: 100}})
+	if got != ", 100 tok/s, 23.1 GiB on the GPU" {
+		t.Fatalf("speedAndMemory = %q", got)
+	}
+}
+
+// TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure: another model the engine holds entirely in system
+// memory (an embedding model, say) takes nothing on the GPU, so it does not stop the measurement.
+func TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := loadedGemma(t)
+	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "embed:1b", Size: 600_000_000, SizeVRAM: 0})
 	opts := runOptions(srv, "")
-	opts.Out = &out
 	opts.GPUProbe = "echo 23676"
 	res, err := Run(context.Background(), tasks, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Engine != nil || res.GPUMemoryMiB != 23676 {
-		t.Fatalf("engine %+v, measured %d", res.Engine, res.GPUMemoryMiB)
-	}
-	last := out.String()[strings.LastIndex(strings.TrimSpace(out.String()), "\n")+1:]
-	if !strings.HasSuffix(strings.TrimSpace(last), ", 23.1 GiB on the GPU") || strings.Contains(last, "engine reports") {
-		t.Fatalf("the last line: %q", last)
+	if res.GPUMemoryMiB != 23676 {
+		t.Fatalf("measured %d, want 23676", res.GPUMemoryMiB)
 	}
 }
 
@@ -376,7 +422,7 @@ func TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var out bytes.Buffer
-	got := measuredGPU(ctx, RunOptions{GPUProbe: "echo 5", Out: &out}, nil, 0)
+	got := measuredGPU(ctx, RunOptions{GPUProbe: "echo 5", Out: &out}, onGPU(), 0)
 	if got != 0 || out.Len() != 0 {
 		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
 	}
@@ -386,7 +432,8 @@ func TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled(t *testing.T) {
 func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
 	t.Setenv("PROBE_VALUE", "777")
 	var out bytes.Buffer
-	if got := measuredGPU(context.Background(), RunOptions{GPUProbe: `echo "$PROBE_VALUE"`, Out: &out}, nil, 0); got != 777 {
+	opts := RunOptions{GPUProbe: `echo "$PROBE_VALUE"`, Out: &out}
+	if got := measuredGPU(context.Background(), opts, &EngineInfo{VRAMBytes: 1 << 20}, 0); got != 777 {
 		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
 	}
 }

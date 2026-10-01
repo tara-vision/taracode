@@ -50,7 +50,7 @@ func (p *probeOutput) Write(b []byte) (int, error) {
 // flag, never anything a model or an engine sent. It runs in its own process group, which is killed
 // as a whole when the probe ends, when its time is up or when it prints too much. What it writes to
 // stderr is dropped and what it writes to stdout is never repeated, so a warning about it cannot
-// carry a host name or a path. It cannot prompt: it has no terminal of its own.
+// carry a host name or a path. It cannot prompt: it is not the terminal's foreground job.
 func probeGPU(ctx context.Context, command string, env []string) (int64, error) {
 	callCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -120,7 +120,9 @@ func (o RunOptions) probeEnv() []string {
 // measuredGPU is probeGPU for Run: the memory the GPU holds once the warm-up has loaded the model.
 // It is measurement metadata, so anything that keeps it from being one costs a warning on the
 // terminal and never the run:
-//   - another model is loaded on the engine (others > 0): the GPU's figure would include it;
+//   - the engine did not describe the model as loaded (engine is nil): what the GPU holds cannot be
+//     tied to the model, so the probe is not run;
+//   - another model is on the GPU (others > 0): the GPU's figure would include it;
 //   - the probe fails or prints something that is not a number of MiB;
 //   - the figure is less than half of the engine's own estimate for the model, which is what a probe
 //     that asks another machine, another GPU or prints another unit looks like.
@@ -134,6 +136,10 @@ func measuredGPU(ctx context.Context, opts RunOptions, engine *EngineInfo, other
 		_, _ = fmt.Fprintf(opts.Out, "warning: no measured GPU memory in the results: "+format+"\n", args...)
 		return 0
 	}
+	if engine == nil {
+		return warn("the engine did not describe %s as loaded (see the warning above), so what the GPU holds "+
+			"cannot be tied to it", opts.Model)
+	}
 	if others > 0 {
 		noun, verb := "models", "are"
 		if others == 1 {
@@ -146,7 +152,7 @@ func measuredGPU(ctx context.Context, opts RunOptions, engine *EngineInfo, other
 	if err != nil {
 		return warn("%v", err)
 	}
-	if engine != nil && mib*2 < engine.VRAMBytes/(1<<20) {
+	if mib*2 < engine.VRAMBytes/(1<<20) {
 		return warn("the probe says %d MiB, less than half of the engine's own estimate of %d MiB; "+
 			"check that it asks the engine's machine and GPU and prints MiB", mib, engine.VRAMBytes/(1<<20))
 	}

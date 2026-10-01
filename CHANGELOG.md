@@ -18,9 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each scoreboard row). The board's VRAM column shows that figure; a row that only has the engine's
   estimate is marked with `~`, and the board says which of the two it holds. Without the flag nothing is
   measured and every figure is a marked estimate.
-- A run with a probe records no measurement, and says why, when the engine has another model loaded, when
-  the probe fails, or when its figure is below half of the engine's own estimate. It unloads its model
-  when it ends, so the next run's probe finds an empty GPU.
+- A run with a probe records no measurement, and says why, when the engine does not list the model as
+  loaded, when it holds another model on the GPU, when the probe fails, or when its figure is below half
+  of the engine's own estimate. It unloads its model when it ends, so the next run's probe finds an empty
+  GPU.
 
 ### Changed
 - **VRAM is printed in GiB**, the unit a card's size is given in, instead of decimal gigabytes. The
