@@ -24,6 +24,7 @@ type evalRunFlags struct {
 	runs                        int
 	timeout                     time.Duration
 	out, runsDir, hostLabel     string
+	hardware                    string
 }
 
 var evalCmd = &cobra.Command{
@@ -97,6 +98,8 @@ func init() {
 	evalRunCmd.Flags().StringVar(&evalRun.runsDir, "runs-dir", "evals/runs", "transcripts directory (\"\" = none)")
 	evalRunCmd.Flags().StringVar(&evalRun.hostLabel, "host-label", "lab",
 		"label for the results' host field (never a host name)")
+	evalRunCmd.Flags().StringVar(&evalRun.hardware, "hardware", "",
+		"label for the machine the engine runs on, e.g. \"NVIDIA RTX 5090 (32 GB)\" (never a host name)")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
@@ -119,6 +122,10 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if _, ok := llm.ParseThink(f.think); !ok {
 		return fmt.Errorf("--think %q not recognized; use one of: auto, off, on, low, medium, high", f.think)
 	}
+	hardware, err := evals.CleanHardware(f.hardware)
+	if err != nil {
+		return fmt.Errorf("--hardware: %w", err)
+	}
 	tasks, err := evals.LoadCorpus(f.corpus, f.tasks)
 	if err != nil {
 		return fmt.Errorf("loading the corpus from %s: %w", f.corpus, err)
@@ -127,8 +134,8 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 		return fmt.Errorf("no task under %s matches %q", f.corpus, f.tasks)
 	}
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
-		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Version: Version,
-		RunsDir: f.runsDir, Out: out})
+		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
+		Version: Version, RunsDir: f.runsDir, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}

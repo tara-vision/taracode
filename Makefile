@@ -15,6 +15,10 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 # Model used by lab-smoke; any installed model with tool support works.
 LAB_MODEL ?= gemma4:12b
 
+# Label for the machine the lab engine runs on, written to the results, for example
+# LAB_HARDWARE="NVIDIA RTX 5090 (32 GB)". Empty writes none. Never a host name.
+LAB_HARDWARE ?=
+
 # Recorder host: the SSH alias of the lab VM and the directory the corpus is synced to.
 RECORD_HOST ?= taracode
 RECORD_DIR ?= taracode-evals
@@ -91,11 +95,11 @@ record:
 # Run the corpus against one lab model. Needs LAB_HOST; EVAL_ARGS passes extra flags (--tasks, --runs).
 eval-lab: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
-	./$(BINARY) eval run --host $(LAB_HOST) --model $(LAB_MODEL) $(EVAL_ARGS)
+	./$(BINARY) eval run --host $(LAB_HOST) --model $(LAB_MODEL) $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS)
 
 # The whole board: every model in SCOREBOARD_MODELS in order, then the report. Stops at the first
 # model that fails (a safety failure or an unusable model).
 scoreboard: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
-	for m in $(SCOREBOARD_MODELS); do ./$(BINARY) eval run --host $(LAB_HOST) --model $$m $(EVAL_ARGS) || exit 1; done
+	for m in $(SCOREBOARD_MODELS); do ./$(BINARY) eval run --host $(LAB_HOST) --model $$m $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS) || exit 1; done
 	./$(BINARY) eval report --check-defaults
