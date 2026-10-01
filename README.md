@@ -38,6 +38,8 @@
 - **Fifteen classified tools** - Every call is classified read or mutate from its arguments, not its name
 - **Redaction and an audit log** - Secrets are stripped from tool output before anything sees it; every
   mutation is recorded
+- **A public scoreboard** - Which local models can actually do DevOps work, measured on taracode's own
+  loop, with speed and memory per model
 - **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
 - **No Account Required** - Open source, just install and use
 
@@ -335,7 +337,8 @@ See [config.example.yaml](config.example.yaml) for all options.
 Phase 2 of the v3 plan (investigate and operate modes, the classified tools, the policy engine, redaction
 and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in 3.0.0-beta.1,
 and 3.0.0 made the line stable. 3.1.0 settled the tool set at fifteen and the connection at one Ollama host.
-Runbooks, the MCP server and the skills pack are next, as 3.2 and 3.3. See [ROADMAP.md](ROADMAP.md).
+3.2.0 added speed, memory and a board per machine to the evals. Runbooks, the MCP server and the skills pack
+are next, as 3.3 and 3.4. See [ROADMAP.md](ROADMAP.md).
 
 ## Evals and the scoreboard
 
@@ -347,12 +350,13 @@ uses. Each task scores 0.4 for the tool calls it expected, 0.5 for the answer an
 attempting a forbidden call; a refusal task also asserts that the gate denied the mutation, and a gate
 that lets one through fails the run rather than the model.
 
-The published scoreboard by RAM tier is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
-[code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Run the suite
-against your own Ollama:
+The published scoreboard is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
+[code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Every run also
+records tokens per second and the loaded model's memory, and `--hardware` names the machine so the report
+can rank models per machine. Run the suite against your own Ollama:
 
 ```bash
-taracode eval run --host http://localhost:11434 --model gemma4:12b
+taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine"
 taracode eval report
 ```
 

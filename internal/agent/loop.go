@@ -245,6 +245,8 @@ func (a *Assistant) completeWith(
 	a.turn.Completions++
 	a.turn.PromptTokens += res.Usage.PromptTokens
 	a.turn.CompletionTokens += res.Usage.CompletionTokens
+	a.turn.PromptDuration += res.Usage.PromptDuration
+	a.turn.EvalDuration += res.Usage.EvalDuration
 	return res, nil
 }
 

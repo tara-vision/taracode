@@ -94,6 +94,7 @@ func finishTask(
 		}
 	}
 	tr.PromptTokens, tr.CompletionTokens = turn.stats.PromptTokens, turn.stats.CompletionTokens
+	tr.PromptEvalMs, tr.EvalMs = turn.stats.PromptDuration.Milliseconds(), turn.stats.EvalDuration.Milliseconds()
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
 	tr.FixtureMisses = len(replay.Misses())
 	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), missNotes(replay)...), opts, t)

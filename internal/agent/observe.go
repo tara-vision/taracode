@@ -30,6 +30,8 @@ type TurnStats struct {
 	Denied           int // calls that never reached the tool: a gate refused them or the tool is unknown
 	PromptTokens     int
 	CompletionTokens int
+	PromptDuration   time.Duration // prompt processing time the engine reported, summed over the completions
+	EvalDuration     time.Duration // generation time the engine reported, summed over the completions
 	Wall             time.Duration
 	Truncated        bool // the turn stopped at the iteration cap
 }

@@ -3,8 +3,10 @@ package ollama
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -49,12 +51,40 @@ type chatRequest struct {
 }
 
 type chatChunk struct {
-	Message         message `json:"message"`
-	Done            bool    `json:"done"`
-	DoneReason      string  `json:"done_reason"`
-	PromptEvalCount int     `json:"prompt_eval_count"`
-	EvalCount       int     `json:"eval_count"`
-	Error           string  `json:"error"`
+	Message            message `json:"message"`
+	Done               bool    `json:"done"`
+	DoneReason         string  `json:"done_reason"`
+	PromptEvalCount    int     `json:"prompt_eval_count"`
+	EvalCount          int     `json:"eval_count"`
+	PromptEvalDuration nanos   `json:"prompt_eval_duration"`
+	EvalDuration       nanos   `json:"eval_duration"`
+	Error              string  `json:"error"`
+}
+
+// nanos is a duration in nanoseconds as the engine sends it. It decodes leniently, because a timing
+// is measurement metadata and must never fail a reply: a float is truncated, and anything that is
+// not a number in range reads as zero.
+type nanos int64
+
+// UnmarshalJSON implements json.Unmarshaler. It never returns an error.
+func (n *nanos) UnmarshalJSON(data []byte) error {
+	var f float64
+	if err := json.Unmarshal(data, &f); err != nil || f < 0 || f >= math.MaxInt64 {
+		*n = 0
+		return nil
+	}
+	*n = nanos(f)
+	return nil
+}
+
+// usage is the final chunk's token counts and timings.
+func (c chatChunk) usage() llm.Usage {
+	return llm.Usage{
+		PromptTokens:     c.PromptEvalCount,
+		CompletionTokens: c.EvalCount,
+		PromptDuration:   time.Duration(c.PromptEvalDuration),
+		EvalDuration:     time.Duration(c.EvalDuration),
+	}
 }
 
 // toWire converts a request into Ollama's JSON shape.

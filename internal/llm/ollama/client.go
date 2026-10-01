@@ -116,7 +116,13 @@ func (c *Client) Loaded(ctx context.Context) ([]llm.LoadedModel, error) {
 		Models []struct {
 			Name          string `json:"name"`
 			ContextLength int    `json:"context_length"`
+			Size          int64  `json:"size"`
 			SizeVRAM      int64  `json:"size_vram"`
+			Digest        string `json:"digest"`
+			Details       struct {
+				ParameterSize string `json:"parameter_size"`
+				Quantization  string `json:"quantization_level"`
+			} `json:"details"`
 		} `json:"models"`
 	}
 	if err := c.getJSON(ctx, "/api/ps", &body); err != nil {
@@ -124,7 +130,10 @@ func (c *Client) Loaded(ctx context.Context) ([]llm.LoadedModel, error) {
 	}
 	out := make([]llm.LoadedModel, 0, len(body.Models))
 	for _, m := range body.Models {
-		out = append(out, llm.LoadedModel{Name: m.Name, ContextLength: m.ContextLength, SizeVRAM: m.SizeVRAM})
+		out = append(out, llm.LoadedModel{
+			Name: m.Name, ContextLength: m.ContextLength, Size: m.Size, SizeVRAM: m.SizeVRAM,
+			Quantization: m.Details.Quantization, ParameterSize: m.Details.ParameterSize, Digest: m.Digest,
+		})
 	}
 	return out, nil
 }

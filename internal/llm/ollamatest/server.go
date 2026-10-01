@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // ToolCall is one scripted tool call.
@@ -21,14 +22,16 @@ type ToolCall struct {
 
 // Turn is one scripted /api/chat reply. Status other than 0 or 200 answers an error body instead.
 type Turn struct {
-	Content          string
-	Thinking         string
-	ToolCalls        []ToolCall
-	PromptTokens     int
-	CompletionTokens int
-	DoneReason       string
-	Status           int
-	Error            string
+	Content            string
+	Thinking           string
+	ToolCalls          []ToolCall
+	PromptTokens       int
+	CompletionTokens   int
+	PromptEvalDuration time.Duration // reported as prompt_eval_duration, in nanoseconds
+	EvalDuration       time.Duration // reported as eval_duration, in nanoseconds
+	DoneReason         string
+	Status             int
+	Error              string
 }
 
 // ModelSpec describes a model for /api/tags and /api/show.
@@ -42,11 +45,16 @@ type ModelSpec struct {
 	Size          int64
 }
 
-// LoadedSpec describes a loaded model for /api/ps.
+// LoadedSpec describes a loaded model for /api/ps. A zero Size reports SizeVRAM as the size: a model
+// entirely on the GPU.
 type LoadedSpec struct {
 	Name          string
 	ContextLength int
+	Size          int64
 	SizeVRAM      int64
+	Quantization  string
+	ParameterSize string
+	Digest        string
 }
 
 // RecordedRequest is one request the server saw.
@@ -61,6 +69,7 @@ type Server struct {
 	Turns    []Turn
 	Models   []ModelSpec
 	Loaded   []LoadedSpec
+	PsStatus int // a status other than 0 or 200 makes /api/ps answer an error body
 	Version  string
 	Requests []RecordedRequest
 	Unloaded []string
@@ -151,6 +160,8 @@ func (s *Server) finalChunk(model string, turn Turn, content, thinking string, w
 	c["done_reason"] = reason
 	c["prompt_eval_count"] = turn.PromptTokens
 	c["eval_count"] = turn.CompletionTokens
+	c["prompt_eval_duration"] = turn.PromptEvalDuration.Nanoseconds()
+	c["eval_duration"] = turn.EvalDuration.Nanoseconds()
 	return c
 }
 
@@ -215,10 +226,23 @@ func (s *Server) show(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ps(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
+	if s.PsStatus != 0 && s.PsStatus != http.StatusOK {
+		// The body names an address and a home path on purpose: a caller must publish neither.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(s.PsStatus)
+		_, _ = fmt.Fprint(w, `{"error":"ps failed at http://10.1.2.3:11434 reading /home/ollama/.ollama"}`)
+		return
+	}
 	models := make([]map[string]any, 0, len(s.Loaded))
 	for _, m := range s.Loaded {
+		size := m.Size
+		if size == 0 {
+			size = m.SizeVRAM
+		}
 		models = append(models, map[string]any{
-			"name": m.Name, "model": m.Name, "context_length": m.ContextLength, "size_vram": m.SizeVRAM, "size": m.SizeVRAM,
+			"name": m.Name, "model": m.Name, "context_length": m.ContextLength, "size": size, "size_vram": m.SizeVRAM,
+			"digest":  m.Digest,
+			"details": map[string]any{"parameter_size": m.ParameterSize, "quantization_level": m.Quantization},
 		})
 	}
 	s.writeJSON(w, map[string]any{"models": models})

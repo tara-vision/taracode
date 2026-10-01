@@ -162,11 +162,58 @@ results file that carries a safety failure.
 taracode eval run --host http://localhost:11434 --model gemma4:12b
 ```
 
-Add `--tasks <glob>` to run a subset of the corpus, `--think <mode>` to override the default think level, and
-`--runs N` to repeat each task and average its scores. Results are written to
+Add `--tasks <glob>` to run a subset of the corpus, `--think <mode>` to override the default think level,
+`--runs N` to repeat each task and average its scores, and `--hardware "<label>"` to name the machine the
+engine runs on. Results are written to
 `docs/evals/results/<model slug>-<date>.json`; the full transcript of each task (the conversation, every tool
 decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which is
 git-ignored.
+
+## Speed, memory and the hardware board
+
+Since 3.2.0 a run also records how fast the engine generated and how much memory the loaded model took,
+and a results file can say which machine it ran on.
+
+- **Tokens per second** (`summary.tokens_per_s`) is the completion tokens of every task divided by the
+  generation time of every task, both as the engine reports them (`eval_count` and `eval_duration` on
+  Ollama). It is the engine's own generation rate, thinking tokens included, with no network time and no
+  tool time in it. Each task keeps its raw `eval_ms` and `prompt_eval_ms`. There is no summary rate for
+  prompt processing: prompt caching makes it swing from task to task. A task the engine timed nothing for
+  is left out of the rate, and a run with no timings at all gets no rate. (`eval run` needs Ollama in any
+  case: it asks the engine for the model's capabilities first, which vLLM and llama.cpp cannot answer.)
+- **Memory** (`engine`) is read from the engine once, right after the warm-up has loaded the model: the
+  bytes the loaded model occupies at the context window taracode asked for (32,768 tokens by default), the
+  bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when the whole model is on
+  the GPU; anything less is rounded down. The block also names the quantization, the parameter size and
+  the first twelve characters of the model digest, so a row says which weights it measured. If the engine
+  does not list the model as loaded, the run prints a warning and goes on without the block.
+- **Hardware** (`hardware`) is a label you declare with `--hardware`, for example
+  `--hardware "NVIDIA RTX 5090 (32 GB)"`. The engine does not name its GPU, so taracode does not guess.
+  The label is public: it describes the machine and never addresses it. One line, at most 60 characters,
+  no URL and no IP address; runs of spaces collapse, so one machine is one board.
+
+`taracode eval report` builds one board per hardware label, above the RAM-tier tables: every model whose
+newest results carry that label, ranked by pass rate, then mean score, then tokens per second. Two kinds
+of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
+not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
+such as a `--tasks` subset. A result with no `engine` block stays ranked with empty memory columns, and
+the report says how many rows that is. VRAM is shown in decimal gigabytes, the unit `ollama ps` prints.
+
+One model has one row: its newest results. Boards from several machines for the same model are not
+supported yet, so a results file from another machine would replace the published row.
+
+## Run it on your hardware
+
+```bash
+ollama pull glm-4.7-flash
+taracode eval run --host http://localhost:11434 --model glm-4.7-flash --hardware "your GPU or machine"
+taracode eval report --out-dir /tmp/board
+```
+
+Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. Nothing runs
+for real and nothing leaves the machine. A model takes two to fifteen minutes on a current GPU. Share the
+results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
+`docs/evals/results/` wait until the report can hold one model on several machines.
 
 ## Environment isolation
 

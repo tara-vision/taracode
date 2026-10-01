@@ -223,3 +223,82 @@ func TestEvalRunKeepsAStoppedRunsPartialResultsOutOfTheResultsDirectory(t *testi
 		t.Fatalf("partial results file: entries=%v", entries)
 	}
 }
+
+// TestEvalRunRejectsABadHardwareLabel pins the up-front --hardware validation: a bad label is refused
+// before any engine call, so the bogus host and the empty corpus never come into play.
+func TestEvalRunRejectsABadHardwareLabel(t *testing.T) {
+	err := runEvalRun(evalRunFlags{host: "http://127.0.0.1:1", model: "gemma4:12b", think: "auto",
+		hardware: "two\nlines", corpus: t.TempDir()}, os.Stdout)
+	if err == nil || !strings.Contains(err.Error(), "--hardware") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+// TestEvalRunWritesTheHardwareLabelAndTheEngineBlock: the trimmed label and what the engine reports
+// about the loaded model reach the results file.
+func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
+	corpus := t.TempDir()
+	dir := filepath.Join(corpus, "partial-defect")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "task.yaml"), []byte(partialDefectTask), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := evals.LoadFixtures(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save("kubectl get pod -n shop", "NAME         READY   STATUS\ncheckout-1   1/1     Running", false); err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEvalOllama(t,
+		evalToolCall("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}),
+		ollamatest.Turn{Content: "done"},
+	)
+	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
+		SizeVRAM: 9_300_000_000, Quantization: "Q4_K_M"}}
+	out := t.TempDir()
+	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
+		timeout: 30 * time.Second, out: out, hostLabel: "lab", hardware: "  NVIDIA RTX 5090 (32 GB) "}
+	if err := runEvalRun(f, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	all, err := evals.ReadResults(out)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("results %+v err=%v", all, err)
+	}
+	r := all[0]
+	if r.Hardware != "NVIDIA RTX 5090 (32 GB)" || r.Engine == nil || r.Engine.GPUPercent != 100 || r.Engine.Quantization != "Q4_K_M" {
+		t.Fatalf("results %+v, engine %+v", r, r.Engine)
+	}
+}
+
+// TestEvalReportPrintsTheHardwareBoards: the report names each board it wrote and how many models it ranks.
+func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
+	results, outDir := t.TempDir(), t.TempDir()
+	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Date: "2026-10-01", Runs: 1,
+		Hardware: "NVIDIA RTX 5090 (32 GB)",
+		Engine:   &evals.EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768},
+		Summary:  evals.Summary{PassRate: 1, MeanScore: 1, TokensPerS: 95, ByArea: map[string]evals.AreaSummary{}}}
+	if _, err := evals.WriteResults(results, r); err != nil {
+		t.Fatal(err)
+	}
+	unchecked := r // a labelled result the engine described nothing for: ranked, but its fit was never checked
+	unchecked.Model, unchecked.Engine = "qwen3.5:9b", nil
+	if _, err := evals.WriteResults(results, unchecked); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runEvalReport(results, outDir, t.TempDir(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "board NVIDIA RTX 5090 (32 GB): 2 ranked (1 without memory data), 0 did not fit, 0 on part of the corpus"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("output %q", out.String())
+	}
+	md, err := os.ReadFile(filepath.Join(outDir, "scoreboard.md"))
+	if err != nil || !strings.Contains(string(md), "## NVIDIA RTX 5090 (32 GB)") {
+		t.Fatalf("%v %q", err, md)
+	}
+}

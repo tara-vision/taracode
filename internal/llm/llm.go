@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -80,10 +81,13 @@ type Event struct {
 	Usage    *Usage
 }
 
-// Usage is the token accounting of one request.
+// Usage is the token accounting of one request. The durations are the server's own measurements of
+// prompt processing and of generation; they stay zero on a backend that does not report them.
 type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
+	PromptDuration   time.Duration
+	EvalDuration     time.Duration
 }
 
 // Result is the assembled reply of one request.
@@ -125,11 +129,16 @@ func (d *ModelDetails) Has(capability string) bool {
 	return false
 }
 
-// LoadedModel is one entry of the server's loaded-model list.
+// LoadedModel is one entry of the server's loaded-model list. Size is everything the loaded model
+// occupies at its context window, SizeVRAM the part of it on the GPU.
 type LoadedModel struct {
 	Name          string
 	ContextLength int
+	Size          int64
 	SizeVRAM      int64
+	Quantization  string
+	ParameterSize string
+	Digest        string
 }
 
 // Client is implemented by every backend.

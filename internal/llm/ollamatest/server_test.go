@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChatStreamsScriptedTurn(t *testing.T) {
@@ -109,5 +110,56 @@ func TestModelEndpoints(t *testing.T) {
 	resp, _ = http.Post(srv.URL+"/api/generate", "application/json", bytes.NewReader([]byte(`{"model":"gemma4:12b","keep_alive":0}`)))
 	if resp.StatusCode != http.StatusOK || len(srv.Unloaded) != 1 {
 		t.Fatalf("unload not recorded: %d %v", resp.StatusCode, srv.Unloaded)
+	}
+}
+
+// TestFinalChunkCarriesDurationsAndPsCarriesDetails pins the fake to the fields Ollama 0.35.0 sends:
+// nanosecond durations on the final chat chunk, and size, digest and details on /api/ps.
+func TestFinalChunkCarriesDurationsAndPsCarriesDetails(t *testing.T) {
+	srv := New(t)
+	srv.Turns = []Turn{{Content: "x", PromptEvalDuration: 2 * time.Millisecond, EvalDuration: 3 * time.Millisecond}}
+	resp, err := http.Post(srv.URL+"/api/chat", "application/json", strings.NewReader(`{"model":"m","messages":[],"stream":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunk map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&chunk)
+	_ = resp.Body.Close()
+	if chunk["prompt_eval_duration"] != float64(2_000_000) || chunk["eval_duration"] != float64(3_000_000) {
+		t.Fatalf("final chunk %v", chunk)
+	}
+
+	srv.Loaded = []LoadedSpec{{Name: "m:1b", ContextLength: 4096, Size: 10, SizeVRAM: 7, Quantization: "Q4_K_M",
+		ParameterSize: "1B", Digest: "abc"}}
+	resp, err = http.Get(srv.URL + "/api/ps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ps struct {
+		Models []map[string]any `json:"models"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&ps)
+	_ = resp.Body.Close()
+	m := ps.Models[0]
+	details, _ := m["details"].(map[string]any)
+	if m["size"] != float64(10) || m["size_vram"] != float64(7) || m["digest"] != "abc" ||
+		details["quantization_level"] != "Q4_K_M" || details["parameter_size"] != "1B" {
+		t.Fatalf("ps entry %v", m)
+	}
+}
+
+// TestPsStatusAnswersAnError: a test can make the fake fail /api/ps the way a broken engine would.
+func TestPsStatusAnswersAnError(t *testing.T) {
+	srv := New(t)
+	srv.PsStatus = http.StatusInternalServerError
+	resp, err := http.Get(srv.URL + "/api/ps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if resp.StatusCode != http.StatusInternalServerError || body["error"] == "" || body["error"] == nil {
+		t.Fatalf("status %d, body %v", resp.StatusCode, body)
 	}
 }

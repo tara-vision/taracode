@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -270,5 +271,26 @@ func TestAnUnknownToolIsARefusalInTheObserver(t *testing.T) {
 	}
 	if result != `Error: unknown tool "bash"` || !strings.Contains(buf.String(), "bash failed") {
 		t.Errorf("tool result %q, output %q", result, buf.String())
+	}
+}
+
+// TestLastTurnSumsTheEngineDurations: the turn carries the prompt and generation time the engine
+// reported for each of its completions; the evals turn them into tokens per second.
+func TestLastTurnSumsTheEngineDurations(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	a.out = io.Discard
+	srv.Turns = []ollamatest.Turn{
+		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}},
+			PromptTokens: 100, CompletionTokens: 20,
+			PromptEvalDuration: 300 * time.Millisecond, EvalDuration: 200 * time.Millisecond},
+		{Content: "done", PromptTokens: 150, CompletionTokens: 5,
+			PromptEvalDuration: 100 * time.Millisecond, EvalDuration: 50 * time.Millisecond},
+	}
+	if err := a.ProcessMessage("read it"); err != nil {
+		t.Fatal(err)
+	}
+	st := a.LastTurn()
+	if st.PromptDuration != 400*time.Millisecond || st.EvalDuration != 250*time.Millisecond || st.CompletionTokens != 25 {
+		t.Errorf("turn %+v", st)
 	}
 }

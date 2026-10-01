@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-01
+
+### Added
+- **The hardware board.** `taracode eval run --hardware "<label>"` writes the machine a run was measured on
+  into the results, and `taracode eval report` builds one ranked board per label above the RAM-tier tables:
+  pass rate first, then mean score, then tokens per second. A model that was not entirely on the GPU is
+  listed as "did not fit" instead of being ranked, and so is a run that covered only part of the corpus
+  (a `--tasks` subset): a board ranks whole-corpus runs only.
+- **Speed and memory in every eval run.** A run records the engine's own timings per task (`eval_ms` for
+  generation, `prompt_eval_ms` for prompt processing) and one generation rate per model
+  (`summary.tokens_per_s`), and reads the loaded model from the engine after the warm-up: its size at the
+  context window taracode asks for, the share of it on the GPU, the quantization and the model digest
+  (`engine`). A results file with no timings, no engine block and no label has the same shape as before,
+  and older files keep loading.
+- `LAB_HARDWARE` for `make eval-lab` and `make scoreboard`.
+
+### Changed
+- **`scoreboard.json` gains keys.** A `boards` array when results carry a hardware label, and on every
+  row `tier`, `runs`, `tasks` and `suite_wall_s`, also for older results. Nothing is renamed or removed,
+  so a reader that picks keys by name is unaffected; `scoreboard.md` built from older results is
+  unchanged.
+- **Timings never fail a reply.** The Ollama client reads the two durations leniently: a server that
+  sends them as floats or strings still gets its answer through.
+- **Roadmap.** 3.2 is the hardware board; runbooks, the MCP server and the skills pack follow as 3.3 and
+  3.4.
+
 ## [3.1.2] - 2026-09-25
 
 ### Changed
@@ -600,7 +626,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.1.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.0...HEAD
+
+[3.2.0]: https://github.com/tara-vision/taracode/compare/v3.1.2...v3.2.0
 
 [3.1.2]: https://github.com/tara-vision/taracode/compare/v3.1.1...v3.1.2
 
