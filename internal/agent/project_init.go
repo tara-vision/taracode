@@ -313,7 +313,7 @@ func printInitSummary(ctx *context.ProjectContext, policyWritten bool) {
 
 	fmt.Println()
 	fmt.Println("  Created:")
-	fmt.Println("    - TARACODE.md (project context for AI)")
+	fmt.Println("    - TARACODE.md (project context for taracode)")
 	fmt.Println("    - .taracode/ (storage for history, plans, state)")
 	if policyWritten {
 		fmt.Println("    - .taracode/policy.yaml (starter policy; edit to change protected targets and dry-run rules)")

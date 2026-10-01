@@ -148,8 +148,8 @@ func IsValidSeverity(severity string) bool {
 var rootCmd = &cobra.Command{
 	Use:     "taracode",
 	Version: Version,
-	Short:   "Tara Code - DevOps & Cloud AI Assistant",
-	Long: `Tara Code is an AI-powered CLI assistant specialized in DevOps, Cloud Infrastructure,
+	Short:   "Tara Code - DevOps & Cloud SI Assistant",
+	Long: `Tara Code is an SI-powered CLI assistant specialized in DevOps, Cloud Infrastructure,
 and Site Reliability Engineering. Expert guidance for Kubernetes, Terraform, Docker, and
 multi-cloud deployments (AWS, Azure, GCP).`,
 	PreRunE: func(cmd *cobra.Command, args []string) error {

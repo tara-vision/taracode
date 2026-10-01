@@ -7,7 +7,7 @@ import (
 	"github.com/chzyer/readline"
 )
 
-// DetectSuggestion analyzes AI response and returns a suggested user reply
+// DetectSuggestion analyzes the model's response and returns a suggested user reply
 func DetectSuggestion(response string) string {
 	// Trim and get the last part of the response
 	response = strings.TrimSpace(response)
@@ -121,7 +121,7 @@ func GetSlashCommands() []SlashCommand {
 		{"/think high", "High reasoning effort"},
 		{"/doctor", "Diagnose the LLM server, installed models and external tools"},
 		{"/stats", "Show session statistics (tokens, compaction, truncation)"},
-		{"/tools", "List available AI tools"},
+		{"/tools", "List available tools"},
 		{"/usage", "Show token usage statistics"},
 		{"/help", "Show help message"},
 		// Upgrade
@@ -137,7 +137,7 @@ func GetSlashCommands() []SlashCommand {
 // SlashCompleter provides autocompletion for slash commands
 type SlashCompleter struct {
 	fileCompleter *FileCompleter
-	suggestion    string // AI-suggested response (Tab to accept)
+	suggestion    string // model-suggested response (Tab to accept)
 }
 
 // NewSlashCompleter creates a new slash command completer
@@ -147,7 +147,7 @@ func NewSlashCompleter(workingDir string) *SlashCompleter {
 	}
 }
 
-// SetSuggestion sets the AI-suggested response that can be accepted with Tab
+// SetSuggestion sets the model-suggested response that can be accepted with Tab
 func (s *SlashCompleter) SetSuggestion(suggestion string) {
 	s.suggestion = suggestion
 }

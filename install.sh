@@ -112,7 +112,7 @@ banner() {
     echo "     ██║   ██║  ██║██║  ██║██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗"
     echo "     ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"
     echo ""
-    echo "  DevOps & Cloud AI Assistant"
+    echo "  DevOps & Cloud SI Assistant"
     echo ""
 }
 

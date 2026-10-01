@@ -43,7 +43,7 @@ func TestRendererMessages(t *testing.T) {
 		name, got string
 		want      []string
 	}{
-		{"welcome", r.WelcomeMessage(), []string{IconCloud + " Tara Code", "DevOps & Cloud AI Assistant",
+		{"welcome", r.WelcomeMessage(), []string{IconCloud + " Tara Code", "DevOps & Cloud SI Assistant",
 			"Type '/help' for commands, 'exit' to quit"}},
 		{"context loaded", r.ProjectContextMessage(true), []string{IconFolder + " Project context loaded from TARACODE.md"}},
 		{"context missing", r.ProjectContextMessage(false), []string{IconTip + " Run '/init' to initialize project context"}},

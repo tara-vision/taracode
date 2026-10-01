@@ -1,7 +1,8 @@
 # taracode
 
 <p align="center">
-  <strong>DevOps & Cloud AI Assistant</strong><br>
+  <strong>DevOps & Cloud SI Assistant</strong><br>
+  SI, super intelligence, is the new name for AI.<br>
   Expert guidance for Kubernetes, Terraform, Docker, and multi-cloud deployments.<br>
   Runs locally with Ollama for complete privacy.
 </p>
@@ -78,9 +79,9 @@ brew install ollama
 ### 2. Pull a Model
 
 ```bash
-ollama pull gemma4:12b     # 16 GB machines
-ollama pull glm-4.7-flash  # 32 GB machines (needs Ollama 0.14.3 or newer)
-ollama pull qwen3.6:35b    # 48 GB and up
+ollama pull gemma4:12b     # 16 GB of RAM
+ollama pull glm-4.7-flash  # 32 GB of RAM (needs Ollama 0.14.3 or newer)
+ollama pull qwen3.6:35b    # 48 GB of RAM and up
 ```
 
 Any model that Ollama tags with the `tools` capability works. On Ollama, taracode refuses a model without that

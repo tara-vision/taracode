@@ -67,7 +67,7 @@ type Assistant struct {
 	// replaced in tests so the decision is deterministic without a TTY.
 	confirmEditPreview func(preview *ui.EditPreview) ui.EditPreviewChoice
 
-	// Last AI response (for suggestion detection)
+	// Last model response (for suggestion detection)
 	lastResponse string
 
 	// The day the system prompt was built on; a turn on a later day rebuilds it (3.1.0).
@@ -503,7 +503,7 @@ func (a *Assistant) GetConversationLength() int {
 	return len(a.conversation)
 }
 
-// GetLastResponse returns the last AI response text (for suggestion detection)
+// GetLastResponse returns the last model response text (for suggestion detection)
 func (a *Assistant) GetLastResponse() string {
 	return a.lastResponse
 }
