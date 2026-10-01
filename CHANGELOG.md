@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.2.2] - 2026-10-01
 
 ### Security
-Four ways a cloud command that changes something could be classified as a read, and so run in investigate
+Five ways a cloud command that changes something could be classified as a read, and so run in investigate
 mode, which never asks, and one gap in the REPL's `cd`. All were found on 2026-10-01 in a review and a
 security sweep of the classifier; there is no report of any of them being used. Upgrade if you use the
 `cloud` tool or run `aws`, `az` or `gcloud` through the shell tool.
@@ -31,6 +31,8 @@ security sweep of the classifier; there is no report of any of them being used. 
 - **Operations that read like a check and still act** are mutations: `gcloud ... simulate-maintenance-event`,
   every aws `test-*` operation except the four known to only evaluate their input, and the Cognito call
   that sends a verification message.
+- **`aws s3api select-object-content` writes a file.** It streams the query result into the output file it
+  requires, as `get-object` does, which was already a mutation; it was classified as a read.
 - **`cd` cannot leave the project through a look-alike sibling.** The REPL's `cd` checked that the resolved
   target starts with the project root as a string, so a symlink into a sibling directory whose name begins
   with the root's name (`app-secrets` next to `app`) was accepted. The check is now "the root itself or a

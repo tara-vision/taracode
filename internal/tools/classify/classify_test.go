@@ -131,6 +131,8 @@ func TestCloud(t *testing.T) {
 		{"aws", "help", policy.Read, ""}, {"aws", "--version", policy.Read, ""}, {"aws", "", policy.Read, ""},
 		{"aws", "sso logout", policy.Mutate, ""}, {"aws", "ec2 create-default-vpc", policy.Mutate, ""},
 		{"aws", "s3api delete-bucket --bucket=x", policy.Mutate, ""},
+		{"aws", "s3api select-object-content --bucket b --key k --expression e --expression-type SQL " +
+			"--input-serialization {} --output-serialization {} out.json", policy.Mutate, ""},
 		{"az", "group list", policy.Read, ""}, {"az", "vm show -n x -g y --subscription sub-1", policy.Read, "sub-1"},
 		{"az", "aks get-credentials -n x -g y", policy.Mutate, ""}, {"az", "vm delete -n x -g y", policy.Mutate, ""},
 		{"az", "account set -s x", policy.Mutate, "x"}, {"az", "login", policy.Mutate, ""},

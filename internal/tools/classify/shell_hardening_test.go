@@ -281,6 +281,8 @@ func TestShellFailsClosedOnSameClassHoles(t *testing.T) {
 		{"gh release download v1", "gh release download"},
 		{"apt-get download curl", "apt-get download"},
 		{"aws s3api get-object --bucket b --key k out.json", "get-object"},
+		{"aws s3api select-object-content --bucket b --key k --expression e --expression-type SQL " +
+			"--input-serialization {} --output-serialization {} out.json", "select-object-content"},
 		{"ifconfig lo0 down", "ifconfig"},
 		{"hostname new-name", "hostname"},
 		{"dmesg -C", "dmesg"},

@@ -25,10 +25,10 @@ var gcloudBoolFlags = []string{"--quiet", "-q", "--help", "-h", "--version", "--
 
 // cloudFileWriters are the verbs that look like reads but write a file: get-credentials merges a
 // cluster into the kubeconfig (az, gcloud), and the AWS operations that stream their response
-// into the outfile operand they require.
+// into the outfile operand they require (select-object-content writes its query result there).
 var cloudFileWriters = []string{"get-credentials", "get-object", "get-object-torrent", "get-job-output", "get-export",
 	"get-sdk", "get-media", "get-clip", "get-snapshot-block", "get-thing-shadow", "get-raw-message-content",
-	"get-package-version-asset"}
+	"get-package-version-asset", "select-object-content"}
 
 // Cloud classifies a provider CLI invocation by the verb in the position each CLI uses.
 func Cloud(provider string, tokens []string) Result {
