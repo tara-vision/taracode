@@ -25,6 +25,8 @@ type Results struct {
 	Date        string       `json:"date"`
 	Runs        int          `json:"runs"`
 	Host        string       `json:"host"`
+	Hardware    string       `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
+	Engine      *EngineInfo  `json:"engine,omitempty"`   // the loaded model as the engine reports it
 	Tasks       []TaskResult `json:"tasks"`
 	Summary     Summary      `json:"summary"`
 }
@@ -37,23 +39,25 @@ type Results struct {
 type TaskResult struct {
 	ID               string   `json:"id"`
 	Area             string   `json:"area"`
-	Score            float64  `json:"score"`             // per-run mean with --runs
-	Pass             bool     `json:"pass"`              // the mean score against the pass mark
-	Tools            float64  `json:"tools"`             // per-run mean with --runs
-	Answer           float64  `json:"answer"`            // per-run mean with --runs
-	Forbidden        float64  `json:"forbidden"`         // per-run mean with --runs
-	Iterations       int      `json:"iterations"`        // per-run mean with --runs, rounded
-	ToolCalls        int      `json:"tool_calls"`        // per-run mean with --runs, rounded
-	Denied           int      `json:"denied"`            // per-run mean with --runs, rounded
-	FixtureMisses    int      `json:"fixture_misses"`    // per-run mean with --runs, rounded
-	PromptTokens     int      `json:"prompt_tokens"`     // per-run mean with --runs, rounded
-	CompletionTokens int      `json:"completion_tokens"` // per-run mean with --runs, rounded
-	WallMs           int64    `json:"wall_ms"`           // per-run mean with --runs, rounded
-	Truncated        bool     `json:"truncated"`         // any run hit the iteration cap
-	TimedOut         bool     `json:"timed_out"`         // any run hit the task limit
-	SafetyFailure    bool     `json:"safety_failure"`    // any run's gate allowed a must_deny call
-	Error            string   `json:"error"`             // the first error of the runs, scrubbed
-	Notes            []string `json:"notes,omitempty"`   // the scorer's notes, scrubbed
+	Score            float64  `json:"score"`                    // per-run mean with --runs
+	Pass             bool     `json:"pass"`                     // the mean score against the pass mark
+	Tools            float64  `json:"tools"`                    // per-run mean with --runs
+	Answer           float64  `json:"answer"`                   // per-run mean with --runs
+	Forbidden        float64  `json:"forbidden"`                // per-run mean with --runs
+	Iterations       int      `json:"iterations"`               // per-run mean with --runs, rounded
+	ToolCalls        int      `json:"tool_calls"`               // per-run mean with --runs, rounded
+	Denied           int      `json:"denied"`                   // per-run mean with --runs, rounded
+	FixtureMisses    int      `json:"fixture_misses"`           // per-run mean with --runs, rounded
+	PromptTokens     int      `json:"prompt_tokens"`            // per-run mean with --runs, rounded
+	CompletionTokens int      `json:"completion_tokens"`        // per-run mean with --runs, rounded
+	WallMs           int64    `json:"wall_ms"`                  // per-run mean with --runs, rounded
+	PromptEvalMs     int64    `json:"prompt_eval_ms,omitempty"` // prompt time the engine reported; per-run mean with --runs
+	EvalMs           int64    `json:"eval_ms,omitempty"`        // generation time the engine reported; per-run mean with --runs
+	Truncated        bool     `json:"truncated"`                // any run hit the iteration cap
+	TimedOut         bool     `json:"timed_out"`                // any run hit the task limit
+	SafetyFailure    bool     `json:"safety_failure"`           // any run's gate allowed a must_deny call
+	Error            string   `json:"error"`                    // the first error of the runs, scrubbed
+	Notes            []string `json:"notes,omitempty"`          // the scorer's notes, scrubbed
 
 	means *runMeans // the unrounded per-run counts of a row folded from several runs; not serialized
 }
@@ -88,6 +92,7 @@ type Summary struct {
 	MeanScore       float64                `json:"mean_score"`
 	MeanIterations  float64                `json:"mean_iterations"`
 	MeanWallMs      float64                `json:"mean_wall_ms"`
+	TokensPerS      float64                `json:"tokens_per_s,omitempty"` // generation rate: completion tokens over engine generation time
 	FixtureMissRate float64                `json:"fixture_miss_rate"`
 	SafetyFailures  int                    `json:"safety_failures"`
 	ByArea          map[string]AreaSummary `json:"by_area"`
@@ -186,6 +191,7 @@ func summarize(tasks []Task, results []TaskResult) Summary {
 	s.MeanScore = round3(scoreSum / weightSum)
 	s.MeanIterations = round3(iterations / n)
 	s.MeanWallMs = round3(wall / n)
+	s.TokensPerS = generationRate(results)
 	if calls > 0 {
 		s.FixtureMissRate = round3(misses / calls)
 	}

@@ -22,6 +22,7 @@ type RunOptions struct {
 	Runs                        int              // repetitions per task, default 1
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
+	Hardware                    string           // the results' hardware field: the operator's label for the machine, "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
@@ -100,6 +101,7 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	if err := warmUp(ctx, opts); err != nil {
 		return Results{}, fmt.Errorf("warm-up: %w", err)
 	}
+	res.Engine = loadedEngine(ctx, opts) // the warm-up has loaded the model, so the engine can describe it
 	for _, t := range tasks {
 		if err := ctx.Err(); err != nil {
 			return withSummary(res, tasks), err
@@ -115,8 +117,9 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 		}
 	}
 	res = withSummary(res, tasks)
-	_, _ = fmt.Fprintf(opts.Out, "pass rate %.0f%%, mean score %.2f, misses %.0f%%, safety failures %d\n",
-		res.Summary.PassRate*100, res.Summary.MeanScore, res.Summary.FixtureMissRate*100, res.Summary.SafetyFailures)
+	_, _ = fmt.Fprintf(opts.Out, "pass rate %.0f%%, mean score %.2f, misses %.0f%%, safety failures %d%s\n",
+		res.Summary.PassRate*100, res.Summary.MeanScore, res.Summary.FixtureMissRate*100, res.Summary.SafetyFailures,
+		speedAndMemory(res))
 	return res, nil
 }
 
@@ -148,7 +151,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	cancelVersion()
 	return Results{Taracode: opts.Version, Ollama: version, Model: opts.Model, Tier: tierOf(opts.Model),
 		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
-		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel}, nil
+		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware}, nil
 }
 
 func passLabel(pass bool) string {
@@ -275,6 +278,8 @@ func averageRuns(runs []taskRun) taskRun {
 	avg.PromptTokens = count(func(r TaskResult) int { return r.PromptTokens })
 	avg.CompletionTokens = count(func(r TaskResult) int { return r.CompletionTokens })
 	avg.WallMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.WallMs) })))
+	avg.PromptEvalMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.PromptEvalMs) })))
+	avg.EvalMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.EvalMs) })))
 	avg.means = &runMeans{ // unrounded, for the summary's rates (ruling P3-R56)
 		iterations:    mean(func(r TaskResult) float64 { return float64(r.Iterations) }),
 		toolCalls:     mean(func(r TaskResult) float64 { return float64(r.ToolCalls) }),
