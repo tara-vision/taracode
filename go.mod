@@ -2,7 +2,7 @@ module github.com/tara-vision/taracode
 
 go 1.26.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/charmbracelet/glamour v1.0.0
