@@ -26,9 +26,9 @@ func ServerContextAdvice(serverCtx, systemTokens, toolTokens, configuredMax int,
 	need := systemTokens + toolTokens + serverContextHeadroom
 	if serverCtx < need {
 		return fmt.Sprintf(
-			"Ollama loaded this model with a %d-token context, but the system prompt and tool schemas need about "+
-				"%d. Tool definitions will be cut off. Raise context.window in config.yaml so taracode requests a "+
-				"bigger window (OLLAMA_CONTEXT_LENGTH only matters for servers taracode does not control).",
+			"The server runs this model with a %d-token context, but the system prompt and tool schemas need about "+
+				"%d. Tool definitions will be cut off. Raise context.window in config.yaml so taracode loads it with "+
+				"a bigger window.",
 			serverCtx, need), true
 	}
 	if threshold <= 0 || threshold > 1 {
@@ -37,8 +37,8 @@ func ServerContextAdvice(serverCtx, systemTokens, toolTokens, configuredMax int,
 	compactAt := int(float64(configuredMax) * threshold)
 	if configuredMax > 0 && serverCtx < compactAt {
 		return fmt.Sprintf(
-			"Ollama runs this model with a %d-token context, but compaction only starts at %d tokens "+
-				"(max_context_tokens %d). Set max_context_tokens: %d or raise OLLAMA_CONTEXT_LENGTH.",
+			"The server runs this model with a %d-token context, but compaction only starts at %d tokens "+
+				"(max_context_tokens %d). Set max_context_tokens: %d or raise context.window.",
 			serverCtx, compactAt, configuredMax, serverCtx), true
 	}
 	return "", false
@@ -51,8 +51,8 @@ func (a *Assistant) resetServerContextCheck() {
 	a.serverContextTokens = 0
 }
 
-// checkServerContextOnce asks an Ollama server for the context window it loaded the
-// current model with and prints one warning per session when it is too small.
+// checkServerContextOnce asks the server for the window it runs the current model at
+// and prints one warning per session when it is too small.
 // It runs after a message has been processed, so the model is loaded by then.
 func (a *Assistant) checkServerContextOnce() {
 	if a.serverContextChecked || a.llm == nil {

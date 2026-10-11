@@ -73,15 +73,15 @@ type Assistant struct {
 	// The day the system prompt was built on; a turn on a later day rebuilds it (3.1.0).
 	promptDay string
 
-	// Ollama context window check (v2.1.0)
-	serverContextChecked bool // true once /api/ps has answered for the current model
-	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
+	// The once-per-session context check (v2.1.0)
+	serverContextChecked bool // true once the server has reported the window it runs the current model at
+	serverContextTokens  int  // the window the server runs the model at (0 = unknown)
 
 	// Request options sent with every turn (Task 8 wires these to config)
 	think             llm.Think // reasoning mode
 	thinkingSupported bool      // whether the current model has the "thinking" capability; true when unknown
 	keepAlive         string    // how long the server keeps the model loaded
-	contextWindow     int       // num_ctx for the request, 0 = server default
+	contextWindow     int       // the window the model loads at; 0 = the server decides
 	configuredWindow  string    // context.window config value ("auto" or a number); re-read on model switch
 
 	// Context management (v2.0.2)
@@ -254,12 +254,15 @@ func New(opts Options) (*Assistant, error) {
 		a.confirmPermission = opts.PermissionDecider
 	}
 
-	// Resolve the context window and gate on tool support once the model is chosen, before the
-	// system prompt is built: an OpenAI-compatible server without Show just leaves the window
-	// unresolved (v3 native core, Task 8).
+	// Resolve the context window and gate on tool support once the model is chosen, before the system prompt is
+	// built, then load the model at that window on a backend that sets it at load (taraengine). An
+	// OpenAI-compatible server without Show leaves the window unresolved.
 	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
 	defer showCancel()
 	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
+		return nil, err
+	}
+	if err := a.loadModel(); err != nil {
 		return nil, err
 	}
 
@@ -526,7 +529,7 @@ func (a *Assistant) GetProjectContext() *context.ProjectContext {
 	return a.projectCtx
 }
 
-// ListModels returns available models from the provider (Ollama only)
+// ListModels returns available models from the provider (taraengine only)
 func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	if a.provider == nil {
 		return nil, fmt.Errorf("provider not initialized")
@@ -535,7 +538,7 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	// Check if provider supports model management
 	mm, ok := a.provider.(provider.ModelManager)
 	if !ok {
-		return nil, fmt.Errorf("provider does not support model listing (Ollama only)")
+		return nil, fmt.Errorf("provider does not support model listing (taraengine only)")
 	}
 
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), modelOperationTimeout)
@@ -544,46 +547,38 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	return mm.ListModels(ctx)
 }
 
-// SwitchModel switches to a different model, unloading the current one first
+// SwitchModel switches to a different model. It reads the new model first, so a model the server refuses (not
+// pulled, no tools) never costs the session the old one; then it unloads the old model, loads the new one at its
+// window and saves the choice. When that load fails it brings the old model back and returns the failure.
 func (a *Assistant) SwitchModel(newModel string) error {
 	if a.provider == nil {
 		return fmt.Errorf("provider not initialized")
 	}
-
-	// Check if provider supports model management
 	mm, ok := a.provider.(provider.ModelManager)
 	if !ok {
-		return fmt.Errorf("provider does not support model switching (Ollama only)")
+		return fmt.Errorf("provider does not support model switching (taraengine only)")
 	}
-
 	oldModel := a.model
-
-	// Only unload if we're actually changing models
+	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
+	defer showCancel()
+	a.model = newModel
+	if err := a.applyModelDetails(a.llm.Show(showCtx, newModel)); err != nil {
+		a.model = oldModel
+		return err
+	}
 	if oldModel != "" && oldModel != newModel {
 		ctx, cancel := gocontext.WithTimeout(gocontext.Background(), modelOperationTimeout)
 		defer cancel()
-
-		// Unload the old model to free memory
 		if err := mm.UnloadModel(ctx, oldModel); err != nil {
-			// Log but don't fail - the model might not be loaded
 			_, _ = fmt.Fprintf(a.out, "  Note: Could not unload %s (may not be loaded)\n", oldModel)
 		}
 	}
-
-	// Set the new model
-	a.model = newModel
-	a.resetServerContextCheck()
-	a.provider.SetModel(newModel)
-
-	// Resolve the new model's context window and gate on tool support (Task 8); a refused
-	// switch restores the model the assistant already had loaded.
-	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
-	defer showCancel()
-	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
-		a.model = oldModel
-		a.provider.SetModel(oldModel)
+	if err := a.loadModel(); err != nil {
+		a.restoreModel(oldModel)
 		return err
 	}
+	a.resetServerContextCheck()
+	a.provider.SetModel(newModel)
 
 	// Persist the model selection
 	if a.storage != nil {
@@ -592,6 +587,20 @@ func (a *Assistant) SwitchModel(newModel string) error {
 			_, _ = fmt.Fprintf(a.out, "  Note: Could not save model preference: %v\n", err)
 		}
 	}
-
 	return nil
+}
+
+// restoreModel goes back to model after a switch whose load failed: its details again, then its load. A failure
+// here is printed, not returned: the switch's own error is the one to show.
+func (a *Assistant) restoreModel(model string) {
+	a.model = model
+	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
+	defer cancel()
+	err := a.applyModelDetails(a.llm.Show(ctx, model))
+	if err == nil {
+		err = a.loadModel()
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(a.out, "  Note: Could not load %s back: %v\n", model, err)
+	}
 }
