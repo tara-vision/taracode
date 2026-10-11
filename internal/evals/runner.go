@@ -154,7 +154,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	}
 	client, ok := prov.LLM().(engineClient)
 	if !ok {
-		return Results{}, fmt.Errorf("evals run on taraengine; %s is %s", opts.Host, prov.Info().Name)
+		return Results{}, fmt.Errorf("evals run on taraengine; %s is %s", llm.RedactedHost(opts.Host), prov.Info().Name)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, engineCallTimeout)
 	defer cancel()

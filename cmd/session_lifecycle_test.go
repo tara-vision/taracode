@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
@@ -116,5 +117,22 @@ func TestStatusShowsTheConnectionProjectAndSession(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("/status lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestStatusHidesThePasswordOfTheHost: the host comes from the configuration, where a user:password may stand in its URL
+// (the fake engine takes it as basic auth and ignores it). /status prints the host with the password masked, and the
+// session keeps the host as configured.
+func TestStatusHidesThePasswordOfTheHost(t *testing.T) {
+	srv := fakeEngine(t)
+	withPassword := strings.Replace(srv.URL, "http://", "http://user:secret@", 1)
+	r := replOn(t, srv, t.TempDir(), true, func(o *agent.Options) { o.Host = withPassword })
+	out := captureStdoutForTest(t, func() { r.dispatch("/status") })
+	if want := "Host: " + strings.Replace(srv.URL, "http://", "http://user:xxxxx@", 1) + "\n"; !strings.Contains(out, want) ||
+		strings.Contains(out, "secret") {
+		t.Fatalf("/status lacks %q or shows the password:\n%s", want, out)
+	}
+	if got := r.asst.GetProviderInfo().Host; got != withPassword {
+		t.Fatalf("the session's host is %q, want it as configured: %q", got, withPassword)
 	}
 }

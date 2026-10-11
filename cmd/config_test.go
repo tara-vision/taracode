@@ -135,6 +135,27 @@ func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
 	}
 }
 
+// TestLoadOptionsWarningHidesThePasswordOfTheRetiredHost: the warning that names the retired section's host as the one
+// in use is printed at startup, and that host may carry a user:password. The warning masks the password; the session
+// still uses the host as configured.
+func TestLoadOptionsWarningHidesThePasswordOfTheRetiredHost(t *testing.T) {
+	resetConfig(t)
+	viper.SetConfigType("yaml")
+	retired := "hosts:\n  gpu:\n    url: http://user:secret@example.com:8272\ndefault_host: gpu\n"
+	if err := viper.ReadConfig(strings.NewReader(retired)); err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	opts, warnings := loadOptions()
+	if opts.Host != "http://user:secret@example.com:8272" {
+		t.Fatalf("the session's host is %q, want it as configured", opts.Host)
+	}
+	out := captureStdoutForTest(t, func() { printWarnings(warnings) })
+	if !strings.Contains(out, "using http://user:xxxxx@example.com:8272 from the retired section") ||
+		strings.Contains(out, "secret") {
+		t.Fatalf("the warning lacks the masked host or shows the password:\n%s", out)
+	}
+}
+
 func TestLoadOptionsReadsTheV3Keys(t *testing.T) {
 	resetConfig(t)
 	viper.Set("model", "qwen-test")

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -244,7 +245,7 @@ func handleStatus(asst *agent.Assistant, workingDir string) {
 	providerInfo := asst.GetProviderInfo()
 	if providerInfo != nil {
 		fmt.Printf("  Provider: %s (%s)\n", providerInfo.Name, providerInfo.Type)
-		fmt.Printf("  Host: %s\n", providerInfo.Host)
+		fmt.Printf("  Host: %s\n", llm.RedactedHost(providerInfo.Host))
 		fmt.Printf("  Model: %s\n", providerInfo.Model)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 )
@@ -118,7 +119,7 @@ func loadOptions() (agent.Options, []string) {
 	if viper.IsSet("hosts") || viper.IsSet("default_host") {
 		if _, fromSection := legacyHostURL(); viper.GetString("host") == "" && fromSection {
 			warn("config: hosts: and default_host: are ignored since 3.1.0; using %s from the retired section as host: "+
-				"for this run, set host: to keep it", opts.Host)
+				"for this run, set host: to keep it", llm.RedactedHost(opts.Host))
 		} else {
 			warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the host in host:, or to "+
 				"taraengine at %s when none is set", provider.DefaultHost)

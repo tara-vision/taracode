@@ -129,6 +129,18 @@ func TestRunRefusesAServerThatIsNotTheEngine(t *testing.T) {
 	}
 }
 
+// TestRunNamesTheHostOfAServerThatIsNotTheEngineWithoutItsPassword: the refusal names the host the run was asked for,
+// where a user:password may stand in the URL, and the error reaches the terminal. The password is masked. The vendor is
+// given, so nothing is dialled.
+func TestRunNamesTheHostOfAServerThatIsNotTheEngineWithoutItsPassword(t *testing.T) {
+	opts := withDefaults(RunOptions{Host: "http://user:secret@example.com:8272", Vendor: "vllm", Model: "gemma4:12b"})
+	_, err := checkEngine(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "evals run on taraengine; http://user:xxxxx@example.com:8272 is ") ||
+		strings.Contains(err.Error(), "secret") {
+		t.Fatalf("a vLLM server behind a host with a password: %v", err)
+	}
+}
+
 func engineTurn(text string) taraenginetest.Turn { return taraenginetest.Turn{Content: text} }
 
 func failure500() *taraenginetest.Failure {
