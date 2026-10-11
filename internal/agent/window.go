@@ -17,8 +17,8 @@ const (
 // ErrModelWithoutTools is returned when the selected model cannot call tools.
 var ErrModelWithoutTools = errors.New("model does not support tools")
 
-// ResolveContextWindow turns the context.window setting ("auto" or a number) into the num_ctx to
-// request. modelMax is the model's native maximum (0 = unknown). The below-floor warning applies
+// ResolveContextWindow turns the context.window setting ("auto" or a number) into the window the model
+// loads at. modelMax is the model's native maximum (0 = unknown). The below-floor warning applies
 // on every path, including an explicit numeric window, and combines with a clamp warning when a
 // value carries both (never clamped upward).
 func ResolveContextWindow(configured string, modelMax int) (int, string) {

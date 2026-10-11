@@ -10,8 +10,9 @@
 # file still starts taracode; each of these prints a one-time migration warning after the
 # startup banner.
 
-# LLM server host (required; --host and TARACODE_HOST override it)
-host: http://localhost:11434
+# Model server host (optional: without one taracode asks taraengine at http://127.0.0.1:8272;
+# --host and TARACODE_HOST override it)
+host: http://127.0.0.1:8272
 
 # API key (optional, for hosts that require one)
 key: ""
@@ -39,7 +40,7 @@ context:
 # Change it mid-session with /think without restarting taracode
 think: auto
 
-# How long Ollama keeps the model loaded, "" = server default, "-1" = keep loaded (default: "")
+# keep_alive does nothing on taraengine, whose idle sleep is global; doctor notes it when it is set
 keep_alive: ""
 
 # Starting operating mode: investigate or operate (default: unset, starts in investigate unless a

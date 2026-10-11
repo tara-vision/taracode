@@ -18,7 +18,7 @@ Fixes #(issue number) or Related to #(issue number)
 
 Describe the tests you ran:
 
-- [ ] Tested locally with Ollama
+- [ ] Tested locally with taraengine
 - [ ] Added/updated unit tests
 - [ ] Tested on macOS
 - [ ] Tested on Linux

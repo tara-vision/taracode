@@ -17,14 +17,15 @@ LAB_MODEL ?= gemma4:12b
 
 # Label for the machine the lab engine runs on, written to the results, for example
 # LAB_HARDWARE="NVIDIA RTX 5090 (32 GB)". Empty writes none. Never a host name.
-# To measure the GPU memory as well, pass the probe through EVAL_ARGS, for example
+# taraengine measures the GPU memory itself on NVIDIA. For an engine that only estimates it, pass a probe
+# through EVAL_ARGS, for example
 # EVAL_ARGS='--gpu-probe "ssh -o BatchMode=yes <engine host> nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits"'.
 LAB_HARDWARE ?=
 
 # Recorder host: the SSH alias of the lab VM and the directory the corpus is synced to.
 RECORD_HOST ?= taracode
 RECORD_DIR ?= taracode-evals
-# Models the scoreboard target runs: the engine catalog's eight models, in registry order.
+# Models the scoreboard target runs: the engine catalog's eight models, in catalog order.
 SCOREBOARD_MODELS ?= gemma4:e4b gemma4:12b gemma4:26b gemma4:31b glm-4.7-flash qwen3.6:27b qwen3.8:27b qwen3.6:35b
 
 # Linker flags to inject version and strip debug info
@@ -76,7 +77,7 @@ build-all:
 snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish,sign
 
-# Three real sessions against a lab Ollama. Needs LAB_HOST=http://<host>:<port> in the environment.
+# Three real sessions against a lab engine. Needs LAB_HOST=http://<host>:<port> in the environment.
 lab-smoke: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) doctor --host $(LAB_HOST)

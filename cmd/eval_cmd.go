@@ -101,9 +101,10 @@ func init() {
 		"label for the machine the engine runs on, at most 60 characters, e.g. \"NVIDIA RTX 5090 (32 GB)\" "+
 			"(never a host name or an address)")
 	evalRunCmd.Flags().StringVar(&evalRun.gpuProbe, "gpu-probe", "",
-		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded, e.g. "+
-			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; the engine's own "+
-			"figure is an estimate. The run unloads its model when it ends")
+		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded when the "+
+			"engine only estimates its memory, e.g. "+
+			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; an engine that "+
+			"measures it needs none. The run unloads its model when it ends")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")

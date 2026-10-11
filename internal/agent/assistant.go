@@ -205,8 +205,8 @@ func New(opts Options) (*Assistant, error) {
 		compactionCfg.KeepRecent = 4
 	}
 
-	// Request options (Task 8): reasoning mode, context window, keep-alive. An unrecognized think
-	// value falls back to auto rather than failing the whole assistant.
+	// Request options: reasoning mode and context window. An unrecognized think value falls back to auto
+	// rather than failing the whole assistant.
 	think, thinkOK := llm.ParseThink(opts.Think)
 	if !thinkOK {
 		_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("think %q not recognized; using auto", opts.Think)))
@@ -277,10 +277,10 @@ func New(opts Options) (*Assistant, error) {
 }
 
 // sameModel reports whether a and b name the same Ollama model once its implicit tag is accounted
-// for: Ollama treats a name given without a tag as "name:latest" and lists it that way from
-// /api/tags, so a bare "name" and a listed "name:latest" must compare equal (ruling P3-R74). Only
-// one trailing ":latest" is stripped from each side (Ollama never double-tags a real model name),
-// so "x:latest:latest" is compared as "x:latest", not collapsed any further.
+// for: Ollama treats a name given without a tag as "name:latest" and lists it that way on its
+// OpenAI-compatible /v1/models, so a bare "name" and a listed "name:latest" must compare equal (ruling
+// P3-R74). Only one trailing ":latest" is stripped from each side (Ollama never double-tags a real model
+// name), so "x:latest:latest" is compared as "x:latest", not collapsed any further.
 func sameModel(a, b string) bool {
 	return strings.TrimSuffix(a, ":latest") == strings.TrimSuffix(b, ":latest")
 }

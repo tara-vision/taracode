@@ -57,8 +57,8 @@ type ContextInfo struct {
 	CompactionEnabled   bool
 	CompactionThreshold float64
 	MaxIterations       int
-	ServerContextTokens int // context window reported by the Ollama server (0 = unknown)
-	ContextWindow       int // num_ctx requested for the current model (0 = unresolved)
+	ServerContextTokens int // the window the server loaded the model with (0 = unknown)
+	ContextWindow       int // the window the current model loads at (0 = unresolved)
 }
 
 // ForceCompact triggers immediate conversation compaction regardless of threshold

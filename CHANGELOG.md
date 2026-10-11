@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- taraengine is taracode's native backend. taracode finds it at `http://127.0.0.1:8272` when no host is set, sets
+  the context window when the model loads, maps `/think` to the engine's thinking switch and levels, and reads the
+  engine's timings for tokens per second.
+- `taracode doctor` reports the engine: its version and runtime, the machine and its tier, the pulled models, the
+  window the configured model loads at, and the engine's recommended model.
+- The model registry lives in the engine: first-run advice and doctor print `taraengine pull <model>`.
+- Evals run on taraengine. Results name their server, tier and default; results from 3.2.x stay readable, and the
+  board keeps one row per model and engine.
+- Detection asks the engine's open `/api/health` first; `vendor: taraengine` skips detection.
+
+### Removed
+- The native Ollama client. Ollama keeps working on the generic OpenAI-compatible path, without window control,
+  without thinking on or off, without `/model` and without evals; each session says so in one line.
+- `keep_alive` no longer does anything: taraengine's idle sleep is global. Existing configs still load, and doctor
+  notes the setting.
+
+### Migration
+- Install taraengine (`brew install --cask tara-vision/taracode/taraengine`) and pull a model (`taraengine pull
+  <model>`; `taracode doctor` names the one for your machine), or keep Ollama with `vendor: ollama` on the generic
+  path. This minor release replaces the native backend on purpose: the move to taraengine is what brings window and
+  thinking control back.
+
 ## [3.2.4] - 2026-10-01
 
 ### Changed

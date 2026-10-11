@@ -60,9 +60,9 @@ type Row struct {
 	Digest          string                 `json:"digest,omitempty"`
 }
 
-// newRow is one model's line on a server from its results: the summary, the run's header, the GPU
-// memory the operator's probe measured and, when the engine reported the loaded model, its own estimate
-// in decimal gigabytes (the unit `ollama ps` prints).
+// newRow is one model's line on a server from its results: the summary, the run's header, the measured GPU
+// memory (the engine's own measurement or the operator's probe) and, when the engine reported the loaded
+// model, its memory figure in decimal gigabytes.
 func newRow(r Results, tier string, isDefault bool) Row {
 	byArea := map[string]AreaSummary{}
 	if r.Summary.ByArea != nil {

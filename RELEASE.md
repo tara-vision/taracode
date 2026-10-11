@@ -32,7 +32,7 @@ The installer must print `Verifying checksum...` before installing.
 ### Environment for manual testing
 
 ```bash
-ollama pull glm-4.7-flash   # 32 GB machines
-ollama pull gemma4:12b      # 16 GB machines
-export TARACODE_HOST=http://localhost:11434
+taraengine pull glm-4.7-flash   # 32 GB machines
+taraengine pull gemma4:12b      # 16 GB machines
+export TARACODE_HOST=http://127.0.0.1:8272
 ```

@@ -142,7 +142,8 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 }
 
 // TestNewREPLOnOllamaShowsTheNotice: a session on Ollama prints what it is connected to and, once, the line that says
-// what taracode cannot do there. Ollama is used through the OpenAI-compatible API, which the fake engine serves too.
+// what taracode cannot do there. Ollama is used through the OpenAI-compatible API; the fake engine answers 404 on
+// /v1/models, so the Ollama start runs on the configured-model fallback.
 func TestNewREPLOnOllamaShowsTheNotice(t *testing.T) {
 	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())
@@ -164,8 +165,9 @@ func TestNewREPLOnOllamaShowsTheNotice(t *testing.T) {
 	if n := strings.Count(out, "no window control"); n != 1 {
 		t.Errorf("the notice prints once at start, not %d times:\n%s", n, out)
 	}
-	if out += runAndClose(t, r); !strings.Contains(out, "Goodbye!") {
-		t.Fatalf("%q", out)
+	out = runAndClose(t, r)
+	if !strings.Contains(out, "Goodbye!") {
+		t.Fatalf("the loop over readline's input: %q", out)
 	}
 }
 

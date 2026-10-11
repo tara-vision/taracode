@@ -86,7 +86,7 @@ func (a *Assistant) checkServerContextOnce() {
 }
 
 // loadedContextLength returns the context window the server loaded model with, or 0 when it is not
-// loaded. Ollama reports an untagged model ("foo") as "foo:latest".
+// loaded. A name without a tag also matches its ":latest" entry.
 func loadedContextLength(loaded []llm.LoadedModel, model string) int {
 	want := model
 	if !strings.Contains(model, ":") {

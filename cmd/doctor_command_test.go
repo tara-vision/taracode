@@ -33,6 +33,35 @@ func TestDoctorCommandPrintsTheReport(t *testing.T) {
 	}
 }
 
+// TestDoctorCommandNotesAKeepAliveInTheConfig: a config file that still sets keep_alive, as one written for 3.2 may,
+// loads and `taracode doctor` runs on it without an error; the report notes that taracode sends the setting to no
+// server.
+func TestDoctorCommandNotesAKeepAliveInTheConfig(t *testing.T) {
+	resetConfig(t)
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	srv := fakeEngine(t)
+	config := filepath.Join(t.TempDir(), "taracode.yaml")
+	writeFile(t, config, "host: "+srv.URL+"\nmodel: gemma4:12b\nkeep_alive: \"-1\"\n")
+	t.Cleanup(func() {
+		cfgFile = ""
+		rootCmd.PersistentFlags().Lookup("config").Changed = false
+	})
+	var err error
+	out := captureStdoutForTest(t, func() { _, err = executeWith(t, "--config", config, "doctor") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"taraengine 0.2.0",
+		"Keep      keep_alive in the config does nothing: taracode sends it to no server",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor lacks %q:\n%s", want, out)
+		}
+	}
+}
+
 // TestDoctorCommandAsksTheDefaultHostWhenNoneIsSet: a missing host no longer stops doctor; it checks the local
 // engine's address like every command. The command itself is not run: on a machine with no engine it exits 1.
 func TestDoctorCommandAsksTheDefaultHostWhenNoneIsSet(t *testing.T) {

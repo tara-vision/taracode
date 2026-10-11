@@ -1,5 +1,5 @@
 // Package openaiclient adapts a go-openai client to llm.Client for OpenAI-compatible servers
-// (vLLM, llama.cpp). Context window and keep-alive are not controllable on this path.
+// (vLLM, llama.cpp). The context window and thinking on or off are not controllable on this path.
 package openaiclient
 
 import (

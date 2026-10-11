@@ -28,7 +28,7 @@ What actually happened.
 
 - **taracode version**: [run `taracode --version`]
 - **OS**: [e.g., macOS 14.2, Ubuntu 22.04]
-- **Ollama version**: [run `ollama --version`]
+- **Server**: [taraengine version from `taracode doctor`, or the OpenAI-compatible server you use]
 - **Model**: [e.g., glm-4.7-flash]
 
 ## Logs / Error Output

@@ -40,9 +40,9 @@ type Results struct {
 	Host        string      `json:"host"`
 	Hardware    string      `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
 	Engine      *EngineInfo `json:"engine,omitempty"`   // the loaded model as the engine reports it
-	// GPUMemoryMiB is the GPU memory in use with the model loaded, as the operator's probe measured it
-	// on the machine (--gpu-probe); 0 when nothing was measured. The engine's own figures above are
-	// estimates and can be far from it.
+	// GPUMemoryMiB is the GPU memory in use with the model loaded: the engine's own figure when it measured it
+	// (taraengine on NVIDIA), else what the operator's probe measured on the machine (--gpu-probe); 0 when
+	// nothing was measured. An engine's estimate can be far from what the GPU holds.
 	GPUMemoryMiB int64        `json:"gpu_memory_mib,omitempty"`
 	Tasks        []TaskResult `json:"tasks"`
 	Summary      Summary      `json:"summary"`
@@ -334,7 +334,7 @@ const dottedQuadTail = `(?:(?:\.\d{1,3}){3})?`
 var userHome = regexp.MustCompile(`/home/[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+|/root`)
 
 // scrubUserHomes rewrites a user's home directory to ~ wherever it starts a path, whoever the user
-// is: a status body from the engine can name the engine's own home, such as an .ollama directory
+// is: a status body from the engine can name the engine's own home, such as its data directory
 // (ruling P3-R56). A match inside a longer path (/var/home/x) or a longer name (/rootfs) stays.
 func scrubUserHomes(s string) string {
 	var b strings.Builder
