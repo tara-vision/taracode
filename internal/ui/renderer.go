@@ -270,9 +270,9 @@ func (r *Renderer) ProviderNotice(info *provider.Info) string {
 	if info == nil || info.Type != provider.TypeOllama {
 		return ""
 	}
-	return WarningStyle.Render(fmt.Sprintf("%s Ollama runs on the generic OpenAI-compatible path: no window control, "+
-		"no thinking on or off, no /model and no evals. taraengine is the native backend: %s", IconWarning,
-		taraengine.InstallHint)) + "\n"
+	return WarningStyle.Render(fmt.Sprintf("%s Ollama runs on the generic OpenAI-compatible path: no window control "+
+		"(set OLLAMA_CONTEXT_LENGTH on the Ollama server), no thinking on or off, no /model and no evals. taraengine "+
+		"is the native backend: %s", IconWarning, taraengine.InstallHint)) + "\n"
 }
 
 // SearchFallbackMessage formats a search provider fallback notification

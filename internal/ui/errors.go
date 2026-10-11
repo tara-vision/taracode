@@ -12,6 +12,7 @@ type ErrorSuggestion struct {
 	Title       string   // Short title for the error
 	Suggestions []string // Actionable suggestions
 	DocURL      string   // Optional documentation URL
+	Connection  bool     // no server answered in time; at startup the connection box says more
 }
 
 // Common error patterns and their suggestions
@@ -25,6 +26,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"Check the host in ~/.taracode/config.yaml, or pass --host",
 			"Run taracode doctor",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "no such host",
@@ -34,6 +36,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"Verify the hostname in TARACODE_HOST or config.yaml",
 			"taraengine listens on http://127.0.0.1:8272 by default",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "connection reset",
@@ -43,6 +46,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"Check that the machine has the memory for the model: taracode doctor",
 			"Try a smaller model: /model",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "timeout",
@@ -52,6 +56,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"Try a simpler query or smaller context",
 			"Check if the server is under heavy load",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "context deadline exceeded",
@@ -61,6 +66,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"For long commands, increase timeout in params",
 			"Break complex tasks into smaller steps",
 		},
+		Connection: true,
 	},
 
 	// Model errors
@@ -81,6 +87,15 @@ var errorSuggestions = []ErrorSuggestion{
 			"No model is pulled on the server",
 			"Pull one: taraengine pull <model> (taracode doctor recommends one for this machine)",
 			"List the engine's models: taraengine list",
+		},
+	},
+	{
+		Pattern: "does not support tools",
+		Title:   "Model Without Tools",
+		Suggestions: []string{
+			"taracode needs a model that calls tools",
+			"Choose a model with tools: taracode doctor lists them",
+			"Pick it with --model, or with /model in a session",
 		},
 	},
 
@@ -170,21 +185,28 @@ func EnhanceError(err error) string {
 	}
 
 	if s, ok := serverSuggestion(err); ok {
-		return FormatEnhancedError(err.Error(), s)
+		return FormatEnhancedError(withoutHint(err), s)
 	}
 
 	errStr := err.Error()
-	errLower := strings.ToLower(errStr)
-
-	// Find matching suggestion
-	for _, suggestion := range errorSuggestions {
-		if strings.Contains(errLower, suggestion.Pattern) {
-			return FormatEnhancedError(errStr, suggestion)
-		}
+	if suggestion, ok := matchSuggestion(errStr, true); ok {
+		return FormatEnhancedError(errStr, suggestion)
 	}
 
 	// No enhancement found, return original error
 	return ErrorStyle.Render("Error: " + errStr)
+}
+
+// matchSuggestion is the first entry of the table whose pattern errStr holds. Without withConnection it skips the
+// entries about the connection.
+func matchSuggestion(errStr string, withConnection bool) (ErrorSuggestion, bool) {
+	errLower := strings.ToLower(errStr)
+	for _, suggestion := range errorSuggestions {
+		if (withConnection || !suggestion.Connection) && strings.Contains(errLower, suggestion.Pattern) {
+			return suggestion, true
+		}
+	}
+	return ErrorSuggestion{}, false
 }
 
 // FormatEnhancedError formats an error with its suggestion

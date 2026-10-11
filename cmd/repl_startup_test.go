@@ -105,6 +105,24 @@ func TestNewREPLReportsAConnectionFailure(t *testing.T) {
 	}
 }
 
+// TestNewREPLOnAnEngineWithNothingPulled: the first run on a running engine with no model pulled prints the engine's
+// advice and stops with the suggestion to pull one, not with the box that says taracode cannot connect.
+func TestNewREPLOnAnEngineWithNothingPulled(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "glm-4.7-flash", Status: "available"}}
+	startupConfig(t, srv, t.TempDir())
+	viper.Set("model", "")
+	var err error
+	out := captureStdoutForTest(t, func() { _, err = newREPL() })
+	if err == nil || !strings.Contains(err.Error(), "No Models Available") ||
+		!strings.Contains(err.Error(), "taraengine pull <model>") || strings.Contains(err.Error(), "Cannot connect") {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out, "taraengine pull glm-4.7-flash") {
+		t.Fatalf("the engine's advice prints before the error: %q", out)
+	}
+}
+
 func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())

@@ -27,8 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration
 - Install taraengine (`brew install --cask tara-vision/taracode/taraengine`) and pull a model (`taraengine pull
   <model>`; `taracode doctor` names the one for your machine), or keep Ollama with `vendor: ollama` on the generic
-  path. This minor release replaces the native backend on purpose: the move to taraengine is what brings window and
-  thinking control back.
+  path, where Ollama's own window applies (set `OLLAMA_CONTEXT_LENGTH` on the Ollama server for a larger one). This
+  minor release replaces the native backend on purpose: the move to taraengine is what brings window and thinking
+  control back.
 
 ## [3.2.4] - 2026-10-01
 

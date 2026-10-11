@@ -2,7 +2,9 @@ package ui
 
 import (
 	"errors"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/tara-vision/taracode/internal/llm"
 )
@@ -67,11 +69,35 @@ func withHint(hint string, advice []string) []string {
 	return append([]string{hint}, advice...)
 }
 
-// StartupError formats an error from building the session: the server's own explanations get their suggestions,
-// anything else is a connection problem.
+// withoutHint is err's text without the server's hint, which the suggestions show first: the dimmed line under the
+// title carries the error, and the hint shows once.
+func withoutHint(err error) string {
+	text := err.Error()
+	var refused *llm.ServerError
+	var unreachable *llm.UnreachableError
+	switch {
+	case errors.As(err, &refused) && refused.Hint != "":
+		return strings.Replace(text, refused.Error(), refused.Message, 1)
+	case errors.As(err, &unreachable) && unreachable.Hint != "":
+		bare := &llm.UnreachableError{Host: unreachable.Host}
+		return strings.Replace(text, unreachable.Error(), bare.Error(), 1)
+	}
+	return text
+}
+
+// StartupError formats an error from building the session. The server's own explanations get their suggestions, and
+// so does an error the suggestion table knows that is not about the connection (an engine with nothing pulled, a
+// model without tools); a connection failure, or an error nothing explains, gets the box that says taracode cannot
+// connect.
 func StartupError(host string, err error) string {
 	if s, ok := serverSuggestion(err); ok {
-		return FormatEnhancedError(err.Error(), s)
+		return FormatEnhancedError(withoutHint(err), s)
+	}
+	var netErr *net.OpError
+	if !errors.As(err, &netErr) {
+		if s, ok := matchSuggestion(err.Error(), false); ok {
+			return FormatEnhancedError(err.Error(), s)
+		}
 	}
 	return FormatConnectionError(host, err)
 }
