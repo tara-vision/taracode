@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 )
@@ -261,6 +262,17 @@ func (r *Renderer) ProviderMessage(info *provider.Info) string {
 		return ""
 	}
 	return SuccessStyle.Render(fmt.Sprintf("%s Connected to %s", IconSuccess, info.Name)) + "\n"
+}
+
+// ProviderNotice is the one line a session on Ollama shows: what taracode cannot do there, and that taraengine is
+// the native backend. Every other server gets no line.
+func (r *Renderer) ProviderNotice(info *provider.Info) string {
+	if info == nil || info.Type != provider.TypeOllama {
+		return ""
+	}
+	return WarningStyle.Render(fmt.Sprintf("%s Ollama runs on the generic OpenAI-compatible path: no window control, "+
+		"no thinking on or off, no /model and no evals. taraengine is the native backend: %s", IconWarning,
+		taraengine.InstallHint)) + "\n"
 }
 
 // SearchFallbackMessage formats a search provider fallback notification

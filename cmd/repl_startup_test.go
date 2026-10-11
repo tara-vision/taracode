@@ -99,8 +99,8 @@ func TestNewREPLReportsAConnectionFailure(t *testing.T) {
 	viper.Set("host", "http://127.0.0.1:1")
 	var err error
 	_ = captureStdoutForTest(t, func() { _, err = newREPL() })
-	if err == nil || !strings.Contains(err.Error(), "Cannot connect to LLM server") ||
-		!strings.Contains(err.Error(), "Host: http://127.0.0.1:1") {
+	if err == nil || !strings.Contains(err.Error(), "Server Not Reachable") ||
+		!strings.Contains(err.Error(), "nothing answers at http://127.0.0.1:1") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Connected to Ollama", "Tara Code", "Run '/init' to initialize project context",
+		"Connected to Ollama", "no window control", "Tara Code", "Run '/init' to initialize project context",
 		fmt.Sprintf("Mode: investigate (%d tools)", r.asst.ToolRegistry().Available(r.asst.Mode())),
 		"Not initialised: nothing is saved", "Update available:", "v9.9.9",
 	} {

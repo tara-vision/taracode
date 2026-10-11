@@ -102,7 +102,7 @@ func newREPL() (*repl, error) {
 	asst, err := agent.New(r.opts)
 	if err != nil {
 		printWarnings(warnings) // the config was read; say what was ignored before saying what failed
-		return nil, fmt.Errorf("%s", ui.FormatConnectionError(opts.Host, err))
+		return nil, fmt.Errorf("%s", ui.StartupError(opts.Host, err))
 	}
 	r.asst = asst
 	r.printBanner()         // moved: provider message, session resume message (113-121)
@@ -210,6 +210,7 @@ func (r *repl) close() {
 func (r *repl) printBanner() {
 	if providerInfo := r.asst.GetProviderInfo(); providerInfo != nil {
 		fmt.Print(r.renderer.ProviderMessage(providerInfo))
+		fmt.Print(r.renderer.ProviderNotice(providerInfo))
 	}
 	if session := r.asst.GetSession(); session != nil && len(session.Messages) > 0 {
 		fmt.Print(r.renderer.SessionResumeMessage(len(session.Messages)))

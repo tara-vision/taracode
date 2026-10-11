@@ -17,7 +17,7 @@ func TestEnhanceError(t *testing.T) {
 			err:  errors.New("dial tcp: connection refused"),
 			contains: []string{
 				"Connection Refused",
-				"ollama serve",
+				"taraengine serve",
 			},
 		},
 		{
@@ -41,7 +41,7 @@ func TestEnhanceError(t *testing.T) {
 			err:  errors.New("model not found: llama3"),
 			contains: []string{
 				"Model Not Found",
-				"ollama pull",
+				"taraengine pull",
 			},
 		},
 		{
@@ -200,7 +200,7 @@ func TestFormatConnectionError(t *testing.T) {
 		t.Error("Expected result to contain host")
 	}
 
-	if !strings.Contains(result, "ollama serve") {
-		t.Error("Expected suggestion to start ollama")
+	if !strings.Contains(result, "taraengine serve") {
+		t.Error("Expected suggestion to start taraengine")
 	}
 }

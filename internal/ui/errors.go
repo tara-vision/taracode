@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 // ErrorSuggestion represents an actionable suggestion for an error
@@ -23,9 +21,9 @@ var errorSuggestions = []ErrorSuggestion{
 		Pattern: "connection refused",
 		Title:   "Connection Refused",
 		Suggestions: []string{
-			"Ensure Ollama is running: ollama serve",
-			"Check the host URL in your config: ~/.taracode/config.yaml",
-			"Verify the server is accessible: curl <host>/api/tags",
+			"Start taraengine: taraengine serve",
+			"Check the host in ~/.taracode/config.yaml, or pass --host",
+			"Run taracode doctor",
 		},
 	},
 	{
@@ -34,7 +32,7 @@ var errorSuggestions = []ErrorSuggestion{
 		Suggestions: []string{
 			"Check your network connection",
 			"Verify the hostname in TARACODE_HOST or config.yaml",
-			"Try using localhost:11434 for local Ollama",
+			"taraengine listens on http://127.0.0.1:8272 by default",
 		},
 	},
 	{
@@ -42,8 +40,8 @@ var errorSuggestions = []ErrorSuggestion{
 		Title:   "Connection Reset",
 		Suggestions: []string{
 			"The server closed the connection unexpectedly",
-			"Check if Ollama has enough memory for the model",
-			fmt.Sprintf("Try a smaller model: taracode --model %s", models.DefaultName(models.Tier16)),
+			"Check that the machine has the memory for the model: taracode doctor",
+			"Try a smaller model: /model",
 		},
 	},
 	{
@@ -71,8 +69,8 @@ var errorSuggestions = []ErrorSuggestion{
 		Title:   "Model Not Found",
 		Suggestions: []string{
 			"The requested model is not available",
-			"Pull the model: ollama pull <model>",
-			"List available models: ollama list",
+			"Pull the model: taraengine pull <model>",
+			"List the engine's models: taraengine list",
 			"Switch models with: /model",
 		},
 	},
@@ -80,10 +78,9 @@ var errorSuggestions = []ErrorSuggestion{
 		Pattern: "no models available",
 		Title:   "No Models Available",
 		Suggestions: []string{
-			"No models are loaded on the server",
-			fmt.Sprintf("Pull a model: ollama pull %s (16 GB) or %s (32 GB)",
-				models.DefaultName(models.Tier16), models.DefaultName(models.Tier32)),
-			"Check Ollama status: ollama list",
+			"No model is pulled on the server",
+			"Pull one: taraengine pull <model> (taracode doctor recommends one for this machine)",
+			"List the engine's models: taraengine list",
 		},
 	},
 
@@ -170,6 +167,10 @@ var errorSuggestions = []ErrorSuggestion{
 func EnhanceError(err error) string {
 	if err == nil {
 		return ""
+	}
+
+	if s, ok := serverSuggestion(err); ok {
+		return FormatEnhancedError(err.Error(), s)
 	}
 
 	errStr := err.Error()
@@ -320,9 +321,9 @@ func FormatConnectionError(host string, err error) string {
 
 	sb.WriteString(WarningStyle.Render("Suggestions:"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  %s Start Ollama: ollama serve\n", IconTip))
-	sb.WriteString(fmt.Sprintf("  %s Check config: ~/.taracode/config.yaml\n", IconTip))
-	sb.WriteString(fmt.Sprintf("  %s Test connection: curl %s/api/tags\n", IconTip, host))
+	fmt.Fprintf(&sb, "  %s Start taraengine: taraengine serve\n", IconTip)
+	fmt.Fprintf(&sb, "  %s Check config: ~/.taracode/config.yaml\n", IconTip)
+	fmt.Fprintf(&sb, "  %s Test the connection: curl %s/api/health\n", IconTip, host)
 
 	return sb.String()
 }
