@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -138,6 +139,73 @@ func TestSwitchModelBringsTheOldModelBackWhenTheLoadFails(t *testing.T) {
 	if err := a.SwitchModel("glm-4.7-flash"); err == nil || !strings.Contains(out.String(),
 		"Could not load gemma4:12b back") {
 		t.Fatalf("err %v, output %q", err, out.String())
+	}
+}
+
+// thinkingSession is a session at think=high on a model with thinking, on an engine that also serves a small model
+// without thinking, whose window of 16384 is below the compaction budget.
+func thinkingSession(t *testing.T) (*Assistant, *taraenginetest.Server, *bytes.Buffer) {
+	t.Helper()
+	opts, srv, out := engineOptions(t)
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "small:3b",
+		Capabilities: []string{"completion", "tools"}, ContextLength: 16384})
+	opts.Model, opts.Think = "glm-4.7-flash", "high"
+	a, err := New(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a, srv, out
+}
+
+// sessionSettings describes what a model switch may change: the model, the think level, the compaction budget and
+// the window.
+func sessionSettings(a *Assistant) string {
+	info := a.GetContextInfo()
+	return fmt.Sprintf("model %s, think %q, budget %d, window %d", a.GetCurrentModel(), a.Think(), info.MaxTokens,
+		info.ContextWindow)
+}
+
+// TestSwitchModelThatStopsLeavesTheSessionAsItWas: reading a model may lower the think level and the compaction
+// budget, so a switch that stops, in its load or before it, leaves the model, the think level, the compaction budget
+// and the window as they were.
+func TestSwitchModelThatStopsLeavesTheSessionAsItWas(t *testing.T) {
+	cases := []struct {
+		name, model string
+		loadFails   bool
+	}{
+		{"a load that fails", "small:3b", true},
+		{"a model that is not pulled", "qwen3.6:35b", false},
+		{"a model without tools", "embed:1b", false},
+	}
+	for _, c := range cases {
+		a, srv, _ := thinkingSession(t)
+		before := sessionSettings(a)
+		if c.loadFails {
+			srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway,
+				Message: "exit code 1", Times: 1}
+		}
+		if err := a.SwitchModel(c.model); err == nil || sessionSettings(a) != before {
+			t.Errorf("%s: err %v, the session was %s, now %s", c.name, err, before, sessionSettings(a))
+		}
+	}
+}
+
+// TestSwitchModelPutsTheSettingsBackWhenTheOldModelCannotBeRead: when the engine will not describe the old model
+// right after the new one failed to load, the settings the new model set are still put back, thinking support
+// included.
+func TestSwitchModelPutsTheSettingsBackWhenTheOldModelCannotBeRead(t *testing.T) {
+	a, srv, out := thinkingSession(t)
+	before := sessionSettings(a)
+	srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway, Message: "exit code 1",
+		Times: 1}
+	srv.Failures["GET /api/models/glm-4.7-flash"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
+		Message: "x", Times: 1}
+	err := a.SwitchModel("small:3b")
+	if err == nil || !strings.Contains(out.String(), "Could not load glm-4.7-flash back") {
+		t.Fatalf("err %v, output %q", err, out.String())
+	}
+	if after := sessionSettings(a); after != before || a.SetThink(llm.ThinkHigh) != llm.ThinkHigh {
+		t.Fatalf("the session was %s, now %s, thinking supported: %v", before, after, a.thinkingSupported)
 	}
 }
 

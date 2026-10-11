@@ -549,7 +549,8 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 
 // SwitchModel switches to a different model. It reads the new model first, so a model the server refuses (not
 // pulled, no tools) never costs the session the old one; then it unloads the old model, loads the new one at its
-// window and saves the choice. When that load fails it brings the old model back and returns the failure.
+// window and saves the choice. When that load fails it puts the session's settings back, brings the old model back
+// and returns the failure.
 func (a *Assistant) SwitchModel(newModel string) error {
 	if a.provider == nil {
 		return fmt.Errorf("provider not initialized")
@@ -559,6 +560,7 @@ func (a *Assistant) SwitchModel(newModel string) error {
 		return fmt.Errorf("provider does not support model switching (taraengine only)")
 	}
 	oldModel := a.model
+	prior := a.snapshotSettings()
 	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
 	defer showCancel()
 	a.model = newModel
@@ -574,6 +576,7 @@ func (a *Assistant) SwitchModel(newModel string) error {
 		}
 	}
 	if err := a.loadModel(); err != nil {
+		a.restoreSettings(prior)
 		a.restoreModel(oldModel)
 		return err
 	}

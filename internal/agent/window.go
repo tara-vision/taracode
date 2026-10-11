@@ -100,6 +100,32 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 	return nil
 }
 
+// settingsSnapshot is the part of the session that applyModelDetails sets: the reasoning mode, whether the model
+// supports it, the window the model loads at and the compaction budget. A model switch that does not happen puts
+// it back.
+type settingsSnapshot struct {
+	think             llm.Think
+	thinkingSupported bool
+	contextWindow     int
+	maxTokens         int
+}
+
+// snapshotSettings copies the settings applyModelDetails sets.
+func (a *Assistant) snapshotSettings() settingsSnapshot {
+	return settingsSnapshot{
+		think:             a.think,
+		thinkingSupported: a.thinkingSupported,
+		contextWindow:     a.contextWindow,
+		maxTokens:         a.compactionCfg.MaxTokens,
+	}
+}
+
+// restoreSettings puts a snapshot back.
+func (a *Assistant) restoreSettings(s settingsSnapshot) {
+	a.think, a.thinkingSupported = s.think, s.thinkingSupported
+	a.contextWindow, a.compactionCfg.MaxTokens = s.contextWindow, s.maxTokens
+}
+
 // resolveAndApplyWindow resolves the window the model loads at against modelMax, keeps the compaction
 // budget in step, and prints any warning ResolveContextWindow has.
 func (a *Assistant) resolveAndApplyWindow(modelMax int) {
