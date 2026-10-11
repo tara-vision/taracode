@@ -43,8 +43,8 @@ func (p *probeOutput) Write(b []byte) (int, error) {
 }
 
 // probeGPU runs the operator's probe command through the shell, in env, and returns the GPU memory
-// in use in MiB. The engine's own figure for a loaded model is an estimate that can be far from what
-// the GPU holds, so a board's memory column comes from the machine: the operator names a command
+// in use in MiB. An engine that only estimates a loaded model's memory gives a figure that can be far from
+// what the GPU holds, so a board's memory column then comes from the machine: the operator names a command
 // that asks it (for an NVIDIA card on the engine's host, nvidia-smi with
 // --query-compute-apps=used_memory --format=csv,noheader,nounits). The command is the operator's own
 // flag, never anything a model or an engine sent. It runs in its own process group, which is killed
@@ -118,8 +118,9 @@ func (o RunOptions) probeEnv() []string {
 }
 
 // measuredGPU is probeGPU for Run: the memory the GPU holds once the warm-up has loaded the model.
-// It is measurement metadata, so anything that keeps it from being one costs a warning on the
-// terminal and never the run:
+// When the engine measured the memory itself, that figure is the measurement and no probe runs.
+// Otherwise the probe's figure is measurement metadata, so anything that keeps it from being one costs
+// a warning on the terminal and never the run:
 //   - the engine did not describe the model as loaded (engine is nil): what the GPU holds cannot be
 //     tied to the model, so the probe is not run;
 //   - another model is on the GPU (others > 0): the GPU's figure would include it;
@@ -129,7 +130,13 @@ func (o RunOptions) probeEnv() []string {
 //
 // A run that is already cancelled measures nothing and says nothing.
 func measuredGPU(ctx context.Context, opts RunOptions, engine *EngineInfo, others int) int64 {
-	if opts.GPUProbe == "" || ctx.Err() != nil {
+	if ctx.Err() != nil {
+		return 0
+	}
+	if engine != nil && engine.Measured {
+		return engine.VRAMBytes >> 20 // the engine measured its own server's GPU memory
+	}
+	if opts.GPUProbe == "" {
 		return 0
 	}
 	warn := func(format string, args ...any) int64 {

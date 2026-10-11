@@ -86,12 +86,14 @@ func TestProbeGPURefusesAFloodOfOutput(t *testing.T) {
 	}
 }
 
-// loadedGemma is an engine that reports gemma4:12b as loaded, entirely on the GPU, at 9.3 GB.
+// loadedGemma is an engine that reports gemma4:12b as loaded, entirely on the GPU, at 9.3 GB. The engine
+// only estimates that memory, so the probe is what measures the model; a measuring engine is tested apart.
 func loadedGemma(t *testing.T) *taraenginetest.Server {
 	t.Helper()
 	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
 	srv.Models[0].Quantization = "Q4_K_M"
-	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
+		Source: "estimated"}}
 	return srv
 }
 
@@ -155,6 +157,32 @@ func TestRunSurvivesAFailingProbe(t *testing.T) {
 	}
 	if strings.Contains(string(data), "gpu_memory_mib") || strings.Contains(string(data), "/secret/path") {
 		t.Fatalf("the results carry what they must not: %s", data)
+	}
+}
+
+// TestRunRecordsTheEnginesMeasurementWithoutAProbe: an engine that measured the model's memory is the run's
+// measurement: the results carry its figure, the last line names it, and a probe the operator gave is not run.
+func TestRunRecordsTheEnginesMeasurementWithoutAProbe(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	marker := filepath.Join(t.TempDir(), "probed")
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	opts.GPUProbe = `: > "` + marker + `"; echo 23676`
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.GPUMemoryMiB != 9_300_000_000>>20 || res.Engine == nil || !res.Engine.Measured {
+		t.Fatalf("measured %d, engine %+v", res.GPUMemoryMiB, res.Engine)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("the probe ran although the engine measured the model")
+	}
+	if want := ", 8.7 GiB on the GPU (engine reports 9.3 GB, 100% GPU)"; !strings.Contains(out.String(), want) {
+		t.Fatalf("the last line lacks %q: %q", want, out.String())
 	}
 }
 
@@ -267,7 +295,7 @@ func TestRunMeasuresOnlyAModelTheEngineListsAsLoaded(t *testing.T) {
 		}
 		for _, want := range []string{
 			"warning: no engine block in the results: the engine does not list gemma4:12b as loaded",
-			"use the one `ollama list` prints",
+			"use the name `taraengine list` prints",
 			"warning: no measured GPU memory in the results: the engine did not describe gemma4:12b as loaded",
 		} {
 			if !strings.Contains(out.String(), want) {
@@ -411,6 +439,19 @@ func TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled(t *testing.T) {
 	}
 }
 
+// TestMeasuredGPUTakesTheEnginesMeasurement: a figure the engine measured is the run's measurement; an estimate
+// is not one without a probe.
+func TestMeasuredGPUTakesTheEnginesMeasurement(t *testing.T) {
+	engine := &EngineInfo{VRAMBytes: 9_300_000_000, Measured: true}
+	if got := measuredGPU(context.Background(), RunOptions{}, engine, 0); got != 9_300_000_000>>20 {
+		t.Fatalf("the engine's measurement: %d MiB", got)
+	}
+	estimated := &EngineInfo{VRAMBytes: 9_300_000_000}
+	if got := measuredGPU(context.Background(), RunOptions{}, estimated, 0); got != 0 {
+		t.Fatalf("an estimate without a probe: %d", got)
+	}
+}
+
 // TestMeasuredGPUWorksWithoutARunScope: outside Run the probe gets the process environment.
 func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
 	t.Setenv("PROBE_VALUE", "777")
@@ -418,6 +459,22 @@ func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
 	opts := RunOptions{GPUProbe: `echo "$PROBE_VALUE"`, Out: &out}
 	if got := measuredGPU(context.Background(), opts, &EngineInfo{VRAMBytes: 1 << 20}, 0); got != 777 {
 		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
+	}
+}
+
+// TestMemoryNoteNamesWhereAMeasurementCameFrom: a measurement names what made it, taraengine or the operator's
+// probe, and an estimate says how to get a measurement.
+func TestMemoryNoteNamesWhereAMeasurementCameFrom(t *testing.T) {
+	measured := hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))
+	measured.GPUMemoryMiB = 23676
+	md := testBoard(t, []Results{measured}, testCorpus).Markdown()
+	if want := "by taraengine for its own server or by the operator's probe."; !strings.Contains(md, want) {
+		t.Fatalf("missing %q in:\n%s", want, md)
+	}
+	estimated := hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, testEngine(9_300_000_000, 9_300_000_000, 100))
+	md = testBoard(t, []Results{estimated}, testCorpus).Markdown()
+	if want := "run on taraengine with an NVIDIA GPU, or with --gpu-probe, to measure it."; !strings.Contains(md, want) {
+		t.Fatalf("missing %q in:\n%s", want, md)
 	}
 }
 

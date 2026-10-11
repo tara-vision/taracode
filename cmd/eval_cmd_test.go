@@ -258,7 +258,9 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 		taraenginetest.Turn{Content: "done"},
 	)
 	srv.Models[0].Quantization = "Q4_K_M"
-	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	// The engine only estimates the model's memory here, so the probe is what measures it.
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
+		Source: "estimated"}}
 	out := t.TempDir()
 	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
 		timeout: 30 * time.Second, out: out, hostLabel: "lab", hardware: "  NVIDIA RTX 5090 (32 GB) ",

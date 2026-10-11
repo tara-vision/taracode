@@ -97,13 +97,18 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
 			taraenginetest.ModelSpec{Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "sha256:0123456789abcdef0123"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
-				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "0123456789ab"}, false},
+				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "0123456789ab", Measured: true}, false},
+		{"estimated by the engine",
+			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
+				Source: "estimated"}},
+			taraenginetest.ModelSpec{},
+			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768}, false},
 		{"odd engine strings are dropped, not published",
 			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
 			taraenginetest.ModelSpec{Quantization: "Q4 | at http://10.1.2.3:11434", ParameterSize: "11.9B",
 				Digest: "sha256:not-hex-at-all"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
-				ParameterSize: "11.9B"}, false},
+				ParameterSize: "11.9B", Measured: true}, false},
 		{"another model is loaded", []taraenginetest.LoadedSpec{{Name: "other:1b", Size: 1}}, taraenginetest.ModelSpec{},
 			nil, true},
 		{"the engine reports no size", []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768}},
@@ -132,6 +137,10 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 			}
 			if c.want != nil { // the run's last line says what the model takes and where it sits
 				memory := fmt.Sprintf(", %.1f GB (%d%% GPU)", float64(c.want.SizeBytes)/1e9, c.want.GPUPercent)
+				if c.want.Measured { // the run records the engine's measurement, and the line names it
+					memory = fmt.Sprintf(", %.1f GiB on the GPU (engine reports %.1f GB, %d%% GPU)",
+						gib(c.want.VRAMBytes>>20), float64(c.want.SizeBytes)/1e9, c.want.GPUPercent)
+				}
 				if !strings.Contains(out.String(), memory) {
 					t.Fatalf("the last line lacks %q: %q", memory, out.String())
 				}
@@ -269,9 +278,35 @@ func TestEngineInfoLeavesTheDescriptionsOutWhenTheDetailFails(t *testing.T) {
 	srv.Failures["GET /api/models/gemma4:12b"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
 		Message: "broken"}
 	info, _, err := engineInfo(context.Background(), withDefaults(runOptions(srv, "")))
-	want := EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768}
+	want := EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
+		Measured: true}
 	if err != nil || info == nil || *info != want {
 		t.Fatalf("info %+v, err %v", info, err)
+	}
+}
+
+// TestEngineInfoReadsTheEngine: the entry named as the model was asked for is the block, with the engine's
+// measurement and its detail; another loaded model with memory on the GPU counts as one other.
+func TestEngineInfoReadsTheEngine(t *testing.T) {
+	srv := fakeEngine(t)
+	srv.Models[0].Quantization, srv.Models[0].ParameterSize, srv.Models[0].Digest = "Q4_K_M", "12B", "a1b2c3d4e5f6"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000},
+		{Name: "other:1b", Size: 1_000_000_000}}
+	info, others, err := engineInfo(context.Background(), withDefaults(runOptions(srv, "")))
+	want := EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
+		Quantization: "Q4_K_M", ParameterSize: "12B", Digest: "a1b2c3d4e5f6", Measured: true}
+	if err != nil || info == nil || *info != want || others != 1 {
+		t.Fatalf("info %+v, others %d, err %v", info, others, err)
+	}
+}
+
+// TestEngineInfoWithoutAFigure: a model the engine lists as loaded, with no memory figure, gives no block.
+func TestEngineInfoWithoutAFigure(t *testing.T) {
+	srv := fakeEngine(t)
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Source: "none"}}
+	if _, _, err := engineInfo(context.Background(), withDefaults(runOptions(srv, ""))); err == nil ||
+		!strings.Contains(err.Error(), "the engine reports no memory for gemma4:12b") {
+		t.Fatalf("no memory figure: %v", err)
 	}
 }
 

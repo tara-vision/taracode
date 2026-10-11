@@ -24,8 +24,8 @@ LAB_HARDWARE ?=
 # Recorder host: the SSH alias of the lab VM and the directory the corpus is synced to.
 RECORD_HOST ?= taracode
 RECORD_DIR ?= taracode-evals
-# Models the scoreboard target runs, tier defaults first (registry order for the rest).
-SCOREBOARD_MODELS ?= gemma4:12b qwen3.8:27b qwen3.6:35b gemma4:e4b qwen3.5:9b ministral-3:14b qwen3.6:27b gemma4:26b muse-glimmer:30b glm-4.7-flash gemma4:31b nemotron-3.5-lightning:30b
+# Models the scoreboard target runs: the engine catalog's eight models, in registry order.
+SCOREBOARD_MODELS ?= gemma4:e4b gemma4:12b gemma4:26b gemma4:31b glm-4.7-flash qwen3.6:27b qwen3.8:27b qwen3.6:35b
 
 # Linker flags to inject version and strip debug info
 LDFLAGS=-s -w -X $(PKG).Version=$(VERSION)
@@ -94,7 +94,8 @@ record:
 	ssh $(RECORD_HOST) 'cd $(RECORD_DIR) && ./taracode eval record --corpus evals/tasks --scenarios evals/scenarios $(if $(RECORD_TASKS),--tasks "$(RECORD_TASKS)",)'
 	rsync -az --delete --include='*/' --include='fixtures/***' --exclude='*' $(RECORD_HOST):$(RECORD_DIR)/evals/tasks/ evals/tasks/
 
-# Run the corpus against one lab model. Needs LAB_HOST; EVAL_ARGS passes extra flags (--tasks, --runs).
+# Run the corpus against one lab model. Needs LAB_HOST, and TARACODE_KEY for a keyed engine;
+# EVAL_ARGS passes extra flags (--tasks, --runs).
 eval-lab: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) eval run --host $(LAB_HOST) --model $(LAB_MODEL) $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS)

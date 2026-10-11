@@ -27,6 +27,7 @@ type EngineInfo struct {
 	Quantization  string `json:"quantization,omitempty"`
 	ParameterSize string `json:"parameter_size,omitempty"`
 	Digest        string `json:"digest,omitempty"`
+	Measured      bool   `json:"-"` // the engine measured the memory itself (taraengine on NVIDIA); never written
 }
 
 // CleanHardware trims a run's hardware label, collapses its inner runs of spaces (so one machine is
@@ -71,12 +72,12 @@ func cleanToken(s string) string {
 	return ""
 }
 
-// engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
-// for, or that name with ":latest" (ruling P3-R74). It fails when the engine does not answer, does
-// not list the model as loaded, or reports no size for it. The quantization, parameter size and digest
-// come from the engine's detail of the model (describeModel). others is how many other models the
-// engine holds on the GPU, -1 when the engine did not say: a GPU measurement would include them. A
-// model the engine keeps entirely in system memory takes nothing on the GPU and is not counted.
+// engineInfo reads the loaded model's entry from the engine: the entry named exactly as the model was asked
+// for, since the engine names its models exactly. It fails when the engine does not answer, does not list
+// the model as loaded, or reports no memory for it. The quantization, parameter size and digest come from
+// the engine's detail of the model (describeModel). others is how many other models the engine holds on
+// the GPU, -1 when the engine did not say: a GPU measurement would include them. A model the engine keeps
+// entirely in system memory takes nothing on the GPU and is not counted.
 func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others int, err error) {
 	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
@@ -88,21 +89,18 @@ func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others 
 	if err != nil {
 		return nil, -1, err
 	}
-	err = fmt.Errorf("the engine does not list %s as loaded (if it has another name there, use the one "+
-		"`ollama list` prints)", opts.Model)
+	err = fmt.Errorf("the engine does not list %s as loaded (use the name `taraengine list` prints)", opts.Model)
 	for _, m := range loaded {
 		switch {
-		case m.Name != opts.Model && m.Name != opts.Model+":latest":
+		case m.Name != opts.Model:
 			if m.SizeVRAM > 0 {
 				others++
 			}
 		case m.Size <= 0:
-			err = fmt.Errorf("the engine reports no size for %s", m.Name)
+			err = fmt.Errorf("the engine reports no memory for %s", m.Name)
 		default:
-			info, err = &EngineInfo{
-				SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
-				ContextLength: m.ContextLength,
-			}, nil
+			info, err = &EngineInfo{SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
+				ContextLength: m.ContextLength, Measured: m.Measured}, nil
 		}
 	}
 	if info != nil {
@@ -176,7 +174,7 @@ func generationRate(results []TaskResult) float64 {
 	return round1(tokens / (ms / 1000))
 }
 
-// speedAndMemory is the tail of a run's last line: the generation rate, the GPU memory the probe
+// speedAndMemory is the tail of a run's last line: the generation rate, the GPU memory the run
 // measured and the loaded model's memory as the engine reports it, each only when there is one.
 func speedAndMemory(res Results) string {
 	out := ""

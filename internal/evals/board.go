@@ -145,13 +145,15 @@ func (h HardwareBoard) memoryNote() string {
 	switch {
 	case measured > 0 && estimated > 0:
 		return "VRAM is the GPU memory in use with the model loaded, measured on the machine at the context window " +
-			"the run asked for. A figure marked ~ is the engine's own estimate, not a measurement."
+			"the run asked for, by taraengine for its own server or by the operator's probe. A figure marked ~ is " +
+			"the engine's own estimate, not a measurement."
 	case measured > 0:
 		return "VRAM is the GPU memory in use with the model loaded, measured on the machine at the context window " +
-			"the run asked for."
+			"the run asked for, by taraengine for its own server or by the operator's probe."
 	}
 	if estimated > 0 {
-		return "VRAM is the engine's own estimate (~), not a measurement: run with --gpu-probe to measure it."
+		return "VRAM is the engine's own estimate (~), not a measurement: run on taraengine with an NVIDIA GPU, " +
+			"or with --gpu-probe, to measure it."
 	}
 	return "No run on this board measured or reported its memory."
 }
