@@ -7,8 +7,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -167,9 +169,11 @@ func TestChatKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
 	}
 }
 
-// TestChatRetryReusesTheConnection: the 503's body is read before the retry, so the retry goes out on the same
-// connection, even when the body comes a while after the status (net/http's own read of a closed body waits 50 ms).
+// TestChatRetryReusesTheConnection: the 503's body, which declares its length as the engine's do, is read before the
+// retry, so the retry goes out on the same connection, even when the body comes a while after the status (net/http's
+// own read of a closed body waits 50 ms).
 func TestChatRetryReusesTheConnection(t *testing.T) {
+	const notRunning = `{"error":{"message":"the engine backend is not running"}}`
 	var mu sync.Mutex
 	conns, calls := 0, 0
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,10 +184,11 @@ func TestChatRetryReusesTheConnection(t *testing.T) {
 		mu.Unlock()
 		if first {
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Length", strconv.Itoa(len(notRunning)))
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = http.NewResponseController(w).Flush()
 			time.Sleep(200 * time.Millisecond)
-			_, _ = io.WriteString(w, `{"error":{"message":"the engine backend is not running"}}`)
+			_, _ = io.WriteString(w, notRunning)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -205,6 +210,38 @@ func TestChatRetryReusesTheConnection(t *testing.T) {
 	defer mu.Unlock()
 	if err != nil || res.Content != "back" || calls != 2 || conns != 1 {
 		t.Fatalf("a 503 then an answer: %+v %v, %d calls on %d connections", res, err, calls, conns)
+	}
+}
+
+// TestChatRetryDoesNotWaitForABodyOfUnknownLength: the first 503's body is read before the retry only when the
+// response declares a length. A body of unknown length that never ends is closed at once, so the retry goes out after
+// the retry delay and not when the turn's context ends.
+func TestChatRetryDoesNotWaitForABodyOfUnknownLength(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		if calls.Add(1) == 1 { // a few bytes of a chunked body, flushed, and then nothing until the test ends
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"mess`)
+			_ = http.NewResponseController(w).Flush()
+			<-release
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"back\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) }) // runs before srv.Close, which waits for the handler to return
+	c := New(srv.URL, "", nil)
+	waits := noWait(c.engine)
+	// The bound only ends the test if the client waits for the body; the client that does not never reaches it.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := c.Chat(ctx, userAsks("hi"), nil)
+	if err != nil || res.Content != "back" || calls.Load() != 2 || *waits != 1 {
+		t.Fatalf("a 503 whose body never ends, then an answer: %+v %v, %d calls after %d waits", res, err, calls.Load(),
+			*waits)
 	}
 }
 

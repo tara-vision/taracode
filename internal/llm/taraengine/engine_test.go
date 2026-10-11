@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
@@ -57,6 +59,40 @@ func TestEngineKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
 	var refused *llm.ServerError
 	if !errors.As(err, &refused) || refused.Message != "broken[2J catalog" || refused.Hint != "]0;titletaraengine doctor" {
 		t.Fatalf("a refusal with escape sequences: %#v", err)
+	}
+}
+
+// TestEngineCutsALongRefusalMessage: pkg/client passes on up to a mebibyte of a refusal as its message, a whole proxy
+// page when the body is not the engine's JSON. The message reaches the terminal, so it is cut to the length of a /v1
+// refusal, at a rune boundary; a message that fits is unchanged.
+func TestEngineCutsALongRefusalMessage(t *testing.T) {
+	long := "x" + strings.Repeat("é", 499) + "y" // 1000 bytes; the cut at 300 falls inside the 150th two-byte rune
+	atTheBound := strings.Repeat("a", maxPlainRefusal)
+	for name, c := range map[string]struct{ message, want string }{
+		"a long message":         {long, long[:maxPlainRefusal-1]},
+		"a message at the bound": {atTheBound, atTheBound},
+		"a short message":        {"the catalog is broken", "the catalog is broken"},
+	} {
+		srv := taraenginetest.New(t)
+		srv.Failures["GET /api/version"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
+			Message: c.message, Hint: "taraengine doctor shows the log"}
+		_, err := New(srv.URL, "", nil).Engine().Version(context.Background())
+		var refused *llm.ServerError
+		if !errors.As(err, &refused) || refused.Message != c.want || !utf8.ValidString(refused.Message) ||
+			refused.Hint != "taraengine doctor shows the log" || refused.Status != http.StatusInternalServerError {
+			t.Errorf("%s: %#v, want a message of %d bytes", name, err, len(c.want))
+		}
+	}
+	page := "<html>" + strings.Repeat("proxy error page ", 60) + "</html>"
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(page))
+	}))
+	t.Cleanup(proxy.Close)
+	_, err := New(proxy.URL, "", nil).Engine().Version(context.Background())
+	var refused *llm.ServerError
+	if !errors.As(err, &refused) || refused.Message != page[:maxPlainRefusal] || refused.Status != http.StatusBadGateway {
+		t.Errorf("a proxy's page: %#v", err)
 	}
 }
 

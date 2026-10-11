@@ -114,15 +114,15 @@ func retry[T any](ctx context.Context, e *Engine, model string, f func() (T, err
 }
 
 // convert turns a pkg/client error into taracode's: a refusal into *llm.ServerError, with the control characters of
-// its text dropped, and a dial that reached nothing into *llm.UnreachableError. Anything else passes through, and nil
-// stays nil.
+// its text dropped and its message cut to the length of a /v1 refusal's, and a dial that reached nothing into
+// *llm.UnreachableError. Anything else passes through, and nil stays nil.
 func (e *Engine) convert(err error, model string) error {
 	var refused *client.Error
 	switch {
 	case err == nil:
 		return nil
 	case errors.As(err, &refused):
-		return &llm.ServerError{Status: refused.Status, Message: llm.Printable(refused.Message),
+		return &llm.ServerError{Status: refused.Status, Message: cutRefusal(llm.Printable(refused.Message)),
 			Hint: llm.Printable(refused.Hint), Model: model}
 	case client.IsConnectionError(err):
 		return &llm.UnreachableError{Host: e.host, Hint: StartHint, Err: err}

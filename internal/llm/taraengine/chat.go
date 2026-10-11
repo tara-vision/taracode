@@ -18,10 +18,12 @@ import (
 // maxErrorBody bounds how much of a refusal Chat reads.
 const maxErrorBody = 1 << 20
 
-// maxPlainRefusal bounds a refusal body that is not the engine's JSON (a proxy's error page, say).
+// maxPlainRefusal bounds the text of a refusal that can be a whole page: a /v1 body that is not the engine's JSON (a
+// proxy's error page, say), and the message of an /api refusal, which pkg/client takes from such a body as it is.
 const maxPlainRefusal = 300
 
-// maxDrain bounds how much of a 503's body is read before the retry, which lets the retry reuse the connection.
+// maxDrain is the longest 503 body, by the length the response declares, that is read to its end before the retry,
+// which lets the retry reuse the connection.
 const maxDrain = 64 << 10
 
 // chatRequest is the body of POST /v1/chat/completions. It is taracode's own type because go-openai's drops a zero
@@ -92,8 +94,7 @@ func (c *Client) Chat(ctx context.Context, req llm.Request, onEvent func(llm.Eve
 func (c *Client) post(ctx context.Context, model string, body []byte) (*http.Response, error) {
 	resp, err := c.send(ctx, body)
 	if err == nil && resp.StatusCode == http.StatusServiceUnavailable {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain)) // read to the end, so the retry reuses the conn
-		_ = resp.Body.Close()
+		drainAndClose(resp)
 		if werr := c.engine.sleep(ctx, retryDelay); werr != nil {
 			return nil, werr
 		}
@@ -109,6 +110,17 @@ func (c *Client) post(ctx context.Context, model string, body []byte) (*http.Res
 		return nil, refusal(resp, model)
 	}
 	return resp, nil
+}
+
+// drainAndClose closes a response the retry replaces. A body that declares a length of at most maxDrain bytes is read
+// to its end first, so the retry reuses the connection: the engine's 503s are small JSON with a length. Any other
+// body, one of unknown length that may never end, is closed at once, since reading it has no bound but the turn's
+// context.
+func drainAndClose(resp *http.Response) {
+	if resp.ContentLength >= 0 && resp.ContentLength <= maxDrain {
+		_, _ = io.Copy(io.Discard, resp.Body)
+	}
+	_ = resp.Body.Close()
 }
 
 // send is one POST of the chat request.
@@ -151,9 +163,14 @@ func refusal(resp *http.Response, model string) error {
 // plainRefusal is a refusal body that is not the engine's JSON as a message: printable, trimmed, and cut to
 // maxPlainRefusal bytes, since such a body can be a whole page.
 func plainRefusal(data []byte) string {
-	msg := strings.TrimSpace(llm.Printable(string(data)))
-	if len(msg) > maxPlainRefusal {
-		msg = strings.ToValidUTF8(msg[:maxPlainRefusal], "")
+	return cutRefusal(strings.TrimSpace(llm.Printable(string(data))))
+}
+
+// cutRefusal is the text of a refusal cut to maxPlainRefusal bytes, with a rune the cut splits dropped, so the cut
+// text is valid UTF-8. A text that fits is returned as it is.
+func cutRefusal(msg string) string {
+	if len(msg) <= maxPlainRefusal {
+		return msg
 	}
-	return msg
+	return strings.ToValidUTF8(msg[:maxPlainRefusal], "")
 }
