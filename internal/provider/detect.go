@@ -123,11 +123,15 @@ func probeEndpoint(ctx context.Context, host, path string) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 500 && resp.StatusCode != http.StatusNotFound
 }
 
-// probeClient is the HTTP client of the detection probes, with short timeouts.
+// probeClient is the HTTP client of the detection probes, with short timeouts. Each probe builds its own, so it keeps
+// no connection alive: nothing would ever reuse or close an idle one.
 func probeClient() *http.Client {
 	return &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: &http.Transport{DialContext: (&net.Dialer{Timeout: 3 * time.Second}).DialContext},
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext:       (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+			DisableKeepAlives: true,
+		},
 	}
 }
 

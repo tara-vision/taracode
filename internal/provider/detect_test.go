@@ -3,8 +3,11 @@ package provider
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraengine"
@@ -97,6 +100,32 @@ func TestProbesNeedAURL(t *testing.T) {
 	}
 	if engine, err := probeEngine(context.Background(), badHost); engine || err != nil {
 		t.Fatalf("a host that is not a URL is not an engine and not nothing: %v %v", engine, err)
+	}
+}
+
+// TestDetectLeavesNoConnectionIdle: every probe builds a client of its own, so a connection kept alive after an
+// answer is never reused and never closed. The server's connection hook says how the probe's connection settled
+// (a closed one is right, an idle one is the leak), and the test waits for that event instead of sleeping.
+func TestDetectLeavesNoConnectionIdle(t *testing.T) {
+	settled := make(chan http.ConnState, 4) // one connection: an idle or closed event, then the server's close
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(answer(200, `{"status":"ok","backend":"llama.cpp"}`)))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateIdle || state == http.StateClosed {
+			settled <- state
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+	if got, err := Detect(context.Background(), srv.URL); err != nil || got != TypeTaraengine {
+		t.Fatalf("Detect() = %s, %v", got, err)
+	}
+	select {
+	case state := <-settled:
+		if state != http.StateClosed {
+			t.Fatalf("the probe's connection was left %s, want it closed", state)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the probe's connection never settled")
 	}
 }
 
