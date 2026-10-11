@@ -112,6 +112,9 @@ type ModelDetails struct {
 	ParameterSize string
 	Quantization  string // the weights' quantization, "" when the server does not say
 	Digest        string // the model file's digest as the server shows it, "" when it does not say
+	// CapabilitiesUnknown is set when the server cannot say yet what the model can do: the engine infers an import's
+	// capabilities only while it is loaded. Capabilities is empty then, and means nothing.
+	CapabilitiesUnknown bool
 }
 
 // Has reports whether the model advertises a capability.

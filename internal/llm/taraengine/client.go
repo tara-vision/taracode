@@ -58,7 +58,8 @@ func (c *Client) Models(ctx context.Context) ([]llm.ModelInfo, error) {
 }
 
 // Show implements llm.Client through /api/models/{name}. The engine answers a catalog model that is not pulled with
-// the status available, which Show turns into the not-pulled refusal.
+// the status available, which Show turns into the not-pulled refusal. An import's capabilities are inferred while it
+// is loaded and listed as none before that, so Show reports them unknown then.
 func (c *Client) Show(ctx context.Context, model string) (*llm.ModelDetails, error) {
 	d, err := c.engine.Model(ctx, model)
 	if err != nil {
@@ -68,7 +69,8 @@ func (c *Client) Show(ctx context.Context, model string) (*llm.ModelDetails, err
 		return nil, &llm.ServerError{Status: http.StatusNotFound, Message: model + " is not pulled", Model: model}
 	}
 	return &llm.ModelDetails{Capabilities: d.Capabilities, ContextLength: d.NativeContext, Family: d.Family,
-		ParameterSize: d.Params, Quantization: d.Quantization, Digest: d.Digest}, nil
+		ParameterSize: d.Params, Quantization: d.Quantization, Digest: d.Digest,
+		CapabilitiesUnknown: d.CapabilitiesInferred && len(d.Capabilities) == 0}, nil
 }
 
 // Loaded implements llm.Client through /api/loaded. The engine reports one memory figure per loaded model; every

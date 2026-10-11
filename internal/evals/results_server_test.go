@@ -85,6 +85,25 @@ func TestRunNamesTheOtherTierForAModelOutsideTheCatalog(t *testing.T) {
 	}
 }
 
+// TestCheckEngineTakesAnImportItCannotSeeTheToolsOf: an import the engine has not loaded lists no capabilities, so the
+// check cannot refuse it for missing tools; a catalog model without tools is still refused.
+func TestCheckEngineTakesAnImportItCannotSeeTheToolsOf(t *testing.T) {
+	srv := fakeEngine(t)
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "owner/repo:q4", CapabilitiesInferred: true},
+		taraenginetest.ModelSpec{Name: "embed:1b", Capabilities: []string{"embedding"}, Tier: "16"})
+	opts := withDefaults(runOptions(srv, ""))
+	opts.Model = "owner/repo:q4"
+	if res, err := checkEngine(context.Background(), opts); err != nil || res.Model != "owner/repo:q4" ||
+		res.Tier != "other" {
+		t.Fatalf("an import: %+v %v", res, err)
+	}
+	opts.Model = "embed:1b"
+	if _, err := checkEngine(context.Background(), opts); err == nil ||
+		!strings.Contains(err.Error(), "has no tools capability") {
+		t.Fatalf("a catalog model without tools: %v", err)
+	}
+}
+
 func TestRunRefusesAnEngineThatCannotSayItsVersion(t *testing.T) {
 	srv := fakeEngine(t)
 	srv.Failures["GET /api/version"] = failure500()

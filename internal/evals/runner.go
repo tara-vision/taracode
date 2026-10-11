@@ -162,7 +162,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	if err != nil {
 		return Results{}, fmt.Errorf("model %s: %w", opts.Model, err)
 	}
-	if !details.Has("tools") {
+	if !details.Has("tools") && !details.CapabilitiesUnknown { // an import the engine has not loaded lists none yet
 		return Results{}, fmt.Errorf("model %s has no tools capability; evals need native tool calls", opts.Model)
 	}
 	version, err := client.Engine().Version(callCtx)

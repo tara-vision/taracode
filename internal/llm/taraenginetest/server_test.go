@@ -103,6 +103,23 @@ func TestModelsAnswerFromTheSpecs(t *testing.T) {
 	}
 }
 
+// TestAnImportReportsItsCapabilitiesAsInferred: an import lists the capabilities the spec gives it, none before the
+// engine has loaded it, and marks them inferred; a catalog model does not.
+func TestAnImportReportsItsCapabilitiesAsInferred(t *testing.T) {
+	srv := New(t)
+	srv.Models = []ModelSpec{{Name: "owner/repo:q4", CapabilitiesInferred: true},
+		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}}}
+	_, _, data := call(t, srv, http.MethodGet, "/api/models", "", "")
+	list := decode[[]api.Model](t, data)
+	if len(list) != 2 || !list[0].CapabilitiesInferred || len(list[0].Capabilities) != 0 || list[1].CapabilitiesInferred {
+		t.Fatalf("models: %+v", list)
+	}
+	_, _, data = call(t, srv, http.MethodGet, "/api/models/owner/repo:q4", "", "")
+	if d := decode[api.ModelDetail](t, data); !d.CapabilitiesInferred || d.Capabilities == nil {
+		t.Fatalf("detail: %+v", d)
+	}
+}
+
 func TestLoadedAndDoctorAnswerFromTheSpecs(t *testing.T) {
 	srv := New(t)
 	srv.Loaded = []LoadedSpec{

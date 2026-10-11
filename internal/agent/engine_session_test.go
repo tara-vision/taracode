@@ -12,6 +12,7 @@ import (
 
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
+	"github.com/tara-vision/taracode/internal/ui"
 )
 
 // engineOptions is a New configuration on the fake engine with two usable models, one that is not pulled and one
@@ -87,6 +88,32 @@ func TestNewStopsOnAModelWithoutTools(t *testing.T) {
 	opts.Model = "embed:1b"
 	if _, err := New(opts); !errors.Is(err, ErrModelWithoutTools) || len(srv.Loads) != 0 {
 		t.Fatalf("a model without tools: %v, loads %+v", err, srv.Loads)
+	}
+}
+
+// TestNewAndSwitchModelStartAnImportTheEngineHasNotLoaded: the engine lists no capabilities for an import until it
+// has loaded it, so the session takes them as unknown: no tools gate, no warning, thinking left as configured and the
+// window from the native context; the load then teaches the engine the rest.
+func TestNewAndSwitchModelStartAnImportTheEngineHasNotLoaded(t *testing.T) {
+	opts, srv, out := engineOptions(t)
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "owner/repo:q4", CapabilitiesInferred: true,
+		ContextLength: 16384})
+	opts.Model = "owner/repo:q4"
+	a, err := New(opts)
+	if err != nil {
+		t.Fatalf("New on an import: %v", err)
+	}
+	want := taraenginetest.LoadRequest{Model: "owner/repo:q4", Context: 16384}
+	if len(srv.Loads) != 1 || srv.Loads[0] != want || strings.Contains(out.String(), ui.IconWarning) ||
+		a.SetThink(llm.ThinkHigh) != llm.ThinkHigh {
+		t.Fatalf("loads %+v, output %q", srv.Loads, out.String())
+	}
+	if err := a.SwitchModel("gemma4:12b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SwitchModel("owner/repo:q4"); err != nil || a.GetCurrentModel() != "owner/repo:q4" ||
+		srv.Loads[len(srv.Loads)-1] != want {
+		t.Fatalf("back to the import: %v, model %s, loads %+v", err, a.GetCurrentModel(), srv.Loads)
 	}
 }
 

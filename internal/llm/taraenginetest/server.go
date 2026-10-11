@@ -60,6 +60,9 @@ type ModelSpec struct {
 	Digest        string
 	ExitCode      int
 	LogTail       string
+	// CapabilitiesInferred marks an import (an escape-hatch model): the engine infers its capabilities while it is
+	// loaded and lists none before that.
+	CapabilitiesInferred bool
 }
 
 // LoadedSpec is one model /api/loaded lists. Its memory is Size bytes, or SizeVRAM when Size is 0.
@@ -236,7 +239,7 @@ func (m ModelSpec) apiModel() api.Model {
 	}
 	return api.Model{Name: m.Name, Status: status, Size: m.Size, Family: m.Family, Params: m.ParameterSize,
 		Quantization: m.Quantization, Context: m.ContextLength, NativeContext: m.ContextLength, Capabilities: caps,
-		Tier: m.Tier, Default: m.Default, ExitCode: m.ExitCode}
+		CapabilitiesInferred: m.CapabilitiesInferred, Tier: m.Tier, Default: m.Default, ExitCode: m.ExitCode}
 }
 
 func (s *Server) loaded(w http.ResponseWriter, _ *http.Request, _ map[string]any) {

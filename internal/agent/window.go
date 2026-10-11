@@ -90,6 +90,12 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 		a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 		a.resolveAndApplyWindow(0)
 		return nil
+	case details != nil && details.CapabilitiesUnknown:
+		// An import the engine has not loaded yet: it infers the capabilities at the load, so the tools gate is
+		// skipped as for a server without capability data, and the native window still caps the load.
+		a.thinkingSupported = true
+		a.resolveAndApplyWindow(details.ContextLength)
+		return nil
 	}
 	if !details.Has("tools") {
 		return fmt.Errorf("%w: %s (pick one from `taracode doctor`)", ErrModelWithoutTools, a.model)

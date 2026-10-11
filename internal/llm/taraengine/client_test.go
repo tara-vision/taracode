@@ -61,6 +61,25 @@ func TestClientShowsAModelNamedWithASlash(t *testing.T) {
 	}
 }
 
+// TestClientShowLeavesAnImportsCapabilitiesUnknownUntilItLoads: the engine lists an import's capabilities only while
+// it is loaded; before that Show says they are unknown, and once listed they count as a catalog model's do.
+func TestClientShowLeavesAnImportsCapabilitiesUnknownUntilItLoads(t *testing.T) {
+	_, c := engineWith(t,
+		taraenginetest.ModelSpec{Name: "owner/repo:q4", CapabilitiesInferred: true},
+		taraenginetest.ModelSpec{Name: "owner/loaded:q4", CapabilitiesInferred: true, Capabilities: []string{"tools"}},
+		taraenginetest.ModelSpec{Name: "embed:1b"})
+	ctx := context.Background()
+	if d, err := c.Show(ctx, "owner/repo:q4"); err != nil || !d.CapabilitiesUnknown || d.Has("tools") {
+		t.Fatalf("an import the engine has not loaded: %+v %v", d, err)
+	}
+	if d, err := c.Show(ctx, "owner/loaded:q4"); err != nil || d.CapabilitiesUnknown || !d.Has("tools") {
+		t.Fatalf("a loaded import: %+v %v", d, err)
+	}
+	if d, err := c.Show(ctx, "embed:1b"); err != nil || d.CapabilitiesUnknown {
+		t.Fatalf("a catalog model that lists no capabilities: %+v %v", d, err)
+	}
+}
+
 func TestClientLoadedCarriesTheMemoryFigure(t *testing.T) {
 	srv, c := engineWith(t)
 	srv.Loaded = []taraenginetest.LoadedSpec{
