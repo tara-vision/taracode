@@ -8,7 +8,6 @@ import (
 
 	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/llm/ollamatest"
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 // twoModelREPL is an initialised repl on a fake serving gemma4:12b (current) and qwen3.5:9b.
@@ -80,8 +79,7 @@ func TestModelWithNothingToChoose(t *testing.T) {
 	r, srv := projectREPL(t)
 	srv.Models = nil
 	out := captureStdoutForTest(t, func() { r.dispatch("/model") })
-	want := "Pull a model with: ollama pull " + models.DefaultName(models.Tier16) + " (16 GB) or " +
-		models.DefaultName(models.Tier32) + " (32 GB)"
+	want := "Pull a model with: taraengine pull <model> (taracode doctor recommends one for this machine)"
 	if !strings.Contains(out, "No models available.") || !strings.Contains(out, want) {
 		t.Fatalf("%q", out)
 	}

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/llm"
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
@@ -15,7 +17,6 @@ import (
 // replaces a saved name it no longer has with its first model; a server that lists none trusts
 // whatever name it was given.
 func TestChooseModelFallsBackInOrder(t *testing.T) {
-	stubFirstRun(t, func() (int, error) { return 0, errors.New("unsized") }, models.Load)
 	detect := errors.New("connection refused")
 	listed := []string{"gemma4:12b", "qwen3.5:9b"}
 	tests := []struct {
@@ -40,7 +41,7 @@ func TestChooseModelFallsBackInOrder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			got, err := chooseModel(tt.models, tt.detectErr, tt.persisted, tt.configure, ui.NewRenderer(), &out)
+			got, err := chooseModel(tt.models, tt.detectErr, tt.persisted, tt.configure, ui.NewRenderer(), &out, nil)
 			if tt.wantErr != "" {
 				if err == nil || err.Error() != tt.wantErr || !errors.Is(err, detect) {
 					t.Fatalf("err = %v, want %q", err, tt.wantErr)
@@ -61,7 +62,7 @@ func TestChooseModelFallsBackInOrder(t *testing.T) {
 // longer lists is followed by the model used instead.
 func TestChooseModelSaysWhichModelReplacesAGoneOne(t *testing.T) {
 	var out bytes.Buffer
-	if _, err := chooseModel([]string{"gemma4:12b"}, nil, "gone:1b", "", ui.NewRenderer(), &out); err != nil {
+	if _, err := chooseModel([]string{"gemma4:12b"}, nil, "gone:1b", "", ui.NewRenderer(), &out, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Using: gemma4:12b") {
@@ -69,51 +70,27 @@ func TestChooseModelSaysWhichModelReplacesAGoneOne(t *testing.T) {
 	}
 }
 
-// stubFirstRun replaces how printFirstRunAdvice sizes the host and loads the registry.
-func stubFirstRun(t *testing.T, ram func() (int, error), load func() (*models.Registry, error)) {
-	t.Helper()
-	oldRAM, oldLoad := hostRAMGB, loadRegistry
-	hostRAMGB, loadRegistry = ram, load
-	t.Cleanup(func() { hostRAMGB, loadRegistry = oldRAM, oldLoad })
-}
-
-func TestFirstRunAdviceNamesTheTierDefault(t *testing.T) {
-	registry := &models.Registry{Entries: []models.Entry{
-		{Name: "small:4b", Tier: models.Tier16, Default: true, DownloadGB: 3},
-		{Name: "big:70b", Tier: models.Tier48, DownloadGB: 40.4},
-	}}
-	stubFirstRun(t, func() (int, error) { return 64, nil }, func() (*models.Registry, error) { return registry, nil })
+func TestFirstRunAdviceNamesTheEnginesRecommendation(t *testing.T) {
+	srv := taraenginetest.New(t)
 	var out bytes.Buffer
-	printFirstRunAdvice(&out)
-	if want := "Advice    recommended for 64 GB: big:70b (40 GB download)\n          ollama pull big:70b\n"; out.String() != want {
-		t.Fatalf("advice %q, want %q", out.String(), want)
+	printFirstRunAdvice(&out, taraengine.New(srv.URL, "", nil))
+	if out.String() != "Advice    recommended for tier 32: glm-4.7-flash\n          taraengine pull glm-4.7-flash\n" {
+		t.Fatalf("advice %q", out.String())
 	}
 }
 
-// TestFirstRunAdviceIsSilentWhenItCannotAdvise: a host it cannot size, a registry it cannot load
-// and a tier with no entry each leave the advice out instead of failing.
-func TestFirstRunAdviceIsSilentWhenItCannotAdvise(t *testing.T) {
-	sized := func() (int, error) { return 64, nil }
-	onlySmall := func() (*models.Registry, error) {
-		return &models.Registry{Entries: []models.Entry{{Name: "small:4b", Tier: models.Tier16, Default: true}}}, nil
-	}
-	tests := []struct {
-		name string
-		ram  func() (int, error)
-		load func() (*models.Registry, error)
-	}{
-		{"unsized host", func() (int, error) { return 0, errors.New("no sysctl") }, models.Load},
-		{"broken registry", sized, func() (*models.Registry, error) { return nil, errors.New("bad yaml") }},
-		{"no entry for the tier", sized, onlySmall},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stubFirstRun(t, tt.ram, tt.load)
-			var out bytes.Buffer
-			printFirstRunAdvice(&out)
-			if out.Len() != 0 {
-				t.Fatalf("printed %q", out.String())
-			}
-		})
+func TestFirstRunAdviceStaysSilentWhenItCannotSay(t *testing.T) {
+	broken := taraenginetest.New(t)
+	broken.Failures["GET /api/doctor"] = &taraenginetest.Failure{Status: 500, Message: "x"}
+	empty := taraenginetest.New(t)
+	empty.Doctor.Recommendation = map[string]string{}
+	clients := map[string]llm.Client{"not the engine": nil, "a failing doctor": taraengine.New(broken.URL, "", nil),
+		"no recommendation": taraengine.New(empty.URL, "", nil)}
+	for name, client := range clients {
+		var out bytes.Buffer
+		printFirstRunAdvice(&out, client)
+		if out.Len() != 0 {
+			t.Errorf("%s: %q", name, out.String())
+		}
 	}
 }

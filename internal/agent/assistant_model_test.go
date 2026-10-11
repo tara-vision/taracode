@@ -99,7 +99,7 @@ func TestChooseModelToleratesOllamasImplicitLatestTag(t *testing.T) {
 			var out bytes.Buffer
 			renderer := ui.NewRenderer()
 
-			model, err := chooseModel(tt.models, nil, tt.persistedModel, tt.configModel, renderer, &out)
+			model, err := chooseModel(tt.models, nil, tt.persistedModel, tt.configModel, renderer, &out, nil)
 			if err != nil {
 				t.Fatalf("chooseModel() error = %v", err)
 			}

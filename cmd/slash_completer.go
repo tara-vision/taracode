@@ -60,7 +60,7 @@ func GetSlashCommands() []SlashCommand {
 		{"/reload", "Reload project context from TARACODE.md"},
 		{"/status", "Show project and session status"},
 		// Model & Mode
-		{"/model", "Switch between available Ollama models"},
+		{"/model", "Switch between the engine's pulled models"},
 		{"/mode", "Show or switch operating mode"},
 		{"/mode investigate", "Read-only tools; mutations are refused"},
 		{"/mode operate", "Mutations allowed after the policy and permission checks"},

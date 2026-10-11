@@ -175,7 +175,7 @@ func New(opts Options) (*Assistant, error) {
 
 	// Determine which model to use (priority: persisted > config > auto-detect)
 	models, detectErr := prov.DetectModels(ctx)
-	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer, out)
+	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer, out, prov.LLM())
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +292,7 @@ func sameModel(a, b string) bool {
 // persisted or configured name is trusted.
 func chooseModel(
 	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer, out io.Writer,
+	client llm.Client,
 ) (string, error) {
 	var model string
 
@@ -346,8 +347,8 @@ func chooseModel(
 			model = configModel
 		} else {
 			// No model persisted or configured, and the server lists none either: point at the
-			// registry's recommendation for this host before failing (native core, Task 11).
-			printFirstRunAdvice(out)
+			// engine's recommendation for this machine before failing.
+			printFirstRunAdvice(out, client)
 			return "", fmt.Errorf("no models available and no fallback configured")
 		}
 	}

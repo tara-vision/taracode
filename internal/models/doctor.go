@@ -1,3 +1,4 @@
+// Package models is taracode's doctor: the server, the models and the external tools.
 package models
 
 import (
