@@ -36,6 +36,7 @@ type Report struct {
 	ServerOK        bool
 	ServerVersion   string // an OpenAI-compatible server's own version, "" when it has none
 	ServerError     string
+	Refused         bool          // the server answered and refused (*llm.ServerError); otherwise nothing answered
 	InstallHint     bool          // nothing answered where taracode looks for an engine: say how to install one
 	KeyNeeded       bool          // the engine refused taracode's key
 	Engine          *EngineReport // set when the server is a taraengine
@@ -101,7 +102,8 @@ func (r *Report) fail(err error) {
 	var unreachable *llm.UnreachableError
 	var refused *llm.ServerError
 	r.InstallHint = errors.As(err, &unreachable) && unreachable.Hint != ""
-	r.KeyNeeded = errors.As(err, &refused) && refused.Status == http.StatusUnauthorized
+	r.Refused = errors.As(err, &refused)
+	r.KeyNeeded = r.Refused && refused.Status == http.StatusUnauthorized
 }
 
 // diagnoseGeneric checks an OpenAI-compatible server: its version when it has one, and the models it lists.
@@ -171,11 +173,13 @@ func (r Report) Render() string {
 func (r *Report) renderServer(b *strings.Builder) {
 	fmt.Fprintf(b, "Server    %s\n", r.Host)
 	switch {
-	case !r.ServerOK:
-		fmt.Fprintf(b, "          unreachable: %s\n", r.ServerError)
+	case !r.ServerOK && r.Refused:
+		fmt.Fprintf(b, "          refused: %s\n", r.ServerError)
 		if r.KeyNeeded {
 			b.WriteString("          set key in ~/.taracode/config.yaml, or pass --key\n")
 		}
+	case !r.ServerOK:
+		fmt.Fprintf(b, "          unreachable: %s\n", r.ServerError)
 		if r.InstallHint {
 			fmt.Fprintf(b, "          install it: %s\n", taraengine.InstallHint)
 		}
@@ -205,8 +209,11 @@ func (r *Report) renderModels(b *strings.Builder) {
 				caps = append(caps, c.name)
 			}
 		}
-		line := fmt.Sprintf("          %-28s %5.1f GB  ctx %-7d %-22s %s", m.Name, m.SizeGB, m.Context,
-			strings.Join(caps, " "), m.Status)
+		size := fmt.Sprintf("%5.1f GB  ctx %-7d ", m.SizeGB, m.Context)
+		if m.SizeGB == 0 && m.Context == 0 {
+			size = "" // an OpenAI-compatible server lists names only
+		}
+		line := fmt.Sprintf("          %-28s %s%-22s %s", m.Name, size, strings.Join(caps, " "), m.Status)
 		b.WriteString(strings.TrimRight(line, " ") + "\n")
 	}
 }
@@ -240,6 +247,8 @@ func (r *Report) modelNote() string {
 		return fmt.Sprintf(" (not pulled: taraengine pull %s)", r.ConfiguredModel)
 	case r.Engine != nil && !m.Tools:
 		return " (no tool calls: taracode needs a model that has them)"
+	case r.LoadedContext > 0 && m.Status == "sleeping": // the engine lists a sleeping model among the loaded ones
+		return fmt.Sprintf(" (sleeping at a %d-token window)", r.LoadedContext)
 	case r.LoadedContext > 0:
 		return fmt.Sprintf(" (loaded at a %d-token window)", r.LoadedContext)
 	}

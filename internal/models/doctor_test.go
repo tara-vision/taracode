@@ -126,6 +126,24 @@ func TestDiagnoseNotesTheEnginesStateAndWarnings(t *testing.T) {
 	}
 }
 
+// TestDiagnoseSaysTheConfiguredModelSleeps: the engine lists a sleeping model among the loaded ones, with its window,
+// so the Model line says it sleeps at that window; a model that runs is loaded at it.
+func TestDiagnoseSaysTheConfiguredModelSleeps(t *testing.T) {
+	srv := engineWithModels(t)
+	srv.Models[1].Status = "sleeping"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_000_000_000}}
+	out := diagnose(srv, "", "gemma4:12b", false).Render()
+	if !strings.Contains(out, "Model     gemma4:12b (sleeping at a 32768-token window)\n") ||
+		strings.Contains(out, "loaded at a") {
+		t.Fatalf("a sleeping model:\n%s", out)
+	}
+	srv.Models[1].Status = "loaded"
+	if out := diagnose(srv, "", "gemma4:12b", false).Render(); !strings.Contains(out,
+		"Model     gemma4:12b (loaded at a 32768-token window)\n") {
+		t.Fatalf("a loaded model:\n%s", out)
+	}
+}
+
 func TestDiagnoseShowsAFaultyModel(t *testing.T) {
 	srv := taraenginetest.New(t)
 	srv.Models = []taraenginetest.ModelSpec{{Name: "bad:1b", Capabilities: []string{"tools"}, Status: "faulty",
@@ -158,8 +176,8 @@ func TestDiagnoseReportsAWrongKey(t *testing.T) {
 	srv.Key = "right"
 	rep := diagnose(srv, "wrong", "gemma4:12b", false)
 	out := rep.Render()
-	if rep.ServerOK || !rep.KeyNeeded || !strings.Contains(out, "unreachable: missing or wrong API key") ||
-		!strings.Contains(out, "set key in ~/.taracode/config.yaml, or pass --key") {
+	if rep.ServerOK || !rep.KeyNeeded || !strings.Contains(out, "          refused: missing or wrong API key") ||
+		strings.Contains(out, "unreachable") || !strings.Contains(out, "set key in ~/.taracode/config.yaml, or pass --key") {
 		t.Fatalf("a wrong key: %+v\n%s", rep, out)
 	}
 }
@@ -167,8 +185,9 @@ func TestDiagnoseReportsAWrongKey(t *testing.T) {
 func TestDiagnoseWhenAnEngineCallFails(t *testing.T) {
 	srv := engineWithModels(t)
 	srv.Failures["GET /api/models"] = &taraenginetest.Failure{Status: http.StatusInternalServerError, Message: "broken"}
-	if rep := diagnose(srv, "", "gemma4:12b", false); rep.ServerOK || rep.Engine != nil {
-		t.Fatalf("models fail: %+v", rep)
+	if rep := diagnose(srv, "", "gemma4:12b", false); rep.ServerOK || rep.Engine != nil ||
+		!strings.Contains(rep.Render(), "          refused: broken\n") {
+		t.Fatalf("models fail: %+v\n%s", rep, rep.Render())
 	}
 	srv = engineWithModels(t)
 	srv.Models[1].Status = "faulty"
@@ -184,8 +203,8 @@ func TestDiagnoseWhenAnEngineCallFails(t *testing.T) {
 	}
 	gone := Diagnose(context.Background(), taraengine.New("http://127.0.0.1:1", "", nil), "http://127.0.0.1:1", "", false,
 		noLookup, nil)
-	if gone.ServerOK || !gone.InstallHint {
-		t.Fatalf("an engine nothing answers at: %+v", gone)
+	if gone.ServerOK || !gone.InstallHint || !strings.Contains(gone.Render(), "          unreachable: nothing answers at") {
+		t.Fatalf("an engine nothing answers at: %+v\n%s", gone, gone.Render())
 	}
 }
 
@@ -233,6 +252,11 @@ func TestDiagnoseAnOpenAICompatibleServer(t *testing.T) {
 	if !rep.ServerOK || rep.Models[0].Name != "a" || rep.ContextWindow != 0 || !strings.Contains(out, "git: /usr/bin/git") ||
 		!strings.Contains(out, "          vllm 0.11 reachable\n") || strings.Contains(out, "Context ") {
 		t.Fatalf("an OpenAI-compatible server: %+v\n%s", rep, out)
+	}
+	// The OpenAI model list has names only: a model whose size and window are both unknown is its name alone.
+	if !strings.Contains(out, "Models\n          a\n          b ") || !strings.Contains(out, "2.0 GB") ||
+		strings.Contains(out, "0.0 GB") {
+		t.Errorf("the model rows:\n%s", out)
 	}
 	if strings.Contains(out, "Keep ") {
 		t.Errorf("no keep_alive note without keep_alive:\n%s", out)
