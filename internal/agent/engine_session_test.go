@@ -70,7 +70,8 @@ func TestNewStopsWhereTheEngineSaysNo(t *testing.T) {
 }
 
 // TestNewFallsBackFromAModelThatIsNotPulled: a configured model the engine lists as available but not pulled is
-// not among the pulled models, so New warns and takes the first pulled one, as it does for any missing model.
+// not among the pulled models, so New warns, says how to pull it and takes the first pulled one, as it does for any
+// missing model.
 func TestNewFallsBackFromAModelThatIsNotPulled(t *testing.T) {
 	opts, srv, out := engineOptions(t)
 	opts.Model = "qwen3.6:35b"
@@ -78,8 +79,33 @@ func TestNewFallsBackFromAModelThatIsNotPulled(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Configured model 'qwen3.6:35b' not available. Using: gemma4:12b") ||
-		srv.Loads[0].Model != "gemma4:12b" {
+		!strings.Contains(out.String(), "Pull it with: taraengine pull qwen3.6:35b") || srv.Loads[0].Model != "gemma4:12b" {
 		t.Fatalf("output %q, loads %+v", out.String(), srv.Loads)
+	}
+}
+
+// TestTheSessionSaysItIsLoadingTheModel: a load can take minutes, so the session start and /model say which model
+// loads at which window before they wait, even when the load then fails. The generic path loads nothing and says
+// nothing.
+func TestTheSessionSaysItIsLoadingTheModel(t *testing.T) {
+	opts, srv, out := engineOptions(t)
+	a, err := New(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out.String(), "Loading gemma4:12b at a 32768-token window..."); n != 1 {
+		t.Fatalf("the start says it loads the model %d times: %q", n, out.String())
+	}
+	srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway, Message: "exit code 1",
+		Times: 1}
+	if err := a.SwitchModel("glm-4.7-flash"); err == nil ||
+		!strings.Contains(out.String(), "Loading glm-4.7-flash at a 32768-token window...") {
+		t.Fatalf("a /model whose load fails: %v, %q", err, out.String())
+	}
+	generic, _, genericOut := engineOptions(t)
+	generic.Vendor = "vllm"
+	if _, err := New(generic); err != nil || strings.Contains(genericOut.String(), "Loading") {
+		t.Fatalf("the generic path: %v, %q", err, genericOut.String())
 	}
 }
 

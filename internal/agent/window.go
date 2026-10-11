@@ -146,12 +146,15 @@ func (a *Assistant) resolveAndApplyWindow(modelMax int) {
 }
 
 // loadModel loads the model at the resolved window on a backend that sets the window at load time (llm.Loader:
-// taraengine); other backends have nothing to load. The engine client bounds the load itself.
+// taraengine); other backends have nothing to load. The engine client bounds the load itself, which can take minutes,
+// so the session says what it waits for first.
 func (a *Assistant) loadModel() error {
 	loader, ok := a.llm.(llm.Loader)
 	if !ok || a.contextWindow <= 0 {
 		return nil
 	}
+	_, _ = fmt.Fprintln(a.out, a.renderer.Dim(fmt.Sprintf("Loading %s at a %d-token window...", a.model,
+		a.contextWindow)))
 	if err := loader.Load(context.Background(), a.model, a.contextWindow); err != nil {
 		return fmt.Errorf("loading %s: %w", a.model, err)
 	}

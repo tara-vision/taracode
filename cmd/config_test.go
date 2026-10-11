@@ -92,7 +92,9 @@ func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
 		t.Fatalf("ReadConfig: %v", err)
 	}
 	opts, warnings := loadOptions()
-	if opts.Host != "http://localhost:11434" || !strings.Contains(joined(warnings), "hosts: and default_host: are ignored since 3.1.0") {
+	ignored := "config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the host in host:, or to " +
+		"taraengine at " + provider.DefaultHost + " when none is set"
+	if opts.Host != "http://localhost:11434" || !strings.Contains(joined(warnings), ignored) {
 		t.Fatalf("host %q, warnings %v", opts.Host, warnings)
 	}
 
@@ -128,7 +130,7 @@ func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
 	}
 	// The warning does not claim the retired section gave that address.
 	if _, warnings = loadOptions(); strings.Contains(joined(warnings), "from the retired section") ||
-		!strings.Contains(joined(warnings), "hosts: and default_host: are ignored since 3.1.0") {
+		!strings.Contains(joined(warnings), ignored) {
 		t.Fatalf("warnings %v", warnings)
 	}
 }

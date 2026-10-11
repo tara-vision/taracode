@@ -334,6 +334,9 @@ func chooseModel(
 			model = models[0]
 			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				fmt.Sprintf("Configured model '%s' not available. Using: %s", configModel, model)))
+			if _, onEngine := client.(llm.Loader); onEngine { // the engine pulls its models; other servers say nothing
+				_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("Pull it with: taraengine pull %s", configModel)))
+			}
 		} else {
 			model = models[0]
 			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))

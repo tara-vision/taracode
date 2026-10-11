@@ -70,6 +70,25 @@ func TestChooseModelSaysWhichModelReplacesAGoneOne(t *testing.T) {
 	}
 }
 
+// TestChooseModelSaysHowToPullAConfiguredModelOnTheEngine: a configured model the server does not list gives way to
+// the first listed one; on the engine a second line says how to pull it, and elsewhere nothing more is said.
+func TestChooseModelSaysHowToPullAConfiguredModelOnTheEngine(t *testing.T) {
+	srv := taraenginetest.New(t)
+	for _, c := range []struct {
+		name   string
+		client llm.Client
+		pull   bool
+	}{{"the engine", taraengine.New(srv.URL, "", nil), true}, {"another server", nil, false}} {
+		var out bytes.Buffer
+		got, err := chooseModel([]string{"gemma4:12b"}, nil, "", "qwen3.6:35b", ui.NewRenderer(), &out, c.client)
+		if err != nil || got != "gemma4:12b" ||
+			!strings.Contains(out.String(), "Configured model 'qwen3.6:35b' not available. Using: gemma4:12b") ||
+			strings.Contains(out.String(), "Pull it with: taraengine pull qwen3.6:35b") != c.pull {
+			t.Errorf("%s: %q %v, output %q", c.name, got, err, out.String())
+		}
+	}
+}
+
 func TestFirstRunAdviceNamesTheEnginesRecommendation(t *testing.T) {
 	srv := taraenginetest.New(t)
 	var out bytes.Buffer

@@ -120,7 +120,8 @@ func loadOptions() (agent.Options, []string) {
 			warn("config: hosts: and default_host: are ignored since 3.1.0; using %s from the retired section as host: "+
 				"for this run, set host: to keep it", opts.Host)
 		} else {
-			warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the one host in host:")
+			warn("config: hosts: and default_host: are ignored since 3.1.0; taracode talks to the host in host:, or to "+
+				"taraengine at %s when none is set", provider.DefaultHost)
 		}
 	}
 	opts.Think = viper.GetString("think")
