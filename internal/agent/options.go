@@ -28,7 +28,6 @@ type Options struct {
 
 	Generation       ModelOptions
 	Think            string // auto|off|on|low|medium|high; parsed with llm.ParseThink
-	KeepAlive        string
 	ContextWindow    string // "auto" or a token count
 	MaxContextTokens int    // compaction budget (max_context_tokens)
 	Truncation       TruncationConfig

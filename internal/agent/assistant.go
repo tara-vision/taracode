@@ -80,7 +80,6 @@ type Assistant struct {
 	// Request options sent with every turn (Task 8 wires these to config)
 	think             llm.Think // reasoning mode
 	thinkingSupported bool      // whether the current model has the "thinking" capability; true when unknown
-	keepAlive         string    // how long the server keeps the model loaded
 	contextWindow     int       // the window the model loads at; 0 = the server decides
 	configuredWindow  string    // context.window config value ("auto" or a number); re-read on model switch
 
@@ -235,7 +234,6 @@ func New(opts Options) (*Assistant, error) {
 		projectCtx:         projectCtx,
 		sessionUsage:       &storage.TokenUsage{},
 		think:              think,
-		keepAlive:          opts.KeepAlive,
 		configuredWindow:   opts.ContextWindow,
 		truncationCfg:      opts.Truncation,
 		compactionCfg:      compactionCfg,

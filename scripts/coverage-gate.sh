@@ -11,9 +11,9 @@ gates="
 ./internal/tools/redact:80
 ./internal/tools/tfplan:80
 ./internal/llm:80
-./internal/llm/ollama:80
+./internal/llm/taraengine:80
 ./internal/llm/openai:80
-./internal/llm/ollamatest:80
+./internal/llm/taraenginetest:80
 ./internal/models:80
 ./internal/evals:80
 "

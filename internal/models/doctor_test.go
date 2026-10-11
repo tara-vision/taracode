@@ -81,7 +81,7 @@ func TestDiagnoseReadsTheEngine(t *testing.T) {
 		"tools thinking vision", "loaded",
 		"Model     gemma4:12b (loaded at a 16384-token window)",
 		"Context   32768 tokens, set when the model loads; the next session reloads it",
-		"Keep      keep_alive in the config does nothing",
+		"Keep      keep_alive in the config does nothing: taracode sends it to no server\n",
 		"Advice    recommended for tier 32: glm-4.7-flash\n          taraengine pull glm-4.7-flash",
 		"helm: not found",
 	} {
@@ -233,6 +233,13 @@ func TestDiagnoseAnOpenAICompatibleServer(t *testing.T) {
 	if !rep.ServerOK || rep.Models[0].Name != "a" || rep.ContextWindow != 0 || !strings.Contains(out, "git: /usr/bin/git") ||
 		!strings.Contains(out, "          vllm 0.11 reachable\n") || strings.Contains(out, "Context ") {
 		t.Fatalf("an OpenAI-compatible server: %+v\n%s", rep, out)
+	}
+	if strings.Contains(out, "Keep ") {
+		t.Errorf("no keep_alive note without keep_alive:\n%s", out)
+	}
+	withKeepAlive := Diagnose(context.Background(), stub, "http://vllm:8000", "a", true, gitOnly, window32k).Render()
+	if !strings.Contains(withKeepAlive, "Keep      keep_alive in the config does nothing: taracode sends it to no server\n") {
+		t.Errorf("the keep_alive note holds on any server, not only the engine:\n%s", withKeepAlive)
 	}
 	stub.version = ""
 	if out := Diagnose(context.Background(), stub, "h", "", false, noLookup, nil).Render(); !strings.Contains(out,

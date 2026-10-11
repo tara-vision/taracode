@@ -76,8 +76,7 @@ func runDoctor(ctx context.Context, hostURL, apiKey, vendor, configuredModel str
 		doctorResolveWindow), nil
 }
 
-// keepAliveSet reports whether the config sets keep_alive, which no backend takes since the native Ollama client
-// went.
+// keepAliveSet reports whether the config sets keep_alive, which taracode sends to no server.
 func keepAliveSet() bool { return viper.GetString("keep_alive") != "" }
 
 // doctorExitCode is 1 when the server could not be reached, the condition RunE turns into

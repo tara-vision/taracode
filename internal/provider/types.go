@@ -78,7 +78,7 @@ type Provider interface {
 	// CreateClient returns an OpenAI-compatible client
 	CreateClient() *openai.Client
 
-	// LLM returns the transport the agent loop talks to (native Ollama, or the go-openai adapter).
+	// LLM returns the transport the agent loop talks to (the native taraengine client, or the go-openai adapter).
 	LLM() llm.Client
 
 	// SetModel sets the active model

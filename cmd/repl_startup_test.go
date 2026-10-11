@@ -141,6 +141,34 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 	(&repl{}).close() // a repl that never opened readline closes too
 }
 
+// TestNewREPLOnOllamaShowsTheNotice: a session on Ollama prints what it is connected to and, once, the line that says
+// what taracode cannot do there. Ollama is used through the OpenAI-compatible API, which the fake engine serves too.
+func TestNewREPLOnOllamaShowsTheNotice(t *testing.T) {
+	srv := fakeEngine(t)
+	startupConfig(t, srv, t.TempDir())
+	viper.Set("vendor", "ollama")
+	viper.Set("upgrade.auto_check", false)
+	forbidUpdateCheck(t, "upgrade.auto_check is false")
+	readlineInput(t, "exit\n")
+	var r *repl
+	var err error
+	out := captureStdoutForTest(t, func() { r, err = newREPL() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Connected to Ollama", "no window control"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("startup lacks %q:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "no window control"); n != 1 {
+		t.Errorf("the notice prints once at start, not %d times:\n%s", n, out)
+	}
+	if out += runAndClose(t, r); !strings.Contains(out, "Goodbye!") {
+		t.Fatalf("%q", out)
+	}
+}
+
 // TestNewREPLEnablesAnInitialisedProject starts in a project with a session, a memory and an MCP
 // server that connects on its own: the session resumes, the managers exist and the server's tools
 // are registered before the first prompt.

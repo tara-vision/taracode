@@ -60,7 +60,7 @@ func (p *BaseProvider) CreateClient() *openai.Client {
 	return openai.NewClientWithConfig(config)
 }
 
-// LLM returns the go-openai adapter; Ollama overrides this with its native client.
+// LLM returns the go-openai adapter; taraengine overrides this with its native client.
 func (p *BaseProvider) LLM() llm.Client {
 	return openaiclient.New(p.CreateClient())
 }

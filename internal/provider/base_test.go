@@ -145,7 +145,7 @@ func TestEveryProviderDescribesItself(t *testing.T) {
 	}{
 		{NewVLLMProvider("http://h:8000/", ""), TypeVLLM, "vLLM", true},
 		{NewLlamaCppProvider("http://h:8000/", ""), TypeLlamaCpp, "llama.cpp", false},
-		{NewOllamaProvider("http://h:8000/", ""), TypeOllama, "Ollama", false},
+		{NewOllamaProvider("http://h:8000/", ""), TypeOllama, "Ollama", true},
 	}
 	for _, tt := range tests {
 		tt.p.SetModel("m:1b")

@@ -124,7 +124,6 @@ func loadOptions() (agent.Options, []string) {
 		}
 	}
 	opts.Think = viper.GetString("think")
-	opts.KeepAlive = viper.GetString("keep_alive")
 	opts.ContextWindow = viper.GetString("context.window")
 	opts.MaxContextTokens = viper.GetInt("max_context_tokens")
 	opts.Truncation = agent.TruncationConfig{

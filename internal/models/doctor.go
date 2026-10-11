@@ -156,7 +156,7 @@ func (r Report) Render() string {
 	r.renderModels(&b)
 	r.renderModelAndContext(&b)
 	if r.KeepAliveSet {
-		b.WriteString("Keep      keep_alive in the config does nothing: the engine's idle sleep is global\n")
+		b.WriteString("Keep      keep_alive in the config does nothing: taracode sends it to no server\n")
 	}
 	if r.PolicyNote != "" {
 		fmt.Fprintf(&b, "Policy    %s\n", r.PolicyNote)
