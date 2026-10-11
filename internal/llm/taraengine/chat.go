@@ -59,6 +59,7 @@ func newChatRequest(req llm.Request) chatRequest {
 }
 
 // Chat implements llm.Client. It always streams; a nil onEvent drops the events and keeps the assembled result.
+// A context that ends the read is reported as the context's error, never as llm.ErrStreamCut.
 func (c *Client) Chat(ctx context.Context, req llm.Request, onEvent func(llm.Event) error) (*llm.Result, error) {
 	if onEvent == nil {
 		onEvent = func(llm.Event) error { return nil }
@@ -72,7 +73,12 @@ func (c *Client) Chat(ctx context.Context, req llm.Request, onEvent func(llm.Eve
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return readStream(resp.Body, onEvent)
+	res, err := readStream(resp.Body, onEvent)
+	if err != nil && ctx.Err() != nil {
+		// The context ended the read, so its error is the answer; a stream cut is one the context did not cause.
+		return nil, fmt.Errorf("taraengine: chat: %w", ctx.Err())
+	}
+	return res, err
 }
 
 // post sends the request, once more after retryDelay when the engine answers 503, and turns a refusal into

@@ -3,6 +3,7 @@ package taraengine
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -180,6 +181,53 @@ func TestChatReportsACutStream(t *testing.T) {
 	srv.Turns = []taraenginetest.Turn{{Content: "half an", Cut: true}}
 	if _, err := New(srv.URL, "", nil).Chat(context.Background(), userAsks("hi"), nil); !errors.Is(err, llm.ErrStreamCut) {
 		t.Fatalf("a cut stream: %v", err)
+	}
+}
+
+// stallingEngine answers one text delta, then holds the stream open until the client goes away. The request body is
+// drained first, so the server sees the disconnect; the 5 s bound only keeps a broken test from hanging.
+func stallingEngine(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"half\"}}]}\n\n")
+		_ = http.NewResponseController(w).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestChatReportsADeadlineThatEndsTheStream(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	sawText := false
+	_, err := New(stallingEngine(t).URL, "", nil).Chat(ctx, userAsks("hi"), func(e llm.Event) error {
+		if e.Kind == llm.EventText {
+			sawText = true
+		}
+		return nil
+	})
+	if !sawText || !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, llm.ErrStreamCut) {
+		t.Fatalf("a deadline mid-stream (text first %v): %v", sawText, err)
+	}
+}
+
+func TestChatReportsACancelThatEndsTheStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, err := New(stallingEngine(t).URL, "", nil).Chat(ctx, userAsks("hi"), func(e llm.Event) error {
+		if e.Kind == llm.EventText {
+			cancel()
+		}
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || errors.Is(err, llm.ErrStreamCut) {
+		t.Fatalf("a cancel mid-stream: %v", err)
 	}
 }
 
