@@ -127,7 +127,8 @@ func moduleRoot() (string, error) {
 
 // TestNoModelLiteralsOutsideTheRegistry is the repo-wide guard: every Ollama model name in Go code
 // must come from this registry (embedded in registry.yaml), not from a string literal. It excludes
-// tests (which pin exact names on purpose), this package (the registry itself), .git and vendor.
+// tests (which pin exact names on purpose), this package (the registry itself), the fake engine
+// (which mirrors the engine's catalog), .git and vendor.
 //
 // This walks the module tree in pure Go rather than shelling out to git grep: a subprocess is
 // invisible to the Go test cache, so a change to a file the old exec-based version policed (but that
@@ -151,7 +152,7 @@ func TestNoModelLiteralsOutsideTheRegistry(t *testing.T) {
 		}
 		if d.IsDir() {
 			switch rel {
-			case ".git", "internal/models", "vendor":
+			case ".git", "internal/models", "internal/llm/taraenginetest", "vendor": // the fake engine mirrors the engine's catalog
 				return filepath.SkipDir
 			}
 			return nil

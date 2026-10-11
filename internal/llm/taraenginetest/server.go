@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taraengine/pkg/api"
 )
 
@@ -136,18 +135,13 @@ func New(t testing.TB) *Server {
 	return s
 }
 
-// defaultDoctor is an RTX 5090 machine in the 32 GB tier with the runtime installed. Its recommendations are the
-// registry's default per tier, so the model names live in the registry and not in this package.
+// defaultDoctor is an RTX 5090 machine in the 32 GB tier with the runtime installed.
 func defaultDoctor() api.Doctor {
 	return api.Doctor{
 		Machine: api.Machine{OS: "linux", Arch: "amd64", GPU: "NVIDIA GeForce RTX 5090", GPUMemoryBytes: 32 << 30,
 			RAMBytes: 48 << 30, Tier: "32", DriverVersion: "570.211.01"},
-		Runtime: api.RuntimeStatus{Installed: true, Verified: true, Build: DefaultRuntime},
-		Recommendation: map[string]string{
-			string(models.Tier16): models.DefaultName(models.Tier16),
-			string(models.Tier32): models.DefaultName(models.Tier32),
-			string(models.Tier48): models.DefaultName(models.Tier48),
-		},
+		Runtime:        api.RuntimeStatus{Installed: true, Verified: true, Build: DefaultRuntime},
+		Recommendation: map[string]string{"16": "gemma4:12b", "32": "glm-4.7-flash", "48": "qwen3.6:35b"},
 	}
 }
 
