@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // ErrorSuggestion represents an actionable suggestion for an error
@@ -336,7 +338,8 @@ func FormatConnectionError(host string, err error) string {
 
 	sb.WriteString(ErrorStyle.Render("Error: Cannot connect to LLM server"))
 	sb.WriteString("\n")
-	sb.WriteString(Subtle.Render(fmt.Sprintf("  Host: %s", host)))
+	shown := llm.RedactedHost(host)
+	sb.WriteString(Subtle.Render(fmt.Sprintf("  Host: %s", shown)))
 	sb.WriteString("\n")
 	sb.WriteString(Subtle.Render(fmt.Sprintf("  %s", err.Error())))
 	sb.WriteString("\n\n")
@@ -345,7 +348,7 @@ func FormatConnectionError(host string, err error) string {
 	sb.WriteString("\n")
 	fmt.Fprintf(&sb, "  %s Start taraengine: taraengine serve\n", IconTip)
 	fmt.Fprintf(&sb, "  %s Check config: ~/.taracode/config.yaml\n", IconTip)
-	fmt.Fprintf(&sb, "  %s Test the connection: curl %s/api/health\n", IconTip, host)
+	fmt.Fprintf(&sb, "  %s Test the connection: curl %s/api/health\n", IconTip, shown)
 
 	return sb.String()
 }

@@ -82,6 +82,15 @@ func printableMachine(m api.Machine) api.Machine {
 	return m
 }
 
+// installedModel is the engine's model as the doctor lists it. An import the engine has not loaded lists no
+// capabilities and marks them inferred: they are unknown then, not absent.
+func installedModel(m api.Model) InstalledModel {
+	return InstalledModel{Name: m.Name, SizeGB: float64(m.Size) / 1e9, Context: m.NativeContext,
+		Tools: slices.Contains(m.Capabilities, "tools"), Thinking: slices.Contains(m.Capabilities, "thinking"),
+		Vision: slices.Contains(m.Capabilities, "vision"), Status: m.Status,
+		CapabilitiesUnknown: m.CapabilitiesInferred && len(m.Capabilities) == 0}
+}
+
 // collectEngineModels lists the pulled models, the configured model's loaded window and, when the engine marks it
 // faulty, its exit code and log tail.
 func (r *Report) collectEngineModels(ctx context.Context, eng *taraengine.Engine, list []api.Model) {
@@ -89,10 +98,7 @@ func (r *Report) collectEngineModels(ctx context.Context, eng *taraengine.Engine
 		if m.Status == "available" {
 			continue
 		}
-		r.Models = append(r.Models, InstalledModel{Name: m.Name, SizeGB: float64(m.Size) / 1e9,
-			Context: m.NativeContext, Tools: slices.Contains(m.Capabilities, "tools"),
-			Thinking: slices.Contains(m.Capabilities, "thinking"), Vision: slices.Contains(m.Capabilities, "vision"),
-			Status: m.Status})
+		r.Models = append(r.Models, installedModel(m))
 	}
 	sortModels(r.Models)
 	if loaded, err := eng.Loaded(ctx); err == nil {

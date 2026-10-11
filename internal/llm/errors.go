@@ -37,7 +37,7 @@ type UnreachableError struct {
 
 // Error names the host, with the password of the URL's user info masked, and the hint when there is one.
 func (e *UnreachableError) Error() string {
-	msg := "nothing answers at " + redacted(e.Host)
+	msg := "nothing answers at " + RedactedHost(e.Host)
 	if e.Hint != "" {
 		msg += ": " + e.Hint
 	}
@@ -47,8 +47,9 @@ func (e *UnreachableError) Error() string {
 // Unwrap is the dial error underneath.
 func (e *UnreachableError) Unwrap() error { return e.Err }
 
-// redacted is host with the password of its user info masked; a host that is not a URL is shown as given.
-func redacted(host string) string {
+// RedactedHost is host with the password of its user info masked; a host that is not a URL is shown as given. A host
+// reaches the screen through it, since the configuration can hold a user:password in the URL.
+func RedactedHost(host string) string {
 	if u, err := url.Parse(host); err == nil {
 		return u.Redacted()
 	}

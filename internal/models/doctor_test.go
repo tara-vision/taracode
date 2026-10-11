@@ -195,6 +195,58 @@ func TestDiagnoseNamesAModelTaracodeCannotUse(t *testing.T) {
 	}
 }
 
+// TestDiagnoseSaysAnImportsCapabilitiesShowOnceItLoads: the engine lists none for an import it has not loaded and marks
+// them inferred. The session starts such a model, so doctor does not say it has no tool calls: the Model line says the
+// capabilities show once it loads, and the capabilities column says they are unknown until then. The server is still
+// ok, which is all the exit status reads.
+func TestDiagnoseSaysAnImportsCapabilitiesShowOnceItLoads(t *testing.T) {
+	srv := engineWithModels(t)
+	srv.Models = append(srv.Models,
+		taraenginetest.ModelSpec{Name: "owner/repo:q4", CapabilitiesInferred: true, ContextLength: 16384,
+			Size: 2_000_000_000},
+		taraenginetest.ModelSpec{Name: "owner/other:q8", CapabilitiesInferred: true, ContextLength: 8192})
+	rep := diagnose(srv, "", "owner/repo:q4", false)
+	out := rep.Render()
+	if !rep.ServerOK {
+		t.Fatalf("the server is ok: %+v", rep)
+	}
+	// name to 28, a space, the size and window, the capabilities to 22, a space, the state
+	wantRow := "          owner/repo:q4" + strings.Repeat(" ", 16) + "  2.0 GB  ctx 16384   unknown until loaded   pulled\n"
+	for _, want := range []string{"Model     owner/repo:q4 (capabilities show once it loads)\n", wantRow} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "no tool calls") {
+		t.Errorf("an import is not a model without tools:\n%s", out)
+	}
+	// a model that is not the configured one gets the column and no note
+	if !strings.Contains(out, "owner/other:q8") || strings.Count(out, "unknown until loaded") != 2 ||
+		strings.Count(out, "capabilities show once it loads") != 1 {
+		t.Errorf("each import reads unknown, the configured one has the note:\n%s", out)
+	}
+}
+
+// TestDiagnoseShowsTheCapabilitiesOfAnImportTheEngineHasLoaded: once the import has loaded, the engine still marks the
+// capabilities inferred but lists them, and doctor shows them as it does for any model, with no note.
+func TestDiagnoseShowsTheCapabilitiesOfAnImportTheEngineHasLoaded(t *testing.T) {
+	srv := engineWithModels(t)
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "owner/repo:q4", CapabilitiesInferred: true,
+		Capabilities: []string{"completion", "tools", "thinking"}, ContextLength: 16384, Size: 2_000_000_000})
+	out := diagnose(srv, "", "owner/repo:q4", false).Render()
+	for _, want := range []string{"Model     owner/repo:q4\n",
+		"ctx 16384   tools thinking" + strings.Repeat(" ", 9) + "pulled\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"unknown until loaded", "capabilities show once it loads", "no tool calls"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("render has %q for an import whose capabilities are listed:\n%s", unwanted, out)
+		}
+	}
+}
+
 func TestDiagnoseReportsAWrongKey(t *testing.T) {
 	srv := engineWithModels(t)
 	srv.Key = "right"
@@ -243,6 +295,30 @@ func TestRuntimeNote(t *testing.T) {
 		if got := runtimeNote(status); got != want {
 			t.Errorf("runtimeNote(%+v) = %q, want %q", status, got, want)
 		}
+	}
+}
+
+// TestDoctorPrintsAHostWithoutItsPassword: the host comes from the configuration, where a user:password may stand in
+// its URL, and doctor's output is the kind of text people paste into a report. The Server line masks the password as
+// the unreachable line does, and a host without user info prints as it is.
+func TestDoctorPrintsAHostWithoutItsPassword(t *testing.T) {
+	srv := engineWithModels(t)
+	withPassword := strings.Replace(srv.URL, "http://", "http://user:secret@", 1)
+	masked := "Server    " + strings.Replace(srv.URL, "http://", "http://user:xxxxx@", 1) + "\n"
+	reports := map[string]Report{
+		"an engine": Diagnose(context.Background(), taraengine.New(srv.URL, "", nil), withPassword, "gemma4:12b", false,
+			noLookup, window32k),
+		"an OpenAI-compatible server": Diagnose(context.Background(), openAIStub{version: "vllm 0.11"}, withPassword, "",
+			false, noLookup, nil),
+		"nothing answering": UnreachableReport(withPassword, &llm.UnreachableError{Host: withPassword}, "", noLookup),
+	}
+	for name, rep := range reports {
+		if out := rep.Render(); !strings.Contains(out, masked) || strings.Contains(out, "secret") {
+			t.Errorf("%s: want %q and no password:\n%s", name, masked, out)
+		}
+	}
+	if out := diagnose(srv, "", "gemma4:12b", false).Render(); !strings.Contains(out, "Server    "+srv.URL+"\n") {
+		t.Errorf("a host without user info prints as it is:\n%s", out)
 	}
 }
 

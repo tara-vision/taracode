@@ -45,6 +45,23 @@ func TestUnreachableErrorHidesThePasswordOfTheHost(t *testing.T) {
 	}
 }
 
+// TestRedactedHostMasksOnlyThePassword: whatever shows a host to the user shows it through RedactedHost, which keeps the
+// user name, the port and the path, and shows a host that is not a URL as it was given.
+func TestRedactedHostMasksOnlyThePassword(t *testing.T) {
+	for host, want := range map[string]string{
+		"http://user:secret@example.com:8272/v1": "http://user:xxxxx@example.com:8272/v1",
+		"http://user@example.com:8272":           "http://user@example.com:8272",
+		"http://127.0.0.1:8272/":                 "http://127.0.0.1:8272/",
+		"http://bad host":                        "http://bad host",
+		"127.0.0.1:8272":                         "127.0.0.1:8272",
+		"":                                       "",
+	} {
+		if got := RedactedHost(host); got != want {
+			t.Errorf("RedactedHost(%q) = %q, want %q", host, got, want)
+		}
+	}
+}
+
 func TestPrintableDropsControlCharactersButTabAndNewline(t *testing.T) {
 	in := "a\x1b[31mred\x1b[0m\ttab\nline\r\x07bell\u009b2J\x00end"
 	if got, want := Printable(in), "a[31mred[0m\ttab\nlinebell2Jend"; got != want {

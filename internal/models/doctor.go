@@ -28,6 +28,10 @@ type InstalledModel struct {
 	Thinking bool
 	Vision   bool
 	Status   string // the engine's word for the model's state ("pulled", "loaded", "sleeping", "faulty"); "" elsewhere
+
+	// CapabilitiesUnknown is an import the engine has not loaded: it infers the capabilities at the load and lists none
+	// before that, so Tools, Thinking and Vision say nothing about the model.
+	CapabilitiesUnknown bool
 }
 
 // Report is the result of Diagnose.
@@ -171,7 +175,7 @@ func (r Report) Render() string {
 // renderServer writes the Server lines: the host, then the engine, the OpenAI-compatible server, or why taracode
 // cannot use it.
 func (r *Report) renderServer(b *strings.Builder) {
-	fmt.Fprintf(b, "Server    %s\n", r.Host)
+	fmt.Fprintf(b, "Server    %s\n", llm.RedactedHost(r.Host))
 	switch {
 	case !r.ServerOK && r.Refused:
 		fmt.Fprintf(b, "          refused: %s\n", r.ServerError)
@@ -200,22 +204,31 @@ func (r *Report) renderModels(b *strings.Builder) {
 	}
 	b.WriteString("Models\n")
 	for _, m := range r.Models {
-		var caps []string
-		for _, c := range []struct {
-			on   bool
-			name string
-		}{{m.Tools, "tools"}, {m.Thinking, "thinking"}, {m.Vision, "vision"}} {
-			if c.on {
-				caps = append(caps, c.name)
-			}
-		}
 		size := fmt.Sprintf("%5.1f GB  ctx %-7d ", m.SizeGB, m.Context)
 		if m.SizeGB == 0 && m.Context == 0 {
 			size = "" // an OpenAI-compatible server lists names only
 		}
-		line := fmt.Sprintf("          %-28s %s%-22s %s", m.Name, size, strings.Join(caps, " "), m.Status)
+		line := fmt.Sprintf("          %-28s %s%-22s %s", m.Name, size, m.capabilityColumn(), m.Status)
 		b.WriteString(strings.TrimRight(line, " ") + "\n")
 	}
+}
+
+// capabilityColumn is what the models section says of the model's capabilities: the ones it has, or that they are
+// not known yet.
+func (m InstalledModel) capabilityColumn() string {
+	if m.CapabilitiesUnknown {
+		return "unknown until loaded"
+	}
+	var caps []string
+	for _, c := range []struct {
+		on   bool
+		name string
+	}{{m.Tools, "tools"}, {m.Thinking, "thinking"}, {m.Vision, "vision"}} {
+		if c.on {
+			caps = append(caps, c.name)
+		}
+	}
+	return strings.Join(caps, " ")
 }
 
 // renderModelAndContext writes the Model line, a faulty model's exit code and log tail, and the window taracode will
@@ -239,12 +252,16 @@ func (r *Report) renderModelAndContext(b *strings.Builder) {
 	}
 }
 
-// modelNote is what follows the configured model's name: why taracode cannot use it, or the window it runs at.
+// modelNote is what follows the configured model's name: why taracode cannot use it, or the window it runs at. An
+// import the engine has not loaded is no model without tools: the session starts it, and its capabilities show once
+// it loads.
 func (r *Report) modelNote() string {
 	m, installed := r.installed(r.ConfiguredModel)
 	switch {
 	case r.Engine != nil && !installed:
 		return fmt.Sprintf(" (not pulled: taraengine pull %s)", r.ConfiguredModel)
+	case m.CapabilitiesUnknown:
+		return " (capabilities show once it loads)"
 	case r.Engine != nil && !m.Tools:
 		return " (no tool calls: taracode needs a model that has them)"
 	case r.LoadedContext > 0 && m.Status == "sleeping": // the engine lists a sleeping model among the loaded ones
