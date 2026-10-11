@@ -49,6 +49,7 @@ type streamChunk struct {
 func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, lineBuffer), maxLine)
+	sc.Split(scanTerminatedLines)
 	f := &folder{res: &llm.Result{}, pending: map[int]*openai.ToolCall{}, onEvent: onEvent}
 	for sc.Scan() {
 		data, ok := strings.CutPrefix(sc.Text(), "data: ")
@@ -73,6 +74,16 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 		return nil, fmt.Errorf("%w: %w", llm.ErrStreamCut, err)
 	}
 	return nil, llm.ErrStreamCut
+}
+
+// scanTerminatedLines is bufio.ScanLines without a final line the server never finished: such a line is a cut
+// stream, not a chunk.
+func scanTerminatedLines(data []byte, atEOF bool) (int, []byte, error) {
+	advance, token, err := bufio.ScanLines(data, atEOF)
+	if atEOF && advance == len(data) && len(data) > 0 && data[len(data)-1] != '\n' {
+		return len(data), nil, nil
+	}
+	return advance, token, err
 }
 
 // folder assembles the result of one stream.

@@ -76,6 +76,30 @@ func TestReadStreamReportsACutAndAReadError(t *testing.T) {
 	}
 }
 
+func TestReadStreamReadsAMidLineCutAsACut(t *testing.T) {
+	stream := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: {\"choi"
+	var events []llm.Event
+	_, err := readStream(strings.NewReader(stream), collect(&events))
+	if !errors.Is(err, llm.ErrStreamCut) || len(events) != 1 || events[0].Text != "hi" {
+		t.Fatalf("a stream cut mid-line: %v, events %+v", err, events)
+	}
+}
+
+func TestScanTerminatedLinesDropsOnlyAnUnfinishedLastLine(t *testing.T) {
+	if advance, token, err := scanTerminatedLines([]byte("data: a\nda"), true); advance != 8 || string(token) != "data: a" || err != nil {
+		t.Errorf("a terminated line before an unfinished one: %d %q %v", advance, token, err)
+	}
+	if advance, token, _ := scanTerminatedLines([]byte("data: a"), false); advance != 0 || token != nil {
+		t.Errorf("an unfinished line before the end of input: %d %q", advance, token)
+	}
+	if advance, token, _ := scanTerminatedLines([]byte("data: a"), true); advance != 7 || token != nil {
+		t.Errorf("an unfinished last line: %d %q", advance, token)
+	}
+	if advance, token, _ := scanTerminatedLines(nil, true); advance != 0 || token != nil {
+		t.Errorf("no input left: %d %q", advance, token)
+	}
+}
+
 func TestReadStreamStopsWhenOnEventFails(t *testing.T) {
 	stop := errors.New("stop")
 	streams := map[llm.EventKind]string{
