@@ -18,6 +18,12 @@ import (
 // maxErrorBody bounds how much of a refusal Chat reads.
 const maxErrorBody = 1 << 20
 
+// maxPlainRefusal bounds a refusal body that is not the engine's JSON (a proxy's error page, say).
+const maxPlainRefusal = 300
+
+// maxDrain bounds how much of a 503's body is read before the retry, which lets the retry reuse the connection.
+const maxDrain = 64 << 10
+
 // chatRequest is the body of POST /v1/chat/completions. It is taracode's own type because go-openai's drops a zero
 // temperature (omitempty on a float) and the evals run at temperature 0; the pointers here send a 0.
 type chatRequest struct {
@@ -86,6 +92,7 @@ func (c *Client) Chat(ctx context.Context, req llm.Request, onEvent func(llm.Eve
 func (c *Client) post(ctx context.Context, model string, body []byte) (*http.Response, error) {
 	resp, err := c.send(ctx, body)
 	if err == nil && resp.StatusCode == http.StatusServiceUnavailable {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain)) // read to the end, so the retry reuses the conn
 		_ = resp.Body.Close()
 		if werr := c.engine.sleep(ctx, retryDelay); werr != nil {
 			return nil, werr
@@ -119,7 +126,8 @@ func (c *Client) send(ctx context.Context, body []byte) (*http.Response, error) 
 }
 
 // refusal reads the engine's error body, {"error":{"message","hint"}}, into *llm.ServerError. Another body becomes
-// the message, and an empty one the status text.
+// the message, up to maxPlainRefusal bytes, and an empty one the status text. Control characters are dropped: the
+// text reaches the terminal.
 func refusal(resp *http.Response, model string) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	var body struct {
@@ -130,12 +138,22 @@ func refusal(resp *http.Response, model string) error {
 	}
 	e := &llm.ServerError{Status: resp.StatusCode, Model: model}
 	if json.Unmarshal(data, &body) == nil && body.Error.Message != "" {
-		e.Message, e.Hint = body.Error.Message, body.Error.Hint
+		e.Message, e.Hint = llm.Printable(body.Error.Message), llm.Printable(body.Error.Hint)
 	} else {
-		e.Message = strings.TrimSpace(string(data))
+		e.Message = plainRefusal(data)
 	}
 	if e.Message == "" {
 		e.Message = http.StatusText(resp.StatusCode)
 	}
 	return e
+}
+
+// plainRefusal is a refusal body that is not the engine's JSON as a message: printable, trimmed, and cut to
+// maxPlainRefusal bytes, since such a body can be a whole page.
+func plainRefusal(data []byte) string {
+	msg := strings.TrimSpace(llm.Printable(string(data)))
+	if len(msg) > maxPlainRefusal {
+		msg = strings.ToValidUTF8(msg[:maxPlainRefusal], "")
+	}
+	return msg
 }

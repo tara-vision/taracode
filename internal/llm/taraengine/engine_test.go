@@ -47,6 +47,19 @@ func TestEngineReadsTheControlAPI(t *testing.T) {
 	}
 }
 
+// TestEngineKeepsTheEnginesTextOffTheTerminalControls: the message and hint of a refusal on the control API reach
+// the terminal, so the control characters in them are dropped.
+func TestEngineKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Failures["GET /api/version"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
+		Message: "broken\x1b[2J catalog", Hint: "\x1b]0;title\x07taraengine doctor"}
+	_, err := New(srv.URL, "", nil).Engine().Version(context.Background())
+	var refused *llm.ServerError
+	if !errors.As(err, &refused) || refused.Message != "broken[2J catalog" || refused.Hint != "]0;titletaraengine doctor" {
+		t.Fatalf("a refusal with escape sequences: %#v", err)
+	}
+}
+
 func TestEngineLoadsAndUnloads(t *testing.T) {
 	srv := taraenginetest.New(t)
 	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", ContextLength: 131072}}

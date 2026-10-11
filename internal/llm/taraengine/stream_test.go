@@ -23,15 +23,38 @@ func TestReadStreamSkipsCommentsAndBlankLines(t *testing.T) {
 	}
 }
 
-func TestReadStreamReportsBadAndErrorChunks(t *testing.T) {
-	for stream, want := range map[string]string{
-		"data: {not json}\n\n":                         "decode a stream chunk",
-		"data: {\"error\":{\"message\":\"boom\"}}\n\n": "taraengine: boom",
+func TestReadStreamReportsABadChunk(t *testing.T) {
+	if _, err := readStream(strings.NewReader("data: {not json}\n\n"), collect(new([]llm.Event))); err == nil ||
+		!strings.Contains(err.Error(), "decode a stream chunk") {
+		t.Errorf("a chunk that is not JSON: %v", err)
+	}
+}
+
+// TestReadStreamTurnsAnErrorChunkIntoAServerError: an error the engine sends mid-answer is a refusal with its message
+// and hint, as an error before the answer is, so it gets the same rendering; an empty one still says something.
+func TestReadStreamTurnsAnErrorChunkIntoAServerError(t *testing.T) {
+	for stream, want := range map[string]llm.ServerError{
+		"data: {\"error\":{\"message\":\"boom\",\"hint\":\"try again\"}}\n\n": {Status: 500, Message: "boom",
+			Hint: "try again"},
+		"data: {\"error\":{}}\n\n": {Status: 500, Message: "Internal Server Error"},
+		"data: {\"error\":{\"message\":\"b\\u001b[2Joom\",\"hint\":\"\\u001b]0;x\\u0007hint\"}}\n\n": {Status: 500,
+			Message: "b[2Joom", Hint: "]0;xhint"},
 	} {
-		if _, err := readStream(strings.NewReader(stream), collect(new([]llm.Event))); err == nil ||
-			!strings.Contains(err.Error(), want) {
-			t.Errorf("%q: %v", stream, err)
+		_, err := readStream(strings.NewReader(stream), collect(new([]llm.Event)))
+		var refused *llm.ServerError
+		if !errors.As(err, &refused) || *refused != want || errors.Is(err, llm.ErrStreamCut) {
+			t.Errorf("%q: %#v, want %+v", stream, err, want)
 		}
+	}
+}
+
+// TestReadStreamReportsALineOverTheBound: a line longer than the bound is not a server that stopped mid-answer.
+func TestReadStreamReportsALineOverTheBound(t *testing.T) {
+	stream := "data: {\"choices\":[{\"delta\":{\"content\":\"" + strings.Repeat("x", maxLine) + "\"}}]}\n\ndata: [DONE]\n\n"
+	_, err := readStream(strings.NewReader(stream), collect(new([]llm.Event)))
+	if err == nil || err.Error() != "taraengine: a line of the stream is longer than 8 MiB" ||
+		errors.Is(err, llm.ErrStreamCut) {
+		t.Fatalf("a line over 8 MiB: %v", err)
 	}
 }
 

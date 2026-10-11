@@ -157,6 +157,30 @@ func TestDiagnoseShowsAFaultyModel(t *testing.T) {
 	}
 }
 
+// TestDiagnoseKeepsTheEnginesTextOffTheTerminalControls: the engine's own text (the health detail, the machine, the
+// runtime, the platform, the recommendation, and a faulty model's log tail, which echoes an imported model's metadata)
+// reaches the terminal with its control characters dropped and its newlines kept.
+func TestDiagnoseKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "bad:1b", Capabilities: []string{"tools"}, Status: "faulty",
+		ExitCode: 1, LogTail: "general.name \x1b]0;title\x07x\nline two\x1b[2J\n"}}
+	srv.Runtime, srv.Platform = "b1\x1b[31m", "linux\x1b[0m/amd64"
+	srv.Health = api.Health{Status: "degraded", Backend: "llama.cpp", Detail: "gone\x1b[2J"}
+	srv.Doctor.Machine.GPU = "RTX\x1b[1m 5090"
+	srv.Doctor.Runtime = api.RuntimeStatus{Installed: true, Error: "bad\x1b[5m checksum"}
+	srv.Doctor.Recommendation["32"] = "glm\x1b[7m-4.7-flash"
+	out := diagnose(srv, "", "bad:1b", false).Render()
+	if strings.ContainsAny(out, "\x1b\x07") {
+		t.Fatalf("control characters reach the terminal:\n%q", out)
+	}
+	for _, want := range []string{"(runtime b1[31m, linux[0m/amd64)", "degraded: gone[2J", "RTX[1m 5090",
+		"Runtime   bad[5m checksum", "glm[7m-4.7-flash", "| general.name ]0;titlex\n          | line two[2J\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestDiagnoseNamesAModelTaracodeCannotUse(t *testing.T) {
 	srv := engineWithModels(t)
 	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "embed:1b", Capabilities: []string{"embedding"}})

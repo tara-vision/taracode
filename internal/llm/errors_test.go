@@ -34,3 +34,23 @@ func TestErrStreamCutTellsWhereToLook(t *testing.T) {
 		t.Fatalf("ErrStreamCut = %q", ErrStreamCut.Error())
 	}
 }
+
+func TestUnreachableErrorHidesThePasswordOfTheHost(t *testing.T) {
+	withPassword := &UnreachableError{Host: "http://user:secret@proxy:8080", Hint: "start it"}
+	if withPassword.Error() != "nothing answers at http://user:xxxxx@proxy:8080: start it" {
+		t.Errorf("a host with a password: %q", withPassword.Error())
+	}
+	if notAURL := (&UnreachableError{Host: "http://bad host"}); notAURL.Error() != "nothing answers at http://bad host" {
+		t.Errorf("a host that is not a URL is shown as given: %q", notAURL.Error())
+	}
+}
+
+func TestPrintableDropsControlCharactersButTabAndNewline(t *testing.T) {
+	in := "a\x1b[31mred\x1b[0m\ttab\nline\r\x07bell\u009b2J\x00end"
+	if got, want := Printable(in), "a[31mred[0m\ttab\nlinebell2Jend"; got != want {
+		t.Fatalf("Printable(%q) = %q, want %q", in, got, want)
+	}
+	if got := Printable("plain text, ok"); got != "plain text, ok" {
+		t.Fatalf("plain text changed: %q", got)
+	}
+}

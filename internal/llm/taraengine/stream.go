@@ -3,9 +3,11 @@ package taraengine
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -19,6 +21,9 @@ const (
 	lineBuffer = 64 << 10
 	maxLine    = 8 << 20
 )
+
+// errLineTooLong is a stream line over maxLine. The server did not stop, so it is not llm.ErrStreamCut.
+var errLineTooLong = fmt.Errorf("taraengine: a line of the stream is longer than %d MiB", maxLine>>20)
 
 // streamChunk is one event of the engine's /v1 stream: the deltas, then a finish reason, then a last chunk with no
 // choices that carries the usage and llama-server's timings (captured live on b11514).
@@ -41,11 +46,12 @@ type streamChunk struct {
 	} `json:"timings"`
 	Error *struct {
 		Message string `json:"message"`
+		Hint    string `json:"hint"`
 	} `json:"error"`
 }
 
 // readStream reads the SSE stream to its [DONE], forwarding events as they come and assembling the result. A stream
-// that ends before [DONE] is llm.ErrStreamCut.
+// that ends before [DONE] is llm.ErrStreamCut, and an error the engine sends mid-answer is *llm.ServerError.
 func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, lineBuffer), maxLine)
@@ -64,16 +70,30 @@ func readStream(r io.Reader, onEvent func(llm.Event) error) (*llm.Result, error)
 			return nil, fmt.Errorf("taraengine: decode a stream chunk: %w", err)
 		}
 		if chunk.Error != nil {
-			return nil, fmt.Errorf("taraengine: %s", chunk.Error.Message)
+			return nil, streamError(chunk.Error.Message, chunk.Error.Hint)
 		}
 		if err := f.add(chunk); err != nil {
 			return nil, err
 		}
 	}
 	if err := sc.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return nil, errLineTooLong
+		}
 		return nil, fmt.Errorf("%w: %w", llm.ErrStreamCut, err)
 	}
 	return nil, llm.ErrStreamCut
+}
+
+// streamError is an error the engine sent mid-answer, as the refusal it is: status 500 with its message and hint,
+// their control characters dropped, and the status text when it sent no message.
+func streamError(message, hint string) error {
+	e := &llm.ServerError{Status: http.StatusInternalServerError, Message: strings.TrimSpace(llm.Printable(message)),
+		Hint: llm.Printable(hint)}
+	if e.Message == "" {
+		e.Message = http.StatusText(http.StatusInternalServerError)
+	}
+	return e
 }
 
 // scanTerminatedLines is bufio.ScanLines without a final line the server never finished: such a line is a cut

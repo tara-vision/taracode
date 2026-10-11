@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,7 +138,9 @@ func TestChatTurnsARefusalIntoAServerError(t *testing.T) {
 }
 
 func TestChatReadsARefusalThatIsNotTheEnginesBody(t *testing.T) {
-	for body, want := range map[string]string{"upstream gone\n": "upstream gone", "": "Bad Gateway"} {
+	long := "<html>" + strings.Repeat("proxy error page ", 40) + "</html>"
+	for body, want := range map[string]string{"upstream gone\n": "upstream gone", "": "Bad Gateway",
+		"\x1b[2Jcleared\x07": "[2Jcleared", long: long[:maxPlainRefusal]} {
 		bare := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadGateway)
 			_, _ = w.Write([]byte(body))
@@ -146,6 +151,60 @@ func TestChatReadsARefusalThatIsNotTheEnginesBody(t *testing.T) {
 		if !errors.As(err, &refused) || refused.Message != want || refused.Status != http.StatusBadGateway {
 			t.Errorf("body %q: %#v", body, err)
 		}
+	}
+}
+
+// TestChatKeepsTheEnginesTextOffTheTerminalControls: the message and hint of the engine's refusal reach the terminal,
+// so the control characters in them are dropped.
+func TestChatKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Turns = []taraenginetest.Turn{{Status: http.StatusBadRequest, Error: "bad\x1b[2Jrequest",
+		Hint: "\x1b]0;title\x07see the log"}}
+	_, err := New(srv.URL, "", nil).Chat(context.Background(), userAsks("hi"), nil)
+	var refused *llm.ServerError
+	if !errors.As(err, &refused) || refused.Message != "bad[2Jrequest" || refused.Hint != "]0;titlesee the log" {
+		t.Fatalf("a refusal with escape sequences: %#v", err)
+	}
+}
+
+// TestChatRetryReusesTheConnection: the 503's body is read before the retry, so the retry goes out on the same
+// connection, even when the body comes a while after the status (net/http's own read of a closed body waits 50 ms).
+func TestChatRetryReusesTheConnection(t *testing.T) {
+	var mu sync.Mutex
+	conns, calls := 0, 0
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		mu.Lock()
+		calls++
+		first := calls == 1
+		mu.Unlock()
+		if first {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = http.NewResponseController(w).Flush()
+			time.Sleep(200 * time.Millisecond)
+			_, _ = io.WriteString(w, `{"error":{"message":"the engine backend is not running"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"back\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			mu.Lock()
+			conns++
+			mu.Unlock()
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "", &http.Client{Transport: &http.Transport{}}) // no connection of another test to reuse
+	noWait(c.engine)
+	res, err := c.Chat(context.Background(), userAsks("hi"), nil)
+	mu.Lock()
+	defer mu.Unlock()
+	if err != nil || res.Content != "back" || calls != 2 || conns != 1 {
+		t.Fatalf("a 503 then an answer: %+v %v, %d calls on %d connections", res, err, calls, conns)
 	}
 }
 

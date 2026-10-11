@@ -8,6 +8,7 @@ import (
 
 	"github.com/tara-vision/taraengine/pkg/api"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraengine"
 )
 
@@ -51,7 +52,8 @@ func (r *Report) diagnoseEngine(ctx context.Context, eng *taraengine.Engine) {
 }
 
 // engineReport reads the engine's health, version and doctor. The version is required, being the first call that
-// needs the key; a doctor that fails only leaves the machine lines out.
+// needs the key; a doctor that fails only leaves the machine lines out. The engine's text reaches the terminal, so
+// its control characters are dropped.
 func engineReport(ctx context.Context, eng *taraengine.Engine) (*EngineReport, error) {
 	health, err := eng.Health(ctx)
 	if err != nil {
@@ -61,15 +63,23 @@ func engineReport(ctx context.Context, eng *taraengine.Engine) (*EngineReport, e
 	if err != nil {
 		return nil, err
 	}
-	rep := &EngineReport{Version: v.Version, Runtime: v.Runtime.Build, Platform: v.Platform}
+	rep := &EngineReport{Version: llm.Printable(v.Version), Runtime: llm.Printable(v.Runtime.Build),
+		Platform: llm.Printable(v.Platform)}
 	if health.Status != "ok" {
-		rep.Degraded = health.Detail
+		rep.Degraded = llm.Printable(health.Detail)
 	}
 	if d, err := eng.Doctor(ctx); err == nil {
-		rep.Machine, rep.RuntimeNote = d.Machine, runtimeNote(d.Runtime)
-		rep.Recommended = d.Recommendation[d.Machine.Tier]
+		rep.Machine, rep.RuntimeNote = printableMachine(d.Machine), llm.Printable(runtimeNote(d.Runtime))
+		rep.Recommended = llm.Printable(d.Recommendation[d.Machine.Tier])
 	}
 	return rep, nil
+}
+
+// printableMachine is m with the control characters of its text dropped.
+func printableMachine(m api.Machine) api.Machine {
+	m.OS, m.Arch, m.GPU = llm.Printable(m.OS), llm.Printable(m.Arch), llm.Printable(m.GPU)
+	m.Tier, m.DriverVersion = llm.Printable(m.Tier), llm.Printable(m.DriverVersion)
+	return m
 }
 
 // collectEngineModels lists the pulled models, the configured model's loaded window and, when the engine marks it
@@ -94,7 +104,8 @@ func (r *Report) collectEngineModels(ctx context.Context, eng *taraengine.Engine
 	}
 	if m, ok := r.installed(r.ConfiguredModel); ok && m.Status == "faulty" {
 		if d, err := eng.Model(ctx, m.Name); err == nil {
-			r.Engine.Faulty = &FaultyModel{ExitCode: d.ExitCode, LogTail: d.LogTail}
+			// llama-server's log echoes an imported model's metadata: keep its control characters off the terminal
+			r.Engine.Faulty = &FaultyModel{ExitCode: d.ExitCode, LogTail: llm.Printable(d.LogTail)}
 		}
 	}
 }

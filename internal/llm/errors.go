@@ -3,6 +3,9 @@ package llm
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+	"unicode"
 )
 
 // ErrStreamCut is matched by errors.Is when a streamed answer ends before the server's end marker.
@@ -32,9 +35,9 @@ type UnreachableError struct {
 	Err  error
 }
 
-// Error names the host, and the hint when there is one.
+// Error names the host, with the password of the URL's user info masked, and the hint when there is one.
 func (e *UnreachableError) Error() string {
-	msg := "nothing answers at " + e.Host
+	msg := "nothing answers at " + redacted(e.Host)
 	if e.Hint != "" {
 		msg += ": " + e.Hint
 	}
@@ -43,3 +46,22 @@ func (e *UnreachableError) Error() string {
 
 // Unwrap is the dial error underneath.
 func (e *UnreachableError) Unwrap() error { return e.Err }
+
+// redacted is host with the password of its user info masked; a host that is not a URL is shown as given.
+func redacted(host string) string {
+	if u, err := url.Parse(host); err == nil {
+		return u.Redacted()
+	}
+	return host
+}
+
+// Printable is s without its control characters, tab and newline kept. Text a server sends reaches the terminal
+// through it, so an escape sequence in that text cannot act on the terminal.
+func Printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || !unicode.IsControl(r) {
+			return r
+		}
+		return -1
+	}, s)
+}
