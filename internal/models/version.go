@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// versionBefore reports whether have is an older Ollama release than need, comparing up to three
+// versionBefore reports whether have is an older release than need, comparing up to three
 // numeric components (major.minor.patch). Either side being empty, or not parsing as numeric
 // components, returns false: an unknown version is never reported as "before" a requirement, so
 // callers stay silent rather than warn on a version they cannot understand.

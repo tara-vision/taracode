@@ -2,12 +2,15 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/tara-vision/taracode/internal/llm"
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
 )
 
 // externalTools are the CLIs taracode's tools shell out to.
@@ -17,167 +20,143 @@ var externalTools = []string{
 
 // InstalledModel is one model on the server as the doctor sees it.
 type InstalledModel struct {
-	Name       string
-	SizeGB     float64
-	Context    int
-	Tools      bool
-	Thinking   bool
-	Vision     bool
-	InRegistry bool
-	MinOllama  string // from the registry entry, when InRegistry; "" otherwise.
+	Name     string
+	SizeGB   float64
+	Context  int // the native window, 0 when the server does not say
+	Tools    bool
+	Thinking bool
+	Vision   bool
+	Status   string // the engine's word for the model's state ("pulled", "loaded", "sleeping", "faulty"); "" elsewhere
 }
 
 // Report is the result of Diagnose.
 type Report struct {
-	Host                    string
-	ServerOK                bool
-	ServerVersion           string
-	ServerError             string
-	RAMGB                   int
-	Tier                    Tier
-	Models                  []InstalledModel
-	ConfiguredModel         string
-	LoadedContext           int
-	ContextWindow           int    // num_ctx that will be requested for ConfiguredModel; 0 = not resolved.
-	ContextNote             string // a warning from resolving ContextWindow, if any.
-	Tools                   map[string]string
-	RegistryError           string // set when the embedded registry failed to load; "" otherwise.
-	registry                *Registry
-	RecommendationInstalled bool
-	PolicyNote              string // which policy files load, or the parse error; "" = not checked.
+	Host            string
+	ServerOK        bool
+	ServerVersion   string // an OpenAI-compatible server's own version, "" when it has none
+	ServerError     string
+	InstallHint     bool          // nothing answered where taracode looks for an engine: say how to install one
+	KeyNeeded       bool          // the engine refused taracode's key
+	Engine          *EngineReport // set when the server is a taraengine
+	Models          []InstalledModel
+	ConfiguredModel string
+	LoadedContext   int
+	ContextWindow   int    // the window taracode will load ConfiguredModel at; 0 = not resolved
+	ContextNote     string // a warning from resolving ContextWindow, if any
+	KeepAliveSet    bool   // keep_alive is set in the config, where it no longer does anything
+	Tools           map[string]string
+	PolicyNote      string // which policy files load, or the parse error; "" = not checked
 }
 
-// Diagnose collects everything the doctor prints. lookPath is exec.LookPath in production.
-// resolveWindow resolves the context window that will be requested for the configured model, once
-// it is known to be installed; nil skips that section (the OpenAI-compatible path has no way to
-// set num_ctx, so callers there pass nil).
+// Diagnose collects everything the doctor prints. lookPath is exec.LookPath in production. resolveWindow resolves the
+// window taracode will load the configured model at, on an engine; nil skips that line. keepAliveSet adds the note
+// that keep_alive does nothing.
 func Diagnose(
 	ctx context.Context,
 	client llm.Client,
-	host string,
-	ramGB int,
-	configuredModel string,
+	host, configuredModel string,
+	keepAliveSet bool,
 	lookPath func(string) (string, error),
 	resolveWindow func(modelMax int) (window int, note string),
 ) Report {
-	rep := Report{
-		Host: host, RAMGB: ramGB, Tier: TierFor(ramGB), ConfiguredModel: configuredModel, Tools: map[string]string{},
-	}
-	if registry, err := Load(); err != nil {
-		rep.RegistryError = err.Error()
-	} else {
-		rep.registry = registry
-	}
+	rep := newReport(host, configuredModel, lookPath)
+	rep.KeepAliveSet = keepAliveSet
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-
-	version, err := client.Version(ctx)
-	if err != nil {
-		rep.ServerError = err.Error()
+	if ec, ok := client.(engineClient); ok {
+		rep.diagnoseEngine(ctx, ec.Engine())
+		rep.resolveConfiguredWindow(resolveWindow)
 	} else {
-		rep.ServerOK = true
-		rep.ServerVersion = version
-		rep.collectModels(ctx, client)
+		rep.diagnoseGeneric(ctx, client)
 	}
-	for _, name := range externalTools {
-		if path, err := lookPath(name); err == nil {
-			rep.Tools[name] = path
-		} else {
-			rep.Tools[name] = ""
-		}
-	}
-	if rec, ok := rep.Recommendation(); ok {
-		for _, m := range rep.Models {
-			if m.Name == rec.Name {
-				rep.RecommendationInstalled = true
-			}
-		}
-	}
-	rep.resolveConfiguredWindow(resolveWindow)
 	return rep
 }
 
-// collectModels fills in the installed-models section and the loaded context, once Version has
-// answered. Version is a no-op stub on the OpenAI-compatible transport (vLLM, llama.cpp), so a
-// Models failure here is the first real signal such a server is unreachable: ServerOK is cleared
-// too, not just ServerError, or the report would call a dead vLLM host "reachable".
-func (r *Report) collectModels(ctx context.Context, client llm.Client) {
+// UnreachableReport is the report for a host detection found nothing at: the error, the configured model and the
+// tools, so doctor still prints all it can before it exits 1.
+func UnreachableReport(host string, err error, configuredModel string, lookPath func(string) (string, error)) Report {
+	rep := newReport(host, configuredModel, lookPath)
+	rep.fail(err)
+	return rep
+}
+
+// newReport is an empty report with the external tools looked up.
+func newReport(host, configuredModel string, lookPath func(string) (string, error)) Report {
+	rep := Report{Host: host, ConfiguredModel: configuredModel, Tools: map[string]string{}}
+	for _, name := range externalTools {
+		path, err := lookPath(name)
+		if err != nil {
+			path = ""
+		}
+		rep.Tools[name] = path
+	}
+	return rep
+}
+
+// fail records why taracode cannot use the server. Nothing answering where taracode looks for an engine also gets
+// the install line, and a refused key the line that says where the key goes.
+func (r *Report) fail(err error) {
+	r.ServerOK, r.ServerError = false, err.Error()
+	var unreachable *llm.UnreachableError
+	var refused *llm.ServerError
+	r.InstallHint = errors.As(err, &unreachable) && unreachable.Hint != ""
+	r.KeyNeeded = errors.As(err, &refused) && refused.Status == http.StatusUnauthorized
+}
+
+// diagnoseGeneric checks an OpenAI-compatible server: its version when it has one, and the models it lists.
+func (r *Report) diagnoseGeneric(ctx context.Context, client llm.Client) {
+	version, err := client.Version(ctx)
+	if err != nil {
+		r.fail(err)
+		return
+	}
 	infos, err := client.Models(ctx)
 	if err != nil {
-		r.ServerError = err.Error()
-		r.ServerOK = false
+		r.fail(err)
 		return
 	}
+	r.ServerOK, r.ServerVersion = true, version
 	for _, info := range infos {
-		m := InstalledModel{Name: info.Name, SizeGB: float64(info.Size) / 1e9}
-		if details, err := client.Show(ctx, info.Name); err == nil {
-			m.Context = details.ContextLength
-			m.Tools = details.Has("tools")
-			m.Thinking = details.Has("thinking")
-			m.Vision = details.Has("vision")
-		}
-		if r.registry != nil {
-			if entry, ok := r.registry.Find(info.Name); ok {
-				m.InRegistry = true
-				m.MinOllama = entry.MinOllama
-			}
-		}
-		r.Models = append(r.Models, m)
+		r.Models = append(r.Models, InstalledModel{Name: info.Name, SizeGB: float64(info.Size) / 1e9})
 	}
-	sort.Slice(r.Models, func(i, j int) bool { return r.Models[i].Name < r.Models[j].Name })
-	if loaded, err := client.Loaded(ctx); err == nil {
-		for _, l := range loaded {
-			if l.Name == r.ConfiguredModel || l.Name == r.ConfiguredModel+":latest" {
-				r.LoadedContext = l.ContextLength
-			}
-		}
-	}
+	sortModels(r.Models)
 }
 
-// resolveConfiguredWindow sets ContextWindow and ContextNote from resolveWindow, once the
-// configured model is found among the installed models (its native context is what resolveWindow
-// needs). A nil resolveWindow, an empty ConfiguredModel, or no matching installed model leaves
-// both fields at their zero value.
+func sortModels(models []InstalledModel) {
+	sort.Slice(models, func(i, j int) bool { return models[i].Name < models[j].Name })
+}
+
+// installed is the listed model with that name.
+func (r *Report) installed(name string) (InstalledModel, bool) {
+	for _, m := range r.Models {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return InstalledModel{}, false
+}
+
+// resolveConfiguredWindow sets ContextWindow and ContextNote once the configured model is found among the pulled
+// models, whose native window resolveWindow needs.
 func (r *Report) resolveConfiguredWindow(resolveWindow func(modelMax int) (int, string)) {
-	if resolveWindow == nil || r.ConfiguredModel == "" {
+	if resolveWindow == nil {
 		return
 	}
-	for _, m := range r.Models {
-		if m.Name == r.ConfiguredModel || m.Name == r.ConfiguredModel+":latest" {
-			r.ContextWindow, r.ContextNote = resolveWindow(m.Context)
-			return
-		}
+	if m, ok := r.installed(r.ConfiguredModel); ok {
+		r.ContextWindow, r.ContextNote = resolveWindow(m.Context)
 	}
 }
 
-// Recommendation is the registry default for the host's tier.
-func (r *Report) Recommendation() (Entry, bool) {
-	if r.registry == nil {
-		return Entry{}, false
-	}
-	e := r.registry.DefaultForTier(r.Tier)
-	return e, e.Name != ""
-}
-
-// Render formats the report for the terminal.
-func (r *Report) Render() string {
+// Render formats the report for the terminal. The value receiver lets it be called on a Diagnose result directly.
+func (r Report) Render() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Server    %s\n", r.Host)
-	if r.ServerOK {
-		if r.ServerVersion != "" {
-			fmt.Fprintf(&b, "          Ollama %s reachable\n", r.ServerVersion)
-		} else {
-			b.WriteString("          server reachable\n")
-		}
-	} else {
-		fmt.Fprintf(&b, "          unreachable: %s\n", r.ServerError)
-	}
-	if r.RegistryError != "" {
-		fmt.Fprintf(&b, "Registry  unavailable: %s\n", r.RegistryError)
-	}
-	fmt.Fprintf(&b, "Machine   %d GB RAM, tier %s GB\n", r.RAMGB, r.Tier)
+	r.renderServer(&b)
+	r.renderMachine(&b)
 	r.renderModels(&b)
 	r.renderModelAndContext(&b)
+	if r.KeepAliveSet {
+		b.WriteString("Keep      keep_alive in the config does nothing: the engine's idle sleep is global\n")
+	}
 	if r.PolicyNote != "" {
 		fmt.Fprintf(&b, "Policy    %s\n", r.PolicyNote)
 	}
@@ -186,76 +165,92 @@ func (r *Report) Render() string {
 	return b.String()
 }
 
-// renderModels writes the installed-models section, one row per model.
+// renderServer writes the Server lines: the host, then the engine, the OpenAI-compatible server, or why taracode
+// cannot use it.
+func (r *Report) renderServer(b *strings.Builder) {
+	fmt.Fprintf(b, "Server    %s\n", r.Host)
+	switch {
+	case !r.ServerOK:
+		fmt.Fprintf(b, "          unreachable: %s\n", r.ServerError)
+		if r.KeyNeeded {
+			b.WriteString("          set key in ~/.taracode/config.yaml, or pass --key\n")
+		}
+		if r.InstallHint {
+			fmt.Fprintf(b, "          install it: %s\n", taraengine.InstallHint)
+		}
+	case r.Engine != nil:
+		r.Engine.renderServer(b)
+	case r.ServerVersion != "":
+		fmt.Fprintf(b, "          %s reachable\n", r.ServerVersion)
+	default:
+		b.WriteString("          server reachable\n")
+	}
+}
+
+// renderModels writes the models section, one row per model: size, native window, capabilities and, on an engine,
+// the model's state.
 func (r *Report) renderModels(b *strings.Builder) {
 	if len(r.Models) == 0 {
 		return
 	}
 	b.WriteString("Models\n")
 	for _, m := range r.Models {
-		r.renderModel(b, m)
+		var caps []string
+		for _, c := range []struct {
+			on   bool
+			name string
+		}{{m.Tools, "tools"}, {m.Thinking, "thinking"}, {m.Vision, "vision"}} {
+			if c.on {
+				caps = append(caps, c.name)
+			}
+		}
+		line := fmt.Sprintf("          %-28s %5.1f GB  ctx %-7d %-22s %s", m.Name, m.SizeGB, m.Context,
+			strings.Join(caps, " "), m.Status)
+		b.WriteString(strings.TrimRight(line, " ") + "\n")
 	}
 }
 
-// renderModel writes one model's row: name, size, native context, capabilities, registry
-// membership, and (when the server is older than the model needs) an Ollama-version warning.
-func (r *Report) renderModel(b *strings.Builder, m InstalledModel) {
-	caps := []string{}
-	if m.Tools {
-		caps = append(caps, "tools")
-	}
-	if m.Thinking {
-		caps = append(caps, "thinking")
-	}
-	if m.Vision {
-		caps = append(caps, "vision")
-	}
-	registryMark := "not in registry"
-	if m.InRegistry {
-		registryMark = "registry"
-	}
-	fmt.Fprintf(b, "          %-28s %5.1f GB  ctx %-7d %-22s %s",
-		m.Name, m.SizeGB, m.Context, strings.Join(caps, " "), registryMark)
-	if r.ServerVersion != "" && m.MinOllama != "" && versionBefore(r.ServerVersion, m.MinOllama) {
-		fmt.Fprintf(b, " needs Ollama >= %s", m.MinOllama)
-	}
-	b.WriteString("\n")
-}
-
-// renderModelAndContext writes the Model line (the configured model and its loaded context, when
-// known) and, right after it, the context window that will be requested for that model.
+// renderModelAndContext writes the Model line, a faulty model's exit code and log tail, and the window taracode will
+// load the model at.
 func (r *Report) renderModelAndContext(b *strings.Builder) {
 	if r.ConfiguredModel != "" {
-		fmt.Fprintf(b, "Model     %s", r.ConfiguredModel)
-		if r.LoadedContext > 0 {
-			fmt.Fprintf(b, " (loaded with a %d-token context)", r.LoadedContext)
+		fmt.Fprintf(b, "Model     %s%s\n", r.ConfiguredModel, r.modelNote())
+	}
+	if f := r.faulty(); f != nil {
+		fmt.Fprintf(b, "          faulty, exit code %d: taraengine load %s --force tries it again\n", f.ExitCode,
+			r.ConfiguredModel)
+		for _, line := range strings.Split(strings.TrimSpace(f.LogTail), "\n") {
+			fmt.Fprintf(b, "          | %s\n", line)
 		}
-		b.WriteString("\n")
 	}
 	if r.ContextWindow > 0 {
-		fmt.Fprintf(b, "Context   %d tokens will be requested per turn\n", r.ContextWindow)
+		fmt.Fprintf(b, "Context   %d tokens, set when the model loads%s\n", r.ContextWindow, r.reloadNote())
 		if r.ContextNote != "" {
 			fmt.Fprintf(b, "          %s\n", r.ContextNote)
 		}
 	}
 }
 
-// renderAdvice writes the Advice line: whether the recommended model for this tier is already
-// installed, and (when the server is older than the recommendation needs) an Ollama-version note.
-func (r *Report) renderAdvice(b *strings.Builder) {
-	rec, ok := r.Recommendation()
-	if !ok {
-		return
+// modelNote is what follows the configured model's name: why taracode cannot use it, or the window it runs at.
+func (r *Report) modelNote() string {
+	m, installed := r.installed(r.ConfiguredModel)
+	switch {
+	case r.Engine != nil && !installed:
+		return fmt.Sprintf(" (not pulled: taraengine pull %s)", r.ConfiguredModel)
+	case r.Engine != nil && !m.Tools:
+		return " (no tool calls: taracode needs a model that has them)"
+	case r.LoadedContext > 0:
+		return fmt.Sprintf(" (loaded at a %d-token window)", r.LoadedContext)
 	}
-	if r.RecommendationInstalled {
-		fmt.Fprintf(b, "Advice    %s is installed and is the recommended model for this machine\n", rec.Name)
-	} else {
-		fmt.Fprintf(b, "Advice    recommended for %d GB: %s (%.0f GB download)\n          ollama pull %s\n",
-			r.RAMGB, rec.Name, rec.DownloadGB, rec.Name)
+	return ""
+}
+
+// reloadNote says that the next session reloads the model when it runs at another window than taracode will set.
+func (r *Report) reloadNote() string {
+	if r.LoadedContext > 0 && r.LoadedContext != r.ContextWindow {
+		return "; the next session reloads it"
 	}
-	if rec.MinOllama != "" && r.ServerVersion != "" && versionBefore(r.ServerVersion, rec.MinOllama) {
-		fmt.Fprintf(b, "          needs Ollama >= %s (server has %s)\n", rec.MinOllama, r.ServerVersion)
-	}
+	return ""
 }
 
 // renderTools writes the external-tools section, one line per tool taracode's tools shell out to.

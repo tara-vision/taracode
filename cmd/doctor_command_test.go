@@ -24,7 +24,7 @@ func TestDoctorCommandPrintsTheReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Ollama 0.34.2", "gemma4:12b", "Policy    ok (built-in)"} {
+	for _, want := range []string{"0.34.2 reachable", "gemma4:12b", "Policy    ok (built-in)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("doctor lacks %q:\n%s", want, out)
 		}

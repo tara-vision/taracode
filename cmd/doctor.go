@@ -16,9 +16,9 @@ import (
 	"github.com/tara-vision/taracode/internal/provider"
 )
 
-// doctorCmd is `taracode doctor`: it checks the LLM server, the installed models and their
-// capabilities, the host RAM tier and the registry's recommendation for it, and the external
-// tools on PATH, then prints the report and exits 1 when the server could not be reached.
+// `doctorCmd` is `taracode doctor`: it checks the server (on taraengine: its version, runtime, the
+// machine and the recommended model), the pulled models and their capabilities, and the external
+// tools on PATH, then prints the report and exits 1 when taracode cannot use the server.
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Diagnose the LLM server, installed models and external tools",
@@ -68,9 +68,13 @@ func runDoctor(ctx context.Context, hostURL, apiKey, vendor, configuredModel str
 	if err != nil {
 		return models.Report{}, fmt.Errorf("doctor: create provider: %w", err)
 	}
-	ramGB, _ := models.HostRAMGB()
-	return models.Diagnose(ctx, prov.LLM(), hostURL, ramGB, configuredModel, exec.LookPath, doctorResolveWindow), nil
+	return models.Diagnose(ctx, prov.LLM(), hostURL, configuredModel, keepAliveSet(), exec.LookPath,
+		doctorResolveWindow), nil
 }
+
+// keepAliveSet reports whether the config sets keep_alive, which no backend takes since the native Ollama client
+// went.
+func keepAliveSet() bool { return viper.GetString("keep_alive") != "" }
 
 // doctorExitCode is 1 when the server could not be reached, the condition RunE turns into
 // os.Exit(1).
@@ -106,10 +110,9 @@ func handleDoctor(asst *agent.Assistant, projectRoot string) {
 	if info := asst.GetProviderInfo(); info != nil {
 		liveHost = info.Host
 	}
-	ramGB, _ := models.HostRAMGB()
 	rep := models.Diagnose(
-		context.Background(), asst.GetProvider().LLM(), liveHost, ramGB, asst.GetCurrentModel(), exec.LookPath,
-		doctorResolveWindow,
+		context.Background(), asst.GetProvider().LLM(), liveHost, asst.GetCurrentModel(), keepAliveSet(),
+		exec.LookPath, doctorResolveWindow,
 	)
 	rep.PolicyNote = policyNote(projectRoot)
 	fmt.Print(rep.Render())

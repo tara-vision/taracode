@@ -111,7 +111,7 @@ func TestHandleDoctorRunsAgainstTheLiveAssistant(t *testing.T) {
 
 	out := captureStdoutForTest(t, func() { handleDoctor(a, t.TempDir()) })
 
-	for _, want := range []string{"Ollama 0.34.2", "gemma4:12b"} {
+	for _, want := range []string{"0.34.2 reachable", "gemma4:12b"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("handleDoctor output lacks %q:\n%s", want, out)
 		}
