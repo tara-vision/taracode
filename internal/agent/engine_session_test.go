@@ -109,6 +109,22 @@ func TestTheSessionSaysItIsLoadingTheModel(t *testing.T) {
 	}
 }
 
+// TestNewStopsAtOnceWhenNothingAnswers: a configured model does not cover for an engine that nothing answers at. New
+// stops at the model detection with the error, without the "Could not detect models" line that sends the session on
+// to its next call. The port refuses the dial at once, where a host that never answers fails it after the dial's
+// bound; the engine client reports both as the same *llm.UnreachableError, and the unexported dial the provider's own
+// tests replace is out of this package's reach.
+func TestNewStopsAtOnceWhenNothingAnswers(t *testing.T) {
+	opts, _, out := engineOptions(t)
+	opts.Host, opts.Vendor = "http://127.0.0.1:1", "taraengine"
+	a, err := New(opts)
+	var unreachable *llm.UnreachableError
+	if a != nil || !errors.As(err, &unreachable) || unreachable.Host != "http://127.0.0.1:1" ||
+		strings.Contains(out.String(), "Could not detect models") {
+		t.Fatalf("New() = %v, %#v, output %q; want the error and no fallback line", a, err, out.String())
+	}
+}
+
 func TestNewStopsOnAModelWithoutTools(t *testing.T) {
 	opts, srv, _ := engineOptions(t)
 	opts.Model = "embed:1b"

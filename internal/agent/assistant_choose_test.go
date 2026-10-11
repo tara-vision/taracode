@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -58,6 +59,30 @@ func TestChooseModelFallsBackInOrder(t *testing.T) {
 	}
 }
 
+// TestChooseModelStopsAtOnceWhenNothingAnswers: a server nothing answers at (*llm.UnreachableError, which only the
+// engine client reports) ends the choice with that error, before the saved and the configured name are trusted, and
+// the choice says nothing. The session would stop at its next call to the server anyway, a dial's wait later.
+func TestChooseModelStopsAtOnceWhenNothingAnswers(t *testing.T) {
+	silent := &llm.UnreachableError{Host: "http://gpu-box:8272", Hint: taraengine.StartHint}
+	for _, c := range []struct {
+		name, persisted, configured string
+		detectErr                   error
+	}{
+		{"a configured model", "", "conf:2b", silent},
+		{"a saved and a configured model", "saved:1b", "conf:2b", silent},
+		{"no model to fall back on", "", "", silent},
+		{"the error inside another", "", "conf:2b", fmt.Errorf("listing the models: %w", silent)},
+	} {
+		var out bytes.Buffer
+		got, err := chooseModel(nil, c.detectErr, c.persisted, c.configured, ui.NewRenderer(), &out, nil)
+		var unreachable *llm.UnreachableError
+		if got != "" || !errors.As(err, &unreachable) || unreachable != silent || out.Len() != 0 {
+			t.Errorf("%s: chooseModel() = %q, %#v with output %q; want no model, the error and no output", c.name, got,
+				err, out.String())
+		}
+	}
+}
+
 // TestChooseModelSaysWhichModelReplacesAGoneOne: the warning about a saved model the server no
 // longer lists is followed by the model used instead.
 func TestChooseModelSaysWhichModelReplacesAGoneOne(t *testing.T) {
@@ -95,6 +120,27 @@ func TestFirstRunAdviceNamesTheEnginesRecommendation(t *testing.T) {
 	printFirstRunAdvice(&out, taraengine.New(srv.URL, "", nil))
 	if out.String() != "Advice    recommended for tier 32: glm-4.7-flash\n          taraengine pull glm-4.7-flash\n" {
 		t.Fatalf("advice %q", out.String())
+	}
+}
+
+// TestFirstRunAdviceKeepsTheEnginesTextOffTheTerminalControls: the tier and the model's name come from the engine's
+// doctor and reach the terminal, so their control characters are dropped; a recommendation of nothing but control
+// characters is no recommendation.
+func TestFirstRunAdviceKeepsTheEnginesTextOffTheTerminalControls(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Doctor.Machine.Tier = "3\x1b[2J2"
+	srv.Doctor.Recommendation = map[string]string{"3\x1b[2J2": "glm\x1b]0;title\x07-4.7-flash"}
+	var out bytes.Buffer
+	printFirstRunAdvice(&out, taraengine.New(srv.URL, "", nil))
+	want := "Advice    recommended for tier 3[2J2: glm]0;title-4.7-flash\n          taraengine pull glm]0;title-4.7-flash\n"
+	if out.String() != want || strings.ContainsAny(out.String(), "\x1b\x07") {
+		t.Fatalf("advice %q, want %q", out.String(), want)
+	}
+	srv.Doctor.Recommendation = map[string]string{"3\x1b[2J2": "\x1b\x07"}
+	out.Reset()
+	printFirstRunAdvice(&out, taraengine.New(srv.URL, "", nil))
+	if out.Len() != 0 {
+		t.Fatalf("a recommendation of control characters only: %q", out.String())
 	}
 }
 

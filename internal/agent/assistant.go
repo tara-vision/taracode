@@ -3,6 +3,7 @@ package agent
 
 import (
 	gocontext "context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -287,11 +288,17 @@ func sameModel(a, b string) bool {
 
 // chooseModel picks the model New uses: the persisted one while the server still lists it, then the
 // configured one, then the first the server lists. When the server cannot list its models the
-// persisted or configured name is trusted.
+// persisted or configured name is trusted, unless nothing answers at it (*llm.UnreachableError, which only the
+// engine client reports): the session would stop at its next call to the server anyway, a dial's wait later, so the
+// choice ends with that error, before any name is trusted, and says nothing.
 func chooseModel(
 	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer, out io.Writer,
 	client llm.Client,
 ) (string, error) {
+	var unreachable *llm.UnreachableError
+	if errors.As(detectErr, &unreachable) {
+		return "", detectErr
+	}
 	var model string
 
 	// Helper to check if model exists in available models
