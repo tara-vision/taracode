@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +20,9 @@ const DefaultHost = "http://127.0.0.1:8272"
 const (
 	// healthTimeout bounds the engine probe that runs before anything else.
 	healthTimeout = 2 * time.Second
+	// probeConnectTimeout bounds a probe's dial below healthTimeout, so a host that never answers fails the engine
+	// probe as a dial, which stops detection, before the probe's own time runs out.
+	probeConnectTimeout = 1500 * time.Millisecond
 	// maxProbeBody bounds how much of a probe's answer is read.
 	maxProbeBody = 1 << 16
 )
@@ -129,7 +131,7 @@ func probeClient() *http.Client {
 	return &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			DialContext:       (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+			DialContext:       boundedDial(probeConnectTimeout),
 			DisableKeepAlives: true,
 		},
 	}

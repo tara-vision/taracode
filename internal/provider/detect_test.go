@@ -72,6 +72,19 @@ func TestDetectStopsWhenNothingAnswers(t *testing.T) {
 	}
 }
 
+// TestDetectStopsAtAHostThatNeverAnswersTheDial: a host that never answers the dial stops detection as a refused port
+// does, within the engine probe's own bound, instead of passing for an OpenAI-compatible server.
+func TestDetectStopsAtAHostThatNeverAnswersTheDial(t *testing.T) {
+	neverConnects(t)
+	start := time.Now()
+	got, err := Detect(context.Background(), silentHost)
+	took := time.Since(start)
+	var unreachable *llm.UnreachableError
+	if !errors.As(err, &unreachable) || unreachable.Host != silentHost || took >= healthTimeout {
+		t.Fatalf("Detect() = %s, %#v after %v, want nothing answering within %v", got, err, took, healthTimeout)
+	}
+}
+
 func TestDetectHintsAtTheDefaultHost(t *testing.T) {
 	_, err := Detect(context.Background(), DefaultHost)
 	var unreachable *llm.UnreachableError
@@ -105,7 +118,8 @@ func TestProbesNeedAURL(t *testing.T) {
 
 // TestDetectLeavesNoConnectionIdle: every probe builds a client of its own, so a connection kept alive after an
 // answer is never reused and never closed. The server's connection hook says how the probe's connection settled
-// (a closed one is right, an idle one is the leak), and the test waits for that event instead of sleeping.
+// (a closed one is right, an idle one is a connection nothing will close), and the test waits for that event instead
+// of sleeping.
 func TestDetectLeavesNoConnectionIdle(t *testing.T) {
 	settled := make(chan http.ConnState, 4) // one connection: an idle or closed event, then the server's close
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(answer(200, `{"status":"ok","backend":"llama.cpp"}`)))

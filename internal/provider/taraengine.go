@@ -19,10 +19,11 @@ var (
 	_ ModelManager = (*TaraengineProvider)(nil)
 )
 
-// NewTaraengineProvider creates the provider for the engine at host.
+// NewTaraengineProvider creates the provider for the engine at host. Its dial gives up within engineConnectTimeout.
 func NewTaraengineProvider(host, apiKey string) *TaraengineProvider {
 	base := NewBaseProvider(TypeTaraengine, host, apiKey)
 	base.info.SupportsTools = true
+	base.httpClient = newHTTPClient(engineConnectTimeout)
 	return &TaraengineProvider{BaseProvider: base, client: taraengine.New(base.info.Host, apiKey, base.httpClient)}
 }
 

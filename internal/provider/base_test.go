@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +67,22 @@ func droppingServer(t *testing.T) string {
 
 // badHost cannot be parsed as a URL, so no request is ever made to it.
 const badHost = "http://bad host"
+
+// silentHost is a documentation address (RFC 5737); with neverConnects nothing is dialled there.
+const silentHost = "http://192.0.2.10:8272"
+
+// neverConnects makes every dial of this package wait for its bound and then fail as a dial does, the way a host that
+// drops the packets (a powered-off box, a VPN that is down, a firewall that drops) never answers. The test must not
+// run in parallel with another that dials.
+func neverConnects(t *testing.T) {
+	t.Helper()
+	saved := dial
+	dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		return nil, &net.OpError{Op: "dial", Net: network, Err: ctx.Err()}
+	}
+	t.Cleanup(func() { dial = saved })
+}
 
 const twoModels = `{"data":[{"id":"qwen3.5:9b"},{"id":"gemma4:12b"}]}`
 

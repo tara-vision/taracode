@@ -2,8 +2,12 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
+	"time"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraengine"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
@@ -32,6 +36,32 @@ func TestTaraengineProviderManagesTheEnginesModels(t *testing.T) {
 	}
 	if err := p.UnloadModel(context.Background(), "gemma4:12b"); err != nil || srv.Unloaded[0] != "gemma4:12b" {
 		t.Fatalf("UnloadModel %v %v", err, srv.Unloaded)
+	}
+}
+
+// TestTheEngineProviderStopsAtAHostThatNeverAnswersTheDial: with vendor taraengine nothing detects the host first, so
+// the engine client's own calls must read a host that never answers the dial as nothing answering there. The session
+// reads its model with a 5 s bound, and the dial gives up inside it.
+func TestTheEngineProviderStopsAtAHostThatNeverAnswersTheDial(t *testing.T) {
+	neverConnects(t)
+	const sessionShowBound = 5 * time.Second // agent.New and SwitchModel read the model under this bound
+	ctx, cancel := context.WithTimeout(context.Background(), sessionShowBound)
+	defer cancel()
+	start := time.Now()
+	_, err := NewTaraengineProvider(silentHost, "").LLM().Show(ctx, "gemma4:12b")
+	var unreachable *llm.UnreachableError
+	if !errors.As(err, &unreachable) || time.Since(start) >= sessionShowBound {
+		t.Fatalf("Show = %#v after %v, want nothing answering within %v", err, time.Since(start), sessionShowBound)
+	}
+}
+
+// TestTheEngineProviderBoundsOnlyTheDial: a load runs for minutes under its own backstop, so the engine provider's
+// client has no overall timeout and no wait for the answer's headers; only its dial is bounded.
+func TestTheEngineProviderBoundsOnlyTheDial(t *testing.T) {
+	c := NewTaraengineProvider(silentHost, "").httpClient
+	transport, ok := c.Transport.(*http.Transport)
+	if !ok || c.Timeout != 0 || transport.ResponseHeaderTimeout != 0 || transport.DialContext == nil {
+		t.Fatalf("client %+v, transport %+v", c, c.Transport)
 	}
 }
 
