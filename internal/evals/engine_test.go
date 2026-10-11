@@ -237,8 +237,8 @@ func TestCleanHardware(t *testing.T) {
 		{"Apple M4 Max, 64 GB", "Apple M4 Max, 64 GB", false},
 		{"NVIDIA   RTX  5090", "NVIDIA RTX 5090", false}, // inner runs of spaces collapse, so one machine is one board
 		{"RTX\xff5090", "", true},                        // not valid UTF-8
-		{"http://10.0.0.3:11434", "", true},              // a URL is an address, not a label
-		{"the box at 10.0.0.3", "", true},                // so is a bare IP address
+		{"http://192.0.2.10:11434", "", true},            // a URL is an address, not a label
+		{"the box at 192.0.2.10", "", true},              // so is a bare IP address
 		{"gpu://somewhere", "", true},
 		{strings.Repeat("x", 60), strings.Repeat("x", 60), false},
 		{strings.Repeat("x", 61), "", true},

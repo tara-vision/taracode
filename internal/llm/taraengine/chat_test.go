@@ -244,7 +244,8 @@ func TestChatReportsACutStream(t *testing.T) {
 }
 
 // stallingEngine answers one text delta, then holds the stream open until the client goes away. The request body is
-// drained first, so the server sees the disconnect; the 5 s bound only keeps a broken test from hanging.
+// drained first, so the server sees the disconnect; the 5 s bound only stops the test from waiting forever if the
+// client never goes away.
 func stallingEngine(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

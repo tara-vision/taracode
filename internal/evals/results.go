@@ -389,7 +389,7 @@ func scrubbedPaths(opts RunOptions, t Task) [][2]string {
 // engineForms are the engine's URL as given and as scheme://host[:port], and its host[:port],
 // longest first.
 func engineForms(host string) []string {
-	host = strings.TrimRight(strings.TrimSpace(host), "/") // http://h:11434// is http://h:11434
+	host = strings.TrimRight(strings.TrimSpace(host), "/") // http://h:8272// is http://h:8272
 	if host == "" {
 		return nil
 	}
