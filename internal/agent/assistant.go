@@ -549,8 +549,8 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 
 // SwitchModel switches to a different model. It reads the new model first, so a model the server refuses (not
 // pulled, no tools) never costs the session the old one; then it unloads the old model, loads the new one at its
-// window and saves the choice. When that load fails it puts the session's settings back, brings the old model back
-// and returns the failure.
+// window and saves the choice. When that load fails it puts the session's settings back, reloads the old model at
+// the window it had and returns the failure.
 func (a *Assistant) SwitchModel(newModel string) error {
 	if a.provider == nil {
 		return fmt.Errorf("provider not initialized")
@@ -593,17 +593,12 @@ func (a *Assistant) SwitchModel(newModel string) error {
 	return nil
 }
 
-// restoreModel goes back to model after a switch whose load failed: its details again, then its load. A failure
-// here is printed, not returned: the switch's own error is the one to show.
+// restoreModel goes back to model after a switch whose load failed: it reloads model at the window the session had,
+// without reading it again, because restoreSettings has just put that window, the thinking flag, the think level and
+// the compaction budget back. A failure here is printed, not returned: the switch's own error is the one to show.
 func (a *Assistant) restoreModel(model string) {
 	a.model = model
-	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
-	defer cancel()
-	err := a.applyModelDetails(a.llm.Show(ctx, model))
-	if err == nil {
-		err = a.loadModel()
-	}
-	if err != nil {
+	if err := a.loadModel(); err != nil {
 		_, _ = fmt.Fprintf(a.out, "  Note: Could not load %s back: %v\n", model, err)
 	}
 }

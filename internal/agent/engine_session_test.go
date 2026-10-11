@@ -2,9 +2,11 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -142,14 +144,14 @@ func TestSwitchModelBringsTheOldModelBackWhenTheLoadFails(t *testing.T) {
 	}
 }
 
-// thinkingSession is a session at think=high on a model with thinking, on an engine that also serves a small model
-// without thinking, whose window of 16384 is below the compaction budget.
-func thinkingSession(t *testing.T) (*Assistant, *taraenginetest.Server, *bytes.Buffer) {
+// thinkingSession is a session at think=high on model, on an engine that serves glm-4.7-flash, with thinking, and
+// small:3b, without it, whose window of 16384 is below the compaction budget.
+func thinkingSession(t *testing.T, model string) (*Assistant, *taraenginetest.Server, *bytes.Buffer) {
 	t.Helper()
 	opts, srv, out := engineOptions(t)
 	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "small:3b",
 		Capabilities: []string{"completion", "tools"}, ContextLength: 16384})
-	opts.Model, opts.Think = "glm-4.7-flash", "high"
+	opts.Model, opts.Think = model, "high"
 	a, err := New(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +167,31 @@ func sessionSettings(a *Assistant) string {
 		info.ContextWindow)
 }
 
+// scriptedShow is an llm.Client that records the models it is asked to describe and fails the first Show of one
+// model with err; everything else, loads included, goes to the client underneath.
+type scriptedShow struct {
+	llm.Client
+	model string
+	err   error
+	shown []string
+}
+
+var _ llm.Loader = (*scriptedShow)(nil)
+
+func (c *scriptedShow) Show(ctx context.Context, model string) (*llm.ModelDetails, error) {
+	c.shown = append(c.shown, model)
+	if err := c.err; err != nil && model == c.model {
+		c.err = nil
+		return nil, err
+	}
+	return c.Client.Show(ctx, model)
+}
+
+// Load passes the load on, as the engine client underneath does.
+func (c *scriptedShow) Load(ctx context.Context, model string, window int) error {
+	return c.Client.(llm.Loader).Load(ctx, model, window)
+}
+
 // TestSwitchModelThatStopsLeavesTheSessionAsItWas: reading a model may lower the think level and the compaction
 // budget, so a switch that stops, in its load or before it, leaves the model, the think level, the compaction budget
 // and the window as they were.
@@ -178,7 +205,7 @@ func TestSwitchModelThatStopsLeavesTheSessionAsItWas(t *testing.T) {
 		{"a model without tools", "embed:1b", false},
 	}
 	for _, c := range cases {
-		a, srv, _ := thinkingSession(t)
+		a, srv, _ := thinkingSession(t, "glm-4.7-flash")
 		before := sessionSettings(a)
 		if c.loadFails {
 			srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway,
@@ -190,22 +217,42 @@ func TestSwitchModelThatStopsLeavesTheSessionAsItWas(t *testing.T) {
 	}
 }
 
-// TestSwitchModelPutsTheSettingsBackWhenTheOldModelCannotBeRead: when the engine will not describe the old model
-// right after the new one failed to load, the settings the new model set are still put back, thinking support
-// included.
+// TestSwitchModelPutsTheSettingsBackWhenTheOldModelCannotBeRead: the old model is not read again once the new one
+// failed to load. The session was on small:3b, a window of 16384 and no thinking; whatever a second Show of it
+// would answer, the session keeps those settings and the old model is loaded back at its own window.
 func TestSwitchModelPutsTheSettingsBackWhenTheOldModelCannotBeRead(t *testing.T) {
-	a, srv, out := thinkingSession(t)
-	before := sessionSettings(a)
-	srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway, Message: "exit code 1",
-		Times: 1}
-	srv.Failures["GET /api/models/glm-4.7-flash"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
-		Message: "x", Times: 1}
-	err := a.SwitchModel("small:3b")
-	if err == nil || !strings.Contains(out.String(), "Could not load glm-4.7-flash back") {
-		t.Fatalf("err %v, output %q", err, out.String())
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"an error the server explains", &llm.ServerError{Status: http.StatusInternalServerError, Message: "x",
+			Model: "small:3b"}},
+		{"an error nothing explains", errors.New("context deadline exceeded")},
 	}
-	if after := sessionSettings(a); after != before || a.SetThink(llm.ThinkHigh) != llm.ThinkHigh {
-		t.Fatalf("the session was %s, now %s, thinking supported: %v", before, after, a.thinkingSupported)
+	for _, c := range cases {
+		a, srv, out := thinkingSession(t, "small:3b")
+		show := &scriptedShow{Client: a.llm, model: "small:3b", err: c.err}
+		a.llm = show
+		before := sessionSettings(a)
+		srv.Failures["POST /api/load"] = &taraenginetest.Failure{Status: http.StatusBadGateway,
+			Message: "exit code 1", Times: 1}
+		err := a.SwitchModel("glm-4.7-flash")
+		var refused *llm.ServerError
+		if !errors.As(err, &refused) || refused.Status != http.StatusBadGateway {
+			t.Errorf("%s: the switch returns the load's error: %v", c.name, err)
+		}
+		want := taraenginetest.LoadRequest{Model: "small:3b", Context: 16384}
+		if len(srv.Loads) != 2 || srv.Loads[1] != want || strings.Contains(out.String(), "Could not load") {
+			t.Errorf("%s: the old model is loaded back at its window: loads %+v, output %q", c.name, srv.Loads,
+				out.String())
+		}
+		if after := sessionSettings(a); after != before || a.SetThink(llm.ThinkHigh) != llm.ThinkAuto {
+			t.Errorf("%s: the session was %s, now %s, thinking supported: %v", c.name, before, after,
+				a.thinkingSupported)
+		}
+		if slices.Contains(show.shown, "small:3b") {
+			t.Errorf("%s: the old model is not read again, models read: %v", c.name, show.shown)
+		}
 	}
 }
 
