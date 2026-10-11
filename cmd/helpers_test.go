@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -78,11 +78,11 @@ func withStdin(t *testing.T, input string, fn func()) {
 	fn()
 }
 
-// fakeOllama starts the scripted fake serving gemma4:12b with tool support.
-func fakeOllama(t *testing.T, turns ...ollamatest.Turn) *ollamatest.Server {
+// fakeEngine starts the scripted fake engine serving gemma4:12b with tool support.
+func fakeEngine(t *testing.T, turns ...taraenginetest.Turn) *taraenginetest.Server {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
 		ContextLength: 32768, Family: "gemma4", ParameterSize: "12B"}}
 	srv.Turns = turns
 	return srv
@@ -91,7 +91,7 @@ func fakeOllama(t *testing.T, turns ...ollamatest.Turn) *ollamatest.Server {
 // replOn builds a repl the way testREPL does, on the given fake, with HOME isolated. An initialised
 // repl (ephemeral false) gets its storage in dir/.taracode; enableProject is left to the test.
 // configure adjusts the options before the assistant is built.
-func replOn(t *testing.T, srv *ollamatest.Server, dir string, ephemeral bool, configure ...func(*agent.Options)) *repl {
+func replOn(t *testing.T, srv *taraenginetest.Server, dir string, ephemeral bool, configure ...func(*agent.Options)) *repl {
 	t.Helper()
 	isolateHome(t)
 	opts := agent.DefaultOptions()
@@ -110,9 +110,9 @@ func replOn(t *testing.T, srv *ollamatest.Server, dir string, ephemeral bool, co
 
 // projectREPL is an initialised repl on a fresh fake with its project managers (history, memory)
 // enabled, the state /init leaves behind.
-func projectREPL(t *testing.T, turns ...ollamatest.Turn) (*repl, *ollamatest.Server) {
+func projectREPL(t *testing.T, turns ...taraenginetest.Turn) (*repl, *taraenginetest.Server) {
 	t.Helper()
-	srv := fakeOllama(t, turns...)
+	srv := fakeEngine(t, turns...)
 	r := replOn(t, srv, t.TempDir(), false)
 	_ = captureStdoutForTest(t, r.enableProject)
 	if r.history == nil || r.memory == nil {

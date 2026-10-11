@@ -7,17 +7,17 @@ import (
 	"github.com/manifoldco/promptui"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // twoModelREPL is an initialised repl on a fake serving gemma4:12b (current) and qwen3.5:9b.
-func twoModelREPL(t *testing.T, secondCapabilities ...string) (*repl, *ollamatest.Server) {
+func twoModelREPL(t *testing.T, secondCapabilities ...string) (*repl, *taraenginetest.Server) {
 	t.Helper()
 	r, srv := projectREPL(t)
 	if len(secondCapabilities) == 0 {
 		secondCapabilities = []string{"completion", "tools"}
 	}
-	srv.Models = append(srv.Models, ollamatest.ModelSpec{Name: "qwen3.5:9b", Capabilities: secondCapabilities,
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "qwen3.5:9b", Capabilities: secondCapabilities,
 		ContextLength: 32768, Family: "qwen3", ParameterSize: "9B"})
 	return r, srv
 }
@@ -87,7 +87,7 @@ func TestModelWithNothingToChoose(t *testing.T) {
 
 // TestModelOnAServerThatCannotListModels: an OpenAI-compatible server has no model listing.
 func TestModelOnAServerThatCannotListModels(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true, func(o *agent.Options) { o.Vendor = "vllm" })
+	r := replOn(t, fakeEngine(t), t.TempDir(), true, func(o *agent.Options) { o.Vendor = "vllm" })
 	stdout, stderr := captureOutput(t, func() { r.dispatch("/model") })
 	if !strings.Contains(stdout, "Current model: gemma4:12b") || !strings.Contains(stderr, "does not support model listing") {
 		t.Fatalf("stdout %q stderr %q", stdout, stderr)

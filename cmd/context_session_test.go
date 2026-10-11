@@ -10,7 +10,7 @@ import (
 
 	"github.com/tara-vision/taracode/internal/agent"
 	projectcontext "github.com/tara-vision/taracode/internal/context"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -25,9 +25,9 @@ func twentyLines() string {
 
 // readNotesTurns is one user turn on the fake: a read_file call for notes.txt, then the answer,
 // 1500 prompt and 50 completion tokens in all.
-func readNotesTurns() []ollamatest.Turn {
-	return []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "notes.txt"}}},
+func readNotesTurns() []taraenginetest.Turn {
+	return []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "notes.txt"}}},
 			PromptTokens: 600, CompletionTokens: 20},
 		{Content: "Five lines shown.", PromptTokens: 900, CompletionTokens: 30},
 	}
@@ -78,8 +78,8 @@ func TestContextShowsTheLoadedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv := fakeOllama(t, readNotesTurns()...)
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, SizeVRAM: 1 << 30}}
+	srv := fakeEngine(t, readNotesTurns()...)
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 1 << 30}}
 	r := replOn(t, srv, dir, false, func(o *agent.Options) { o.Truncation = agent.TruncationConfig{MaxLines: 5} })
 	_ = captureStdoutForTest(t, r.enableProject)
 	if _, err := r.memory.Create(storage.MemoryCategoryLearning, "Staging is blue", "", nil, storage.MemorySourceManual); err != nil {
@@ -94,7 +94,7 @@ func TestContextShowsTheLoadedSession(t *testing.T) {
 	out := captureStdoutForTest(t, func() { r.dispatch("/context") })
 	registry := r.asst.ToolRegistry()
 	for _, want := range []string{
-		"Context Window", "Context Budget: ", "Server context:   32.8k tokens (Ollama num_ctx)",
+		"Context Window", "Context Budget: ", "Server context:   32.8k tokens (the window the model runs at)",
 		"Context window (requested): 32.8k tokens",
 		"Truncated Outputs: 1", "read_file: 20 -> 5 lines",
 		"Session: " + sessionID[:8], "Messages: 2 user, 1 assistant", "Tool calls: 1",
@@ -114,7 +114,7 @@ func TestContextShowsTheLoadedSession(t *testing.T) {
 
 // TestContextOfAFreshEphemeralSession leaves out every section that has nothing to show.
 func TestContextOfAFreshEphemeralSession(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
+	r := replOn(t, fakeEngine(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
 	out := captureStdoutForTest(t, func() { r.dispatch("/context") })
 	for _, absent := range []string{"Session:", "LLM Tokens", "Project Context", "Project Memories", "Files Read", "Truncated"} {
 		if strings.Contains(out, absent) {
@@ -127,7 +127,7 @@ func TestContextOfAFreshEphemeralSession(t *testing.T) {
 }
 
 func TestCompactNeedsALongerConversation(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
+	r := replOn(t, fakeEngine(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
 	out := captureStdoutForTest(t, func() { r.dispatch("/compact") })
 	for _, want := range []string{
 		"Current context: ", "(1 messages)", "Note: Auto-compaction is disabled. Forcing manual compaction.",
@@ -158,8 +158,8 @@ func TestCompactThenStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := storedSession(t, dir, fivePairs())
-	turns := append([]ollamatest.Turn{{Content: "They asked five questions."}}, readNotesTurns()...)
-	srv := fakeOllama(t, turns...)
+	turns := append([]taraenginetest.Turn{{Content: "They asked five questions."}}, readNotesTurns()...)
+	srv := fakeEngine(t, turns...)
 	r := replOn(t, srv, dir, false, func(o *agent.Options) { o.Truncation = agent.TruncationConfig{MaxLines: 5} })
 	_ = captureStdoutForTest(t, r.enableProject)
 	if err := r.asst.LoadSession(sessionID); err != nil {
@@ -202,7 +202,7 @@ func TestCompactThenStats(t *testing.T) {
 }
 
 func TestStatsOfAQuietSession(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
+	r := replOn(t, fakeEngine(t), t.TempDir(), true, func(o *agent.Options) { o.Compaction.Enabled = false })
 	r.opts.Generation.NumPredict = 256
 	out := captureStdoutForTest(t, func() { r.dispatch("/stats") })
 	for _, absent := range []string{"LLM Tokens", "Compactions:", "Truncated outputs", "File operations"} {
@@ -216,7 +216,7 @@ func TestStatsOfAQuietSession(t *testing.T) {
 }
 
 func TestUsageReportsTheSessionTokens(t *testing.T) {
-	r := replOn(t, fakeOllama(t, ollamatest.Turn{Content: "hi", PromptTokens: 321, CompletionTokens: 12}), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t, taraenginetest.Turn{Content: "hi", PromptTokens: 321, CompletionTokens: 12}), t.TempDir(), true)
 	_ = captureStdoutForTest(t, func() {
 		if err := r.asst.ProcessMessage("hello"); err != nil {
 			t.Error(err)
@@ -231,7 +231,7 @@ func TestUsageReportsTheSessionTokens(t *testing.T) {
 }
 
 func TestPlanShowsTheActivePlan(t *testing.T) {
-	ephemeral := replOn(t, fakeOllama(t), t.TempDir(), true)
+	ephemeral := replOn(t, fakeEngine(t), t.TempDir(), true)
 	if out := captureStdoutForTest(t, func() { ephemeral.dispatch("/plan") }); !strings.Contains(out, "Run /init first.") {
 		t.Fatalf("%q", out)
 	}

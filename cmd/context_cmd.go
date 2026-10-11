@@ -100,7 +100,7 @@ func printContextBudget(ctxInfo agent.ContextInfo) {
 	fmt.Println(formatBoxLine(fmt.Sprintf("  Tool definitions: %.1fk tokens", float64(ctxInfo.ToolDefsTokens)/1000.0)))
 	if ctxInfo.ServerContextTokens > 0 {
 		fmt.Println(formatBoxLine(fmt.Sprintf(
-			"  Server context:   %.1fk tokens (Ollama num_ctx)", float64(ctxInfo.ServerContextTokens)/1000.0)))
+			"  Server context:   %.1fk tokens (the window the model runs at)", float64(ctxInfo.ServerContextTokens)/1000.0)))
 	}
 	if ctxInfo.ContextWindow > 0 {
 		fmt.Println(formatBoxLine(fmt.Sprintf(

@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
 func testREPL(t *testing.T, dir string, ephemeral bool) *repl {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
 	opts := agent.DefaultOptions()
 	opts.Host, opts.Model, opts.WorkingDir, opts.Ephemeral, opts.Spinner = srv.URL, "gemma4:12b", dir, ephemeral, false
 	var asst *agent.Assistant

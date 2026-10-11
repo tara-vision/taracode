@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -74,7 +74,7 @@ func TestRememberSavesTheTextWithItsTags(t *testing.T) {
 
 // TestRememberRefreshesTheSystemPrompt: the next request after /remember already carries the memory.
 func TestRememberRefreshesTheSystemPrompt(t *testing.T) {
-	r, srv := projectREPL(t, ollamatest.Turn{Content: "noted"})
+	r, srv := projectREPL(t, taraenginetest.Turn{Content: "noted"})
 	_ = captureStdoutForTest(t, func() { r.dispatch("/remember Database is PostgreSQL on port 5432") })
 	if out := captureStdoutForTest(t, func() { r.dispatch("/memory") }); !strings.Contains(out, "Database is PostgreSQL") {
 		t.Fatalf("/memory does not list the project's memory: %q", out)
@@ -86,7 +86,7 @@ func TestRememberRefreshesTheSystemPrompt(t *testing.T) {
 	})
 	var system string
 	for _, req := range srv.Requests {
-		if req.Path != "/api/chat" {
+		if req.Path != "/v1/chat/completions" {
 			continue
 		}
 		messages, _ := req.Body["messages"].([]any)

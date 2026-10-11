@@ -12,7 +12,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/upgrade"
 )
@@ -41,7 +41,7 @@ func readlineInput(t *testing.T, input string) {
 
 // startupConfig is the configuration newREPL reads: the fake's host and model, no spinner, HOME
 // isolated, and dir as the working directory.
-func startupConfig(t *testing.T, srv *ollamatest.Server, dir string) {
+func startupConfig(t *testing.T, srv *taraenginetest.Server, dir string) {
 	t.Helper()
 	resetConfig(t)
 	isolateHome(t)
@@ -106,7 +106,7 @@ func TestNewREPLReportsAConnectionFailure(t *testing.T) {
 }
 
 func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())
 	answerUpdateCheck(t, &upgrade.CheckResult{CurrentVersion: "dev", LatestVersion: "v9.9.9", UpdateAvailable: true})
 	readlineInput(t, "pwd\nexit\nleft over\n")
@@ -117,13 +117,16 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Connected to Ollama", "no window control", "Tara Code", "Run '/init' to initialize project context",
+		"Connected to taraengine", "Tara Code", "Run '/init' to initialize project context",
 		fmt.Sprintf("Mode: investigate (%d tools)", r.asst.ToolRegistry().Available(r.asst.Mode())),
 		"Not initialised: nothing is saved", "Update available:", "v9.9.9",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("startup lacks %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "no window control") { // the line a session on Ollama shows, never one on an engine
+		t.Errorf("an engine session shows the Ollama notice:\n%s", out)
 	}
 	if r.initialised || r.history != nil || r.memory != nil || r.mcp != nil || r.asst.GetStorage() != nil {
 		t.Fatalf("an uninitialised start: %+v", r)
@@ -148,7 +151,7 @@ func TestNewREPLEnablesAnInitialisedProject(t *testing.T) {
 		nil, storage.MemorySourceManual); err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, dir)
 	forbidUpdateCheck(t, "the configuration is offline")
 	viper.SetConfigType("yaml")
@@ -191,7 +194,7 @@ func TestNewREPLEnablesAnInitialisedProject(t *testing.T) {
 // TestNewREPLLeavesTheUpdateCheckOffWhenItIsSwitchedOff: upgrade.auto_check false keeps the startup
 // update check from running on an online session.
 func TestNewREPLLeavesTheUpdateCheckOffWhenItIsSwitchedOff(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())
 	viper.Set("upgrade.auto_check", false)
 	forbidUpdateCheck(t, "upgrade.auto_check is false")
