@@ -103,8 +103,3 @@ func (c *Client) Load(ctx context.Context, model string, window int) error {
 	_, err := c.engine.Load(ctx, model, window)
 	return err
 }
-
-// Chat is written in Task 4.
-func (c *Client) Chat(context.Context, llm.Request, func(llm.Event) error) (*llm.Result, error) {
-	return nil, llm.ErrNotSupported
-}
