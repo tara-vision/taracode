@@ -62,7 +62,7 @@ func TestEvalRunRejectsItsInputs(t *testing.T) {
 		flags   evalRunFlags
 		wantErr string
 	}{
-		{"no host", evalRunFlags{}, "LLM server host not found"},
+		{"no model", evalRunFlags{}, "set --model"},
 		{"no corpus", evalRunFlags{host: "http://127.0.0.1:1", model: "m", think: "auto",
 			corpus: filepath.Join(corpus, "absent")}, "loading the corpus from"},
 		{"no match", evalRunFlags{host: "http://127.0.0.1:1", model: "m", think: "auto", corpus: corpus, tasks: "zzz*"},

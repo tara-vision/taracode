@@ -12,11 +12,13 @@ import (
 // Type represents the LLM provider type
 type Type string
 
+// The server types. TypeUnknown is not decided: a vendor left to auto-detection, or a server no probe recognised.
 const (
-	TypeVLLM     Type = "vllm"
-	TypeOllama   Type = "ollama"
-	TypeLlamaCpp Type = "llama.cpp"
-	TypeUnknown  Type = "unknown"
+	TypeTaraengine Type = "taraengine"
+	TypeVLLM       Type = "vllm"
+	TypeOllama     Type = "ollama"
+	TypeLlamaCpp   Type = "llama.cpp"
+	TypeUnknown    Type = "unknown"
 )
 
 // String returns the string representation of the provider type
@@ -27,6 +29,8 @@ func (t Type) String() string {
 // DisplayName returns a human-readable name for the provider type
 func (t Type) DisplayName() string {
 	switch t {
+	case TypeTaraengine:
+		return "taraengine"
 	case TypeVLLM:
 		return "vLLM"
 	case TypeOllama:
@@ -40,7 +44,7 @@ func (t Type) DisplayName() string {
 
 // Info holds provider metadata
 type Info struct {
-	Type          Type     // Provider type (vllm, ollama, llama.cpp)
+	Type          Type     // Provider type (taraengine, vllm, ollama, llama.cpp)
 	Name          string   // Display name (e.g., "Ollama")
 	Host          string   // Base URL
 	Model         string   // Selected model
@@ -81,7 +85,7 @@ type Provider interface {
 	SetModel(model string)
 }
 
-// ModelManager interface for providers that support model management (Ollama)
+// ModelManager interface for providers that support model management (taraengine)
 type ModelManager interface {
 	// ListModels returns detailed info about available models
 	ListModels(ctx context.Context) ([]ModelInfo, error)

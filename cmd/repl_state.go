@@ -79,10 +79,6 @@ var checkForUpdate = CheckForUpdateAsync
 // tool wiring), banner, mode, project managers, update check, MCP, readline.
 func newREPL() (*repl, error) {
 	opts, warnings := loadOptions()
-	if opts.Host == "" {
-		printWarnings(warnings) // the config was read; say what was ignored before saying what is missing
-		return nil, noHost()
-	}
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("working directory: %w", err)
@@ -105,6 +101,7 @@ func newREPL() (*repl, error) {
 	}
 	asst, err := agent.New(r.opts)
 	if err != nil {
+		printWarnings(warnings) // the config was read; say what was ignored before saying what failed
 		return nil, fmt.Errorf("%s", ui.FormatConnectionError(opts.Host, err))
 	}
 	r.asst = asst

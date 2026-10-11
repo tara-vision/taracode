@@ -118,9 +118,6 @@ func init() {
 
 // runEvalRun is the testable core of `eval run`.
 func runEvalRun(f evalRunFlags, out io.Writer) error {
-	if f.host == "" {
-		return noHost()
-	}
 	if f.model == "" {
 		return errors.New("set --model: evals run one named model at a time")
 	}

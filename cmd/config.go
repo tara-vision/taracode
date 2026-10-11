@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/policy"
+	"github.com/tara-vision/taracode/internal/provider"
 )
 
 // setDefaults registers the v3 defaults (spec 5.9). Keys that 2.x users may still have keep working
@@ -116,7 +116,7 @@ func loadOptions() (agent.Options, []string) {
 		}
 	}
 	if viper.IsSet("hosts") || viper.IsSet("default_host") {
-		if viper.GetString("host") == "" && opts.Host != "" {
+		if _, fromSection := legacyHostURL(); viper.GetString("host") == "" && fromSection {
 			warn("config: hosts: and default_host: are ignored since 3.1.0; using %s from the retired section as host: "+
 				"for this run, set host: to keep it", opts.Host)
 		} else {
@@ -152,15 +152,17 @@ func printWarnings(warnings []string) {
 	}
 }
 
-// resolveHost is the one host taracode talks to: host: (--host, TARACODE_HOST), or, when that is
-// empty, the default host of a 3.0 hosts: section so such a file keeps starting after the pool's
-// removal in 3.1.0.
+// resolveHost is the one host taracode talks to: host: (--host, TARACODE_HOST); when that is empty, the default host
+// of a 3.0 hosts: section, so such a file keeps starting after the pool's removal in 3.1.0; and when neither gives
+// one, the local engine's address.
 func resolveHost() string {
 	if host := viper.GetString("host"); host != "" {
 		return host
 	}
-	url, _ := legacyHostURL()
-	return url
+	if url, ok := legacyHostURL(); ok {
+		return url
+	}
+	return provider.DefaultHost
 }
 
 // legacyHostURL is the url of the default host of a retired hosts: section: default_host when it
@@ -193,14 +195,4 @@ func legacyHostURL() (url string, ok bool) {
 	}
 	url = viper.GetString("hosts." + pick + ".url")
 	return url, url != ""
-}
-
-// noHost is the error every entry point returns when no host is configured. A retired hosts:
-// section gets a pointer to host:, the one migration a 3.0 file needs.
-func noHost() error {
-	msg := "LLM server host not found; set --host, TARACODE_HOST, or host: in ~/.taracode/config.yaml"
-	if viper.IsSet("hosts") {
-		msg += " (hosts: is ignored since 3.1.0; put your default host's url in host:)"
-	}
-	return errors.New(msg)
 }

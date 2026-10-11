@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+
+	"github.com/tara-vision/taracode/internal/provider"
 )
 
 // TestDoctorCommandPrintsTheReport runs `taracode doctor` against a reachable fake: the report,
@@ -31,11 +33,13 @@ func TestDoctorCommandPrintsTheReport(t *testing.T) {
 	}
 }
 
-func TestDoctorCommandNeedsAHost(t *testing.T) {
+// TestDoctorCommandAsksTheDefaultHostWhenNoneIsSet: a missing host no longer stops doctor; it checks the local
+// engine's address like every command. The command itself is not run: on a machine with no engine it exits 1.
+func TestDoctorCommandAsksTheDefaultHostWhenNoneIsSet(t *testing.T) {
 	resetConfig(t)
 	isolateHome(t)
-	if _, err := executeWith(t, "doctor"); err == nil || !strings.Contains(err.Error(), "LLM server host not found") {
-		t.Fatalf("err = %v", err)
+	if host, _, _, _ := resolveDoctorTarget(); host != provider.DefaultHost {
+		t.Fatalf("host = %q, want %s", host, provider.DefaultHost)
 	}
 }
 

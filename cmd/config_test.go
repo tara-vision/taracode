@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/policy"
+	"github.com/tara-vision/taracode/internal/provider"
 )
 
 // resetConfig resets viper for a clean config test and re-establishes the defaults and the --model
@@ -119,12 +120,16 @@ func TestLoadOptionsWarnsAboutTheRetiredHostsSection(t *testing.T) {
 		t.Fatalf("host %q, want the lowest priority", opts.Host)
 	}
 
-	// A section with no usable url: the error names the fix.
+	// A section with no usable url: the local engine's address.
 	resetConfig(t)
 	viper.Set("hosts", map[string]any{"gpu": map[string]any{"priority": 1}})
-	if err := noHost(); !strings.Contains(err.Error(), "host: in ~/.taracode/config.yaml") ||
-		!strings.Contains(err.Error(), "hosts: is ignored since 3.1.0") {
-		t.Fatalf("noHost() = %v", err)
+	if got := resolveHost(); got != provider.DefaultHost {
+		t.Fatalf("resolveHost() = %q, want %s", got, provider.DefaultHost)
+	}
+	// The warning does not claim the retired section gave that address.
+	if _, warnings = loadOptions(); strings.Contains(joined(warnings), "from the retired section") ||
+		!strings.Contains(joined(warnings), "hosts: and default_host: are ignored since 3.1.0") {
+		t.Fatalf("warnings %v", warnings)
 	}
 }
 

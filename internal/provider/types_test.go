@@ -7,6 +7,7 @@ func TestTypeNames(t *testing.T) {
 		typ          Type
 		str, display string
 	}{
+		{TypeTaraengine, "taraengine", "taraengine"},
 		{TypeVLLM, "vllm", "vLLM"},
 		{TypeOllama, "ollama", "Ollama"},
 		{TypeLlamaCpp, "llama.cpp", "llama.cpp"},

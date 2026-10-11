@@ -77,13 +77,14 @@ func runAndClose(t *testing.T, r *repl) string {
 	return out
 }
 
-func TestNewREPLNeedsAHost(t *testing.T) {
+func TestNewREPLPrintsTheWarningsBeforeAStartupError(t *testing.T) {
 	resetConfig(t)
 	isolateHome(t)
+	viper.Set("host", "http://127.0.0.1:1")
 	viper.Set("watch", map[string]any{"interval": 5}) // a 2.x section: its warning comes before the error
 	var err error
 	out := captureStdoutForTest(t, func() { _, err = newREPL() })
-	if err == nil || !strings.Contains(err.Error(), "LLM server host not found") {
+	if err == nil || !strings.Contains(err.Error(), "nothing answers at http://127.0.0.1:1") {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(out, "the watch: section is ignored") {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
@@ -25,9 +27,6 @@ var doctorCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		targetHost, apiKey, vendor, configuredModel := resolveDoctorTarget()
-		if targetHost == "" {
-			return noHost()
-		}
 		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
 			return err
@@ -60,12 +59,17 @@ func doctorResolveWindow(modelMax int) (int, string) {
 	return agent.ResolveContextWindow(viper.GetString("context.window"), modelMax)
 }
 
-// runDoctor builds a provider for hostURL and runs models.Diagnose against it. It is the testable
-// core of the command: asserting a real process exit code is awkward under go test, so tests call
-// this (and doctorExitCode) directly instead of driving the command through cobra's Execute.
+// runDoctor builds a provider for hostURL and runs models.Diagnose against it; a host that nothing answers at gives
+// the unreachable report, not an error. It is the testable core of the command: asserting a real process exit code
+// is awkward under go test, so tests call this (and doctorExitCode) directly instead of driving the command through
+// cobra's Execute.
 func runDoctor(ctx context.Context, hostURL, apiKey, vendor, configuredModel string) (models.Report, error) {
 	prov, err := provider.New(ctx, hostURL, vendor, apiKey)
-	if err != nil {
+	var unreachable *llm.UnreachableError
+	switch {
+	case errors.As(err, &unreachable):
+		return models.UnreachableReport(hostURL, err, configuredModel, exec.LookPath), nil
+	case err != nil:
 		return models.Report{}, fmt.Errorf("doctor: create provider: %w", err)
 	}
 	return models.Diagnose(ctx, prov.LLM(), hostURL, configuredModel, keepAliveSet(), exec.LookPath,
