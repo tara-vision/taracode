@@ -3,6 +3,8 @@ package taraenginetest
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +45,28 @@ func TestChatStreamsAScriptedTurn(t *testing.T) {
 	var last map[string]any
 	if err := json.Unmarshal([]byte(got[len(got)-2]), &last); err != nil || last["timings"] == nil {
 		t.Fatalf("the chunk before [DONE] carries the timings: %v %v", last, err)
+	}
+}
+
+// TestChatNumbersToolCallsAcrossTheTurns: a real server gives every call an id of its own, so the ids run on from
+// one turn to the next and a conversation that replays several replies never holds two calls with one id.
+func TestChatNumbersToolCallsAcrossTheTurns(t *testing.T) {
+	srv := New(t)
+	srv.Turns = []Turn{
+		{ToolCalls: []ToolCall{{Name: "a"}, {Name: "b"}}},
+		{Content: "no calls"},
+		{ToolCalls: []ToolCall{{Name: "c"}}},
+	}
+	callID := regexp.MustCompile(`"id":"(call_\d+)"`)
+	var got []string
+	for range srv.Turns {
+		_, _, body := call(t, srv, http.MethodPost, "/v1/chat/completions", "", `{"model":"m","stream":true}`)
+		for _, m := range callID.FindAllStringSubmatch(string(body), -1) {
+			got = append(got, m[1])
+		}
+	}
+	if want := []string{"call_0", "call_1", "call_2"}; !slices.Equal(got, want) {
+		t.Fatalf("tool call ids %v, want %v", got, want)
 	}
 }
 

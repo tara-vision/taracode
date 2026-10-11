@@ -111,8 +111,9 @@ type Server struct {
 	Loads    []LoadRequest
 	Unloaded []string
 
-	mu   sync.Mutex
-	next int
+	mu    sync.Mutex
+	next  int
+	calls int // tool calls streamed so far; the ids run on across the turns
 }
 
 // New starts a fake engine that is closed when the test ends.

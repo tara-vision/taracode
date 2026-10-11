@@ -18,6 +18,8 @@ func (s *Server) chat(w http.ResponseWriter, _ *http.Request, body map[string]an
 	}
 	turn := s.Turns[s.next]
 	s.next++
+	firstCall := s.calls
+	s.calls += len(turn.ToolCalls)
 	s.mu.Unlock()
 	if turn.Status != 0 && turn.Status != http.StatusOK {
 		if turn.Status == http.StatusServiceUnavailable {
@@ -27,7 +29,7 @@ func (s *Server) chat(w http.ResponseWriter, _ *http.Request, body map[string]an
 		return
 	}
 	model, _ := body["model"].(string)
-	stream(w, model, turn)
+	stream(w, model, turn, firstCall)
 }
 
 // writeChatError answers the engine proxy's error body on /v1.
@@ -37,8 +39,9 @@ func writeChatError(w http.ResponseWriter, status int, message, hint string) {
 
 // stream writes a turn the way llama-server streams through the engine: a role chunk, the reasoning and content
 // deltas word by word, each tool call in two fragments, the finish reason, a last chunk with no choices that
-// carries usage and timings, then [DONE].
-func stream(w http.ResponseWriter, model string, turn Turn) {
+// carries usage and timings, then [DONE]. The tool calls are call_<firstCall>, call_<firstCall+1> and so on: a
+// real server gives every call an id of its own, so the fake's ids do not repeat from one turn to the next.
+func stream(w http.ResponseWriter, model string, turn Turn, firstCall int) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	send := func(v any) {
 		data, _ := json.Marshal(v)
@@ -61,7 +64,8 @@ func stream(w http.ResponseWriter, model string, turn Turn) {
 			args, _ = json.Marshal(call.Args)
 		}
 		half := len(args) / 2
-		send(delta(map[string]any{"tool_calls": []map[string]any{{"index": i, "id": fmt.Sprintf("call_%d", i),
+		id := fmt.Sprintf("call_%d", firstCall+i)
+		send(delta(map[string]any{"tool_calls": []map[string]any{{"index": i, "id": id,
 			"type": "function", "function": map[string]any{"name": call.Name, "arguments": string(args[:half])}}}}, nil))
 		send(delta(map[string]any{"tool_calls": []map[string]any{{"index": i,
 			"function": map[string]any{"arguments": string(args[half:])}}}}, nil))
