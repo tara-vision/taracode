@@ -189,9 +189,9 @@ func TestBoardPrintsMeasuredMemoryAndMarksEstimates(t *testing.T) {
 	}
 	md := sb.Markdown()
 	for _, want := range []string{
-		"| 1 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | 23.1 GiB | Q4_K_M | 1 |",
-		"| 2 | gemma4:12b | 16 GB | 82% | 0.88 | 95 | 5 s | ~8.7 GiB | Q4_K_M | 1 |",
-		"| 3 | unknown-engine:1b | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
+		"| 1 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | 23.1 GiB | Q4_K_M | 1 |",
+		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | ~8.7 GiB | Q4_K_M | 1 |",
+		"| 3 | unknown-engine:1b | ollama 0.35.0 | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
 		"A figure marked ~ is the engine's own estimate",
 	} {
@@ -298,7 +298,7 @@ func TestBoardWithEveryRowMeasuredSaysOnlyThat(t *testing.T) {
 	md := testBoard(t, []Results{a, b}, testCorpus).Markdown()
 	for _, want := range []string{
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
-		"| 2 | gemma4:12b | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | - | 1 |",
+		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | - | 1 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)

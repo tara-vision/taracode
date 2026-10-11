@@ -79,7 +79,7 @@ func TestEvalLintCommandSilencesUsageOnFailure(t *testing.T) {
 
 func TestEvalReportWritesTheBoard(t *testing.T) {
 	results, out := t.TempDir(), t.TempDir()
-	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Date: "2026-09-26",
+	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Default: true, Date: "2026-09-26",
 		Summary: evals.Summary{PassRate: 1, MeanScore: 1, ByArea: map[string]evals.AreaSummary{}}}
 	if _, err := evals.WriteResults(results, r); err != nil {
 		t.Fatal(err)

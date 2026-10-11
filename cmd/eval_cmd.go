@@ -14,7 +14,6 @@ import (
 
 	"github.com/tara-vision/taracode/internal/evals"
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 // evalRunFlags are the flags of `taracode eval run`.
@@ -111,7 +110,7 @@ func init() {
 	evalReportCmd.Flags().String("results", "docs/evals/results", "results directory")
 	evalReportCmd.Flags().String("out-dir", "docs/evals", "where scoreboard.md and scoreboard.json go")
 	evalReportCmd.Flags().String("corpus", "evals/tasks", "task directory (for the task count)")
-	evalReportCmd.Flags().Bool("check-defaults", false, "print the registry default and the top scorer per tier")
+	evalReportCmd.Flags().Bool("check-defaults", false, "print each tier's default and its top scorer")
 	evalLintCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalCmd.AddCommand(evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd)
 }
@@ -173,7 +172,8 @@ func reportStoppedRun(f evalRunFlags, tasks []evals.Task, res evals.Results, run
 }
 
 // writePartialResults writes a stopped run's partial task results as JSON to
-// <runsDir>/<model-slug>-<date>-partial.json, mirroring evals.WriteResults' file shape.
+// <runsDir>/<model>-<server>-<date>-partial.json (evals.ResultsName plus the marker), mirroring
+// evals.WriteResults' file shape.
 func writePartialResults(runsDir string, res evals.Results) (string, error) {
 	//nolint:gosec // runsDir is a git-ignored working directory (evals/runs by default)
 	if err := os.MkdirAll(runsDir, 0o755); err != nil {
@@ -234,11 +234,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 	if err != nil {
 		return fmt.Errorf("loading results from %s: %w", results, err)
 	}
-	reg, err := models.Load()
-	if err != nil {
-		return fmt.Errorf("loading the model registry: %w", err)
-	}
-	sb := evals.BuildScoreboard(all, reg, count, Version)
+	sb := evals.BuildScoreboard(all, count, Version)
 	//nolint:gosec // outDir is repository content (docs/evals by default)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", outDir, err)
@@ -267,7 +263,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
 	}
 	if checkDefaults {
-		for _, line := range sb.CheckDefaults(reg) {
+		for _, line := range sb.CheckDefaults() {
 			_, _ = fmt.Fprintln(out, line)
 		}
 	}

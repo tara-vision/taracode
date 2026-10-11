@@ -65,7 +65,7 @@ func buildBoards(rows []Row, corpusTasks int) []HardwareBoard {
 }
 
 // rankLess orders a board: pass rate, then mean score, then tokens per second, each descending, then
-// the model name.
+// the model name and the server's name.
 func rankLess(a, b Row) bool {
 	switch {
 	case a.PassRate != b.PassRate:
@@ -75,7 +75,10 @@ func rankLess(a, b Row) bool {
 	case a.TokensPerS != b.TokensPerS:
 		return a.TokensPerS > b.TokensPerS
 	}
-	return a.Model < b.Model
+	if a.Model != b.Model {
+		return a.Model < b.Model
+	}
+	return a.Server.Name < b.Server.Name
 }
 
 // markdown renders the board: its facts and the ranking, then the models that did not fit and the
@@ -86,12 +89,12 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 	if len(h.Rows) > 0 {
 		fmt.Fprintf(&b, "%s Ranked by pass rate, then mean score, then tokens per second. Tokens/s is the engine's own "+
 			"generation rate. %s\n\n", h.facts(), h.memoryNote())
-		b.WriteString("| # | Model | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |\n")
-		b.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
+		b.WriteString("| # | Model | Engine | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |\n")
+		b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|\n")
 		for i, r := range h.Rows {
-			fmt.Fprintf(&b, "| %d | %s | %s | %.0f%% | %.2f | %s | %.0f s | %s | %s | %d |\n",
-				i+1, mdText(r.Model), tierShort(r.Tier), r.PassRate*100, r.MeanScore, numberOrDash(r.TokensPerS, "%.0f", ""),
-				r.MeanWallS, r.vram(), textOrDash(mdText(r.Quantization)), r.Runs)
+			fmt.Fprintf(&b, "| %d | %s | %s | %s | %.0f%% | %.2f | %s | %.0f s | %s | %s | %d |\n",
+				i+1, mdText(r.Model), mdText(r.Server.String()), tierShort(r.Tier), r.PassRate*100, r.MeanScore,
+				numberOrDash(r.TokensPerS, "%.0f", ""), r.MeanWallS, r.vram(), textOrDash(mdText(r.Quantization)), r.Runs)
 		}
 	} else if len(h.DidNotFit) > 0 {
 		b.WriteString("No model ran entirely on this GPU.\n")
@@ -153,14 +156,14 @@ func (h HardwareBoard) memoryNote() string {
 	return "No run on this board measured or reported its memory."
 }
 
-// facts is the board's one-line summary: how many models are ranked, which engine versions and
-// context windows their runs used, and whether every row is a single run.
+// facts is the board's one-line summary: how many models are ranked, which servers (name and version)
+// and context windows their runs used, and whether every row is a single run.
 func (h HardwareBoard) facts() string {
-	versions, windows := map[string]bool{}, map[int]bool{}
+	servers, windows := map[string]bool{}, map[int]bool{}
 	single := true
 	for _, r := range h.Rows {
-		if r.Ollama != "" {
-			versions[r.Ollama] = true
+		if server := r.Server.String(); server != "" {
+			servers[server] = true
 		}
 		if r.ContextLength > 0 {
 			windows[r.ContextLength] = true
@@ -174,13 +177,13 @@ func (h HardwareBoard) facts() string {
 		noun = "model"
 	}
 	parts := []string{fmt.Sprintf("%d %s", len(h.Rows), noun)}
-	if len(versions) > 0 {
-		names := make([]string, 0, len(versions))
-		for v := range versions {
-			names = append(names, mdText(v))
+	if len(servers) > 0 {
+		names := make([]string, 0, len(servers))
+		for server := range servers {
+			names = append(names, mdText(server))
 		}
 		sort.Strings(names)
-		parts = append(parts, "Ollama "+joinList(names))
+		parts = append(parts, joinList(names))
 	}
 	if len(windows) > 0 {
 		sizes := make([]int, 0, len(windows))

@@ -7,12 +7,10 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/tara-vision/taracode/internal/models"
 )
 
-// Scoreboard is the report (spec 10): the newest results per model, ranked per hardware label and
-// grouped by registry tier.
+// Scoreboard is the report (spec 10): the newest results per model and server, ranked per hardware label and
+// grouped by tier.
 type Scoreboard struct {
 	GeneratedAt string          `json:"generated_at"`
 	Taracode    string          `json:"taracode"`
@@ -28,10 +26,10 @@ type TierBoard struct {
 	Rows []Row  `json:"rows"`
 }
 
-// Row is one model's line. Tier, Runs, Tasks and SuiteWallS are set for every result, so the JSON of
-// a board built from older results gains those keys too (readers pick keys by name). Hardware, the
-// rate and the memory fields are empty for a result that has no label, no timings or no engine
-// block, and are then left out of the JSON.
+// Row is one model's line on one server. Tier, Runs, Tasks, SuiteWallS and Server are set for every result,
+// so the JSON of a board built from older results gains those keys too (readers pick keys by name). Hardware,
+// the rate and the memory fields are empty for a result that has no label, no timings or no engine block,
+// and are then left out of the JSON.
 type Row struct {
 	Model           string                 `json:"model"`
 	Default         bool                   `json:"default"`
@@ -43,7 +41,8 @@ type Row struct {
 	FixtureMissRate float64                `json:"fixture_miss_rate"`
 	ByArea          map[string]AreaSummary `json:"by_area"`
 	Taracode        string                 `json:"taracode"`
-	Ollama          string                 `json:"ollama"`
+	Server          ServerInfo             `json:"server"`
+	Ollama          string                 `json:"ollama,omitempty"` // the Ollama version, on rows from Ollama results
 	Think           string                 `json:"think"`
 	Date            string                 `json:"date"`
 	Runs            int                    `json:"runs,omitempty"`
@@ -61,9 +60,9 @@ type Row struct {
 	Digest          string                 `json:"digest,omitempty"`
 }
 
-// newRow is one model's line from its results: the summary, the run's header, the GPU memory the
-// operator's probe measured and, when the engine reported the loaded model, its own estimate in
-// decimal gigabytes (the unit `ollama ps` prints).
+// newRow is one model's line on a server from its results: the summary, the run's header, the GPU
+// memory the operator's probe measured and, when the engine reported the loaded model, its own estimate
+// in decimal gigabytes (the unit `ollama ps` prints).
 func newRow(r Results, tier string, isDefault bool) Row {
 	byArea := map[string]AreaSummary{}
 	if r.Summary.ByArea != nil {
@@ -75,7 +74,7 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		MeanWallS:       round3(r.Summary.MeanWallMs / 1000),
 		FixtureMissRate: r.Summary.FixtureMissRate,
 		ByArea:          byArea,
-		Taracode:        r.Taracode, Ollama: r.Ollama, Think: r.Think, Date: r.Date,
+		Taracode:        r.Taracode, Server: r.ServerOf(), Ollama: r.Ollama, Think: r.Think, Date: r.Date,
 		Runs: r.Runs, Tasks: len(r.Tasks), Hardware: r.Hardware, TokensPerS: r.Summary.TokensPerS,
 		SuiteWallS:   round1(r.Summary.MeanWallMs * float64(len(r.Tasks)) / 1000),
 		GPUMemoryMiB: r.GPUMemoryMiB,
@@ -95,38 +94,42 @@ var tierOrder = map[string]int{"16": 0, "32": 1, "48": 2, "small": 3, "other": 4
 // areaOrder is the column order of the Markdown table.
 var areaOrder = []Area{AreaKubernetes, AreaHelm, AreaTerraform, AreaDocker, AreaSecrets, AreaCloud, AreaRefusal}
 
-// BuildScoreboard keeps the newest results per model, drops any with a safety failure, and groups
-// the rest by tier. reg marks the tier defaults and settles the tier of a result that has none.
-func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, version string) Scoreboard {
+// rowKey is what makes a row: a model on one server.
+type rowKey struct{ model, server string }
+
+// BuildScoreboard keeps the newest results per model and server, drops any with a safety failure, and groups the
+// rest by tier. A model is its tier's default when any of its newest results says so.
+func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard {
 	sb := Scoreboard{
 		GeneratedAt: time.Now().Format("2006-01-02"),
 		Taracode:    version,
 		CorpusTasks: corpusTasks,
 		Tiers:       []TierBoard{},
 	}
-	newest := map[string]Results{}
+	newest := map[rowKey]Results{}
 	for _, r := range all {
 		if r.Summary.SafetyFailures > 0 {
 			msg := fmt.Sprintf("%s %s: %d safety failure(s)", r.Model, r.Date, r.Summary.SafetyFailures)
 			sb.Skipped = append(sb.Skipped, msg)
 			continue
 		}
-		if cur, ok := newest[r.Model]; !ok || r.Date > cur.Date {
-			newest[r.Model] = r
+		key := rowKey{r.Model, r.ServerOf().Name}
+		if cur, ok := newest[key]; !ok || r.Date > cur.Date {
+			newest[key] = r
 		}
+	}
+	defaults := map[string]bool{}
+	for _, r := range newest {
+		defaults[r.Model] = defaults[r.Model] || r.Default
 	}
 	byTier := map[string][]Row{}
 	var allRows []Row
 	for _, r := range newest {
 		tier := r.Tier
-		isDefault := false
-		if e, ok := reg.Find(r.Model); ok && e.Name == r.Model {
-			tier, isDefault = string(e.Tier), e.Default
-		}
 		if tier == "" {
 			tier = "other"
 		}
-		row := newRow(r, tier, isDefault)
+		row := newRow(r, tier, defaults[r.Model])
 		byTier[tier] = append(byTier[tier], row)
 		allRows = append(allRows, row)
 	}
@@ -136,7 +139,10 @@ func BuildScoreboard(all []Results, reg *models.Registry, corpusTasks int, versi
 			if rows[i].MeanScore != rows[j].MeanScore {
 				return rows[i].MeanScore > rows[j].MeanScore
 			}
-			return rows[i].Model < rows[j].Model
+			if rows[i].Model != rows[j].Model {
+				return rows[i].Model < rows[j].Model
+			}
+			return rows[i].Server.Name < rows[j].Server.Name
 		})
 		sb.Tiers = append(sb.Tiers, TierBoard{Tier: tier, Rows: rows})
 	}
@@ -192,7 +198,7 @@ func (s Scoreboard) Markdown() string {
 		"Misses are tool calls with no recorded fixture.",
 		WeightTools, WeightAnswer, WeightForbidden, PassMark)
 	fmt.Fprintf(&b, "%s\n\n", scoring)
-	fmt.Fprintf(&b, "Reproduce: `taracode eval run --host <ollama url> --model <name>` then `taracode eval report`. "+
+	fmt.Fprintf(&b, "Reproduce: `taracode eval run --host <engine url> --model <name>` then `taracode eval report`. "+
 		"Results live in `docs/evals/results/`.\n")
 	for _, board := range s.Boards {
 		b.WriteString(board.markdown(s.CorpusTasks))
@@ -203,7 +209,7 @@ func (s Scoreboard) Markdown() string {
 		for _, a := range areaOrder {
 			b.WriteString(" " + string(a) + " |")
 		}
-		b.WriteString(" Mean iterations | Mean wall | Misses | Ollama | Date |\n")
+		b.WriteString(" Mean iterations | Mean wall | Misses | Engine | Date |\n")
 		b.WriteString("|---|---|---|" + strings.Repeat("---|", len(areaOrder)) + "---|---|---|---|---|\n")
 		for _, r := range tier.Rows {
 			name := mdText(r.Model)
@@ -219,7 +225,7 @@ func (s Scoreboard) Markdown() string {
 				}
 			}
 			fmt.Fprintf(&b, " %.1f | %.0f s | %.0f%% | %s | %s |\n",
-				r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, r.Ollama, r.Date)
+				r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, mdText(r.Server.String()), r.Date)
 		}
 	}
 	if len(s.Skipped) > 0 {
@@ -233,14 +239,20 @@ func (s Scoreboard) Markdown() string {
 	return b.String()
 }
 
-// CheckDefaults reports, per tier, the registry default and the top scorer.
-func (s Scoreboard) CheckDefaults(reg *models.Registry) []string {
+// CheckDefaults reports, per sized tier, the board's default and the top scorer.
+func (s Scoreboard) CheckDefaults() []string {
 	var out []string
 	for _, tier := range s.Tiers {
 		if len(tier.Rows) == 0 || tierRank(tier.Tier) > 2 {
 			continue
 		}
-		def := reg.DefaultForTier(models.Tier(tier.Tier)).Name
+		def := "none"
+		for _, r := range tier.Rows {
+			if r.Default {
+				def = r.Model
+				break
+			}
+		}
 		top := tier.Rows[0].Model
 		line := fmt.Sprintf("%s: default %s, top scorer %s", tier.Tier, def, top)
 		if def != top {

@@ -5,8 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 func sampleResults() []Results {
@@ -14,7 +12,7 @@ func sampleResults() []Results {
 		return AreaSummary{Tasks: tasks, Passed: passed, MeanScore: score}
 	}
 	return []Results{
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.7, MeanScore: 0.74, MeanIterations: 5.2, MeanWallMs: 21000, FixtureMissRate: 0.05,
 				ByArea: map[string]AreaSummary{"kubernetes": area(9, 7, 0.8), "refusal": area(6, 5, 0.85)}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Think: "auto", Date: "2026-09-25", Runs: 1,
@@ -23,7 +21,7 @@ func sampleResults() []Results {
 			Summary: Summary{PassRate: 0.8, MeanScore: 0.82, MeanIterations: 4.1, MeanWallMs: 15000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 8, 0.9)}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.8:27b", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.9, MeanScore: 0.91, MeanIterations: 3.8, MeanWallMs: 30000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.95)}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "glm-4.7-flash", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "glm-4.7-flash", Tier: "32", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.97, MeanScore: 0.96, MeanIterations: 5.4, MeanWallMs: 5000, FixtureMissRate: 0.25,
 				ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.99), "refusal": area(6, 5, 0.9)}}},
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "mystery:1b", Tier: "other", Think: "auto", Date: "2026-09-26", Runs: 1,
@@ -34,11 +32,7 @@ func sampleResults() []Results {
 }
 
 func TestBuildScoreboardKeepsTheNewestPerModelAndSkipsSafetyFailures(t *testing.T) {
-	reg, err := models.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sb := BuildScoreboard(sampleResults(), reg, 33, "3.0.0-beta.1")
+	sb := BuildScoreboard(sampleResults(), 33, "3.0.0-beta.1")
 	if sb.CorpusTasks != 33 || len(sb.Skipped) != 1 || !strings.Contains(sb.Skipped[0], "qwen3.6:35b") {
 		t.Fatalf("%+v", sb)
 	}
@@ -49,7 +43,7 @@ func TestBuildScoreboardKeepsTheNewestPerModelAndSkipsSafetyFailures(t *testing.
 	if len(rows) != 2 || rows[0].Model != "qwen3.5:9b" || rows[1].Model != "gemma4:12b" || !rows[1].Default || rows[1].PassRate != 0.7 {
 		t.Fatalf("16 GB rows %+v", rows)
 	}
-	checks := sb.CheckDefaults(reg) // the other tier has no registry default and is skipped
+	checks := sb.CheckDefaults() // the other tier is not a sized tier and is skipped
 	if len(checks) != 2 || !strings.Contains(checks[0], "16: default gemma4:12b, top scorer qwen3.5:9b (differs)") ||
 		!strings.Contains(checks[1], "32: default glm-4.7-flash, top scorer glm-4.7-flash") {
 		t.Fatalf("checks %q", checks)
@@ -57,13 +51,9 @@ func TestBuildScoreboardKeepsTheNewestPerModelAndSkipsSafetyFailures(t *testing.
 }
 
 // TestScoreboardJSONRoundTripKeepsTierOrderAndDefaults pins the JSON the site reads: rows stay sorted by
-// mean score inside a tier and exactly the registry default carries the marker.
+// mean score inside a tier and exactly the model the results mark as the default carries the marker.
 func TestScoreboardJSONRoundTripKeepsTierOrderAndDefaults(t *testing.T) {
-	reg, err := models.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sb := BuildScoreboard(sampleResults(), reg, 33, "3.0.0-beta.1")
+	sb := BuildScoreboard(sampleResults(), 33, "3.0.0-beta.1")
 	data, err := sb.JSON()
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +69,7 @@ func TestScoreboardJSONRoundTripKeepsTierOrderAndDefaults(t *testing.T) {
 }
 
 func TestScoreboardMarkdownMatchesTheGolden(t *testing.T) {
-	reg, _ := models.Load()
-	sb := BuildScoreboard(sampleResults(), reg, 33, "3.0.0-beta.1")
+	sb := BuildScoreboard(sampleResults(), 33, "3.0.0-beta.1")
 	sb.GeneratedAt = "2026-09-26"
 	got := sb.Markdown()
 	want, err := os.ReadFile("testdata/scoreboard.md")
@@ -93,8 +82,7 @@ func TestScoreboardMarkdownMatchesTheGolden(t *testing.T) {
 }
 
 func TestEmptyScoreboardSerializesEmptyTiers(t *testing.T) {
-	reg, _ := models.Load()
-	sb := BuildScoreboard(nil, reg, 0, "3.0.0-beta.1")
+	sb := BuildScoreboard(nil, 0, "3.0.0-beta.1")
 	data, err := sb.JSON()
 	if err != nil {
 		t.Fatal(err)
@@ -105,12 +93,11 @@ func TestEmptyScoreboardSerializesEmptyTiers(t *testing.T) {
 }
 
 func TestRowWithNilByAreaSerializesAsEmptyMap(t *testing.T) {
-	reg, _ := models.Load()
 	results := []Results{
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "test:1b", Tier: "16", Think: "auto", Date: "2026-09-26", Runs: 1,
 			Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: nil}},
 	}
-	sb := BuildScoreboard(results, reg, 1, "3.0.0-beta.1")
+	sb := BuildScoreboard(results, 1, "3.0.0-beta.1")
 	data, err := sb.JSON()
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +108,6 @@ func TestRowWithNilByAreaSerializesAsEmptyMap(t *testing.T) {
 }
 
 func TestTierOrderIsDeterministic(t *testing.T) {
-	reg, _ := models.Load()
 	for i := 0; i < 50; i++ {
 		results := []Results{
 			{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "zzz:1b", Tier: "zzz-tier", Think: "auto", Date: "2026-09-26", Runs: 1,
@@ -129,7 +115,7 @@ func TestTierOrderIsDeterministic(t *testing.T) {
 			{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "aaa:1b", Tier: "aaa-tier", Think: "auto", Date: "2026-09-26", Runs: 1,
 				Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: map[string]AreaSummary{}}},
 		}
-		sb := BuildScoreboard(results, reg, 2, "3.0.0-beta.1")
+		sb := BuildScoreboard(results, 2, "3.0.0-beta.1")
 		if len(sb.Tiers) != 2 || sb.Tiers[0].Tier != "aaa-tier" || sb.Tiers[1].Tier != "zzz-tier" {
 			t.Fatalf("iteration %d: expected aaa-tier before zzz-tier, got %+v", i, sb.Tiers)
 		}
