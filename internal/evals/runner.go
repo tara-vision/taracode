@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/llm"
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
 	"github.com/tara-vision/taracode/internal/provider"
 )
 
@@ -137,29 +138,61 @@ func withSummary(res Results, tasks []Task) Results {
 	return res
 }
 
-// checkEngine verifies that the engine serves the model with native tool calls, each call bounded by
-// engineCallTimeout, and returns the results header.
+// engineClient is the engine's client: llm.Client plus the control API.
+type engineClient interface {
+	llm.Client
+	Engine() *taraengine.Engine
+}
+
+// checkEngine verifies that the server is taraengine and serves the model with native tool calls, each call bounded
+// by engineCallTimeout, and returns the results header: the server, and the model's tier and default flag as the
+// engine's catalog has them now, so the report never needs an engine to rebuild the board.
 func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	prov, err := provider.New(ctx, opts.Host, opts.Vendor, opts.APIKey)
 	if err != nil {
 		return Results{}, err
 	}
-	client := prov.LLM()
-	showCtx, cancelShow := context.WithTimeout(ctx, engineCallTimeout)
-	details, err := client.Show(showCtx, opts.Model)
-	cancelShow()
+	client, ok := prov.LLM().(engineClient)
+	if !ok {
+		return Results{}, fmt.Errorf("evals run on taraengine; %s is %s", opts.Host, prov.Info().Name)
+	}
+	callCtx, cancel := context.WithTimeout(ctx, engineCallTimeout)
+	defer cancel()
+	details, err := client.Show(callCtx, opts.Model)
 	if err != nil {
 		return Results{}, fmt.Errorf("model %s: %w", opts.Model, err)
 	}
 	if !details.Has("tools") {
 		return Results{}, fmt.Errorf("model %s has no tools capability; evals need native tool calls", opts.Model)
 	}
-	versionCtx, cancelVersion := context.WithTimeout(ctx, engineCallTimeout)
-	version, _ := client.Version(versionCtx)
-	cancelVersion()
-	return Results{Taracode: opts.Version, Ollama: version, Model: opts.Model, Tier: tierOf(opts.Model),
+	version, err := client.Engine().Version(callCtx)
+	if err != nil {
+		return Results{}, fmt.Errorf("the engine's version: %w", err)
+	}
+	tier, isDefault, err := catalogEntry(callCtx, client.Engine(), opts.Model)
+	if err != nil {
+		return Results{}, err
+	}
+	return Results{Taracode: opts.Version,
+		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
+		Model:  opts.Model, Tier: tier, Default: isDefault,
 		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
 		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware}, nil
+}
+
+// catalogEntry is the model's tier and default flag as the engine's catalog has them; a model the catalog gives no
+// tier (an import) is "other" and no default.
+func catalogEntry(ctx context.Context, eng *taraengine.Engine, model string) (string, bool, error) {
+	list, err := eng.Models(ctx)
+	if err != nil {
+		return "", false, fmt.Errorf("the engine's catalog: %w", err)
+	}
+	for _, m := range list {
+		if m.Name == model && m.Tier != "" {
+			return m.Tier, m.Default, nil
+		}
+	}
+	return "other", false, nil
 }
 
 func passLabel(pass bool) string {
@@ -167,18 +200,6 @@ func passLabel(pass bool) string {
 		return "PASS"
 	}
 	return "FAIL"
-}
-
-// tierOf is the registry tier of a model, or "other".
-func tierOf(model string) string {
-	reg, err := models.Load()
-	if err != nil {
-		return "other"
-	}
-	if e, ok := reg.Find(model); ok && e.Name == model {
-		return string(e.Tier)
-	}
-	return "other"
 }
 
 // warmUp sends one unscored prompt so the model is loaded before the first task is timed.

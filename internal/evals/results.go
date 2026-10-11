@@ -14,12 +14,25 @@ import (
 	"strings"
 )
 
-// Results is one model's run over the corpus (spec 9).
+// ServerInfo names the server a run talked to: the engine, its version and the llama.cpp build it ran.
+type ServerInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Runtime string `json:"runtime,omitempty"`
+}
+
+// String is the server as the board shows it: name and version.
+func (s ServerInfo) String() string { return strings.TrimSpace(s.Name + " " + s.Version) }
+
+// Results is one model's run over the corpus (spec 9). A result from taracode 3.2.x names its server in Ollama, the
+// Ollama version it ran on; a newer one in Server. ServerOf reads either.
 type Results struct {
 	Taracode    string      `json:"taracode"`
-	Ollama      string      `json:"ollama"`
+	Server      *ServerInfo `json:"server,omitempty"`
+	Ollama      string      `json:"ollama,omitempty"` // 3.2.x and older: the Ollama version
 	Model       string      `json:"model"`
 	Tier        string      `json:"tier"`
+	Default     bool        `json:"default,omitempty"` // the engine's default for the tier when the run started
 	Think       string      `json:"think"`
 	Temperature float64     `json:"temperature"`
 	Date        string      `json:"date"`
@@ -107,7 +120,27 @@ func ModelSlug(model string) string {
 	return strings.ToLower(strings.NewReplacer(":", "-", "/", "-").Replace(model))
 }
 
-// WriteResults writes <dir>/<model slug>-<date>.json and returns its path.
+// ServerOf is the server a result names: its server field, or Ollama with the version a 3.2.x result recorded.
+func (r Results) ServerOf() ServerInfo {
+	switch {
+	case r.Server != nil:
+		return *r.Server
+	case r.Ollama != "":
+		return ServerInfo{Name: "ollama", Version: r.Ollama}
+	}
+	return ServerInfo{}
+}
+
+// ResultsName is a result's file name without its extension: <model>-<server>-<date>, or <model>-<date> for a
+// result that names no server (3.2.x). The server keeps a same-day run on another engine from overwriting it.
+func ResultsName(r Results) string {
+	if r.Server != nil && r.Server.Name != "" {
+		return ModelSlug(r.Model) + "-" + ModelSlug(r.Server.Name) + "-" + r.Date
+	}
+	return ModelSlug(r.Model) + "-" + r.Date
+}
+
+// WriteResults writes <dir>/<ResultsName>.json and returns its path.
 func WriteResults(dir string, r Results) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // docs/evals/results is repository content
 		return "", err
@@ -116,7 +149,7 @@ func WriteResults(dir string, r Results) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, ModelSlug(r.Model)+"-"+r.Date+".json")
+	path := filepath.Join(dir, ResultsName(r)+".json")
 	return path, os.WriteFile(path, append(data, '\n'), 0o644) //nolint:gosec // repository content
 }
 

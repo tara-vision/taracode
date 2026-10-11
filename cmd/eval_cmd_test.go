@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tara-vision/taracode/internal/evals"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestEvalLintReportsProblems(t *testing.T) {
@@ -131,18 +131,19 @@ func TestEvalRunRejectsABadThink(t *testing.T) {
 	}
 }
 
-// fakeEvalOllama starts an ollamatest fake serving gemma4:12b, scripted with the warm-up "ready"
-// answer followed by turns.
-func fakeEvalOllama(t *testing.T, turns ...ollamatest.Turn) *ollamatest.Server {
+// fakeEvalEngine starts a fake engine serving gemma4:12b, the 16 GB tier's default, scripted with the
+// warm-up "ready" answer followed by turns.
+func fakeEvalEngine(t *testing.T, turns ...taraenginetest.Turn) *taraenginetest.Server {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = append([]ollamatest.Turn{{Content: "ready"}}, turns...)
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
+		ContextLength: 32768, Tier: "16", Default: true}}
+	srv.Turns = append([]taraenginetest.Turn{{Content: "ready"}}, turns...)
 	return srv
 }
 
-func evalToolCall(name string, args map[string]any) ollamatest.Turn {
-	return ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: name, Args: args}}}
+func evalToolCall(name string, args map[string]any) taraenginetest.Turn {
+	return taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: name, Args: args}}}
 }
 
 // partialDefectTask is an authored, single-fixture task: no scenario or recorder needed, only an
@@ -192,9 +193,9 @@ func TestEvalRunKeepsAStoppedRunsPartialResultsOutOfTheResultsDirectory(t *testi
 	}
 	t.Cleanup(func() { _ = os.Chmod(fixturePath, 0o644) })
 
-	srv := fakeEvalOllama(t,
+	srv := fakeEvalEngine(t,
 		evalToolCall("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}),
-		ollamatest.Turn{Content: "done"},
+		taraenginetest.Turn{Content: "done"},
 	)
 	out, runsDir := t.TempDir(), t.TempDir()
 	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
@@ -215,12 +216,12 @@ func TestEvalRunKeepsAStoppedRunsPartialResultsOutOfTheResultsDirectory(t *testi
 	}
 	partials := 0
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), "-partial.json") {
+		if strings.HasPrefix(e.Name(), "gemma4-12b-taraengine-") && strings.HasSuffix(e.Name(), "-partial.json") {
 			partials++
 		}
 	}
 	if partials != 1 {
-		t.Fatalf("partial results file: entries=%v", entries)
+		t.Fatalf("partial results file named for the model and the server: entries=%v", entries)
 	}
 }
 
@@ -252,12 +253,12 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 	if err := store.Save("kubectl get pod -n shop", "NAME         READY   STATUS\ncheckout-1   1/1     Running", false); err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeEvalOllama(t,
+	srv := fakeEvalEngine(t,
 		evalToolCall("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}),
-		ollamatest.Turn{Content: "done"},
+		taraenginetest.Turn{Content: "done"},
 	)
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
-		SizeVRAM: 9_300_000_000, Quantization: "Q4_K_M"}}
+	srv.Models[0].Quantization = "Q4_K_M"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
 	out := t.TempDir()
 	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
 		timeout: 30 * time.Second, out: out, hostLabel: "lab", hardware: "  NVIDIA RTX 5090 (32 GB) ",
@@ -272,6 +273,13 @@ func TestEvalRunWritesTheHardwareLabelAndTheEngineBlock(t *testing.T) {
 	r := all[0]
 	if r.Hardware != "NVIDIA RTX 5090 (32 GB)" || r.Engine == nil || r.Engine.GPUPercent != 100 || r.Engine.Quantization != "Q4_K_M" {
 		t.Fatalf("results %+v, engine %+v", r, r.Engine)
+	}
+	if r.Server == nil || r.Server.Name != "taraengine" || r.Tier != "16" || !r.Default {
+		t.Fatalf("the results name %+v, tier %q, default %v", r.Server, r.Tier, r.Default)
+	}
+	if files, err := os.ReadDir(out); err != nil || len(files) != 1 ||
+		!strings.HasPrefix(files[0].Name(), "gemma4-12b-taraengine-") {
+		t.Fatalf("the results file is named for the model and the server: %v %v", files, err)
 	}
 	if r.GPUMemoryMiB != 9500 {
 		t.Fatalf("the measured GPU memory is %d, want 9500", r.GPUMemoryMiB)

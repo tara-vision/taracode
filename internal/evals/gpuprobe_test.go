@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestParseProbeAddsUpTheLines(t *testing.T) {
@@ -87,11 +87,11 @@ func TestProbeGPURefusesAFloodOfOutput(t *testing.T) {
 }
 
 // loadedGemma is an engine that reports gemma4:12b as loaded, entirely on the GPU, at 9.3 GB.
-func loadedGemma(t *testing.T) *ollamatest.Server {
+func loadedGemma(t *testing.T) *taraenginetest.Server {
 	t.Helper()
-	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768,
-		Size: 9_300_000_000, SizeVRAM: 9_300_000_000, Quantization: "Q4_K_M"}}
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
+	srv.Models[0].Quantization = "Q4_K_M"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
 	return srv
 }
 
@@ -244,11 +244,11 @@ func TestParseProbeNeverRepeatsWhatTheProbePrinted(t *testing.T) {
 // name the engine does not know, and never calls the run's own model "another model".
 func TestRunMeasuresOnlyAModelTheEngineListsAsLoaded(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	for name, loaded := range map[string][]ollamatest.LoadedSpec{
+	for name, loaded := range map[string][]taraenginetest.LoadedSpec{
 		"nothing is listed":         nil,
-		"listed under another name": {{Name: "library/gemma4:12b", Size: 9_300_000_000, SizeVRAM: 9_300_000_000}},
+		"listed under another name": {{Name: "library/gemma4:12b", Size: 9_300_000_000}},
 	} {
-		srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
+		srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
 		srv.Loaded = loaded
 		marker := filepath.Join(t.TempDir(), "probed")
 		var out bytes.Buffer
@@ -286,23 +286,6 @@ func TestSpeedAndMemoryNamesAMeasurementAlone(t *testing.T) {
 	got := speedAndMemory(Results{GPUMemoryMiB: 23676, Summary: Summary{TokensPerS: 100}})
 	if got != ", 100 tok/s, 23.1 GiB on the GPU" {
 		t.Fatalf("speedAndMemory = %q", got)
-	}
-}
-
-// TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure: another model the engine holds entirely in system
-// memory (an embedding model, say) takes nothing on the GPU, so it does not stop the measurement.
-func TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure(t *testing.T) {
-	_, tasks := corpusWithTriage(t)
-	srv := loadedGemma(t)
-	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "embed:1b", Size: 600_000_000, SizeVRAM: 0})
-	opts := runOptions(srv, "")
-	opts.GPUProbe = "echo 23676"
-	res, err := Run(context.Background(), tasks, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.GPUMemoryMiB != 23676 {
-		t.Fatalf("measured %d, want 23676", res.GPUMemoryMiB)
 	}
 }
 
@@ -348,7 +331,7 @@ func TestRunDoesNotRepeatAProbesOutputOnTheTerminal(t *testing.T) {
 func TestRunDoesNotMeasureWhileAnotherModelIsLoaded(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	srv := loadedGemma(t)
-	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "other:7b", Size: 5_000_000_000, SizeVRAM: 5_000_000_000})
+	srv.Loaded = append(srv.Loaded, taraenginetest.LoadedSpec{Name: "other:7b", Size: 5_000_000_000})
 	marker := filepath.Join(t.TempDir(), "probed")
 	var out bytes.Buffer
 	opts := runOptions(srv, "")

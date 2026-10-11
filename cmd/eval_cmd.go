@@ -35,7 +35,7 @@ var evalCmd = &cobra.Command{
 
 var evalRunCmd = &cobra.Command{
 	Use:          "run",
-	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<date>.json",
+	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<server>-<date>.json",
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -195,7 +195,7 @@ func writePartialResults(runsDir string, res evals.Results) (string, error) {
 // scoreboard - which only ever reads the results directory, never the runs directory - can never
 // mistake this for a committed result.
 func partialResultsName(res evals.Results) string {
-	return evals.ModelSlug(res.Model) + "-" + res.Date + "-partial.json"
+	return evals.ResultsName(res) + "-partial.json"
 }
 
 // runEvalRecord records every recorded task matching glob.

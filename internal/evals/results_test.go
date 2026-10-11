@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestWriteAndReadResults(t *testing.T) {
@@ -139,7 +139,7 @@ func TestPublicErrorScrubsAddressesAndPaths(t *testing.T) {
 // home (a models directory under /home/ollama) reaches the results as ~ (ruling P3-R56).
 func TestRunnerResultsCarryNoEngineHomePath(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Status: http.StatusInternalServerError,
+	srv := fakeEngine(t, taraenginetest.Turn{Status: http.StatusInternalServerError,
 		Error: "open /home/ollama/.ollama/models/blobs/sha256-1234: permission denied"})
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err != nil {
@@ -166,7 +166,7 @@ var hostPort = regexp.MustCompile(`[A-Za-z0-9.-]+:[0-9]{2,5}\b`)
 // results file written from the run carries none of it; the terminal keeps the raw text.
 func TestRunnerResultsCarryNoEngineAddress(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: "unused"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "unused"})
 	proxy := newEngineProxy(t, srv.URL, func(w http.ResponseWriter, _ *http.Request, _ string, n int) bool {
 		if n != 2 { // the warm-up passes; the task's first request is dropped
 			return false
@@ -217,7 +217,7 @@ func TestRunnerResultsCarryNoHostPath(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "task.yaml"), filepath.Join(dir, "workdir", "task-link.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Run(context.Background(), tasks, runOptions(fakeOllama(t), ""))
+	res, err := Run(context.Background(), tasks, runOptions(fakeEngine(t), ""))
 	if err == nil || !strings.Contains(err.Error(), "setup defect") {
 		t.Fatalf("err=%v", err)
 	}

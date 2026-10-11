@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
-// engineProxy stands between the runner and the ollamatest fake. It forwards every request, records
-// the user prompt of each /api/chat in arrival order, and lets hook take a /api/chat request over:
-// hook returns true when it answered or dropped the request itself.
+// engineProxy stands between the runner and the fake engine. It forwards every request, records
+// the user prompt of each /v1/chat/completions in arrival order, and lets hook take a
+// /v1/chat/completions request over: hook returns true when it answered or dropped the request itself.
 type engineProxy struct {
 	URL   string
 	mu    sync.Mutex
@@ -38,7 +38,7 @@ func newEngineProxy(t *testing.T, target string, hook proxyHook) *engineProxy {
 	forward := httputil.NewSingleHostReverseProxy(u)
 	p := &engineProxy{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/chat" {
+		if r.URL.Path == "/v1/chat/completions" {
 			body, _ := io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			prompt := userPrompt(body)
@@ -57,7 +57,7 @@ func newEngineProxy(t *testing.T, target string, hook proxyHook) *engineProxy {
 	return p
 }
 
-// userPrompt is the first user message of a /api/chat body: the task's prompt.
+// userPrompt is the first user message of a /v1/chat/completions body: the task's prompt.
 func userPrompt(body []byte) string {
 	var req struct {
 		Messages []struct {
@@ -74,11 +74,11 @@ func userPrompt(body []byte) string {
 	return ""
 }
 
-// servedPrompts are the user prompts of the /api/chat requests the fake itself received.
-func servedPrompts(srv *ollamatest.Server) []string {
+// servedPrompts are the user prompts of the /v1/chat/completions requests the fake itself received.
+func servedPrompts(srv *taraenginetest.Server) []string {
 	var out []string
 	for _, r := range srv.Requests {
-		if r.Path != "/api/chat" {
+		if r.Path != "/v1/chat/completions" {
 			continue
 		}
 		messages, _ := r.Body["messages"].([]any)
@@ -116,7 +116,7 @@ func promptedTasks(t *testing.T, ids ...string) []Task {
 // row is timed out with a wall time of at least the limit.
 func TestRunnerCancelsAndJoinsATimedOutTurn(t *testing.T) {
 	tasks := promptedTasks(t, "a-held", "b-next")
-	srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	var once sync.Once
 	bAsked := make(chan struct{})
 	var mu sync.Mutex
@@ -168,7 +168,7 @@ func TestRunnerCancelsAndJoinsATimedOutTurn(t *testing.T) {
 // Run returns the task finished before it, not B, with the context's error, and never starts C.
 func TestRunnerStopsWhenTheParentIsCancelled(t *testing.T) {
 	tasks := promptedTasks(t, "a-first", "b-cancelled", "c-never")
-	srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	proxy := newEngineProxy(t, srv.URL, func(_ http.ResponseWriter, r *http.Request, prompt string, _ int) bool {

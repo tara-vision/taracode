@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/provider"
 )
 
@@ -72,7 +73,8 @@ func cleanToken(s string) string {
 
 // engineInfo reads the loaded model's entry from the engine: the entry named as the model was asked
 // for, or that name with ":latest" (ruling P3-R74). It fails when the engine does not answer, does
-// not list the model as loaded, or reports no size for it. others is how many other models the
+// not list the model as loaded, or reports no size for it. The quantization, parameter size and digest
+// come from the engine's detail of the model (describeModel). others is how many other models the
 // engine holds on the GPU, -1 when the engine did not say: a GPU measurement would include them. A
 // model the engine keeps entirely in system memory takes nothing on the GPU and is not counted.
 func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others int, err error) {
@@ -99,12 +101,25 @@ func engineInfo(ctx context.Context, opts RunOptions) (info *EngineInfo, others 
 		default:
 			info, err = &EngineInfo{
 				SizeBytes: m.Size, VRAMBytes: m.SizeVRAM, GPUPercent: gpuPercent(m.Size, m.SizeVRAM),
-				ContextLength: m.ContextLength, Quantization: cleanToken(m.Quantization),
-				ParameterSize: cleanToken(m.ParameterSize), Digest: shortDigest(m.Digest),
+				ContextLength: m.ContextLength,
 			}, nil
 		}
 	}
+	if info != nil {
+		describeModel(callCtx, prov.LLM(), opts.Model, info)
+	}
 	return info, others, err
+}
+
+// describeModel fills the quantization, parameter size and digest from the engine's detail of the model. A detail it
+// cannot read leaves them empty: the block is measurement metadata.
+func describeModel(ctx context.Context, client llm.Client, model string, info *EngineInfo) {
+	d, err := client.Show(ctx, model)
+	if err != nil {
+		return
+	}
+	info.Quantization, info.ParameterSize, info.Digest = cleanToken(d.Quantization), cleanToken(d.ParameterSize),
+		shortDigest(d.Digest)
 }
 
 // loadedEngine is engineInfo for Run. The block is measurement metadata, so a failure is one warning

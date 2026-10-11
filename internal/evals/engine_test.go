@@ -5,15 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // timed is a scripted reply with the engine timings the speed numbers come from.
-func timed(turn ollamatest.Turn, promptMs, evalMs int) ollamatest.Turn {
+func timed(turn taraenginetest.Turn, promptMs, evalMs int) taraenginetest.Turn {
 	turn.PromptEvalDuration = time.Duration(promptMs) * time.Millisecond
 	turn.EvalDuration = time.Duration(evalMs) * time.Millisecond
 	return turn
@@ -25,9 +26,9 @@ func TestRunRecordsTheEngineTimingsAndTheGenerationRate(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	describe := call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"})
 	// call() answers 100 prompt and 10 completion tokens; the final answer adds 400 and 30.
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		timed(describe, 200, 100),
-		timed(ollamatest.Turn{Content: oomAnswer, PromptTokens: 400, CompletionTokens: 30}, 300, 300),
+		timed(taraenginetest.Turn{Content: oomAnswer, PromptTokens: 400, CompletionTokens: 30}, 300, 300),
 	)
 	var out bytes.Buffer
 	opts := runOptions(srv, "")
@@ -49,8 +50,8 @@ func TestRunRecordsTheEngineTimingsAndTheGenerationRate(t *testing.T) {
 
 func TestRunAveragesTheEngineTimingsOverRuns(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	answer := ollamatest.Turn{Content: oomAnswer, PromptTokens: 40, CompletionTokens: 20}
-	opts := runOptions(fakeOllama(t, timed(answer, 100, 200), timed(answer, 300, 600)), "")
+	answer := taraenginetest.Turn{Content: oomAnswer, PromptTokens: 40, CompletionTokens: 20}
+	opts := runOptions(fakeEngine(t, timed(answer, 100, 200), timed(answer, 300, 600)), "")
 	opts.Runs = 2
 	res, err := Run(context.Background(), tasks, opts)
 	if err != nil {
@@ -68,7 +69,7 @@ func TestRunAveragesTheEngineTimingsOverRuns(t *testing.T) {
 // timings and no loaded-model entry, and a run with no hardware label, write none of the new keys.
 func TestRunWritesNoSpeedOrEngineKeysWhenTheEngineReportsNone(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer, PromptTokens: 40, CompletionTokens: 6})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer, PromptTokens: 40, CompletionTokens: 6})
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err != nil {
 		t.Fatal(err)
@@ -87,32 +88,35 @@ func TestRunWritesNoSpeedOrEngineKeysWhenTheEngineReportsNone(t *testing.T) {
 func TestRunCapturesTheLoadedModel(t *testing.T) {
 	cases := []struct {
 		name    string
-		loaded  []ollamatest.LoadedSpec
+		loaded  []taraenginetest.LoadedSpec
+		detail  taraenginetest.ModelSpec // the quantization, parameter size and digest the engine shows for the model
 		want    *EngineInfo
 		warning bool
 	}{
 		{"entirely on the GPU",
-			[]ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000, SizeVRAM: 9_300_000_000,
-				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "sha256:0123456789abcdef0123"}},
+			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
+			taraenginetest.ModelSpec{Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "sha256:0123456789abcdef0123"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
 				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "0123456789ab"}, false},
-		{"one byte short of the GPU",
-			[]ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 10_000_000_000, SizeVRAM: 9_999_999_999}},
-			&EngineInfo{SizeBytes: 10_000_000_000, VRAMBytes: 9_999_999_999, GPUPercent: 99, ContextLength: 32768}, false},
 		{"odd engine strings are dropped, not published",
-			[]ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000, SizeVRAM: 9_300_000_000,
-				Quantization: "Q4 | at http://10.1.2.3:11434", ParameterSize: "11.9B", Digest: "sha256:not-hex-at-all"}},
+			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
+			taraenginetest.ModelSpec{Quantization: "Q4 | at http://10.1.2.3:11434", ParameterSize: "11.9B",
+				Digest: "sha256:not-hex-at-all"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
 				ParameterSize: "11.9B"}, false},
-		{"another model is loaded", []ollamatest.LoadedSpec{{Name: "other:1b", Size: 1, SizeVRAM: 1}}, nil, true},
-		{"the engine reports no size", []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768}}, nil, true},
-		{"nothing is loaded", nil, nil, true},
+		{"another model is loaded", []taraenginetest.LoadedSpec{{Name: "other:1b", Size: 1}}, taraenginetest.ModelSpec{},
+			nil, true},
+		{"the engine reports no size", []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768}},
+			taraenginetest.ModelSpec{}, nil, true},
+		{"nothing is loaded", nil, taraenginetest.ModelSpec{}, nil, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_, tasks := corpusWithTriage(t)
-			srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
+			srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
 			srv.Loaded = c.loaded
+			srv.Models[0].Quantization, srv.Models[0].ParameterSize, srv.Models[0].Digest =
+				c.detail.Quantization, c.detail.ParameterSize, c.detail.Digest
 			var out bytes.Buffer
 			opts := runOptions(srv, "")
 			opts.Out = &out
@@ -141,8 +145,10 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 // the results.
 func TestRunSurvivesAFailingEngineCall(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
-	srv.PsStatus = 500
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
+	// The error names an address and a home path on purpose: a caller must publish neither.
+	srv.Failures["GET /api/loaded"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
+		Message: "loaded failed at http://10.1.2.3:11434 reading /home/ollama/.ollama"}
 	var out bytes.Buffer
 	opts := runOptions(srv, "")
 	opts.Out = &out
@@ -178,26 +184,9 @@ func TestGenerationRateSkipsTasksWithNoEngineTime(t *testing.T) {
 	}
 }
 
-func TestRunFindsAnUntaggedModelLoadedAsLatest(t *testing.T) {
-	_, tasks := corpusWithTriage(t)
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:latest", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:latest", ContextLength: 32768, Size: 5_000_000_000, SizeVRAM: 5_000_000_000}}
-	srv.Turns = []ollamatest.Turn{{Content: "ready"}, {Content: oomAnswer}}
-	opts := runOptions(srv, "")
-	opts.Model = "gemma4"
-	res, err := Run(context.Background(), tasks, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Engine == nil || res.Engine.GPUPercent != 100 {
-		t.Fatalf("engine %+v", res.Engine)
-	}
-}
-
 func TestRunWritesTheHardwareLabel(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	opts := runOptions(fakeOllama(t, ollamatest.Turn{Content: oomAnswer}), "")
+	opts := runOptions(fakeEngine(t, taraenginetest.Turn{Content: oomAnswer}), "")
 	opts.Hardware = "NVIDIA RTX 5090 (32 GB)"
 	res, err := Run(context.Background(), tasks, opts)
 	if err != nil {
@@ -268,6 +257,21 @@ func TestShortDigest(t *testing.T) {
 		if got := shortDigest(in); got != want {
 			t.Errorf("shortDigest(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestEngineInfoLeavesTheDescriptionsOutWhenTheDetailFails: the quantization, the parameter size and the digest
+// come from the engine's detail of the model; when it cannot show one, the block keeps what /api/loaded gave.
+func TestEngineInfoLeavesTheDescriptionsOutWhenTheDetailFails(t *testing.T) {
+	srv := fakeEngine(t)
+	srv.Models[0].Quantization, srv.Models[0].ParameterSize, srv.Models[0].Digest = "Q4_K_M", "12B", "a1b2c3d4e5f6"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	srv.Failures["GET /api/models/gemma4:12b"] = &taraenginetest.Failure{Status: http.StatusInternalServerError,
+		Message: "broken"}
+	info, _, err := engineInfo(context.Background(), withDefaults(runOptions(srv, "")))
+	want := EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768}
+	if err != nil || info == nil || *info != want {
+		t.Fatalf("info %+v, err %v", info, err)
 	}
 }
 

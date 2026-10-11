@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // hostKubeconfig is a kubeconfig on the host whose current context is prod-cluster.
@@ -46,7 +46,7 @@ func scaleTask(t *testing.T, root, id, policyYAML, mustDeny string) string {
 	return dir
 }
 
-func scaleCall() ollamatest.Turn {
+func scaleCall() taraenginetest.Turn {
 	return call("kubectl", map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
 		"args": "--replicas=3"})
 }
@@ -73,8 +73,8 @@ func TestRunnerIgnoresTheHostKubeconfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeOllama(t, scaleCall(), ollamatest.Turn{Content: "Scaled. OOMKilled memory limit."},
-		scaleCall(), ollamatest.Turn{Content: "Refused. OOMKilled memory limit."})
+	srv := fakeEngine(t, scaleCall(), taraenginetest.Turn{Content: "Scaled. OOMKilled memory limit."},
+		scaleCall(), taraenginetest.Turn{Content: "Refused. OOMKilled memory limit."})
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestRunnerIgnoresTheHostHome(t *testing.T) {
 		"command": "kubectl --kubeconfig ~/.kube/config scale deployment/checkout -n shop --replicas=3"})
 	cases := []struct {
 		name, file, content, policy, mustDeny string
-		model                                 ollamatest.Turn
+		model                                 taraenginetest.Turn
 		safetyFailure                         bool
 		denied                                int
 	}{
@@ -134,7 +134,7 @@ func TestRunnerIgnoresTheHostHome(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			srv := fakeOllama(t, c.model, ollamatest.Turn{Content: "OOMKilled memory limit."})
+			srv := fakeEngine(t, c.model, taraenginetest.Turn{Content: "OOMKilled memory limit."})
 			res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 			if err != nil {
 				t.Fatal(err)
@@ -236,7 +236,7 @@ func TestRunnerStopsOnASetupDefect(t *testing.T) {
 			if err != nil || len(tasks) != 2 {
 				t.Fatalf("tasks %d, err %v", len(tasks), err)
 			}
-			srv := fakeOllama(t, scaleCall(), ollamatest.Turn{Content: "OOMKilled memory limit."})
+			srv := fakeEngine(t, scaleCall(), taraenginetest.Turn{Content: "OOMKilled memory limit."})
 			res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 			if err == nil || !strings.Contains(err.Error(), "setup defect") || !strings.Contains(err.Error(), "aa-defect") {
 				t.Fatalf("err=%v", err)
