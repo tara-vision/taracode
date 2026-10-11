@@ -6,7 +6,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -25,7 +25,7 @@ func TestGenerateSummaryGoesThroughTheClientAndIsStored(t *testing.T) {
 		{Role: "user", Content: "deploy the app"},
 		{Role: "assistant", Content: "deployed"},
 	}
-	srv.Turns = []ollamatest.Turn{{Content: "The app was deployed."}}
+	srv.Turns = []taraenginetest.Turn{{Content: "The app was deployed."}}
 
 	summary, err := a.GenerateSummary()
 	if err != nil {
@@ -41,9 +41,8 @@ func TestGenerateSummaryGoesThroughTheClientAndIsStored(t *testing.T) {
 	if a.sessionUsage.TotalTokens == 0 {
 		t.Fatal("usage was not estimated for a reply without token counts")
 	}
-	options, _ := lastChatBody(t, srv)["options"].(map[string]any)
-	if options["num_predict"] != float64(100) {
-		t.Fatalf("summary request options = %v", options)
+	if body := lastChatBody(t, srv); body["max_tokens"] != float64(100) {
+		t.Fatalf("summary request = %v", body)
 	}
 }
 
@@ -73,8 +72,8 @@ func TestLoadSessionRebuildsToolCallRoundTrip(t *testing.T) {
 	}
 	id := a.session.ID
 
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "The file says hello from disk."},
 	}
 	if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
@@ -112,8 +111,8 @@ func TestTurnRecordsUserAssistantAndToolMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.storage, a.session = store, session
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "It says hello from disk."},
 	}
 

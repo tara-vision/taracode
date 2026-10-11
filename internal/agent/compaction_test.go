@@ -8,8 +8,8 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/llm/ollama"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestEstimateTokens(t *testing.T) {
@@ -231,9 +231,9 @@ func buildConversation(count int) []openai.ChatCompletionMessage {
 }
 
 func TestCompactConversationSummarizesThroughTheClient(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Turns = []ollamatest.Turn{{Content: "The user asked twice and the assistant answered."}}
-	client := ollama.New(srv.URL, nil)
+	srv := taraenginetest.New(t)
+	srv.Turns = []taraenginetest.Turn{{Content: "The user asked twice and the assistant answered."}}
+	client := taraengine.New(srv.URL, "", nil)
 	conversation := buildConversation(5)
 	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
 
@@ -255,23 +255,23 @@ func TestCompactConversationSummarizesThroughTheClient(t *testing.T) {
 		!strings.Contains(summary.Content, "the assistant answered") {
 		t.Fatalf("summary message = %+v", summary)
 	}
-	if body := srv.Requests[0].Body; body["stream"] != false {
-		t.Fatalf("summary request should not stream: %v", body["stream"])
+	body := srv.Requests[len(srv.Requests)-1].Body
+	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != false || body["max_tokens"] != float64(compactionSummaryTokens) {
+		t.Fatalf("the summary request: %v", body)
 	}
 }
 
-// TestCompactConversationSummaryCarriesTheGivenOptions covers the fix for the summary request
-// bypassing the session options: CompactConversation must send exactly the llm.Options it is
-// given (num_ctx, keep_alive, think) instead of the old bare NumPredict-only request, or Ollama
-// reloads the runner for a different context window and a thinking model spends the summary's
-// small token budget on reasoning instead of the answer.
+// TestCompactConversationSummaryCarriesTheGivenOptions: CompactConversation sends exactly the
+// llm.Options it is given (thinking off, the summary's token cap), so a thinking model does not
+// spend the summary's small token budget on reasoning instead of the answer.
 func TestCompactConversationSummaryCarriesTheGivenOptions(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Turns = []ollamatest.Turn{{Content: "summary text"}}
-	client := ollama.New(srv.URL, nil)
+	srv := taraenginetest.New(t)
+	srv.Turns = []taraenginetest.Turn{{Content: "summary text"}}
+	client := taraengine.New(srv.URL, "", nil)
 	conversation := buildConversation(5)
 	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
-	options := llm.Options{NumCtx: 32768, KeepAlive: "-1", Think: llm.ThinkOff, NumPredict: compactionSummaryTokens}
+	options := llm.Options{Think: llm.ThinkOff, NumPredict: compactionSummaryTokens}
 
 	_, event, err := CompactConversation(
 		gocontext.Background(), conversation, nil, cfg, client, "gemma4:12b", options)
@@ -282,23 +282,17 @@ func TestCompactConversationSummaryCarriesTheGivenOptions(t *testing.T) {
 		t.Fatal("no compaction event")
 	}
 
-	body := srv.Requests[0].Body
-	opts, ok := body["options"].(map[string]any)
-	if !ok || opts["num_ctx"] != float64(32768) || opts["num_predict"] != float64(compactionSummaryTokens) {
-		t.Fatalf("summary request options: %v", body["options"])
-	}
-	if body["keep_alive"] != "-1" {
-		t.Fatalf("summary request keep_alive = %v, want -1", body["keep_alive"])
-	}
-	if body["think"] != false {
-		t.Fatalf("summary request think = %v, want false", body["think"])
+	body := srv.Requests[len(srv.Requests)-1].Body
+	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != false || body["max_tokens"] != float64(compactionSummaryTokens) {
+		t.Fatalf("the summary request: %v", body)
 	}
 }
 
 func TestCompactConversationFallsBackWhenTheServerFails(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Turns = []ollamatest.Turn{{Status: 500, Error: "summary model unloaded"}}
-	client := ollama.New(srv.URL, nil)
+	srv := taraenginetest.New(t)
+	srv.Turns = []taraenginetest.Turn{{Status: 500, Error: "summary model unloaded"}}
+	client := taraengine.New(srv.URL, "", nil)
 	conversation := buildConversation(5)
 	cfg := CompactionConfig{Enabled: true, Threshold: 0.1, KeepRecent: 2, MaxTokens: 1000}
 	options := llm.Options{NumPredict: compactionSummaryTokens, Think: llm.ThinkOff}

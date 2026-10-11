@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestResetServerContextCheck(t *testing.T) {
@@ -83,8 +83,8 @@ func TestLoadedContextLength(t *testing.T) {
 
 func TestCheckServerContextOnceWarnsAboutASmallWindow(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 4096}}
-	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 4096}}
+	srv.Turns = []taraenginetest.Turn{{Content: "hi"}}
 
 	if err := a.ProcessMessage("hello"); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestCheckServerContextOnceWarnsAboutASmallWindow(t *testing.T) {
 
 func TestCheckServerContextOnceKeepsTryingWhileTheModelIsNotLoaded(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "hi"}}
 
 	if err := a.ProcessMessage("hello"); err != nil {
 		t.Fatal(err)

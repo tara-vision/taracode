@@ -12,22 +12,33 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestProcessMessageWithImagesSendsTheImages(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{{Content: "A diagram."}}
+	srv.Turns = []taraenginetest.Turn{{Content: "A diagram."}}
 	img := &ImageData{Path: "pic.png", MimeType: "image/png", Base64: "cG5n"}
 	_ = captureStdout(t, func() {
 		if err := a.ProcessMessageWithImages("what is this", []*ImageData{img}); err != nil {
 			t.Error(err)
 		}
 	})
-	last := lastMessage(t, lastChatBody(t, srv), 0)
-	images, _ := last["images"].([]any)
-	if last["content"] != "what is this" || len(images) != 1 || images[0] != "cG5n" {
-		t.Fatalf("the user message sent %v", last)
+	parts, _ := lastMessage(t, lastChatBody(t, srv), 0)["content"].([]any)
+	images, text, url := 0, "", ""
+	for _, p := range parts {
+		part, _ := p.(map[string]any)
+		switch part["type"] {
+		case "text":
+			text, _ = part["text"].(string)
+		case "image_url":
+			images++
+			image, _ := part["image_url"].(map[string]any)
+			url, _ = image["url"].(string)
+		}
+	}
+	if text != "what is this" || images != 1 || url != "data:image/png;base64,cG5n" {
+		t.Fatalf("the user message sent %v", parts)
 	}
 	user := findMessage(t, a.conversation, openai.ChatMessageRoleUser)
 	if len(user.MultiContent) != 2 || user.MultiContent[0].Text != "what is this" ||
@@ -51,8 +62,8 @@ func TestToolCallsOfIgnoresArgumentsThatAreNotJSON(t *testing.T) {
 func TestToolSpinnersNumberTheCallsOfAReply(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.enableSpinner = true
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}},
 			{Name: "list_files", Args: map[string]any{}}}},
 		{Content: "Done."},
 	}
@@ -78,7 +89,7 @@ func TestATurnCompactsAConversationOverTheBudget(t *testing.T) {
 			openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: "question"},
 			openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: "answer"})
 	}
-	srv.Turns = []ollamatest.Turn{{Content: "They asked three questions."}, {Content: "Here you go."}}
+	srv.Turns = []taraenginetest.Turn{{Content: "They asked three questions."}, {Content: "Here you go."}}
 	out := captureStdout(t, func() {
 		if err := a.ProcessMessage("and one more"); err != nil {
 			t.Error(err)
@@ -93,8 +104,8 @@ func TestATurnCompactsAConversationOverTheBudget(t *testing.T) {
 }
 
 func TestGenerateSummaryRejectsAnEmptyAnswer(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Turns = []ollamatest.Turn{{Content: "   "}}
+	srv := taraenginetest.New(t)
+	srv.Turns = []taraenginetest.Turn{{Content: "   "}}
 	a := newForTest(t.TempDir(), "gemma4:12b", srv.URL, false)
 	_, err := generateSummary(gocontext.Background(), []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleTool, Content: strings.Repeat("t", 150)},
@@ -184,7 +195,7 @@ func (c cancelAtCap) Chat(ctx gocontext.Context, req llm.Request, onEvent func(l
 func TestACancelledTurnAtTheCapReturnsTheCancellation(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.maxIterations = 1
-	srv.Turns = []ollamatest.Turn{toolCall("list_files", map[string]any{})}
+	srv.Turns = []taraenginetest.Turn{toolCall("list_files", map[string]any{})}
 	ctx, cancel := gocontext.WithCancel(gocontext.Background())
 	defer cancel()
 	a.llm = cancelAtCap{Client: a.llm, cancel: cancel}

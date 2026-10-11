@@ -11,18 +11,18 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// newTestAssistant wires an Assistant to a fake Ollama in a temp project with all permission
+// newTestAssistant wires an Assistant to a fake engine in a temp project with all permission
 // prompts pre-allowed. It starts in investigate mode; enterOperate switches.
-func newTestAssistant(t *testing.T, streaming bool) (*Assistant, *ollamatest.Server) {
+func newTestAssistant(t *testing.T, streaming bool) (*Assistant, *taraenginetest.Server) {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 	dir := t.TempDir()
@@ -53,7 +53,7 @@ func enterOperate(t *testing.T, a *Assistant) {
 func TestPlainAnswerIsRecordedAndUsageCounted(t *testing.T) {
 	for _, streaming := range []bool{true, false} {
 		a, srv := newTestAssistant(t, streaming)
-		srv.Turns = []ollamatest.Turn{{Content: "Four.", PromptTokens: 11, CompletionTokens: 2}}
+		srv.Turns = []taraenginetest.Turn{{Content: "Four.", PromptTokens: 11, CompletionTokens: 2}}
 
 		if err := a.ProcessMessage("What is 2+2?"); err != nil {
 			t.Fatalf("streaming=%v: %v", streaming, err)
@@ -69,12 +69,7 @@ func TestPlainAnswerIsRecordedAndUsageCounted(t *testing.T) {
 		if last.Role != openai.ChatMessageRoleAssistant || last.Content != "Four." {
 			t.Fatalf("streaming=%v: assistant message not appended: %+v", streaming, last)
 		}
-		body := lastChatBody(t, srv)
-		options, ok := body["options"].(map[string]any)
-		if !ok || options["num_ctx"] != float64(32768) {
-			t.Fatalf("streaming=%v: request lacks num_ctx: %v", streaming, body["options"])
-		}
-		if tools, ok := body["tools"].([]any); !ok || len(tools) == 0 {
+		if tools, ok := lastChatBody(t, srv)["tools"].([]any); !ok || len(tools) == 0 {
 			t.Fatalf("streaming=%v: request lacks tools", streaming)
 		}
 	}
@@ -82,8 +77,8 @@ func TestPlainAnswerIsRecordedAndUsageCounted(t *testing.T) {
 
 func TestToolCallRoundTrip(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "The file says hello from disk."},
 	}
 
@@ -96,25 +91,21 @@ func TestToolCallRoundTrip(t *testing.T) {
 	}
 	second := lastChatBody(t, srv)
 	toolMsg := lastMessage(t, second, 0)
-	if toolMsg["role"] != "tool" || toolMsg["tool_name"] != "read_file" ||
+	id, name := onlyToolCall(t, lastMessage(t, second, 1))
+	if toolMsg["role"] != "tool" || name != "read_file" || id == "" || toolMsg["tool_call_id"] != id ||
 		!strings.Contains(toolMsg["content"].(string), "hello from disk") {
-		t.Fatalf("tool result not sent back: %v", toolMsg)
-	}
-	asst := lastMessage(t, second, 1)
-	if calls, ok := asst["tool_calls"].([]any); !ok || len(calls) != 1 {
-		t.Fatalf("assistant tool call not replayed: %v", asst)
+		t.Fatalf("tool result not sent back to the call it answers: %v", toolMsg)
 	}
 }
 
-// TestToolCallIDsStayUniqueAcrossIterations covers the fix for ids restarting at call_0 on every
-// reply: two tool calls made across two iterations of the same turn must not share an id, or
-// toolNamesByID (last writer wins on a duplicate id) mislabels one of the replayed tool results
-// once the third request replays both.
+// TestToolCallIDsStayUniqueAcrossIterations: two tool calls made across two iterations of the same
+// turn do not share an id, and each replayed tool result carries the id of the call it answers once
+// the third request replays both.
 func TestToolCallIDsStayUniqueAcrossIterations(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
-		{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{"path": "."}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "list_files", Args: map[string]any{"path": "."}}}},
 		{Content: "done"},
 	}
 
@@ -123,13 +114,18 @@ func TestToolCallIDsStayUniqueAcrossIterations(t *testing.T) {
 	}
 
 	third := lastChatBody(t, srv)
+	readID, readName := onlyToolCall(t, lastMessage(t, third, 3))
+	listID, listName := onlyToolCall(t, lastMessage(t, third, 1))
 	readResult := lastMessage(t, third, 2)
 	listResult := lastMessage(t, third, 0)
-	if readResult["role"] != "tool" || readResult["tool_name"] != "read_file" {
+	if readName != "read_file" || readResult["role"] != "tool" || readResult["tool_call_id"] != readID {
 		t.Fatalf("read_file result mislabeled: %v", readResult)
 	}
-	if listResult["role"] != "tool" || listResult["tool_name"] != "list_files" {
+	if listName != "list_files" || listResult["role"] != "tool" || listResult["tool_call_id"] != listID {
 		t.Fatalf("list_files result mislabeled: %v", listResult)
+	}
+	if readID == "" || readID == listID {
+		t.Fatalf("the two calls share the id %q", readID)
 	}
 }
 
@@ -140,8 +136,8 @@ func TestToolOutputIsTruncated(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(a.workingDir, "big.txt"), []byte(big), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "big.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "big.txt"}}}},
 		{Content: "done"},
 	}
 
@@ -161,22 +157,22 @@ func TestToolOutputIsTruncated(t *testing.T) {
 func TestMaxIterationsStopsTheLoop(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.maxIterations = 2
-	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "list_files", Args: map[string]any{}}}}
-	srv.Turns = []ollamatest.Turn{call, call, call}
+	call := taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: "list_files", Args: map[string]any{}}}}
+	srv.Turns = []taraenginetest.Turn{call, call, call}
 
 	if err := a.ProcessMessage("loop forever"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Two completions with tools, then the one final completion at the cap with none (ruling P3-R60).
-	if n := countPath(srv, "/api/chat"); n != 3 {
+	if n := countPath(srv, chatPath); n != 3 {
 		t.Fatalf("expected 3 chat requests, got %d", n)
 	}
 }
 
 func TestThinkingIsNotStoredInTheConversation(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
-	srv.Turns = []ollamatest.Turn{{Content: "yes", Thinking: "let me think"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "yes", Thinking: "let me think"}}
 
 	if err := a.ProcessMessage("is it?"); err != nil {
 		t.Fatal(err)
@@ -195,7 +191,7 @@ func TestThinkingIsNotStoredInTheConversation(t *testing.T) {
 func TestServerErrorIsReturnedNotSwallowed(t *testing.T) {
 	for _, streaming := range []bool{true, false} {
 		a, srv := newTestAssistant(t, streaming)
-		srv.Turns = []ollamatest.Turn{{Status: 500, Error: "boom"}}
+		srv.Turns = []taraenginetest.Turn{{Status: 500, Error: "boom"}}
 
 		err := a.ProcessMessage("hi")
 
@@ -207,7 +203,7 @@ func TestServerErrorIsReturnedNotSwallowed(t *testing.T) {
 
 func TestEmptyReplyIsNudgedOnce(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{{Content: ""}, {Content: "42"}}
+	srv.Turns = []taraenginetest.Turn{{Content: ""}, {Content: "42"}}
 
 	if err := a.ProcessMessage("what is the answer?"); err != nil {
 		t.Fatal(err)
@@ -216,7 +212,7 @@ func TestEmptyReplyIsNudgedOnce(t *testing.T) {
 	if a.GetLastResponse() != "42" {
 		t.Fatalf("last response = %q, want %q", a.GetLastResponse(), "42")
 	}
-	if n := countPath(srv, "/api/chat"); n != 2 {
+	if n := countPath(srv, chatPath); n != 2 {
 		t.Fatalf("expected 2 chat requests (one nudge), got %d", n)
 	}
 	var nudges int
@@ -244,10 +240,10 @@ func withEditPreview(t *testing.T, a *Assistant, choice ui.EditPreviewChoice) {
 }
 
 // editTurns scripts a model that edits hello.txt and then acknowledges the outcome.
-func editTurns() []ollamatest.Turn {
+func editTurns() []taraenginetest.Turn {
 	args := map[string]any{"path": "hello.txt", "old": "hello from disk", "new": "goodbye"}
-	return []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "edit_file", Args: args}}},
+	return []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "edit_file", Args: args}}},
 		{Content: "Done."},
 	}
 }
@@ -390,7 +386,7 @@ func TestDateQuestionsCarryTheCurrentDateTime(t *testing.T) {
 // one, is what the model receives.
 func TestTheTurnSendsTheAnnotatedDateQuestion(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{{Content: "It is now."}}
+	srv.Turns = []taraenginetest.Turn{{Content: "It is now."}}
 
 	if err := a.ProcessMessage("what time is it?"); err != nil {
 		t.Fatal(err)
@@ -406,7 +402,7 @@ func TestTheTurnSendsTheAnnotatedDateQuestion(t *testing.T) {
 // yesterday.
 func TestThePromptDateRefreshesWhenTheDayChanges(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{{Content: "hi"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "hi"}}
 	a.promptDay = "2000-01-01"
 
 	if err := a.ProcessMessage("hi"); err != nil {
@@ -429,7 +425,7 @@ func TestThePromptDateRefreshesWhenTheDayChanges(t *testing.T) {
 // not as raw deltas. Reasoning is the one thing printed live, before the answer.
 func TestStreamedAnswerIsRenderedNotStreamedRaw(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
-	srv.Turns = []ollamatest.Turn{{Content: "- one\n- two", Thinking: "counting"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "- one\n- two", Thinking: "counting"}}
 
 	out := captureStdout(t, func() {
 		if err := a.ProcessMessage("list two things"); err != nil {
@@ -456,8 +452,8 @@ func TestStreamedAnswerIsRenderedNotStreamedRaw(t *testing.T) {
 func TestSpinnersRunThroughATurn(t *testing.T) {
 	a, srv := newTestAssistant(t, true)
 	a.enableSpinner = true
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "It greets you.", PromptTokens: 5, CompletionTokens: 3},
 	}
 
@@ -503,16 +499,19 @@ func captureStdout(t *testing.T, fn func()) string {
 	return <-done
 }
 
-// lastChatBody returns the body of the last /api/chat request; the server context check that
-// closes every turn records a /api/ps request after it.
-func lastChatBody(t *testing.T, srv *ollamatest.Server) map[string]any {
+// chatPath is the route the engine serves chat on.
+const chatPath = "/v1/chat/completions"
+
+// lastChatBody returns the body of the last chat request; the server context check that
+// closes every turn records a GET /api/loaded request after it.
+func lastChatBody(t *testing.T, srv *taraenginetest.Server) map[string]any {
 	t.Helper()
 	for i := len(srv.Requests) - 1; i >= 0; i-- {
-		if srv.Requests[i].Path == "/api/chat" {
+		if srv.Requests[i].Path == chatPath {
 			return srv.Requests[i].Body
 		}
 	}
-	t.Fatal("no /api/chat request recorded")
+	t.Fatalf("no %s request recorded", chatPath)
 	return nil
 }
 
@@ -530,6 +529,21 @@ func lastMessage(t *testing.T, body map[string]any, offsetFromEnd int) map[strin
 	return msg
 }
 
+// onlyToolCall returns the id and the function name of the one tool call a recorded assistant message
+// replays, or fails.
+func onlyToolCall(t *testing.T, assistant map[string]any) (id, name string) {
+	t.Helper()
+	calls, _ := assistant["tool_calls"].([]any)
+	if len(calls) != 1 {
+		t.Fatalf("assistant tool call not replayed: %v", assistant)
+	}
+	call, _ := calls[0].(map[string]any)
+	function, _ := call["function"].(map[string]any)
+	id, _ = call["id"].(string)
+	name, _ = function["name"].(string)
+	return id, name
+}
+
 // findMessage returns the first conversation message with the given role, or fails.
 func findMessage(t *testing.T, conversation []openai.ChatCompletionMessage, role string) openai.ChatCompletionMessage {
 	t.Helper()
@@ -542,7 +556,7 @@ func findMessage(t *testing.T, conversation []openai.ChatCompletionMessage, role
 	return openai.ChatCompletionMessage{}
 }
 
-func countPath(srv *ollamatest.Server, path string) int {
+func countPath(srv *taraenginetest.Server, path string) int {
 	n := 0
 	for _, r := range srv.Requests {
 		if r.Path == path {

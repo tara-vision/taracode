@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/tools/redact"
@@ -15,7 +15,7 @@ import (
 )
 
 // toolMessages returns the tool results of the last chat request, oldest first.
-func toolMessages(t *testing.T, srv *ollamatest.Server) []string {
+func toolMessages(t *testing.T, srv *taraenginetest.Server) []string {
 	t.Helper()
 	messages, _ := lastChatBody(t, srv)["messages"].([]any)
 	var out []string
@@ -34,7 +34,7 @@ func toolMessages(t *testing.T, srv *ollamatest.Server) []string {
 func TestHiddenToolsCannotRun(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeOperate,
 		toolCall("web_fetch", map[string]any{"url": "https://example.com"}),
-		toolCall("fetch_probe", map[string]any{}), ollamatest.Turn{Content: "ok"})
+		toolCall("fetch_probe", map[string]any{}), taraenginetest.Turn{Content: "ok"})
 	red, _ := redact.New(redact.Options{})
 	a.toolRegistry = tools.NewBuiltinRegistry(tools.Options{Offline: true, Redactor: red}, tools.Config{})
 	ran := false
@@ -71,7 +71,7 @@ func TestHiddenToolsCannotRun(t *testing.T) {
 	}
 	b, srv2, _ := gateAssistant(t, policy.ModeInvestigate,
 		toolCall("edit_file", map[string]any{"path": filepath.Join(dir, "a.txt"), "old": "one", "new": "1", "preview": true}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	_ = captureStdout(t, func() { _ = b.ProcessMessage("preview") })
 	if msg := messageContent(t, lastChatBody(t, srv2), 0); !strings.Contains(msg, "investigate mode is read-only") ||
 		strings.Contains(msg, "+1") {
@@ -88,7 +88,7 @@ func TestShellWritesToProtectedPathsAreDenied(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeOperate,
 		toolCall("shell", map[string]any{"command": "echo 'mode: operate' > .taracode/policy.yaml"}),
 		toolCall("shell", map[string]any{"command": "mkdir -p infra && cd infra && echo '{}' > terraform.tfstate"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	pol, _, err := policy.Load(dir, home)
@@ -128,7 +128,7 @@ func TestAllNamespaceDeleteIsDenied(t *testing.T) {
 	t.Setenv("KUBECTL_RAN", ranMarker)
 	a, srv, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("kubectl", map[string]any{"verb": "delete", "resource": "pods", "args": "--all -A"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
 	if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "every namespace") {
 		t.Fatalf("%q", msg)
@@ -144,7 +144,7 @@ func TestAllNamespaceDeleteIsDenied(t *testing.T) {
 // TestInvestigateModeRefusesTheC1Holes: the four fail-open holes of the final review's C1, driven
 // through the loop in investigate mode, are refused with the mode message and never run.
 func TestInvestigateModeRefusesTheC1Holes(t *testing.T) {
-	calls := []ollamatest.Turn{
+	calls := []taraenginetest.Turn{
 		toolCall("kubectl", map[string]any{"verb": "exec", "name": "web", "args": "-- ls --dry-run=client"}),
 		toolCall("shell", map[string]any{"command": "PATH=$PWD cat file.txt"}),
 		toolCall("shell", map[string]any{"command": "./cat file.txt"}),
@@ -159,7 +159,7 @@ func TestInvestigateModeRefusesTheC1Holes(t *testing.T) {
 	kubectlRan := filepath.Join(t.TempDir(), "kubectl-ran")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("KUBECTL_RAN", kubectlRan)
-	a, srv, dir := gateAssistant(t, policy.ModeInvestigate, append(calls, ollamatest.Turn{Content: "ok"})...)
+	a, srv, dir := gateAssistant(t, policy.ModeInvestigate, append(calls, taraenginetest.Turn{Content: "ok"})...)
 	marker := filepath.Join(dir, "ran")
 	if err := os.WriteFile(filepath.Join(dir, "cat"), []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755); err != nil { //nolint:gosec // test binary
 		t.Fatal(err)
@@ -193,7 +193,7 @@ func TestAClassifierPanicIsARefusalNotACrash(t *testing.T) {
 	a, srv, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("broken_probe", map[string]any{"command": "rm -rf build"}),
 		toolCall("broken_probe", map[string]any{"path": "a.txt", "count": 2}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	ran := false
 	a.toolRegistry.Register(&tools.Tool{Name: "broken_probe", Description: "probe", ReadForm: true,
 		Params:   []tools.Param{{Name: "command", Type: "string"}, {Name: "path", Type: "string"}, {Name: "count", Type: "integer"}},
@@ -233,7 +233,7 @@ func TestRound2FunctionAndNULHolesAreRefused(t *testing.T) {
 		a, srv, dir := gateAssistant(t, policy.ModeInvestigate,
 			toolCall("shell", map[string]any{"command": `ls() { find . "$@"; }; ls -delete`}),
 			toolCall("shell", map[string]any{"command": `find . $'-delete\x00'`}),
-			ollamatest.Turn{Content: "ok"})
+			taraenginetest.Turn{Content: "ok"})
 		for _, name := range []string{"keep1", "keep2"} {
 			if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
 				t.Fatal(err)
@@ -260,7 +260,7 @@ func TestRound2FunctionAndNULHolesAreRefused(t *testing.T) {
 		setProcessKubeconfig(t, false)
 		a, srv, _ := gateAssistant(t, policy.ModeOperate,
 			toolCall("shell", map[string]any{"command": `kubectl delete pod coredns -n kube-system$'\x00'`}),
-			ollamatest.Turn{Content: "ok"})
+			taraenginetest.Turn{Content: "ok"})
 		_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
 		if msg := messageContent(t, lastChatBody(t, srv), 0); !strings.Contains(msg, "kube-system") {
 			t.Fatalf("the NUL namespace must deny on the protected kube-system: %q", msg)
@@ -329,7 +329,7 @@ func TestShellRunKubectlHitsProtectedNamespaces(t *testing.T) {
 				toolCall("shell", map[string]any{"command": "helm uninstall web --kube-context prod-eu"}),
 				toolCall("shell", map[string]any{"command": "KUBECONFIG=" + dev + "; kubectl delete pod web -n apps"}),
 				toolCall("shell", map[string]any{"command": "kubectl get pods -n kube-system"}),
-				ollamatest.Turn{Content: "ok"})
+				taraenginetest.Turn{Content: "ok"})
 			_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
 			msgs := toolMessages(t, srv)
 			if len(msgs) != 4 || !strings.Contains(msgs[0], "kube-system") || !strings.Contains(msgs[1], "prod-eu") ||
@@ -367,12 +367,12 @@ func TestShellKubeTargetsHoldThroughTheLoop(t *testing.T) {
 		{"HELM_NAMESPACE=kube-system helm uninstall web", "protected.kube_namespaces"},
 		{"kubectl delete pod web --kubeconfig /dev/zero", "protected.kube_contexts"},
 	}
-	turns := make([]ollamatest.Turn, 0, len(denied)+2)
+	turns := make([]taraenginetest.Turn, 0, len(denied)+2)
 	for _, d := range denied {
 		turns = append(turns, toolCall("shell", map[string]any{"command": d.command}))
 	}
 	turns = append(turns, toolCall("shell", map[string]any{"command": "kubectl --context kind-dev -n kube-system get pods"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	a, srv, _ := gateAssistant(t, policy.ModeOperate, turns...)
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("clean up") })
 	msgs := toolMessages(t, srv)
@@ -410,7 +410,7 @@ func TestHelmPostRendererIsRefusedBeforeThePrompt(t *testing.T) {
 	t.Setenv("KUBECONFIG", "")
 	a, srv, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("helm", map[string]any{"args": "upgrade web ./chart -n apps --post-renderer ./render.sh"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	asked := false
 	a.confirmPermission = func(policy.Invocation, map[string]any) ui.PermissionChoice {
 		asked = true

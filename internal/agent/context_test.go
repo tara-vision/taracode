@@ -6,7 +6,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // TestGetContextInfoSumsTokensAndDefaultsMaxTokens covers the token accounting GetContextInfo
@@ -72,7 +72,7 @@ func TestForceCompactShortensConversationAndRecordsEvent(t *testing.T) {
 		openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: "second question"},
 		openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: "second answer"},
 	)
-	srv.Turns = []ollamatest.Turn{{Content: "The user asked twice and got two answers."}}
+	srv.Turns = []taraenginetest.Turn{{Content: "The user asked twice and got two answers."}}
 	before := len(a.conversation)
 
 	if err := a.ForceCompact(); err != nil {

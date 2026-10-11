@@ -42,15 +42,13 @@ func TestSameModel(t *testing.T) {
 	}
 }
 
-// TestChooseModelToleratesOllamasImplicitLatestTag covers the fix for a silent model substitution
-// bug: Ollama treats a model named without a tag as "name:latest" and lists it that way from
-// /api/tags, but taracode's registry and docs name models without a tag. Before this fix,
-// modelAvailable compared the persisted or configured name against the engine's list with an exact
-// string match, so a bare "--model glm-4.7-flash" never matched the listed "glm-4.7-flash:latest";
-// chooseModel then silently fell back to the first listed model with only a warning, so the
-// assistant could run a completely different model than the one asked for. Each case checks both
-// the resolved model name and the message chooseModel printed, since a right model chosen for the
-// wrong reason (or a wrong model chosen quietly) would still be a bug.
+// TestChooseModelToleratesOllamasImplicitLatestTag: a model named without a tag matches the server's
+// ":latest" listing of it. Ollama treats a model named without a tag as "name:latest" and lists it
+// that way from /api/tags, so a bare "--model glm-4.7-flash" is the listed "glm-4.7-flash:latest" and
+// chooseModel keeps the model that was asked for; a genuinely different tag still falls back to the
+// first listed model with a warning. Each case checks both the resolved model name and the message
+// chooseModel printed, so the right model chosen for another reason, or a different model chosen
+// without a warning, does not pass.
 func TestChooseModelToleratesOllamasImplicitLatestTag(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -84,8 +82,8 @@ func TestChooseModelToleratesOllamasImplicitLatestTag(t *testing.T) {
 			wantContains:   "Using saved model: foo:latest",
 		},
 		{
-			// A real, different tag must still fall back: this is not the bug, it is a genuinely
-			// different model, and the fix must not blur that distinction.
+			// A different tag is a different model, so the name still falls back to the first
+			// listed one.
 			name:         "configured name with a different (non-latest) tag is genuinely unavailable",
 			models:       []string{"gemma4:12b"},
 			configModel:  "gemma4",

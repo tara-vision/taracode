@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestResolveContextWindow(t *testing.T) {
@@ -36,25 +36,23 @@ func TestResolveContextWindow(t *testing.T) {
 	}
 }
 
-// TestNewRefusesAModelWithoutToolSupport runs New for real against a fake server whose only model
+// TestNewRefusesAModelWithoutToolSupport runs New for real against a fake engine whose only model
 // lacks the "tools" capability: the capability gate must refuse it before the assistant is usable.
 func TestNewRefusesAModelWithoutToolSupport(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "old:7b", Capabilities: []string{"completion"}, ContextLength: 4096, Family: "old"}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "old:7b", Capabilities: []string{"completion"}, ContextLength: 4096, Family: "old"}}
 
-	_, err := New(Options{Host: srv.URL, Model: "old:7b", Vendor: "ollama"})
+	_, err := New(Options{Host: srv.URL, Model: "old:7b", Vendor: "taraengine"})
 	if err == nil || !strings.Contains(err.Error(), "does not support tools") {
 		t.Fatalf("expected the capability gate, got %v", err)
 	}
 }
 
-// TestApplyModelDetailsHandlesShowErrors covers the fix for every Show error being treated as the
-// OpenAI-compatible case: only llm.ErrNotSupported keeps num_ctx unresolved (a server without
-// capability data); any other error (a transient Show failure, for example) still resolves and requests a
-// window instead of silently disabling num_ctx for the whole session, and warns once through the
-// renderer.
+// TestApplyModelDetailsHandlesShowErrors: only llm.ErrNotSupported leaves the window unresolved (a
+// server without capability data); any other error (a transient Show failure, for example) still
+// resolves the window the model loads at, and warns once through the renderer.
 func TestApplyModelDetailsHandlesShowErrors(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -62,7 +60,7 @@ func TestApplyModelDetailsHandlesShowErrors(t *testing.T) {
 		wantWindow int
 		wantWarn   bool
 	}{
-		{"not supported keeps num_ctx unresolved", llm.ErrNotSupported, 0, false},
+		{"not supported keeps the window unresolved", llm.ErrNotSupported, 0, false},
 		{"a transient error still resolves a window", errors.New("dial tcp: connection refused"), defaultContextWindow, true},
 	}
 	for _, tc := range cases {
@@ -88,9 +86,9 @@ func TestApplyModelDetailsHandlesShowErrors(t *testing.T) {
 	}
 }
 
-// TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability covers the fix for a
-// configured think level making every turn fail with Ollama's 400 on a model whose /api/show lacks
-// the thinking capability: applyModelDetails resets think to auto and warns once.
+// TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability: a configured think level
+// on a model that lacks the thinking capability is reset to auto with one warning, so no turn asks a
+// model for reasoning it cannot do.
 func TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability(t *testing.T) {
 	a, _ := newTestAssistant(t, false)
 	a.think = llm.ThinkHigh
@@ -110,14 +108,14 @@ func TestApplyModelDetailsDowngradesThinkWhenTheModelHasNoThinkingCapability(t *
 	}
 }
 
-// TestSetThinkDowngradesOnAModelWithoutThinkingSupport covers the runtime /think command bypassing
-// the capability downgrade applyModelDetails already applies at startup and on model switch: on a
-// tools-only model, SetThink must apply the same downgrade, warn the same way, and report the mode
-// that will actually reach the wire, so a turn never puts a think level Ollama will 400 on.
+// TestSetThinkDowngradesOnAModelWithoutThinkingSupport: the runtime /think command applies the same
+// capability downgrade applyModelDetails applies at startup and on model switch: on a tools-only
+// model, SetThink warns the same way and reports the mode that will actually reach the wire, so a turn
+// never puts a think level on a model that cannot take it.
 func TestSetThinkDowngradesOnAModelWithoutThinkingSupport(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.thinkingSupported = false // as applyModelDetails leaves it for a tools-only model
-	srv.Turns = []ollamatest.Turn{{Content: "ok"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "ok"}}
 
 	var effective llm.Think
 	out := captureStdout(t, func() {
@@ -138,24 +136,37 @@ func TestSetThinkDowngradesOnAModelWithoutThinkingSupport(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := lastChatBody(t, srv)
-	if think, present := body["think"]; present {
-		t.Fatalf("think should be omitted on the wire (auto semantics), got %v", think)
+	_, kwargsSent := body["chat_template_kwargs"]
+	_, effortSent := body["reasoning_effort"]
+	if kwargsSent || effortSent {
+		t.Fatalf("think should be omitted on the wire (auto semantics), got %v and %v",
+			body["chat_template_kwargs"], body["reasoning_effort"])
 	}
 }
 
-func TestThinkAndWindowReachTheRequest(t *testing.T) {
-	a, srv := newTestAssistant(t, false)
+// TestThinkReachesTheRequestAndTheWindowTheLoad: the think level travels with each chat request, while
+// the window is set once, when the session loads the model.
+func TestThinkReachesTheRequestAndTheWindowTheLoad(t *testing.T) {
+	opts, srv, _ := engineOptions(t)
+	opts.Model, opts.ContextWindow = "glm-4.7-flash", "16384"
+	a, err := New(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
 	a.SetThink(llm.ThinkHigh)
-	a.contextWindow = 16384
-	srv.Turns = []ollamatest.Turn{{Content: "ok"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "ok"}}
 	if err := a.ProcessMessage("hi"); err != nil {
 		t.Fatal(err)
 	}
 	// lastChatBody (loop_test.go), not the raw last request: ProcessMessage's deferred server
-	// context check issues a trailing /api/ps probe after /api/chat.
+	// context check issues a trailing GET /api/loaded after the chat.
 	body := lastChatBody(t, srv)
-	if body["think"] != "high" || body["options"].(map[string]any)["num_ctx"] != float64(16384) {
+	kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != true || body["reasoning_effort"] != "high" {
 		t.Fatalf("request: %v", body)
+	}
+	if want := (taraenginetest.LoadRequest{Model: "glm-4.7-flash", Context: 16384}); srv.Loads[len(srv.Loads)-1] != want {
+		t.Fatalf("loads %+v, want the last at %+v", srv.Loads, want)
 	}
 	if a.Think() != llm.ThinkHigh {
 		t.Fatalf("Think() = %q", a.Think())

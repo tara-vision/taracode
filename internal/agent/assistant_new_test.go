@@ -7,16 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // newOptions is a New configuration on a fake serving gemma4:12b, with HOME isolated so no global
 // policy is read, and output collected in the returned buffer.
-func newOptions(t *testing.T, dir string) (Options, *ollamatest.Server, *bytes.Buffer) {
+func newOptions(t *testing.T, dir string) (Options, *taraenginetest.Server, *bytes.Buffer) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 	var out bytes.Buffer

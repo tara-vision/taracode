@@ -11,17 +11,17 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-// chatRequests counts the /api/chat requests the fake served.
-func chatRequests(srv *ollamatest.Server) int {
+// chatRequests counts the chat requests the fake served.
+func chatRequests(srv *taraenginetest.Server) int {
 	n := 0
 	for _, r := range srv.Requests {
-		if r.Path == "/api/chat" {
+		if r.Path == chatPath {
 			n++
 		}
 	}
@@ -31,7 +31,7 @@ func chatRequests(srv *ollamatest.Server) int {
 func TestProcessMessageContextStopsBeforeTheRequest(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.out = io.Discard
-	srv.Turns = []ollamatest.Turn{{Content: "never asked"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "never asked"}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := a.ProcessMessageContext(ctx, "hello"); !errors.Is(err, context.Canceled) {
@@ -55,8 +55,8 @@ func TestProcessMessageContextSkipsTheRemainingToolCalls(t *testing.T) {
 		events = append(events, ev)
 		cancel()
 	}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{
 			{Name: "read_file", Args: map[string]any{"path": "hello.txt"}},
 			{Name: "list_files", Args: map[string]any{"path": "."}},
 		}},
@@ -88,10 +88,10 @@ type ctxKey struct{}
 // background one, reaches both the mandatory dry run of a kubectl apply and the apply itself.
 func TestProcessMessageContextReachesTheDryRunAndTheTool(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // no ~/.taracode/policy.yaml from the machine running the test
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "kubectl", Args: map[string]any{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "kubectl", Args: map[string]any{
 			"verb": "apply", "args": "-f app.yaml", "context": "kind-dev", "namespace": "shop"}}}},
 		{Content: "applied"},
 	}

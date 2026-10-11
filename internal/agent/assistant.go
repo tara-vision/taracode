@@ -398,12 +398,12 @@ func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Rende
 	return g
 }
 
-// newForTest builds an Assistant on a fake server without storage, spinner or interactive
+// newForTest builds an Assistant on a fake engine without storage, spinner or interactive
 // prompts, with the same setting values DefaultOptions gives the binary. Auto-compaction is kept
 // off (ForceCompact is exercised directly where a test cares about it), so an ordinary test never
 // triggers a surprise summarization call. Test-only: New is the constructor the binary uses.
 func newForTest(workingDir, model, host string, streaming bool) *Assistant {
-	prov := provider.NewOllamaProvider(host, "")
+	prov := provider.NewTaraengineProvider(host, "")
 	prov.SetModel(model)
 	// The built-in policy has redaction on; the test redactor leaves the environment out so what a
 	// test sees does not depend on the machine's variables.
