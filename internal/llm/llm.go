@@ -114,6 +114,8 @@ type ModelDetails struct {
 	ContextLength int      // native maximum, 0 = unknown
 	Family        string
 	ParameterSize string
+	Quantization  string // the weights' quantization, "" when the server does not say
+	Digest        string // the model file's digest as the server shows it, "" when it does not say
 }
 
 // Has reports whether the model advertises a capability.
@@ -139,6 +141,7 @@ type LoadedModel struct {
 	Quantization  string
 	ParameterSize string
 	Digest        string
+	Measured      bool // true when the server measured the memory on the machine, false for an estimate
 }
 
 // Client is implemented by every backend.
@@ -151,4 +154,10 @@ type Client interface {
 	Loaded(ctx context.Context) ([]LoadedModel, error)
 	Version(ctx context.Context) (string, error)
 	Unload(ctx context.Context, model string) error
+}
+
+// Loader is implemented by a backend that sets the context window when it loads a model, not per request
+// (taraengine). The session calls it at start and on /model; other backends have no such step.
+type Loader interface {
+	Load(ctx context.Context, model string, window int) error
 }
