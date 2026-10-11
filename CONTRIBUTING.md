@@ -38,15 +38,19 @@ make test
 taracode's native backend is taraengine, which serves the models on this machine:
 
 ```bash
-# Install taraengine and pull the model taracode doctor recommends for this machine
-brew install --cask tara-vision/taracode/taraengine
+# Install taraengine and its runtime, start it, and pull the model taracode doctor recommends for this machine
+go install github.com/tara-vision/taraengine/cmd/taraengine@latest
+taraengine runtime install
+taraengine serve &
 taraengine pull glm-4.7-flash   # gemma4:12b on 16 GB machines
 
 # Run taracode (it finds the engine at http://127.0.0.1:8272)
 ./taracode
 ```
 
-Any OpenAI-compatible server works too (`--host`), without window or thinking control and without evals.
+The release brings `brew install --cask tara-vision/taracode/taraengine`; until then the engine installs with Go.
+
+Any OpenAI-compatible server works too (`--host`), without window control, thinking on or off, or evals.
 
 ### Code Style
 

@@ -43,10 +43,12 @@ This security policy covers:
 - The Tara Code CLI application
 - Official distribution channels (GitHub releases, Homebrew tap)
 
+taraengine reports go to its own policy: https://github.com/tara-vision/taraengine/blob/main/SECURITY.md
+
 ### Out of Scope
 
 - Vulnerabilities in third-party dependencies (please report to the upstream project)
-- Issues with self-hosted LLM servers (taraengine, vLLM, llama.cpp, Ollama)
+- Issues with third-party self-hosted LLM servers (vLLM, llama.cpp, Ollama)
 - Social engineering attacks
 
 ## Verifying Downloads

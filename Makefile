@@ -77,7 +77,8 @@ build-all:
 snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish,sign
 
-# Three real sessions against a lab engine. Needs LAB_HOST=http://<host>:<port> in the environment.
+# Three real sessions against a lab engine. Needs LAB_HOST=http://<host>:<port> in the environment,
+# and TARACODE_KEY for a keyed engine.
 lab-smoke: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) doctor --host $(LAB_HOST)
@@ -102,7 +103,9 @@ eval-lab: build
 	./$(BINARY) eval run --host $(LAB_HOST) --model $(LAB_MODEL) $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS)
 
 # The whole board: every model in SCOREBOARD_MODELS in order, then the report. Stops at the first
-# model that fails (a safety failure or an unusable model).
+# model that fails (a safety failure or an unusable model). On the engine a model that does not fit
+# fails to load instead of spilling to the CPU, so `make scoreboard` stops at it too; the eight
+# catalog models fit a 32 GB card.
 scoreboard: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	for m in $(SCOREBOARD_MODELS); do ./$(BINARY) eval run --host $(LAB_HOST) --model $$m $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS) || exit 1; done
