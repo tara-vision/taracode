@@ -340,8 +340,8 @@ func opaqueWords(segments []shellwords.Segment) []string {
 
 // dotGlobPossible reports a line that may turn on matching dot files before its globs expand, told from its
 // parsed words: a shopt or setopt, or a set -o or +o, anywhere on it (the option may be built at run time), a word
-// that names dotglob, globdots, globignore or bashopts in any case and spelling with underscores, a zsh glob
-// qualifier, or a line the classifier cannot see into (opaque).
+// that names dotglob, globdots, globignore or bashopts in any case and spelling with underscores, or a line the
+// classifier cannot see into (opaque), a zsh glob qualifier such as *(D) included.
 func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
 	if opaque {
 		return true
@@ -353,9 +353,6 @@ func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
 				if strings.Contains(folded, name) {
 					return true
 				}
-			}
-			if strings.Contains(w, "*(") || strings.Contains(w, "?(") {
-				return true
 			}
 		}
 		simple, _ := simpleCommand(seg.Words)
