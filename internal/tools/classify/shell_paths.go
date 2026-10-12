@@ -6,18 +6,21 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
 // lineFiles are the files a line acts on: written, which it writes, moves or removes (fileWriters), so a
-// directory among them is checked for the protected paths it holds, and named, which it acts on by name only
-// (namedWriters).
+// directory among them is checked for the protected paths it holds; named, which it acts on by name only
+// (namedWriters); and the finds it runs narrowed by name (findTargets).
 type lineFiles struct {
 	written, named []string
+	finds          []policy.Find
 }
 
 func (f lineFiles) with(g lineFiles) lineFiles {
-	return lineFiles{written: slices.Concat(f.written, g.written), named: slices.Concat(f.named, g.named)}
+	return lineFiles{written: slices.Concat(f.written, g.written), named: slices.Concat(f.named, g.named),
+		finds: slices.Concat(f.finds, g.finds)}
 }
 
 // shellPaths returns the files the segments act on, as written on the line: the targets of redirects into
@@ -39,7 +42,8 @@ func shellPaths(segments []shellwords.Segment) lineFiles {
 				written = append(written, target)
 			}
 		}
-		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs)})
+		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs),
+			finds: findTargets(words, dirs)})
 		if d, ok := cdTarget(words, dirs); ok {
 			dirs = append(dirs, d)
 		}
@@ -110,22 +114,31 @@ func namedOperands(words []string) []string { return operandsOf(words, namedWrit
 // operandsOf returns what a table gives for a command's operands, past the wrapper programs in front of it and
 // read from the directory they move it to (env -C, sudo -D).
 func operandsOf(words []string, table map[string]func(rest []string) []string) []string {
+	cmd, dir := behindWrappers(words, func(prog string) bool { _, ok := table[prog]; return ok })
+	if cmd == nil {
+		return nil
+	}
+	return inDir(dir, nonEmpty(table[path.Base(cmd[0])](cmd[1:])))
+}
+
+// behindWrappers returns the command a known program runs, as the words from that program on, past the wrapper
+// programs in front of it, with the directory the wrappers move it to; nil when the words run no known program.
+func behindWrappers(words []string, known func(prog string) bool) ([]string, string) {
 	if len(words) == 0 {
-		return nil
+		return nil, ""
 	}
-	prog, rest := path.Base(words[0]), words[1:]
-	if wrapperPrograms[prog] {
-		for i, w := range rest {
-			if _, ok := table[path.Base(w)]; ok {
-				return inDir(chdirOf(words[:i+1]), operandsOf(rest[i:], table))
-			}
+	if !wrapperPrograms[path.Base(words[0])] {
+		if known(path.Base(words[0])) {
+			return words, ""
 		}
-		return nil
+		return nil, ""
 	}
-	if writer, ok := table[prog]; ok {
-		return nonEmpty(writer(rest))
+	for i, w := range words[1:] {
+		if known(path.Base(w)) {
+			return words[i+1:], chdirOf(words[:i+1])
+		}
 	}
-	return nil
+	return nil, ""
 }
 
 // fileWriters maps the programs that write, move or remove the files they name to the operands

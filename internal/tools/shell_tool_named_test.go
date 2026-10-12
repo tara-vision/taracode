@@ -4,8 +4,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/policy"
 )
 
 // TestShellToolNamesThePathsOfAnOpaqueMutation: an opaque mutating line's words are the paths it names; a
@@ -52,5 +55,17 @@ func TestShellToolNamesWhatTheClassifierNamesAndTakesWordsAsWritten(t *testing.T
 	inv = shell.Classify(map[string]any{"command": "find . -name '*.pyc' -delete"}, wd)
 	if !slices.Contains(inv.Targets.Named, wd) || slices.Contains(inv.Targets.Paths, wd) {
 		t.Errorf("find -name: named %q, paths %q", inv.Targets.Named, inv.Targets.Paths)
+	}
+}
+
+// TestShellToolResolvesTheStartPointsOfAFind: a find narrowed by name reaches the policy with its start point
+// resolved like any path, and as written for the paths find prints.
+func TestShellToolResolvesTheStartPointsOfAFind(t *testing.T) {
+	wd := t.TempDir()
+	inv := ShellTool(io.Discard).Classify(map[string]any{"command": "find . sub -name config -delete"}, wd)
+	want := []policy.Find{{Start: wd, Written: ".", Tests: []policy.NameTest{{Test: "-name", Pattern: "config"}}},
+		{Start: filepath.Join(wd, "sub"), Written: "sub", Tests: []policy.NameTest{{Test: "-name", Pattern: "config"}}}}
+	if !reflect.DeepEqual(inv.Targets.Finds, want) {
+		t.Errorf("finds %+v, want %+v", inv.Targets.Finds, want)
 	}
 }

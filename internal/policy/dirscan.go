@@ -43,14 +43,26 @@ func (p Policy) heldPath(dir, workingDir string) (Verdict, bool) {
 				pat), true
 		}
 	}
-	if len(walked) == 0 || skippedTrees[filepath.Base(dir)] {
+	if len(walked) == 0 {
 		return Verdict{}, false
 	}
-	return walkFor(dir, realWd, walked)
+	return walkUnder(dir, func(path string, _ fs.DirEntry) (Verdict, bool) {
+		for _, m := range walked {
+			if m.matches(path, realWd) {
+				return denied("protected.paths", "%s holds %s, which matches the protected path pattern %q", dir, path,
+					m.pattern), true
+			}
+		}
+		return Verdict{}, false
+	})
 }
 
-// walkFor walks a directory, skipping the trees package managers own, for an entry a pattern matches.
-func walkFor(dir, workingDir string, walked []pathMatcher) (Verdict, bool) {
+// walkUnder walks a directory below itself, past the trees package managers own, until visit gives a verdict;
+// a directory that is such a tree is not walked. It refuses when it reads more than dirWalkBound entries.
+func walkUnder(dir string, visit func(path string, d fs.DirEntry) (Verdict, bool)) (Verdict, bool) {
+	if skippedTrees[filepath.Base(dir)] {
+		return Verdict{}, false
+	}
 	var v Verdict
 	var found bool
 	entries := 0
@@ -61,12 +73,8 @@ func walkFor(dir, workingDir string, walked []pathMatcher) (Verdict, bool) {
 		if entries++; entries > dirWalkBound {
 			return errWalkBound
 		}
-		for _, m := range walked {
-			if m.matches(path, workingDir) {
-				v, found = denied("protected.paths", "%s holds %s, which matches the protected path pattern %q",
-					dir, path, m.pattern), true
-				return filepath.SkipAll
-			}
+		if v, found = visit(path, d); found {
+			return filepath.SkipAll
 		}
 		if d.IsDir() && skippedTrees[d.Name()] {
 			return filepath.SkipDir

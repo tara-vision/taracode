@@ -48,7 +48,7 @@ func ShellTool(stream io.Writer) *Tool {
 			command := argString(args, "command")
 			res := classify.Shell(command)
 			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir, true),
-				Named: shellTargets(res.Named, workingDir, true)}
+				Named: shellTargets(res.Named, workingDir, true), Finds: findStarts(res.Finds, workingDir)}
 			if res.Classification == policy.Mutate && res.Opaque {
 				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, false)...)
 			}
@@ -144,6 +144,18 @@ func shellTargets(paths []string, workingDir string, globs bool) []string {
 				add(m)
 			}
 		}
+	}
+	return out
+}
+
+// findStarts resolves the start point of each find a shell line runs as shellTargets resolves a path; the
+// start point as written stays, since it begins every path find prints.
+func findStarts(finds []policy.Find, workingDir string) []policy.Find {
+	home, _ := os.UserHomeDir()
+	out := make([]policy.Find, 0, len(finds))
+	for _, f := range finds {
+		out = append(out, policy.Find{Start: resolvePath(expandHome(f.Start, home), workingDir), Written: f.Written,
+			Tests: f.Tests})
 	}
 	return out
 }

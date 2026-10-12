@@ -1,6 +1,7 @@
 package classify
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -75,5 +76,31 @@ func TestShellSplitsWrittenFromNamedPaths(t *testing.T) {
 		if got := strings.Join(res.Named, "|"); got != c.named {
 			t.Errorf("%q: named %q, want %q", c.cmd, got, c.named)
 		}
+	}
+}
+
+// TestShellFindsAreTheFindsNarrowedByName: a find that narrows by name what it deletes or runs a command on
+// reaches the policy with its start points and name tests, read from the directories the line moves to.
+func TestShellFindsAreTheFindsNarrowedByName(t *testing.T) {
+	cases := []struct{ cmd, want string }{
+		{"find . -name config -delete", "{. . [{-name config}]}"},
+		{"cd sub && find . -iname '*.pyc' -exec rm {} +", "{. . [{-iname *.pyc}]}|{sub . [{-iname *.pyc}]}"},
+		{"env -C infra find . -path '*/x/*' -delete", "{infra . [{-path */x/*}]}"},
+		{"find a b -regex '.*x' -o -name y -delete", "{a a [{-regex .*x} {-name y}]}|{b b [{-regex .*x} {-name y}]}"},
+		{"find . -delete", ""},
+		{"find . -name x", ""},
+		{"find . -lname '*x*' -delete", ""},
+	}
+	for _, c := range cases {
+		var got []string
+		for _, f := range Shell(c.cmd).Finds {
+			got = append(got, fmt.Sprintf("%v", f))
+		}
+		if strings.Join(got, "|") != c.want {
+			t.Errorf("%q: finds %q, want %q", c.cmd, got, c.want)
+		}
+	}
+	if paths := Shell("find . -lname '*x*' -delete").Paths; strings.Join(paths, "|") != "." {
+		t.Errorf("a find narrowed by a link test only: paths %q", paths)
 	}
 }

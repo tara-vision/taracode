@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -141,7 +142,11 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 // patterns. A path deeper than resolved follows is refused: a link in it could lead to a protected path.
 func (p Policy) protectedPath(inv Invocation) (Verdict, bool) {
 	t := inv.Targets
-	for _, path := range append(append([]string{}, t.Paths...), t.Named...) {
+	starts := make([]string, 0, len(t.Finds))
+	for _, f := range t.Finds {
+		starts = append(starts, f.Start)
+	}
+	for _, path := range slices.Concat(t.Paths, t.Named, starts) {
 		if tooDeep(path) && len(p.Protected.Paths) > 0 {
 			return denied("protected.paths", "%s has more than %d parts, too many to check for protected paths",
 				path, maxResolvedParts), true
@@ -168,6 +173,11 @@ func (p Policy) protectedPath(inv Invocation) (Verdict, bool) {
 				return denied("protected.paths", "the command names %s, which matches the protected path pattern %q",
 					path, pat), true
 			}
+		}
+	}
+	for _, f := range t.Finds {
+		if v, held := p.foundPath(f, inv.WorkingDir); held {
+			return v, true
 		}
 	}
 	return Verdict{}, false

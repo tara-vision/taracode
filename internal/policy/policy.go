@@ -53,6 +53,7 @@ type Targets struct {
 	CloudAccount  string
 	Paths         []string // absolute paths
 	Named         []string // absolute paths an opaque command names: matched like Paths, never walked
+	Finds         []Find   // what a find narrowed by name acts on: walked for the entries its tests match
 	Hosts         []string
 }
 

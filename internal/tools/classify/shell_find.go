@@ -4,11 +4,36 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/tara-vision/taracode/internal/policy"
 )
 
-// findNameTests are the tests that narrow what find acts on to the names or paths their patterns match.
+// findNameTests are the tests that narrow what find acts on to the names or paths their patterns match. -lname
+// and -ilname match a link's target, which the policy cannot walk for, so they narrow nothing.
 var findNameTests = map[string]bool{"-name": true, "-iname": true, "-path": true, "-ipath": true, "-wholename": true,
-	"-iwholename": true, "-regex": true, "-iregex": true, "-lname": true, "-ilname": true}
+	"-iwholename": true, "-regex": true, "-iregex": true}
+
+// findTargets are the finds a segment runs that narrow by name what they delete or run a command on, for the
+// policy to walk: each start point, read from the directory wrappers move find to and from every directory an
+// earlier cd of the line moved to, with the start point as written and the expression's name tests.
+func findTargets(words, dirs []string) []policy.Find {
+	cmd, dir := behindWrappers(words, func(prog string) bool { return prog == "find" })
+	if cmd == nil {
+		return nil
+	}
+	starts, expr := findStarts(cmd[1:])
+	if !findActs(expr) || !findNarrowed(expr) {
+		return nil
+	}
+	tests := findTests(expr)
+	var out []policy.Find
+	for _, start := range starts {
+		for _, s := range underDirs([]string{joinDir(dir, start)}, dirs) {
+			out = append(out, policy.Find{Start: s, Written: start, Tests: tests})
+		}
+	}
+	return out
+}
 
 // findWritten are the files find writes (-fprint, -fls) and, when it deletes or runs a command on what it finds
 // and its expression does not narrow that by name, its start points: it acts on whatever they hold.
@@ -127,14 +152,23 @@ func closingParen(words []string, i int) int {
 	return len(words)
 }
 
+// findTests are the name tests of a find expression.
+func findTests(expr []string) []policy.NameTest {
+	var out []policy.NameTest
+	for i := 0; i+1 < len(expr); i++ {
+		if findNameTests[expr[i]] {
+			out = append(out, policy.NameTest{Test: expr[i], Pattern: expr[i+1]})
+			i++
+		}
+	}
+	return out
+}
+
 // findNames are the patterns of a find expression's name tests.
 func findNames(expr []string) []string {
 	var out []string
-	for i := 0; i+1 < len(expr); i++ {
-		if findNameTests[expr[i]] {
-			out = append(out, expr[i+1])
-			i++
-		}
+	for _, t := range findTests(expr) {
+		out = append(out, t.Pattern)
 	}
 	return out
 }

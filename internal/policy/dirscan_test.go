@@ -138,3 +138,15 @@ func TestABareNamePatternIsCheckedByTheWalk(t *testing.T) {
 		t.Errorf("app holding .env: %+v", v)
 	}
 }
+
+func TestAPolicyOfFixedPathsChecksADirectoryWithoutAWalk(t *testing.T) {
+	wd := project(t)
+	p := Default()
+	p.Protected.Paths = []string{".git/**"}
+	if v := p.Evaluate(ModeOperate, shellRemoves(wd, "infra")); !v.Allow {
+		t.Errorf("infra holds nothing this policy protects: %+v", v)
+	}
+	if v := p.Evaluate(ModeOperate, shellRemoves(wd, ".")); v.Allow {
+		t.Errorf("the project holds .git: %+v", v)
+	}
+}
