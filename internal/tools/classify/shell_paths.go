@@ -339,9 +339,10 @@ func opaqueWords(segments []shellwords.Segment) []string {
 }
 
 // dotGlobPossible reports a line that may turn on matching dot files before its globs expand, told from its
-// parsed words: a shopt or setopt, or a set -o or +o, anywhere on it (the option may be built at run time), a word
-// that names dotglob, globdots, globignore or bashopts in any case and spelling with underscores, or a line the
-// classifier cannot see into (opaque), a zsh glob qualifier such as *(D) included.
+// parsed words: a word that names dotglob, globdots, globignore or bashopts in any case and spelling with
+// underscores, a shopt or setopt, a set with an option bash's set does not have (zsh's set -4) or one named at
+// run time, a variable named at run time (dynamicName), or a line the classifier cannot see into (opaque), a zsh
+// glob qualifier such as *(D) included.
 func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
 	if opaque {
 		return true
@@ -357,10 +358,47 @@ func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
 		}
 		simple, _ := simpleCommand(seg.Words)
 		words := unwrap(simple[assignmentsEnd(simple):]).words
-		if len(words) > 0 && (in(path.Base(words[0]), "shopt", "setopt") ||
-			words[0] == "set" && (slices.Contains(words, "-o") || slices.Contains(words, "+o"))) {
+		if dynamicName(words) || len(words) > 0 && in(path.Base(words[0]), "shopt",
+			"setopt") || len(words) > 0 && words[0] == "set" && setChangesGlobs(words[1:]) {
 			return true
 		}
+	}
+	return false
+}
+
+// setLetters are the short options of bash's set and o, which takes an option's name.
+const setLetters = "abefhkmnptuvxBCEHPTo"
+
+// setChangesGlobs reports a set whose options may change globbing: a letter bash's set does not have, or a
+// word built at run time.
+func setChangesGlobs(rest []string) bool {
+	for _, w := range rest {
+		if strings.ContainsAny(w, "$`") || len(w) > 1 && w != "--" && (w[0] == '-' || w[0] == '+') &&
+			strings.Trim(w[1:], setLetters) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicName reports a variable a command names at run time, which may be GLOBIGNORE: the names export,
+// declare, typeset, local, readonly and read set (any expansion in them, and in a declare -n's value), and
+// printf -v's. An assignment whose name holds an expansion already makes the line opaque.
+func dynamicName(words []string) bool {
+	dynamic := func(w string) bool { return strings.ContainsAny(w, "$`") }
+	if len(words) == 0 {
+		return false
+	}
+	switch prog, rest := path.Base(words[0]), words[1:]; {
+	case in(prog, "export", "declare", "typeset", "local", "readonly", "read"):
+		nameref := slices.ContainsFunc(rest, func(w string) bool { return looksLikeFlag(w) && strings.Contains(w, "n") })
+		for _, w := range operands(rest) {
+			if name, _, _ := strings.Cut(w, "="); dynamic(name) || nameref && dynamic(w) {
+				return true
+			}
+		}
+	case prog == "printf":
+		return dynamic(flagValue(rest, "-v"))
 	}
 	return false
 }

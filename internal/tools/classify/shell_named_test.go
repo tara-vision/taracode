@@ -225,3 +225,30 @@ func TestShellTellsALineThatMayGlobDotFiles(t *testing.T) {
 		}
 	}
 }
+
+// TestShellTellsADynamicNameMayTurnOnDotGlob: a variable or option the line names at run time may be the one that
+// turns on matching dot files, so it marks the line; set with a letter bash's set does not have does too, and a
+// literal option or a dynamic value does not.
+func TestShellTellsADynamicNameMayTurnOnDotGlob(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want bool
+	}{
+		{`set -o noclobber; rm -f *`, false},
+		{`set -euo pipefail; chmod 644 *`, false},
+		{`export PATH="$HOME/bin:$PATH"; chmod 644 *`, false},
+		{`set -4; rm *`, true},
+		{`set -o "$x"; rm *`, true},
+		{`x=GLOBIGNORE; export "$x=."; rm -rf *`, true},
+		{`export "$x=."; rm -rf *`, true},
+		{`read "$v" <<< .; rm -rf *`, true},
+		{`printf -v "$v" .; rm -rf *`, true},
+		{`declare -n r="$v"; r=.; rm -rf *`, true},
+		{`options[$k]=on; rm -rf *`, true},
+	}
+	for _, c := range cases {
+		if got := Shell(c.cmd).DotGlob; got != c.want {
+			t.Errorf("%q: dotglob %v, want %v", c.cmd, got, c.want)
+		}
+	}
+}
