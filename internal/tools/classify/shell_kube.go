@@ -2,6 +2,7 @@ package classify
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -59,7 +60,7 @@ func (l *kubeLine) noteChanged(cause string) {
 // are on segment and kubeCommand), and a target of "*" when a word names kubectl or helm where the
 // classifier does not read it as a program (an argument of sh, eval, find -exec, docker run, kubectl
 // exec, a program it does not know) on a line that runs something it cannot see into.
-func shellKube(parsed shellwords.Result) []KubeTarget {
+func shellKube(parsed shellwords.Result) ([]KubeTarget, bool) {
 	if parsed.FunctionDef {
 		// A function body runs on the call, with arguments the classifier cannot correlate, so a
 		// kubectl or helm anywhere on the line acts on a context it cannot know.
@@ -68,26 +69,60 @@ func shellKube(parsed shellwords.Result) []KubeTarget {
 			words += countKubeWords(seg.Words)
 		}
 		if words > 0 {
-			return []KubeTarget{{Context: "*", Namespace: "*", Cause: causeFunctionDef}}
+			return []KubeTarget{{Context: "*", Namespace: "*", Cause: causeFunctionDef}}, true
 		}
-		return nil
+		return nil, true
 	}
 	l := kubeLine{opaque: parsed.Substitution, named: namedKubeconfigs(parsed.Segments), vars: lineVars{}}
 	for _, seg := range parsed.Segments {
 		l.segment(seg)
 	}
-	if l.opaque && l.words > l.placed {
+	if l.opaque && l.words > l.placed && !anyCluster(l.targets) {
 		l.targets = append(l.targets, KubeTarget{Context: "*", Namespace: "*", Cause: causeUnknownProg})
 	}
-	return l.targets
+	return l.targets, l.opaque
+}
+
+// innerKubeWords counts the kubectl and helm words of the strings a segment runs as lines of their own (a
+// shell's -c, eval, a script on its input), parsed as the shell parses them, so quotes inside a word
+// (kube""ctl) do not hide one.
+func innerKubeWords(seg shellwords.Segment, depth int) int {
+	simple, _ := simpleCommand(seg.Words)
+	words := simple[assignmentsEnd(simple):]
+	if depth == 0 || len(words) == 0 {
+		return 0
+	}
+	n := 0
+	for _, line := range segmentInnerLines(seg, words) {
+		if parsed, err := shellwords.Split(line); err == nil {
+			for _, inner := range parsed.Segments {
+				n += countKubeWords(inner.Words) + innerKubeWords(inner, depth-1)
+			}
+		}
+	}
+	return n
+}
+
+// anyCluster reports a target that already stands for every context and namespace, with the cause that
+// named it first.
+func anyCluster(targets []KubeTarget) bool {
+	for _, t := range targets {
+		if t.Context == "*" && t.Namespace == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // segment reads one simple command after the shell's reserved words (for, do, then, !, {, ...),
 // and notes whether it may change the kube configuration for the commands after it: it writes a
 // kubeconfig, switches the context, sets a variable outside the safe ones, or runs a program the
-// classifier does not know.
+// classifier does not know. A kubectl or helm its here-documents name counts as one the line names.
 func (l *kubeLine) segment(seg shellwords.Segment) {
-	l.words += countKubeWords(seg.Words)
+	l.words += countKubeWords(seg.Words) + innerKubeWords(seg, innerDepth)
+	for _, body := range seg.Heredocs {
+		l.words += countKubeWords(strings.Fields(body))
+	}
 	words, header := simpleCommand(seg.Words)
 	words = withoutGluedBrace(words)
 	if l.writesKubeconfig(words, seg.Redirects) {
@@ -486,11 +521,13 @@ func knownProgram(words []string) bool {
 }
 
 // writesKubeconfig reports a segment that writes a kubeconfig, through a redirect or a file-writing
-// program: kubectl reads the new file, not the one the classifier saw.
+// program (the destination of a copy, which it names, included): kubectl reads the new file, not the
+// one the classifier saw.
 func (l *kubeLine) writesKubeconfig(words, redirects []string) bool {
 	var targets []string
 	if len(words) > 0 {
-		targets = writtenOperands(words[assignmentsEnd(words):])
+		words = words[assignmentsEnd(words):]
+		targets = slices.Concat(writtenOperands(words), namedOperands(words), landingOperands(words))
 	}
 	for _, r := range redirects {
 		if writesFile(r) {
@@ -554,11 +591,20 @@ func countKubeWords(words []string) int {
 	return n
 }
 
-// namesKubeProgram reports a word that names kubectl or helm (countKubeWords).
+// namesKubeProgram reports a word that names kubectl or helm (countKubeWords): the word itself, or a token
+// of it, so a string an interpreter runs (sh -c "kubectl ...", a Python list) names one too.
 func namesKubeProgram(w string) bool {
 	name := path.Base(strings.TrimLeft(w, "{`"))
 	if i := strings.IndexAny(name, ":@"); i > 0 {
 		name = name[:i]
 	}
-	return name == "kubectl" || name == "helm"
+	if name == "kubectl" || name == "helm" {
+		return true
+	}
+	for _, token := range strings.FieldsFunc(w, outsideToken) {
+		if token == "kubectl" || token == "helm" {
+			return true
+		}
+	}
+	return false
 }

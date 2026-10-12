@@ -3,23 +3,39 @@ package classify
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
+	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
-// shellPaths returns the files the segments write or remove, as written on the line: the targets of
-// redirects into files and the operands fileWriters names, also behind sudo, env, xargs and the
-// other wrappers and after the shell's reserved words (do, then, !, {, ...). A relative path is
-// also returned joined to every literal directory an earlier cd or pushd of the line moved to, since
-// the caller resolves it against the directory the line starts in. Paths computed at run time
-// (variables, command substitution) are not seen.
-func shellPaths(segments []shellwords.Segment) []string {
-	var paths, dirs []string
+// lineFiles are the files a line acts on: written, which it writes, moves or removes (fileWriters), so a
+// directory among them is checked for the protected paths it holds; named, which it acts on by name only
+// (namedWriters); landings, where a copy, move or link puts each source if its destination is a directory
+// (landingWriters); and the finds it runs narrowed by name (findTargets).
+type lineFiles struct {
+	written, named, landings []string
+	finds                    []policy.Find
+}
+
+func (f lineFiles) with(g lineFiles) lineFiles {
+	return lineFiles{written: slices.Concat(f.written, g.written), named: slices.Concat(f.named, g.named),
+		landings: slices.Concat(f.landings, g.landings), finds: slices.Concat(f.finds, g.finds)}
+}
+
+// shellPaths returns the files the segments act on, as written on the line: the targets of redirects into
+// files and the operands fileWriters and namedWriters give, also behind sudo, env, xargs and the other wrappers
+// and after the shell's reserved words (do, then, !, {, ...). A relative path is also returned joined to every
+// literal directory an earlier cd or pushd of the line moved to, since the caller resolves it against the
+// directory the line starts in. Paths computed at run time (variables, command substitution) are not seen.
+func shellPaths(segments []shellwords.Segment) lineFiles {
+	var files lineFiles
+	var dirs []string
 	for _, seg := range segments {
 		simple, _ := simpleCommand(seg.Words)
 		simple = withoutGluedBrace(simple)
-		words := simple[assignmentsEnd(simple):]
+		words := expandWords(simple[assignmentsEnd(simple):])
 		written := writtenOperands(words)
 		for _, r := range seg.Redirects {
 			if writesFile(r) {
@@ -27,19 +43,31 @@ func shellPaths(segments []shellwords.Segment) []string {
 				written = append(written, target)
 			}
 		}
-		for _, p := range written {
-			paths = append(paths, p)
-			if relativePath(p) {
-				for _, d := range dirs {
-					paths = append(paths, path.Join(d, p))
-				}
-			}
+		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs),
+			landings: underDirs(landingOperands(words), dirs), finds: findTargets(words, dirs)})
+		execs, chdir := findExecs(words)
+		for _, cmd := range execs {
+			files = files.with(execFiles(cmd, chdir, dirs))
 		}
 		if d, ok := cdTarget(words, dirs); ok {
 			dirs = append(dirs, d)
 		}
 	}
-	return paths
+	return files
+}
+
+// underDirs returns each path, and a relative one also joined to every directory in dirs.
+func underDirs(paths, dirs []string) []string {
+	var out []string
+	for _, p := range paths {
+		out = append(out, p)
+		if relativePath(p) {
+			for _, d := range dirs {
+				out = append(out, path.Join(d, p))
+			}
+		}
+	}
+	return out
 }
 
 // relativePath reports a path the working directory resolves: not absolute, not under ~ and not
@@ -48,18 +76,25 @@ func relativePath(p string) bool {
 	return p != "" && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "~") && !strings.HasPrefix(p, "$")
 }
 
-// cdTarget returns the directory a cd or pushd with a literal argument moves to, joined to the
-// previous one when it is relative. ok is false for any other command and for a directory known
-// only at run time (cd -, cd $DIR).
+// cdTarget returns the directory a cd or pushd with a literal argument moves to (past -P, -L, -e, -@
+// and --), joined to the previous one when it is relative; a glob stays in it, for the caller to
+// expand. ok is false for any other command and for a directory known only at run time (cd -, cd $DIR).
 func cdTarget(words, dirs []string) (string, bool) {
-	if len(words) == 0 || len(words) > 2 || !in(words[0], "cd", "pushd") {
+	if len(words) == 0 || !in(words[0], "cd", "pushd") {
+		return "", false
+	}
+	args := words[1:]
+	for len(args) > 0 && in(args[0], "-P", "-L", "-e", "-@", "--") {
+		args = args[1:]
+	}
+	if len(args) > 1 {
 		return "", false
 	}
 	dir := "~"
-	if len(words) == 2 {
-		dir = words[1]
+	if len(args) == 1 {
+		dir = args[0]
 	}
-	if dir == "-" || strings.ContainsAny(dir, "$`*?[") {
+	if dir == "-" || strings.ContainsAny(dir, "$`") {
 		return "", false
 	}
 	if relativePath(dir) && len(dirs) > 0 {
@@ -72,27 +107,73 @@ func cdTarget(words, dirs []string) (string, bool) {
 var wrapperPrograms = map[string]bool{
 	"sudo": true, "doas": true, "env": true, "command": true, "exec": true, "nohup": true, "time": true,
 	"nice": true, "timeout": true, "builtin": true, "xargs": true, "parallel": true, "stdbuf": true,
-	"ionice": true, "watch": true,
+	"ionice": true, "watch": true, "busybox": true,
 }
 
 // writtenOperands returns the operands a file-writing command writes or removes.
-func writtenOperands(words []string) []string {
+func writtenOperands(words []string) []string { return operandsOf(words, writtenBy) }
+
+// namedOperands returns the operands a command acts on by name only.
+func namedOperands(words []string) []string { return operandsOf(words, namedBy) }
+
+// landingOperands returns where a copy, move or link puts each source if its destination is a directory.
+func landingOperands(words []string) []string { return operandsOf(words, landedBy) }
+
+// operandFunc gives the operands of one program.
+type operandFunc = func(rest []string) []string
+
+// writtenBy, namedBy and landedBy look a program up in fileWriters, namedWriters and landingWriters. find's own
+// functions stay out of the tables, since the commands find runs are read with them.
+func writtenBy(prog string) (operandFunc, bool) {
+	if prog == "find" {
+		return findWritten, true
+	}
+	f, ok := fileWriters[prog]
+	return f, ok
+}
+
+func namedBy(prog string) (operandFunc, bool) {
+	if prog == "find" {
+		return findNamed, true
+	}
+	f, ok := namedWriters[prog]
+	return f, ok
+}
+
+func landedBy(prog string) (operandFunc, bool) {
+	f, ok := landingWriters[prog]
+	return f, ok
+}
+
+// operandsOf returns what a lookup gives for a command's operands, past the wrapper programs in front of it and
+// read from the directory they move it to (env -C, sudo -D).
+func operandsOf(words []string, lookup func(prog string) (operandFunc, bool)) []string {
+	cmd, dir := behindWrappers(words, func(prog string) bool { _, ok := lookup(prog); return ok })
+	if cmd == nil {
+		return nil
+	}
+	f, _ := lookup(path.Base(cmd[0]))
+	return inDir(dir, nonEmpty(f(cmd[1:])))
+}
+
+// behindWrappers returns the command a known program runs, as the words from that program on, past the wrapper
+// programs in front of it, with the directory the wrappers move it to; nil when the words run no known program.
+func behindWrappers(words []string, known func(prog string) bool) ([]string, string) {
 	if len(words) == 0 {
-		return nil
+		return nil, ""
 	}
-	prog, rest := path.Base(words[0]), words[1:]
-	if wrapperPrograms[prog] {
-		for i, w := range rest {
-			if _, ok := fileWriters[path.Base(w)]; ok {
-				return writtenOperands(rest[i:])
-			}
+	if !wrapperPrograms[path.Base(words[0])] {
+		if known(path.Base(words[0])) {
+			return words, ""
 		}
-		return nil
+		return nil, ""
 	}
-	if writer, ok := fileWriters[prog]; ok {
-		return nonEmpty(writer(rest))
+	for i, w := range words[1:] {
+		if known(path.Base(w)) {
+			return words[i+1:], chdirOf(words[:i+1])
+		}
 	}
-	return nil
+	return nil, ""
 }
 
 // fileWriters maps the programs that write, move or remove the files they name to the operands
@@ -104,12 +185,11 @@ var fileWriters = map[string]func(rest []string) []string{
 	"truncate": func(r []string) []string {
 		return operands(r, "-s", "--size", "-r", "--reference")
 	},
-	"mv": func(r []string) []string {
-		return append(operands(r, "-t", "--target-directory", "-S", "--suffix"), flagValue(r, "-t", "--target-directory"))
-	},
-	"cp": destination, "install": destination, "ln": linkName, "chmod": chmodTargets, "chown": ownerTargets,
-	"chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
-	"curl": curlOutputs, "wget": wgetOutputs, "find": findTargets,
+	"mv": moveWritten, "cp": cpWritten, "install": copyWritten, "ln": linkWritten, "rsync": rsyncWritten,
+	"tar": tarWritten, "unzip": unzipWritten,
+	"chmod": chmodTargets,
+	"chown": ownerTargets, "chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
+	"curl": curlOutputs, "wget": wgetOutputs,
 }
 
 func allOperands(r []string) []string { return operands(r) }
@@ -122,34 +202,6 @@ func nonEmpty(paths []string) []string {
 		}
 	}
 	return out
-}
-
-// destination is where cp and install write: the -t directory, or the last operand.
-func destination(r []string) []string {
-	if dir := flagValue(r, "-t", "--target-directory"); dir != "" {
-		return []string{dir}
-	}
-	ops := operands(r, "-t", "--target-directory", "-S", "--suffix", "-m", "--mode", "-o", "--owner", "-g", "--group")
-	if len(ops) == 0 {
-		return nil
-	}
-	return ops[len(ops)-1:]
-}
-
-// linkName is the link ln creates: the -t directory, the last operand, or the target's base name in
-// the working directory when only the target is given.
-func linkName(r []string) []string {
-	if dir := flagValue(r, "-t", "--target-directory"); dir != "" {
-		return []string{dir}
-	}
-	ops := operands(r, "-t", "--target-directory", "-S", "--suffix")
-	switch len(ops) {
-	case 0:
-		return nil
-	case 1:
-		return []string{path.Base(ops[0])}
-	}
-	return ops[len(ops)-1:]
 }
 
 var chmodMode = regexp.MustCompile(`^([0-7]{1,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*)$`)
@@ -226,19 +278,151 @@ func wgetOutputs(r []string) []string {
 		gnuFlagValue(r, "--append-output"), gnuFlagValue(r, "--save-cookies")}
 }
 
-// findTargets are the files find writes (-fprint, -fls) and, when it deletes or runs a command on
-// what it finds, its starting points and the name patterns it matches.
-func findTargets(r []string) []string {
-	out := []string{flagValue(r, "-fprint"), flagValue(r, "-fprint0"), flagValue(r, "-fprintf"), flagValue(r, "-fls")}
-	if !hasFlag(r, "-delete", "-exec", "-execdir", "-ok", "-okdir") {
-		return out
+// braceWords are the words the shell's brace expansion makes of a word ({a,b}, {1..3}): the word itself when it
+// has none. Past braceLimit words, or for a sequence the classifier cannot follow, each brace expansion reads as
+// a * instead, so the caller's glob and name checks still meet whatever it names.
+func braceWords(word string) []string {
+	if _, _, _, _, ok := braceSplit(word, braceSequence); !ok {
+		return []string{word}
 	}
-	for _, t := range r {
-		if strings.HasPrefix(t, "-") || t == "(" || t == "!" {
-			break
+	var out []string
+	queue := []string{word}
+	for n := 0; len(queue) > 0; n++ {
+		w := queue[0]
+		queue = queue[1:]
+		prefix, alternatives, suffix, opaque, ok := braceSplit(w, braceSequence)
+		switch {
+		case n > braceLimit || opaque:
+			return []string{braceGlob(word)}
+		case !ok:
+			out = append(out, w)
+			continue
 		}
-		out = append(out, t)
+		for _, a := range alternatives {
+			queue = append(queue, prefix+a+suffix)
+		}
 	}
-	return append(out, flagValue(r, "-name"), flagValue(r, "-iname"), flagValue(r, "-path"), flagValue(r, "-ipath"),
-		flagValue(r, "-wholename"))
+	return out
+}
+
+// braceGlob reads every brace expansion of a word as a *.
+func braceGlob(word string) string {
+	for {
+		prefix, _, suffix, _, ok := braceSplit(word, braceSequence)
+		if !ok {
+			return word
+		}
+		word = prefix + "*" + suffix
+	}
+}
+
+// expandWords brace-expands each word (braceWords).
+func expandWords(words []string) []string {
+	var out []string
+	for _, w := range words {
+		out = append(out, braceWords(w)...)
+	}
+	return out
+}
+
+// opaqueWords are the words of a line the classifier cannot see into, brace-expanded and without its options:
+// any of them may name a file the line acts on.
+func opaqueWords(segments []shellwords.Segment) []string {
+	var out []string
+	for _, seg := range segments {
+		for _, w := range expandWords(seg.Words) {
+			if !strings.HasPrefix(w, "-") {
+				out = append(out, w)
+			}
+		}
+	}
+	return out
+}
+
+// dotGlobPossible reports a line that may turn on matching dot files before its globs expand, told from its
+// parsed words: a word that names dotglob, globdots, globignore or bashopts in any case and spelling with
+// underscores, a shopt or setopt, a set with an option bash's set does not have (zsh's set -4) or one named at
+// run time, a variable named at run time (dynamicName), or code run in the shell itself that the classifier
+// cannot see into: eval, source, a function the line defines, a shell run on a string (runsShellCode). An
+// external program, opaque or not, cannot change the shell that expands the globs.
+func dotGlobPossible(parsed shellwords.Result) bool {
+	if parsed.FunctionDef || runsShellCode(parsed.Segments) {
+		return true
+	}
+	for _, seg := range parsed.Segments {
+		for _, w := range seg.Words {
+			folded := strings.ToLower(strings.ReplaceAll(w, "_", ""))
+			for _, name := range []string{"dotglob", "globdots", "globignore", "bashopts"} {
+				if strings.Contains(folded, name) {
+					return true
+				}
+			}
+		}
+		simple, _ := simpleCommand(seg.Words)
+		words := unwrap(simple[assignmentsEnd(simple):]).words
+		if dynamicName(words) || len(words) > 0 && in(path.Base(words[0]), "shopt",
+			"setopt") || len(words) > 0 && words[0] == "set" && setChangesGlobs(words[1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellCodeBuiltins run code in the shell itself or hand a command to a shell: eval and source run a string or a
+// file, trap runs one before a command or on a signal, mapfile and readarray -C run a callback, bind -x runs one
+// on a key, enable -f loads a builtin, fc re-runs history, and su runs its command through a shell.
+var shellCodeBuiltins = []string{"eval", "source", ".", "trap", "mapfile", "readarray", "bind", "enable", "fc", "su"}
+
+// runsShellCode reports a segment that runs shell code the classifier cannot see through (shellCodeBuiltins,
+// watch, which runs its command through sh -c) or a shell, also behind a wrapper such as xargs or command.
+func runsShellCode(segments []shellwords.Segment) bool {
+	for _, seg := range segments {
+		simple, _ := simpleCommand(seg.Words)
+		w := unwrap(simple[assignmentsEnd(simple):])
+		if slices.Contains(w.wrappers, "watch") || len(w.words) > 0 && (shellNames[path.Base(w.words[0])] ||
+			in(w.words[0], shellCodeBuiltins...)) {
+			return true
+		}
+	}
+	return false
+}
+
+// setLetters are the short options of bash's set and o, which takes an option's name.
+const setLetters = "abefhkmnptuvxBCEHPTo"
+
+// setChangesGlobs reports a set whose options may change globbing: a letter bash's set does not have, or a
+// word built at run time.
+func setChangesGlobs(rest []string) bool {
+	for _, w := range rest {
+		if strings.ContainsAny(w, "$`") || len(w) > 1 && w != "--" && (w[0] == '-' || w[0] == '+') &&
+			strings.Trim(w[1:], setLetters) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicName reports a variable a command names at run time, which may be GLOBIGNORE: the names export,
+// declare, typeset, local, readonly and read set (any expansion in them, and in a declare -n's value), printf
+// -v's and wait -p's. An assignment whose name holds an expansion, and let, getopts, mapfile and readarray,
+// already make the line opaque.
+func dynamicName(words []string) bool {
+	dynamic := func(w string) bool { return strings.ContainsAny(w, "$`") }
+	if len(words) == 0 {
+		return false
+	}
+	switch prog, rest := path.Base(words[0]), words[1:]; {
+	case in(prog, "export", "declare", "typeset", "local", "readonly", "read"):
+		nameref := slices.ContainsFunc(rest, func(w string) bool { return looksLikeFlag(w) && strings.Contains(w, "n") })
+		for _, w := range operands(rest) {
+			if name, _, _ := strings.Cut(w, "="); dynamic(name) || nameref && dynamic(w) {
+				return true
+			}
+		}
+	case prog == "printf":
+		return dynamic(flagValue(rest, "-v"))
+	case prog == "wait":
+		return dynamic(flagValue(rest, "-p"))
+	}
+	return false
 }

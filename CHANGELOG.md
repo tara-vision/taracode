@@ -31,6 +31,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   minor release replaces the native backend on purpose: the move to taraengine is what brings window and thinking
   control back.
 
+## [3.2.5] - 2026-10-12
+
+### Security
+Ways a command in operate mode could reach a protected target without the policy seeing it. All were found on
+2026-10-12, in our own hardware board runs and in the reviews of the policy gate that followed; there is no
+report of any of them being used. Upgrade if you use operate mode: the built-in policy protects `.git`,
+`*.tfstate` files, kube contexts named like `prod` and the `kube-system` namespace, and a policy file can
+protect more, cloud accounts and hosts included.
+
+- **A command that runs code from a string named no paths.** A protected path written through `python3 -c`,
+  `perl -e`, an `awk` program, `sh -c`, `eval`, backticks, `$(...)`, a heredoc or `xargs` was not seen: the
+  policy saw only the targets of redirects and of the programs known to write files. On such a line a word
+  that names a protected path is now refused, and the strings a shell's `-c`, `eval`, `su -c`, `watch`,
+  `$(...)` or backticks run, and the script a shell reads from a heredoc, are read like the line itself. A
+  read-only line of that kind is refused too; `read_file` and `cat` still read.
+- **kubectl or helm inside a string.** `sh -c "kubectl --context prod ..."` or a Python `subprocess` call
+  carried no kube context. A line taracode cannot see into that names kubectl or helm, inside a string or a
+  heredoc too, now counts as touching every context and namespace.
+- **Account and host forms.** `--profile=acct`, `AWS_PROFILE=acct`, `user@host`, the host of a URL, a name the
+  shell joins from quoted parts and a host name with a trailing dot did not match the account and host
+  patterns. They do now.
+- **Deny patterns matched only the whole line.** `cd infra && terraform destroy`, `terraform -chdir=infra
+  destroy`, `time terraform destroy`, `/usr/local/bin/terraform destroy` and `sh -c "terraform destroy"`
+  passed `terraform destroy*`. Each command of a chain is matched now, also without the wrappers in front of
+  its program, by its program's base name and without its leading one-word options, and so are the strings a
+  shell runs.
+- **Path patterns matched too literally.** `.git/**` did not cover `.git` itself, so `rm -rf .git` passed the
+  built-in policy; removing a directory that holds a protected file passed; patterns were case-sensitive
+  while the default macOS file system is not; and a symlink, or a link made earlier on the same line, led past
+  the pattern of what it points to. A pattern ending in `/**` now covers its directory, a `shell` command's
+  directory target is checked for the protected paths it holds (the README says how far), patterns match in
+  any letter case, and a path is matched through its symlinks.
+- **Commands that act on paths without writing them were not checked.** What `find -delete` or `find -exec`
+  reaches, the destination of `cp`, `mv`, `install`, `ln` and `rsync` and where each source lands in it, the
+  paths `ln`, `cp -l` and `cp -s` link to, the directory `tar -x -C` and `unzip -d` extract into and the
+  members they name, the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after
+  `cd -P`, `env -C`, `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its
+  name tests reach under its start points, behind BSD's options too, and the command it runs is read like the
+  line's own; one whose command may act beyond what it finds is checked for all its start points hold, and one
+  that follows symbolic links is refused.
+- **Shell expansions were read as written.** `mv terraform.tfstate{,.bak}` and `rm -rf .gi{t,}` passed, and so
+  did a glob in a word of a line taracode cannot see into (`echo .g?t | xargs rm -rf`). Words are now
+  brace-expanded before a command's targets are read, and globs expand as the shell expands them, dot files
+  included where the line may turn that on.
+
+### Changed
+- Failing closed costs some commands in operate mode while the policy protects paths: a `shell` command that
+  removes or moves a directory holding a protected path, or a directory of more than 50,000 entries, and an
+  archive extracted into one; a `find` that deletes or runs a command over a directory holding a protected path
+  when a branch of its expression has no name test or its command runs a shell, an interpreter or a script; a
+  `find` that follows symbolic links; a line taracode cannot see into that names a protected path, a read-only
+  one included; and a target more than 256 parts deep. Remove such paths yourself, or name smaller ones.
+- A line taracode cannot parse, an unclosed quote or expansion or a heredoc without its delimiter line among
+  them, counts as a mutation it cannot see into.
+
 ## [3.2.4] - 2026-10-01
 
 ### Changed
@@ -737,7 +792,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.4...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.5...HEAD
+
+[3.2.5]: https://github.com/tara-vision/taracode/compare/v3.2.4...v3.2.5
 
 [3.2.4]: https://github.com/tara-vision/taracode/compare/v3.2.3...v3.2.4
 

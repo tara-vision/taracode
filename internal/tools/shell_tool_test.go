@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tara-vision/taracode/internal/policy"
 )
@@ -49,5 +50,24 @@ func TestShellClassifiesThroughTheShellClassifier(t *testing.T) {
 	}
 	if _, err := tool.Run(context.Background(), map[string]any{}, "/tmp"); err == nil {
 		t.Error("command is required")
+	}
+}
+
+// TestShellTimeoutStaysInItsBounds: a shell call's timeout is 60 seconds when it names none or a non-positive
+// one, the one it names up to 600 seconds, and 600 seconds above that.
+func TestShellTimeoutStaysInItsBounds(t *testing.T) {
+	cases := []struct {
+		args map[string]any
+		want time.Duration
+	}{
+		{map[string]any{}, defaultShellTimeout},
+		{map[string]any{"timeout": -5.0}, defaultShellTimeout},
+		{map[string]any{"timeout": 30.0}, 30 * time.Second},
+		{map[string]any{"timeout": 100000.0}, maxShellTimeout},
+	}
+	for _, c := range cases {
+		if got := shellTimeout(c.args); got != c.want {
+			t.Errorf("%v: %s, want %s", c.args, got, c.want)
+		}
 	}
 }

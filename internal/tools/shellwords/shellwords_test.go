@@ -280,7 +280,7 @@ func TestSplitTruncatesANSICAtNUL(t *testing.T) {
 
 // TestSplitCapturesSubstitutionBodies (Task 6): Split records the body of every $(...) in order,
 // outermost first, so the classifier can decide whether each one reads; a backtick sets Backtick and
-// its body is not captured. The bodies keep their own quoting.
+// its body is captured too. The bodies keep their own quoting.
 func TestSplitCapturesSubstitutionBodies(t *testing.T) {
 	res, err := Split(`for p in $(ls -1 "$HOME"); do echo $p $(date +%F); done`)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestSplitCapturesSubstitutionBodies(t *testing.T) {
 		t.Fatalf("bodies %q", got)
 	}
 	res, _ = Split("echo `date`")
-	if !res.Substitution || !res.Backtick || len(res.Substitutions) != 0 {
+	if !res.Substitution || !res.Backtick || strings.Join(res.Substitutions, "|") != "date" {
 		t.Fatalf("backtick %+v", res)
 	}
 	res, _ = Split("echo $(echo $(id))")

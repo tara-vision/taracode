@@ -16,6 +16,8 @@ import (
 type Segment struct {
 	Words      []string // the command and its arguments, quotes removed
 	Redirects  []string // redirections in this segment, operator and target: "> out.log", "2>&1"
+	Heredocs   []string // the bodies of the segment's here-documents (<< and <<-), in order
+	Piped      bool     // the segment ends with |, which hands its output to the next one
 	Background bool     // the segment ends with &
 }
 
@@ -23,9 +25,11 @@ type Segment struct {
 type Result struct {
 	Segments      []Segment
 	Substitution  bool     // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
-	Backtick      bool     // a backtick substitution appeared; its body is not captured
+	Backtick      bool     // a backtick substitution appeared; its body is captured too
 	FunctionDef   bool     // the line defines a shell function (name (), function name), which can shadow any name
-	Substitutions []string // the bodies of every $(...) in order, outermost first, for a classifier to read
+	Substitutions []string // the bodies of every $(...) and backtick, also in expansions and expanded here-documents,
+	// in order, outermost first, for a classifier to read
+	outer []bool // for each body, whether no other captured body holds it
 }
 
 type parser struct {
@@ -39,6 +43,12 @@ type parser struct {
 	shell       bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
 	closed      bool   // the last segment was ended by a closing )
 	ansiStopped bool   // a NUL was decoded inside the current $'...': the rest of the quote is discarded
+	quotedWord  bool   // part of the current word was quoted or escaped
+	heredocs    []heredoc
+	closingTick map[int]bool // the positions of the backticks that close a body already captured
+	outerEnd    int          // the parse is inside a captured substitution up to this position
+	noHeredocs  bool         // a << is a plain redirect: the text is the inside of an arithmetic command
+	extra       []Segment    // the commands inside arithmetic commands, appended after the line's own
 }
 
 // Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
@@ -79,6 +89,10 @@ func (p *parser) run() error {
 	}
 	p.endWord()
 	p.endSegment(false)
+	if len(p.heredocs) > 0 {
+		return errNoDelimiter
+	}
+	p.res.Segments = append(p.res.Segments, p.extra...)
 	return nil
 }
 
@@ -102,15 +116,16 @@ func (p *parser) step() error {
 	case p.substitutionStart(c):
 		p.res.Substitution = true
 		if c == '`' {
-			p.res.Backtick = true
+			p.backtick()
 		} else {
-			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
+			body := p.captureSubstitution()
+			p.addSubstitution(body, p.pos, p.pos+2+len([]rune(body)))
 		}
 		p.word.WriteRune(c)
 		p.hasWord = true
 		p.pos++
 	case c == '|' || c == '&' || c == ';' || c == '\n':
-		p.operator(c)
+		return p.operator(c)
 	case c == '>' || c == '<':
 		p.redirect()
 	case unicode.IsSpace(c):
@@ -133,7 +148,7 @@ func (p *parser) backslash() {
 		return
 	}
 	p.word.WriteRune(p.in[p.pos+1])
-	p.hasWord = true
+	p.hasWord, p.quotedWord = true, true
 	p.pos += 2
 }
 
@@ -146,6 +161,16 @@ func (p *parser) shellStep(c rune) (handled bool, err error) {
 	case c == '$' && p.next() == '"':
 		p.res.Substitution = true // $"..." is translated through the locale's message catalog
 		p.pos++
+		return true, nil
+	case c == '$' && (p.next() == '(' || p.next() == '[' || p.next() == '{'):
+		return p.dollarExpansion()
+	case c == '(' && p.next() == '(' && !p.hasWord && len(p.seg.Words) == 0:
+		if end, ok, closed := arithmeticEnd(p.in, p.pos); !closed {
+			return true, errUnclosed
+		} else if ok { // (( ... )): an arithmetic command
+			return true, p.arithmeticCommand(end)
+		}
+		p.group(c)
 		return true, nil
 	case c == '(' || c == ')':
 		p.group(c)
@@ -168,7 +193,7 @@ func (p *parser) next() rune {
 // to the closing quote but not emitted, and the word continues with whatever is glued after it.
 func (p *parser) ansiC() error {
 	p.pos += 2 // $'
-	p.ansiStopped = false
+	p.ansiStopped, p.quotedWord = false, true
 	for p.pos < len(p.in) {
 		c := p.in[p.pos]
 		switch {
@@ -265,10 +290,11 @@ func (p *parser) substitutionStart(c rune) bool {
 
 // captureSubstitution returns the text between the $( at the current position and its matching ),
 // following nested parentheses and skipping the spans where a ) does not close the substitution: a
-// quoted string, a backslash escape, a # comment (to the newline) and a ${...} parameter expansion.
-// A heredoc body it cannot follow, so a << makes it capture to the end and fail closed. The position
-// does not move: the body is still parsed into segments as before, so the classifier sees its
-// commands. Capturing too much only makes a body classify as a mutation, never as a false read.
+// quoted string, a backslash escape, a # comment (to the newline), a ${...} parameter expansion and a
+// $((...)) arithmetic one. A here-document body it cannot follow, so a << outside those spans makes it
+// capture to the end of the input; the classifier reads that text as a line of its own, where a
+// here-document without its delimiter line is a parse error. The position does not move: the body is
+// still parsed into segments as before, so the classifier sees its commands.
 func (p *parser) captureSubstitution() string {
 	start := p.pos + 2
 	depth := 0
@@ -305,7 +331,11 @@ func skipSpan(in []rune, i int) (int, bool) {
 	case in[i] == '$' && i+1 < len(in) && in[i+1] == '\'':
 		return skipQuoted(in, i+1, true), true // $'...' ANSI-C quoting: backslash escapes the closing quote
 	case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
-		return skipBraces(in, i+1), true
+		return parameterEnd(in, i), true
+	case in[i] == '$' && i+2 < len(in) && in[i+1] == '(' && in[i+2] == '(':
+		if end, ok, _ := arithmeticEnd(in, i+1); ok {
+			return end, true // $((...)): a << in it is a shift
+		}
 	case in[i] == '\'':
 		return skipQuoted(in, i, false), true
 	case in[i] == '"':
@@ -327,23 +357,6 @@ func skipQuoted(in []rune, start int, escapes bool) int {
 			i++
 		case in[i] == q:
 			return i
-		}
-	}
-	return len(in)
-}
-
-// skipBraces returns the index of the } that matches the { at start, tracking nested braces; the end
-// when it is unbalanced. A ) inside ${...} is a literal, not a substitution close.
-func skipBraces(in []rune, start int) int {
-	depth := 0
-	for i := start; i < len(in); i++ {
-		switch in[i] {
-		case '{':
-			depth++
-		case '}':
-			if depth--; depth == 0 {
-				return i
-			}
 		}
 	}
 	return len(in)
@@ -402,6 +415,7 @@ func commentStart(in []rune, i int) bool {
 
 func (p *parser) quoted(q rune) error {
 	p.pos++ // opening quote
+	p.quotedWord = true
 	for p.pos < len(p.in) {
 		c := p.in[p.pos]
 		switch {
@@ -416,14 +430,11 @@ func (p *parser) quoted(q rune) error {
 			p.pos += 2
 		case q == '"' && c == '`':
 			p.res.Substitution = true
-			p.res.Backtick = true
+			p.backtick()
 			p.word.WriteRune(c)
 			p.pos++
-		case q == '"' && c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(':
-			p.res.Substitution = true
-			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
-			p.word.WriteRune(c)
-			p.pos++
+		case q == '"' && c == '$' && p.next() == '(':
+			p.dollarParen()
 		default:
 			p.word.WriteRune(c)
 			p.pos++
@@ -463,7 +474,7 @@ func (p *parser) nextNonSpaceIsCloseParen() bool {
 	return false
 }
 
-func (p *parser) operator(c rune) {
+func (p *parser) operator(c rune) error {
 	p.endWord()
 	next := rune(0)
 	if p.pos+1 < len(p.in) {
@@ -479,9 +490,14 @@ func (p *parser) operator(c rune) {
 		p.pos++
 		p.endSegment(true)
 	default:
+		p.seg.Piped = c == '|'
 		p.pos++
 		p.endSegment(false)
+		if c == '\n' {
+			return p.readHeredocs()
+		}
 	}
+	return nil
 }
 
 // redirect consumes an operator such as >, >>, <, 2>, >&, 2>&1, &> and remembers it; a target word
@@ -504,6 +520,10 @@ func (p *parser) redirect() {
 		p.pos++
 	}
 	op := fd + string(p.in[start:p.pos])
+	if heredocOperator(op) && p.pos < len(p.in) && p.in[p.pos] == '-' {
+		op += "-" // <<-
+		p.pos++
+	}
 	if p.pos < len(p.in) && p.in[p.pos] == '(' {
 		p.res.Substitution = true
 		if p.shell {
@@ -529,10 +549,14 @@ func (p *parser) endWord() {
 	if !p.hasWord {
 		return
 	}
-	w := p.word.String()
+	w, quoted := p.word.String(), p.quotedWord
 	p.word.Reset()
-	p.hasWord = false
+	p.hasWord, p.quotedWord = false, false
 	if p.pending != "" {
+		if p.shell && !p.noHeredocs && heredocOperator(strings.TrimSuffix(p.pending, "-")) {
+			p.heredocs = append(p.heredocs, heredoc{segment: len(p.res.Segments), delimiter: w,
+				stripTabs: strings.HasSuffix(p.pending, "-"), expands: !quoted})
+		}
 		p.seg.Redirects = append(p.seg.Redirects, p.pending+" "+w)
 		p.pending = ""
 		return

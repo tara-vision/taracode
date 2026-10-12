@@ -9,8 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools/classify"
@@ -43,67 +45,143 @@ func ShellTool(stream io.Writer) *Tool {
 			{Name: "command", Type: "string", Description: "The command line", Required: true},
 			{Name: "timeout", Type: "integer", Description: "Seconds before the command is killed (default 60, max 600)"},
 		},
-		Classify: func(args map[string]any, workingDir string) policy.Invocation {
-			command := argString(args, "command")
-			res := classify.Shell(command)
-			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}
-			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
-				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
-					shellKubeTargets(context.Background(), workingDir, res.Kube)
-			}
-			return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: command, Targets: targets}
-		},
-		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
-			command, err := required(args, "command")
-			if err != nil {
-				return "", err
-			}
-			timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
-			if timeout <= 0 {
-				timeout = defaultShellTimeout
-			}
-			if timeout > maxShellTimeout {
-				timeout = maxShellTimeout
-			}
-			ctx, cancel := withTimeout(ctx, timeout)
-			defer cancel()
-			//nolint:gosec // the shell tool runs what the model asked for, after the policy gate
-			cmd := exec.CommandContext(ctx, "sh", "-c", command)
-			cmd.Dir = workingDir
-			var buf bytes.Buffer
-			var w io.Writer = &buf
-			if stream != nil {
-				w = io.MultiWriter(&buf, stream)
-			}
-			cmd.Stdout, cmd.Stderr = w, w
-			runErr := cmd.Run()
-			if f, ok := stream.(interface{ Flush() error }); ok {
-				_ = f.Flush() // the live copy is best effort; the result carries the output
-			}
-			out := strings.TrimRight(buf.String(), "\n")
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return out, fmt.Errorf("command timed out after %s", timeout)
-			}
-			var exitErr *exec.ExitError
-			if errors.As(runErr, &exitErr) {
-				return out + fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode()), nil
-			}
-			if runErr != nil {
-				return out, runErr
-			}
-			if out == "" {
-				return "(no output)", nil
-			}
-			return out, nil
-		},
+		Classify: classifyShell,
+		Run:      runShell(stream),
 	}
 }
 
-// shellTargets resolves the files a shell line writes or removes: a leading ~, $HOME or ${HOME} to
-// the home directory, a relative path against the working directory, and a glob to itself and to
-// the files it matches now.
-func shellTargets(paths []string, workingDir string) []string {
+// runShell runs a shell call's command line with sh -c in the working directory, with its timeout (default 60
+// seconds, at most 600), streaming the output to stream when it is set; the result carries the merged output and
+// the exit status.
+func runShell(stream io.Writer) func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
+	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
+		command, err := required(args, "command")
+		if err != nil {
+			return "", err
+		}
+		timeout := shellTimeout(args)
+		ctx, cancel := withTimeout(ctx, timeout)
+		defer cancel()
+		//nolint:gosec // the shell tool runs what the model asked for, after the policy gate
+		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		cmd.Dir = workingDir
+		var buf bytes.Buffer
+		var w io.Writer = &buf
+		if stream != nil {
+			w = io.MultiWriter(&buf, stream)
+		}
+		cmd.Stdout, cmd.Stderr = w, w
+		runErr := cmd.Run()
+		if f, ok := stream.(interface{ Flush() error }); ok {
+			_ = f.Flush() // the live copy is best effort; the result carries the output
+		}
+		out := strings.TrimRight(buf.String(), "\n")
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return out, fmt.Errorf("command timed out after %s", timeout)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			return out + fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode()), nil
+		}
+		if runErr != nil {
+			return out, runErr
+		}
+		if out == "" {
+			return "(no output)", nil
+		}
+		return out, nil
+	}
+}
+
+// shellTimeout is a shell call's timeout: the seconds its timeout argument names, the default when it names none
+// or a non-positive number, and at most maxShellTimeout.
+func shellTimeout(args map[string]any) time.Duration {
+	timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
+	switch {
+	case timeout <= 0:
+		return defaultShellTimeout
+	case timeout > maxShellTimeout:
+		return maxShellTimeout
+	}
+	return timeout
+}
+
+// classifyShell classifies a shell call: the line's verb and class, and its targets (the hosts it names, the
+// files it writes or names and where a copy lands, the finds it runs and, for a mutation, the clusters its kubectl
+// and helm mutations act on and the words of a line taracode cannot see into).
+func classifyShell(args map[string]any, workingDir string) policy.Invocation {
+	command := argString(args, "command")
+	res := classify.Shell(command)
+	glob := shellGlob(res.DotGlob)
+	targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, glob),
+		Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
+		Finds: findStarts(res.Finds, workingDir)}
+	if res.Classification == policy.Mutate && res.Opaque {
+		targets.Named = slices.Concat(targets.Named, shellTargets(lineTokens(command), workingDir, nil),
+			shellTargets(res.Words, workingDir, glob))
+	}
+	if res.Classification == policy.Mutate && len(res.Kube) > 0 {
+		targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
+			shellKubeTargets(context.Background(), workingDir, res.Kube)
+	}
+	return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
+		Command: command, Lines: res.Lines, Targets: targets}
+}
+
+// lineTokens are the words of an opaque line that may name a file: the line split at whitespace, quotes,
+// brackets and the shell's operators, without its options.
+func lineTokens(command string) []string {
+	var out []string
+	for _, token := range strings.FieldsFunc(command, tokenSeparator) {
+		if !strings.HasPrefix(token, "-") {
+			out = append(out, token)
+		}
+	}
+	return out
+}
+
+func tokenSeparator(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{},;=<>|&+\\", r)
+}
+
+// globFunc expands a path glob to the files it matches now.
+type globFunc func(pattern string) []string
+
+// shellGlob expands a glob as the shell does: a * or ? does not match the leading dot of a name unless the
+// pattern's element starts with a dot or the line turns dotglob on.
+func shellGlob(dotglob bool) globFunc {
+	return func(pattern string) []string {
+		matches, _ := filepath.Glob(pattern)
+		if dotglob {
+			return matches
+		}
+		elems := strings.Split(filepath.ToSlash(pattern), "/")
+		var out []string
+		for _, m := range matches {
+			if !dotHidden(elems, strings.Split(filepath.ToSlash(m), "/")) {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+}
+
+// dotHidden reports a match the shell's glob leaves out: an element that starts with a dot where the pattern's
+// element does not.
+func dotHidden(pattern, match []string) bool {
+	for i := range min(len(pattern), len(match)) {
+		if strings.HasPrefix(match[i], ".") && !strings.HasPrefix(pattern[i], ".") {
+			return true
+		}
+	}
+	return false
+}
+
+// shellTargets resolves the files a shell line acts on: a leading ~, $HOME or ${HOME} to the home
+// directory, a relative path against the working directory, and, given a glob function, a glob to
+// itself and to the files it matches now. The words of an opaque line are resolved without one: a * in
+// a program's text is no file name.
+func shellTargets(paths []string, workingDir string, glob globFunc) []string {
 	home, _ := os.UserHomeDir()
 	var out []string
 	seen := map[string]bool{}
@@ -114,16 +192,87 @@ func shellTargets(paths []string, workingDir string) []string {
 		}
 	}
 	for _, p := range paths {
-		abs := resolvePath(expandHome(p, home), workingDir)
+		abs := resolvePath(expandHome(expandPWD(p, workingDir), home), workingDir)
 		add(abs)
-		if strings.ContainsAny(p, "*?[") {
-			matches, _ := filepath.Glob(abs)
-			for _, m := range matches {
+		if glob != nil && strings.ContainsAny(p, "*?[") {
+			for _, m := range glob(abs) {
 				add(m)
 			}
 		}
 	}
 	return out
+}
+
+// landingTargets resolves where a copy, move or link puts each source, as shellTargets resolves a path, and
+// keeps a landing under each directory its destination names now, a glob expanded as the shell expands it: a
+// destination that is no directory is written by its own name.
+func landingTargets(landings []string, workingDir string, glob globFunc) []string {
+	home, _ := os.UserHomeDir()
+	var out []string
+	for _, landing := range landings {
+		abs := resolvePath(expandHome(expandPWD(landing, workingDir), home), workingDir)
+		dirs := []string{filepath.Dir(abs)}
+		if wildcardLevels(dirs[0]) > maxLandingGlobLevels { // too deep to glob: the directory above it is written
+			out = append(out, abs, aboveWildcards(dirs[0]))
+			continue
+		}
+		if strings.ContainsAny(dirs[0], "*?[") {
+			dirs = glob(dirs[0])
+		}
+		for _, dir := range dirs {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				out = append(out, shellTargets([]string{filepath.Join(dir, filepath.Base(abs))}, "", glob)...)
+			}
+		}
+	}
+	return out
+}
+
+// maxLandingGlobLevels bounds the wildcard levels of a landing's directory the shell tool globs: a deeper
+// pattern (*/*/*/*/) would read the whole tree for each command.
+const maxLandingGlobLevels = 3
+
+// aboveWildcards is the directory an absolute path that holds a glob character names above its first such
+// element: the root for /*/...
+func aboveWildcards(p string) string {
+	slashed := filepath.ToSlash(p)
+	above := slashed[:strings.LastIndex(slashed[:strings.IndexAny(slashed, "*?[")], "/")]
+	if above == "" {
+		return string(filepath.Separator)
+	}
+	return filepath.FromSlash(above)
+}
+
+// wildcardLevels counts the elements of a path that hold a glob character.
+func wildcardLevels(p string) int {
+	n := 0
+	for _, e := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.ContainsAny(e, "*?[") {
+			n++
+		}
+	}
+	return n
+}
+
+// findStarts resolves the start point of each find a shell line runs as shellTargets resolves a path; the
+// start point as written stays, since it begins every path find prints.
+func findStarts(finds []policy.Find, workingDir string) []policy.Find {
+	home, _ := os.UserHomeDir()
+	out := make([]policy.Find, 0, len(finds))
+	for _, f := range finds {
+		found := f
+		found.Start = resolvePath(expandHome(expandPWD(f.Start, workingDir), home), workingDir)
+		out = append(out, found)
+	}
+	return out
+}
+
+// expandPWD replaces a leading ~+, the shell's $PWD, with the working directory.
+func expandPWD(p, workingDir string) string {
+	if rest, ok := strings.CutPrefix(p, "~+"); ok && (rest == "" || rest[0] == '/') {
+		return workingDir + rest
+	}
+	return p
 }
 
 // expandHome replaces a leading ~, $HOME or ${HOME} with home.
