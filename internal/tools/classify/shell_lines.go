@@ -101,9 +101,10 @@ func innerLines(words []string) []string {
 			return []string{strings.Join(rest, " ")}
 		}
 	case prog == "su":
-		if line := flagValue(rest, "-c", "--command"); line != "" {
+		if line := flagValue(rest, "--command"); line != "" {
 			return []string{line}
 		}
+		return commandStrings(rest) // su -c, su -lc
 	case shellNames[prog]:
 		return commandStrings(rest)
 	}

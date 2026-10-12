@@ -80,6 +80,7 @@ func TestShellSplitsWrittenFromNamedPaths(t *testing.T) {
 		{"git -C infra checkout -- x.tfstate", "", "infra/x.tfstate", ""},
 		{"git -C a -C /b mv x .git/y", "", "/b/x|/b/.git/y", ""},
 		{"git -c core.hooksPath=h checkout x", "", "", ""},
+		{"git -c core.quotepath=off rm x", "", "x", ""},
 		{"git commit -m x", "", "", ""},
 		{"git", "", "", ""},
 		{"cd infra && git checkout -- x.tfstate", "", "x.tfstate|infra/x.tfstate", ""},

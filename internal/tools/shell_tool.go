@@ -173,7 +173,7 @@ func shellTargets(paths []string, workingDir string, glob globFunc) []string {
 		}
 	}
 	for _, p := range paths {
-		abs := resolvePath(expandHome(p, home), workingDir)
+		abs := resolvePath(expandHome(expandPWD(p, workingDir), home), workingDir)
 		add(abs)
 		if glob != nil && strings.ContainsAny(p, "*?[") {
 			for _, m := range glob(abs) {
@@ -191,10 +191,10 @@ func landingTargets(landings []string, workingDir string, glob globFunc) []strin
 	home, _ := os.UserHomeDir()
 	var out []string
 	for _, landing := range landings {
-		abs := resolvePath(expandHome(landing, home), workingDir)
+		abs := resolvePath(expandHome(expandPWD(landing, workingDir), home), workingDir)
 		dirs := []string{filepath.Dir(abs)}
-		if wildcardLevels(dirs[0]) > maxLandingGlobLevels {
-			out = append(out, abs) // too deep to glob: checked as written
+		if wildcardLevels(dirs[0]) > maxLandingGlobLevels { // too deep to glob: the directory above it is written
+			out = append(out, abs, aboveWildcards(dirs[0]))
 			continue
 		}
 		if strings.ContainsAny(dirs[0], "*?[") {
@@ -212,6 +212,17 @@ func landingTargets(landings []string, workingDir string, glob globFunc) []strin
 // maxLandingGlobLevels bounds the wildcard levels of a landing's directory the shell tool globs: a deeper
 // pattern (*/*/*/*/) would read the whole tree for each command.
 const maxLandingGlobLevels = 3
+
+// aboveWildcards is the directory an absolute path that holds a glob character names above its first such
+// element: the root for /*/...
+func aboveWildcards(p string) string {
+	slashed := filepath.ToSlash(p)
+	above := slashed[:strings.LastIndex(slashed[:strings.IndexAny(slashed, "*?[")], "/")]
+	if above == "" {
+		return string(filepath.Separator)
+	}
+	return filepath.FromSlash(above)
+}
 
 // wildcardLevels counts the elements of a path that hold a glob character.
 func wildcardLevels(p string) int {
@@ -231,10 +242,18 @@ func findStarts(finds []policy.Find, workingDir string) []policy.Find {
 	out := make([]policy.Find, 0, len(finds))
 	for _, f := range finds {
 		found := f
-		found.Start = resolvePath(expandHome(f.Start, home), workingDir)
+		found.Start = resolvePath(expandHome(expandPWD(f.Start, workingDir), home), workingDir)
 		out = append(out, found)
 	}
 	return out
+}
+
+// expandPWD replaces a leading ~+, the shell's $PWD, with the working directory.
+func expandPWD(p, workingDir string) string {
+	if rest, ok := strings.CutPrefix(p, "~+"); ok && (rest == "" || rest[0] == '/') {
+		return workingDir + rest
+	}
+	return p
 }
 
 // expandHome replaces a leading ~, $HOME or ${HOME} with home.

@@ -33,6 +33,8 @@ func TestShellLinesAreTheFormsADenyPatternReads(t *testing.T) {
 		{"watch -n 1 'terraform destroy'", "terraform destroy"},
 		{"su -c 'terraform destroy'", "terraform destroy"},
 		{"su root -c 'terraform destroy'", "terraform destroy"},
+		{"su -lc 'terraform destroy' root", "terraform destroy"},
+		{"su --command='terraform destroy'", "terraform destroy"},
 		{"fish -c 'terraform destroy'", "terraform destroy"},
 		{"busybox sh -c 'terraform destroy'", "terraform destroy"},
 		{`sh -c "sh -c \"sh -c 'sh -c \\\"terraform destroy\\\"'\""`, "terraform destroy"},

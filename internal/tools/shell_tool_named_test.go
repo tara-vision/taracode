@@ -133,9 +133,13 @@ func TestShellToolBoundsTheGlobOfALandingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths := ShellTool(io.Discard).Classify(map[string]any{"command": "cp x.tfstate */*/*/*/"}, wd).Targets.Paths
-	if !slices.Contains(paths, filepath.Join(wd, "*/*/*/*/x.tfstate")) || slices.Contains(paths,
-		filepath.Join(wd, "a/b/c/d/x.tfstate")) {
+	if !slices.Contains(paths, filepath.Join(wd, "*/*/*/*/x.tfstate")) || !slices.Contains(paths, wd) ||
+		slices.Contains(paths, filepath.Join(wd, "a/b/c/d/x.tfstate")) {
 		t.Errorf("paths %q", paths)
+	}
+	if paths := ShellTool(io.Discard).Classify(map[string]any{"command": "cp x /*/*/*/*/"}, wd).Targets.Paths; !slices.Contains(
+		paths, string(filepath.Separator)) {
+		t.Errorf("a glob under the root: paths %q", paths)
 	}
 	paths = ShellTool(io.Discard).Classify(map[string]any{"command": "cp x.tfstate */*/*/"}, wd).Targets.Paths
 	if !slices.Contains(paths, filepath.Join(wd, "a/b/c/x.tfstate")) {
