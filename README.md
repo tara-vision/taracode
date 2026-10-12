@@ -172,21 +172,35 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    before it runs counts as touching the protected ones: a value the shell computes, an option repeated with
    two values, `sudo` or `xargs` in front, a kubeconfig that is not a small regular file, and a context
    switched earlier on the line (`kubectl config use-context`, `kubectx`, `kubens`, a `KUBECONFIG` assignment,
-   a sourced file that can set `KUBECONFIG`, a script). kubectl or helm run from another program's string or
-   file, such as `sh -c "kubectl ..."` or a script, is not seen; nor is one inside a double-quoted
-   substitution (`"$(kubectl ...)"` or backticks in double quotes), though the unquoted `$(kubectl ...)` is.
+   a sourced file that can set `KUBECONFIG`, a script). A line taracode cannot see into (a shell's `-c`
+   string, `eval`, an interpreter's code such as `python3 -c`, `xargs`, a script or a program it has no rule
+   for) that names `kubectl` or `helm` anywhere, inside a string too (`sh -c "kubectl ..."`), counts as
+   touching every context and namespace; a script that runs kubectl without naming it is not seen.
    A namespace a `kubectl` mutation changes as an object (`kubectl delete ns kube-system`,
    `kubectl label ns/kube-system ...`) is the namespace it touches, and on a `shell` line such a command with
    a glob or a brace list in any word, even a quoted JSON value (`kubectl patch ns shop -p '{"a":1,"b":2}'`),
    counts as touching every namespace; the `kubectl` tool, which runs no shell, reads the same words
    literally.
-   Protected paths cover the file `write_file`
-   or `edit_file` changes, the directory the `terraform` tool runs in, and in a `shell` command the targets of
-   its redirects and the files it hands to a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`,
-   `chmod`, `ln`, `dd`, `sort -o`, `curl -o`, ...), also after a literal `cd`. A path a command builds at run
-   time (a variable, a command substitution) is not seen, which is why the built-in deny patterns also refuse
-   any mutation that names `.taracode/policy.yaml`.
-2. **Deny patterns** - command globs that are refused outright.
+   Cloud account and host patterns also match a value glued to a flag or an assignment (`--profile=prod`,
+   `AWS_PROFILE=prod`), a host after a user name (`admin@host`) and the host of a URL.
+   Protected paths cover the file `write_file` or `edit_file` changes, the directory the `terraform` tool runs
+   in, and in a `shell` command the targets of its redirects and the files it hands to a file-writing program
+   (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `chmod`, `ln`, `dd`, `sort -o`, `curl -o`, ...), also after a
+   literal `cd` and inside the strings a shell's `-c`, `eval` or a `$(...)` runs. On a mutating line taracode
+   cannot see into, a word that names a protected path is refused: `python3 -c "open('terraform.tfstate',
+   'w')..."` is, and so is a read-only line of that kind, so read a protected file with `read_file` or a plain
+   `cat`. A pattern ending in `/**` also covers the directory it names (`.git/**` covers `.git`), patterns
+   match in any letter case, and a path is matched through its symlinks. A `shell` command whose target is a
+   directory is refused when the directory holds a protected path: taracode looks for a pattern that names one
+   path (`.git/**`, an absolute file) under it, and reads the directory for the other patterns, at most 50,000
+   entries and without entering `node_modules`, `vendor`, `.venv`, `venv`, `__pycache__`, `.tox` and `.gradle`;
+   a larger directory is refused, so remove it yourself or name a smaller one. A path a command builds at run
+   time (a variable, a computed string), and a directory that an interpreter or a script acts on without naming
+   a protected path, are not seen, which is why the built-in deny patterns also refuse any mutation that names
+   `.taracode/policy.yaml`.
+2. **Deny patterns** - command globs that are refused outright. A pattern is matched against the whole line,
+   each command of a chain (`cd infra && terraform destroy`), each command without its leading one-word
+   options (`terraform -chdir=infra destroy`), and the strings a shell's `-c`, `eval` or a `$(...)` runs.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
    produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first (a release with a
    `--post-renderer` is refused: the dry run would run the renderer before you approve).

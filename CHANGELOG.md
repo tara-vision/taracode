@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+Ways a command in operate mode could reach a protected target without the policy seeing it. All were found on
+2026-10-12, in our own hardware board runs and a security review of the policy gate that followed; there is no
+report of any of them being used. Upgrade if you use operate mode with protected paths, kube contexts,
+namespaces, cloud accounts or hosts, which the built-in policy has.
+
+- **A command that runs code from a string named no paths.** A protected path written through `python3 -c`,
+  `perl -e`, an `awk` program, `sh -c`, `eval`, backticks, `$(...)`, a heredoc or `xargs` was not seen: the
+  policy saw only the targets of redirects and of the programs known to write files. On such a line a word
+  that names a protected path is now refused, and the strings that `sh -c`, `eval` and `$(...)` run are read
+  like the line itself. A read-only line of that kind is refused too; `read_file` and `cat` still read.
+- **kubectl or helm inside a string.** `sh -c "kubectl --context prod ..."` or a Python `subprocess` call
+  carried no kube context. A line taracode cannot see into that names kubectl or helm, inside a string too,
+  now counts as touching every context and namespace.
+- **Glued account and host forms.** `--profile=acct`, `AWS_PROFILE=acct`, `user@host` and the host of a URL did
+  not match the account and host patterns. They do now.
+- **Deny patterns matched only the whole line.** `cd infra && terraform destroy`, `terraform -chdir=infra
+  destroy` and `sh -c "terraform destroy"` passed `terraform destroy*`. Each command of a chain, each command
+  without its leading one-word options and the strings a shell's `-c`, `eval` or `$(...)` runs are matched now.
+- **Path patterns matched too literally.** `.git/**` did not cover `.git` itself, so `rm -rf .git` passed the
+  built-in policy; removing a directory that holds a protected file passed; patterns were case-sensitive
+  while the macOS and Windows file systems are not; and a symlink led past the pattern of what it points to.
+  A pattern ending in `/**` now covers its directory, a `shell` command's directory target is checked for the
+  protected paths it holds (the README says how far), patterns match in any letter case, and a path is
+  matched through its symlinks.
+
 ## [3.2.4] - 2026-10-01
 
 ### Changed
