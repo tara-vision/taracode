@@ -90,3 +90,19 @@ func TestShellReadsNestedSubstitutionsOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestShellReadsASubstitutionAtAnyDepth: substitution bodies are read flat, so a command nested more levels deep
+// than strings run as lines are read (innerDepth) is still read for its targets and its deny lines.
+func TestShellReadsASubstitutionAtAnyDepth(t *testing.T) {
+	quoted := "rm -rf infra"
+	for range 12 {
+		quoted = `echo "$(` + quoted + `)"`
+	}
+	for _, cmd := range []string{quoted, "echo " + strings.Repeat("$(echo ", 12) + "$(rm -rf infra)" + strings.Repeat(")", 12),
+		"cat <<EOF\n" + strings.Repeat("$(echo ", 12) + "$(rm -rf infra)" + strings.Repeat(")", 12) + "\nEOF"} {
+		res := Shell(cmd)
+		if !slices.Contains(res.Paths, "infra") || !slices.Contains(res.Lines, "rm -rf infra") {
+			t.Errorf("%d levels: paths %q", 13, res.Paths)
+		}
+	}
+}
