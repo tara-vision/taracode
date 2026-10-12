@@ -85,3 +85,19 @@ func TestAFindFromAStartPointThatIsNoDirectoryWalksNothing(t *testing.T) {
 		t.Errorf("a start point too deep to check: %+v", v)
 	}
 }
+
+// TestAFindThatFollowsLinksIsRefused: a find that follows symbolic links (-L, -follow) reaches what they point
+// to, which the walk does not follow, so it is refused while the policy protects paths.
+func TestAFindThatFollowsLinksIsRefused(t *testing.T) {
+	wd := findProject(t)
+	inv := findRemoves(wd, ".", NameTest{"-name", "*.pyc"})
+	inv.Targets.Finds[0].Follow = true
+	if v := Default().Evaluate(ModeOperate, inv); v.Allow || !strings.Contains(v.Reason, "follows symbolic links") {
+		t.Errorf("got %+v, want a refusal that names the links", v)
+	}
+	p := Default()
+	p.Protected.Paths = nil
+	if v := p.Evaluate(ModeOperate, inv); !v.Allow {
+		t.Errorf("a policy that protects no paths: %+v", v)
+	}
+}

@@ -154,8 +154,9 @@ func findStarts(finds []policy.Find, workingDir string) []policy.Find {
 	home, _ := os.UserHomeDir()
 	out := make([]policy.Find, 0, len(finds))
 	for _, f := range finds {
-		out = append(out, policy.Find{Start: resolvePath(expandHome(f.Start, home), workingDir), Written: f.Written,
-			Tests: f.Tests})
+		found := f
+		found.Start = resolvePath(expandHome(f.Start, home), workingDir)
+		out = append(out, found)
 	}
 	return out
 }

@@ -80,6 +80,7 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`find . -path '*/.git/*' -delete`,
 		`find . -name '*.tfstate' -delete`,
 		`find . -type d -name infra -exec rm -rf {} +`,
+		`find -L . -name '*.pyc' -delete`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {

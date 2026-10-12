@@ -13,6 +13,7 @@ type Find struct {
 	Start   string     // the start point, absolute
 	Written string     // the start point as the command writes it, which begins every path find prints
 	Tests   []NameTest // the name tests of the find's expression
+	Follow  bool       // the find follows symbolic links (-L, -follow), which the walk does not
 }
 
 // NameTest is one name test of a find: -name and -iname match an entry's base name; -path, -ipath, -wholename
@@ -23,8 +24,13 @@ type NameTest struct {
 
 // foundPath reports a protected path among the entries a find acts on: under its start point (walkUnder), an
 // entry one of its name tests matches, or anything under a directory one matches, which -exec rm -rf {} takes
-// with it, that a protected path pattern covers.
+// with it, that a protected path pattern covers. A find that follows symbolic links is refused: the walk does not
+// follow them.
 func (p Policy) foundPath(f Find, workingDir string) (Verdict, bool) {
+	if f.Follow && len(p.Protected.Paths) > 0 {
+		return denied("protected.paths", "the find from %s follows symbolic links, which the check for protected "+
+			"paths does not; run it without -L and -follow", f.Written), true
+	}
 	dir, ok := dirTarget(f.Start)
 	if !ok {
 		return Verdict{}, false

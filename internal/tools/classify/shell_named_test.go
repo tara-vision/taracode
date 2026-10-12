@@ -83,10 +83,15 @@ func TestShellSplitsWrittenFromNamedPaths(t *testing.T) {
 // reaches the policy with its start points and name tests, read from the directories the line moves to.
 func TestShellFindsAreTheFindsNarrowedByName(t *testing.T) {
 	cases := []struct{ cmd, want string }{
-		{"find . -name config -delete", "{. . [{-name config}]}"},
-		{"cd sub && find . -iname '*.pyc' -exec rm {} +", "{. . [{-iname *.pyc}]}|{sub . [{-iname *.pyc}]}"},
-		{"env -C infra find . -path '*/x/*' -delete", "{infra . [{-path */x/*}]}"},
-		{"find a b -regex '.*x' -o -name y -delete", "{a a [{-regex .*x} {-name y}]}|{b b [{-regex .*x} {-name y}]}"},
+		{"find . -name config -delete", "{. . [{-name config}] false}"},
+		{"cd sub && find . -iname '*.pyc' -exec rm {} +", "{. . [{-iname *.pyc}] false}|{sub . [{-iname *.pyc}] false}"},
+		{"env -C infra find . -path '*/x/*' -delete", "{infra . [{-path */x/*}] false}"},
+		{"find a b -regex '.*x' -o -name y -delete",
+			"{a a [{-regex .*x} {-name y}] false}|{b b [{-regex .*x} {-name y}] false}"},
+		{"find -L . -name config -delete", "{. . [{-name config}] true}"},
+		{"find . -follow -name x -delete", "{. . [{-name x}] true}"},
+		{"find -L -P . -name x -delete", "{. . [{-name x}] false}"},
+		{"find -L . -delete", "{. . [] true}"},
 		{"find . -delete", ""},
 		{"find . -name x", ""},
 		{"find . -lname '*x*' -delete", ""},

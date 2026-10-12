@@ -13,26 +13,43 @@ import (
 var findNameTests = map[string]bool{"-name": true, "-iname": true, "-path": true, "-ipath": true, "-wholename": true,
 	"-iwholename": true, "-regex": true, "-iregex": true}
 
-// findTargets are the finds a segment runs that narrow by name what they delete or run a command on, for the
-// policy to walk: each start point, read from the directory wrappers move find to and from every directory an
-// earlier cd of the line moved to, with the start point as written and the expression's name tests.
+// findTargets are the finds a segment runs that narrow by name what they delete or run a command on, or that
+// follow symbolic links, for the policy to check: each start point, read from the directory wrappers move find to
+// and from every directory an earlier cd of the line moved to, with the start point as written, the expression's
+// name tests and whether it follows links.
 func findTargets(words, dirs []string) []policy.Find {
 	cmd, dir := behindWrappers(words, func(prog string) bool { return prog == "find" })
 	if cmd == nil {
 		return nil
 	}
 	starts, expr := findStarts(cmd[1:])
-	if !findActs(expr) || !findNarrowed(expr) {
+	follows := findFollows(cmd[1:])
+	if !findActs(expr) || !follows && !findNarrowed(expr) {
 		return nil
 	}
 	tests := findTests(expr)
 	var out []policy.Find
 	for _, start := range starts {
 		for _, s := range underDirs([]string{joinDir(dir, start)}, dirs) {
-			out = append(out, policy.Find{Start: s, Written: start, Tests: tests})
+			out = append(out, policy.Find{Start: s, Written: start, Tests: tests, Follow: follows})
 		}
 	}
 	return out
+}
+
+// findFollows reports a find that follows symbolic links under its start points: -L last among -H, -L and -P,
+// or -follow in its expression.
+func findFollows(r []string) bool {
+	follows := false
+	for _, t := range r {
+		switch t {
+		case "-L", "-follow":
+			follows = true
+		case "-H", "-P":
+			follows = false
+		}
+	}
+	return follows
 }
 
 // findWritten are the files find writes (-fprint, -fls) and, when it deletes or runs a command on what it finds
