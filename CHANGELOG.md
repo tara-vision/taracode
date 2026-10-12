@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 Ways a command in operate mode could reach a protected target without the policy seeing it. All were found on
-2026-10-12, in our own hardware board runs and in two reviews of the policy gate that followed; there is no
+2026-10-12, in our own hardware board runs and in the reviews of the policy gate that followed; there is no
 report of any of them being used. Upgrade if you use operate mode: the built-in policy protects `.git`,
 `*.tfstate` files, kube contexts named like `prod` and the `kube-system` namespace, and a policy file can
 protect more, cloud accounts and hosts included.
@@ -39,18 +39,26 @@ protect more, cloud accounts and hosts included.
   any letter case, and a path is matched through its symlinks.
 - **Commands that act on paths without writing them were not checked.** What `find -delete` or `find -exec`
   reaches, the destination of `cp`, `mv`, `install`, `ln` and `rsync` and where each source lands in it, the
-  paths `ln`, `cp -l` and `cp -s` link to, what `tar -x` and `unzip` extract into and the members they name,
-  the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after `cd -P`, `env -C`,
-  `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its name tests reach
-  under its start points, and one that follows symbolic links is refused.
+  paths `ln`, `cp -l` and `cp -s` link to, the directory `tar -x -C` and `unzip -d` extract into and the
+  members they name, the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after
+  `cd -P`, `env -C`, `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its
+  name tests reach under its start points, behind BSD's options too, and the command it runs is read like the
+  line's own; one whose command may act beyond what it finds is checked for all its start points hold, and one
+  that follows symbolic links is refused.
+- **Shell expansions were read as written.** `mv terraform.tfstate{,.bak}` and `rm -rf .gi{t,}` passed, and so
+  did a glob in a word of a line taracode cannot see into (`echo .g?t | xargs rm -rf`). Words are now
+  brace-expanded before a command's targets are read, and globs expand as the shell expands them, dot files
+  included where the line may turn that on.
 
 ### Changed
 - Failing closed costs some commands in operate mode while the policy protects paths: a `shell` command that
-  removes or moves a directory holding a protected path, or a directory of more than 50,000 entries; a `find`
-  that deletes or runs a command and has a branch without a name test, over a directory holding a protected
-  path; a `find` that follows symbolic links; a line taracode cannot see into that names a protected path, a
-  read-only one included; and a target more than 256 parts deep. Remove such paths yourself, or name smaller
-  ones.
+  removes or moves a directory holding a protected path, or a directory of more than 50,000 entries, and an
+  archive extracted into one; a `find` that deletes or runs a command over a directory holding a protected path
+  when a branch of its expression has no name test or its command runs a shell, an interpreter or a script; a
+  `find` that follows symbolic links; a line taracode cannot see into that names a protected path, a read-only
+  one included; and a target more than 256 parts deep. Remove such paths yourself, or name smaller ones.
+- A line taracode cannot parse, an unclosed quote or expansion or a heredoc without its delimiter line among
+  them, counts as a mutation it cannot see into.
 
 ## [3.2.4] - 2026-10-01
 
