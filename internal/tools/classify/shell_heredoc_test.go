@@ -14,6 +14,10 @@ func TestShellReadsTheScriptAShellTakesOnItsInput(t *testing.T) {
 		{"bash -x -o pipefail <<'EOF'\necho {} > terraform.tfstate\nEOF", "terraform.tfstate", "echo {}"},
 		{`sh <<< "rm -rf infra"`, "infra", "rm -rf infra"},
 		{"cat <<EOF\nnow $(rm -rf infra)\nEOF", "infra", "rm -rf infra"},
+		{"cat <<'EOF' | sh\nrm -rf infra\nEOF", "infra", "rm -rf infra"},
+		{"sh /dev/stdin <<'EOF'\nterraform destroy\nEOF", "", "terraform destroy"},
+		{"bash - <<'EOF'\nterraform destroy\nEOF", "", "terraform destroy"},
+		{"source /dev/stdin <<'EOF'\nrm -rf infra\nEOF", "infra", "rm -rf infra"},
 	}
 	for _, c := range cases {
 		res := Shell(c.cmd)
@@ -35,7 +39,7 @@ func TestShellTakesAHereDocumentAsData(t *testing.T) {
 	}{
 		{"git commit -F - <<'EOF'\nbump terraform.tfstate handling\nEOF", nil},
 		{"cat > notes.md <<'EOF'\nDon't touch terraform.tfstate\nrm -rf infra\nEOF", []string{"notes.md"}},
-		{"bash install.sh <<'EOF'\nrm -rf infra\nEOF", nil},
+		{"env <<'EOF'\nrm -rf infra\nEOF", nil},
 	}
 	for _, c := range cases {
 		res := Shell(c.cmd)
@@ -52,6 +56,9 @@ func TestShellTakesAHereDocumentAsData(t *testing.T) {
 	if !Shell("python3 <<'EOF'\nopen('terraform.tfstate', 'w')\nEOF").Opaque {
 		t.Error("python3 reading its program from a here-document is not opaque")
 	}
+	if paths := Shell("bash install.sh <<'EOF'\nrm -rf infra\nEOF").Paths; len(paths) != 0 {
+		t.Errorf("the input of a script file named paths: %q", paths)
+	}
 }
 
 // TestShellKubeCountsAKubectlInAHereDocument: on an opaque line, a kubectl or helm named in a here-document acts
@@ -66,5 +73,21 @@ func TestShellKubeCountsAKubectlInAHereDocument(t *testing.T) {
 		if got := kubeOf(c.cmd); got != c.want {
 			t.Errorf("%q: kube targets %q, want %q", c.cmd, got, c.want)
 		}
+	}
+}
+
+// TestShellReadsEveryHereDocumentOnAnOpaqueLine: a line the classifier cannot see into may run what a body holds
+// (a script written and then run, a program on an interpreter's input), so every body's lines are lines the deny
+// patterns read; on a line it can read, a body a program takes as data is not.
+func TestShellReadsEveryHereDocumentOnAnOpaqueLine(t *testing.T) {
+	for _, cmd := range []string{"cat > d.sh <<'EOF'\nterraform destroy\nEOF\nbash d.sh",
+		"python3 <<'EOF'\nterraform destroy\nEOF", "bash install.sh <<'EOF'\nterraform destroy\nEOF"} {
+		if lines := Shell(cmd).Lines; !slices.Contains(lines, "terraform destroy") {
+			t.Errorf("%q: lines %q", cmd, lines)
+		}
+	}
+	if lines := Shell("cat > notes.md <<'EOF'\nterraform destroy needs approval\nEOF").Lines; slices.Contains(lines,
+		"terraform destroy needs approval") {
+		t.Errorf("a file's content became a line: %q", lines)
 	}
 }

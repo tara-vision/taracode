@@ -17,6 +17,7 @@ type Segment struct {
 	Words      []string // the command and its arguments, quotes removed
 	Redirects  []string // redirections in this segment, operator and target: "> out.log", "2>&1"
 	Heredocs   []string // the bodies of the segment's here-documents (<< and <<-), in order
+	Piped      bool     // the segment ends with |, which hands its output to the next one
 	Background bool     // the segment ends with &
 }
 
@@ -493,6 +494,7 @@ func (p *parser) operator(c rune) {
 		p.pos++
 		p.endSegment(true)
 	default:
+		p.seg.Piped = c == '|'
 		p.pos++
 		p.endSegment(false)
 		if c == '\n' {

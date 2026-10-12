@@ -30,7 +30,7 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 			out = append(out, strings.Join(trimmed, " "))
 		}
 		if depth > 0 {
-			for _, inner := range innerLines(words, segmentInput(seg)) {
+			for _, inner := range append(innerLines(words), scriptInput(seg, words)...) {
 				out = append(out, linesOf(inner, depth-1)...)
 			}
 		}
@@ -64,8 +64,8 @@ func withoutLeadingOptions(words []string) []string {
 }
 
 // innerLines are the strings a command hands to a shell's -c (a short option holding c, as -ec) or to
-// eval, to run as a line of their own, and the script a shell without -c reads from its input.
-func innerLines(words, input []string) []string {
+// eval, to run as a line of their own.
+func innerLines(words []string) []string {
 	w := unwrap(words)
 	if len(w.words) == 0 {
 		return nil
@@ -81,9 +81,28 @@ func innerLines(words, input []string) []string {
 				return []string{rest[i+1]}
 			}
 		}
-		if scriptOnInput(rest) {
-			return input
-		}
+	}
+	return nil
+}
+
+// scriptInput is the script a segment's here-documents and here-strings hand a shell: their bodies when the
+// segment pipes its output into the next command, which may run it, and when its program is a shell without -c
+// that reads its script from its input (sh, sh -s, sh -, sh /dev/stdin, source /dev/stdin).
+func scriptInput(seg shellwords.Segment, words []string) []string {
+	input := segmentInput(seg)
+	if len(input) == 0 || seg.Piped {
+		return input
+	}
+	w := unwrap(words)
+	if len(w.words) == 0 {
+		return nil
+	}
+	prog, rest := path.Base(w.words[0]), w.words[1:]
+	switch {
+	case shellNames[prog] && len(innerLines(w.words)) == 0 && scriptOnInput(rest):
+		return input
+	case (prog == "source" || prog == ".") && len(rest) > 0 && stdinFile(rest[0]):
+		return input
 	}
 	return nil
 }
@@ -100,7 +119,7 @@ func segmentInput(seg shellwords.Segment) []string {
 }
 
 // scriptOnInput reports whether a shell run without -c reads its script from its standard input: it names no
-// script file, or a -s says so. -o and +o take an option's name.
+// script file or names the input as one, or a -s says so. -o and +o take an option's name.
 func scriptOnInput(rest []string) bool {
 	for i := 0; i < len(rest); i++ {
 		switch w := rest[i]; {
@@ -109,10 +128,27 @@ func scriptOnInput(rest []string) bool {
 		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 's'):
 			return true
 		case !strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "+"):
-			return false
+			return stdinFile(w)
 		}
 	}
 	return true
+}
+
+// stdinFile reports a script operand that names the standard input.
+func stdinFile(w string) bool {
+	return in(w, "-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0")
+}
+
+// bodyLines are the deny lines of every here-document body on the line, which a line the classifier cannot see
+// into may run (a script it writes and then runs, a program on an interpreter's input).
+func bodyLines(parsed shellwords.Result) []string {
+	var out []string
+	for _, seg := range parsed.Segments {
+		for _, body := range seg.Heredocs {
+			out = append(out, linesOf(body, innerDepth-1)...)
+		}
+	}
+	return out
 }
 
 // innerPaths are the files that the strings a shell's -c, eval or a $(...) runs write or remove, read as
@@ -131,7 +167,7 @@ func innerPaths(parsed shellwords.Result, depth int) []string {
 	for _, seg := range parsed.Segments {
 		simple, _ := simpleCommand(seg.Words)
 		if words := simple[assignmentsEnd(simple):]; len(words) > 0 {
-			for _, line := range innerLines(words, segmentInput(seg)) {
+			for _, line := range append(innerLines(words), scriptInput(seg, words)...) {
 				visit(line)
 			}
 		}

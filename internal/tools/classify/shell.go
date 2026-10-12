@@ -39,6 +39,9 @@ func Shell(command string) ShellResult {
 	paths := append(shellPaths(parsed.Segments), innerPaths(parsed, innerDepth)...)
 	out := ShellResult{Result: read(""), Paths: paths, Kube: kube,
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
+	if out.Opaque {
+		out.Lines = append(out.Lines, bodyLines(parsed)...)
+	}
 	if parsed.FunctionDef {
 		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+
 			"any read-only name")

@@ -70,3 +70,16 @@ func TestWordsKeepsTheLinesAfterADoubleLessThan(t *testing.T) {
 		t.Errorf("%q %v", w, err)
 	}
 }
+
+// TestSplitMarksASegmentThatPipesItsOutput: a segment ended by | hands its output to the next one; || does not.
+func TestSplitMarksASegmentThatPipesItsOutput(t *testing.T) {
+	res, err := Split("cat <<EOF | sh\nx\nEOF\na || b; c")
+	if err != nil || len(res.Segments) != 5 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	for i, want := range []bool{true, false, false, false, false} {
+		if res.Segments[i].Piped != want {
+			t.Errorf("segment %d %q: piped %v", i, res.Segments[i].Words, res.Segments[i].Piped)
+		}
+	}
+}
