@@ -128,3 +128,27 @@ func TestResolvedLeavesAnEmptyPathAlone(t *testing.T) {
 		t.Errorf("resolved of an empty path: %q %v", got, ok)
 	}
 }
+
+// TestAPathTooDeepToCheckIsRefused: past the depth resolved walks back through, a link in the path cannot be
+// followed, so the path is refused rather than matched only as it is written.
+func TestAPathTooDeepToCheckIsRefused(t *testing.T) {
+	deep := "/w/" + strings.Repeat("l/", 300) + ".git/config"
+	for name, targets := range map[string]Targets{"written": {Paths: []string{deep}}, "named": {Named: []string{deep}}} {
+		inv := Invocation{Tool: "shell", Classification: Mutate, Command: "echo x", WorkingDir: "/w", Targets: targets}
+		v := Default().Evaluate(ModeOperate, inv)
+		if v.Allow || v.Rule != "protected.paths" || !strings.Contains(v.Reason, "more than 256 parts") {
+			t.Errorf("%s: got %+v, want a refusal that names the depth", name, v)
+		}
+	}
+	inv := Invocation{Tool: "shell", Classification: Mutate, Command: "echo x", WorkingDir: "/w",
+		Targets: Targets{Paths: []string{"/w/" + strings.Repeat("l/", 250) + "x"}}}
+	if v := Default().Evaluate(ModeOperate, inv); !v.Allow {
+		t.Errorf("a path within the depth refused: %+v", v)
+	}
+	p := Default()
+	p.Protected.Paths = nil
+	inv.Targets = Targets{Paths: []string{deep}}
+	if v := p.Evaluate(ModeOperate, inv); !v.Allow {
+		t.Errorf("a deep path refused by a policy that protects no paths: %+v", v)
+	}
+}

@@ -117,14 +117,19 @@ func pathCandidates(pattern, absPath, workingDir string) []string {
 	return candidates
 }
 
-// maxResolvedParts is the most path elements resolved walks back through: a longer path is matched as it is written,
-// so a path of thousands of parts cannot stall the gate.
+// maxResolvedParts is the most path elements resolved walks back through, so a path of thousands of parts cannot
+// stall the gate; the policy refuses a deeper target.
 const maxResolvedParts = 256
+
+// tooDeep reports whether a path has more parts than resolved walks back through.
+func tooDeep(path string) bool {
+	return strings.Count(path, string(filepath.Separator)) > maxResolvedParts
+}
 
 // resolved returns the path with the symlinks of its longest existing part resolved, and whether that
 // differs from the path. An empty path, and a path none of whose parts resolves, is returned as it is.
 func resolved(p string) (string, bool) {
-	if p == "" || strings.Count(p, string(filepath.Separator)) > maxResolvedParts {
+	if p == "" || tooDeep(p) {
 		return p, false
 	}
 	rest := ""

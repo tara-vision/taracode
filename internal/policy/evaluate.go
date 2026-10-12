@@ -126,6 +126,27 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 			return denied("protected.cloud_accounts", "%q matches the protected cloud account pattern %q", candidate, pat), true
 		}
 	}
+	if v, held := p.protectedPath(inv); held {
+		return v, true
+	}
+	for _, candidate := range append(append([]string{}, t.Hosts...), commandTokens(inv.Command)...) {
+		if pat, ok := firstGlob(p.Protected.Hosts, candidate); ok {
+			return denied("protected.hosts", "%q matches the protected host pattern %q", candidate, pat), true
+		}
+	}
+	return Verdict{}, false
+}
+
+// protectedPath checks the paths a call writes, and the paths a shell command names, against the protected path
+// patterns. A path deeper than resolved follows is refused: a link in it could lead to a protected path.
+func (p Policy) protectedPath(inv Invocation) (Verdict, bool) {
+	t := inv.Targets
+	for _, path := range append(append([]string{}, t.Paths...), t.Named...) {
+		if tooDeep(path) && len(p.Protected.Paths) > 0 {
+			return denied("protected.paths", "%s has more than %d parts, too many to check for protected paths",
+				path, maxResolvedParts), true
+		}
+	}
 	for _, path := range t.Paths {
 		for _, pat := range p.Protected.Paths {
 			if matchPath(pat, path, inv.WorkingDir) {
@@ -147,11 +168,6 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 				return denied("protected.paths", "the command names %s, which matches the protected path pattern %q",
 					path, pat), true
 			}
-		}
-	}
-	for _, candidate := range append(append([]string{}, t.Hosts...), commandTokens(inv.Command)...) {
-		if pat, ok := firstGlob(p.Protected.Hosts, candidate); ok {
-			return denied("protected.hosts", "%q matches the protected host pattern %q", candidate, pat), true
 		}
 	}
 	return Verdict{}, false
