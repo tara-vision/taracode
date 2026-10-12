@@ -189,6 +189,8 @@ func segmentInput(seg shellwords.Segment) []string {
 func scriptOnInput(rest []string) bool {
 	for i := 0; i < len(rest); i++ {
 		switch w := rest[i]; {
+		case valuedCluster(w) && strings.ContainsRune(w[1:len(w)-1], 's'): // -so pipefail: -s reads the input
+			return true
 		case in(w, shellValued...) || valuedCluster(w):
 			i++
 		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 's'):
