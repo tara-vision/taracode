@@ -53,21 +53,20 @@ var evalSymlinks = filepath.EvalSymlinks
 
 // matchPath reports whether a path glob matches the absolute path, the path relative to workingDir,
 // or (for patterns without a slash) the base name, case-insensitively. A pattern ending in /** also
-// matches the directory it names, and the path is tried as written and with the symlinks of its
-// existing part resolved, so a link reaches the protection of what it points to.
+// matches the directory it names. The path and the working directory are each tried as written and
+// with the symlinks of their existing part resolved, so a link reaches the protection of what it points to.
 func matchPath(pattern, absPath, workingDir string) bool {
 	m := newPathMatcher(pattern)
-	if m.matches(absPath, workingDir) {
-		return true
+	realPath, _ := resolved(absPath)
+	realWd, _ := resolved(workingDir)
+	for _, path := range []string{absPath, realPath} {
+		for _, wd := range []string{workingDir, realWd} {
+			if m.matches(path, wd) {
+				return true
+			}
+		}
 	}
-	target, ok := resolved(absPath)
-	if !ok {
-		return false
-	}
-	if targetWd, ok := resolved(workingDir); ok && workingDir != "" {
-		workingDir = targetWd
-	}
-	return m.matches(target, workingDir)
+	return false
 }
 
 // pathMatcher is a path pattern compiled once: the pattern and, for one ending in /**, the directory it
@@ -103,11 +102,12 @@ func (m pathMatcher) matches(absPath, workingDir string) bool {
 }
 
 // pathCandidates are the forms of a path a pattern is matched against: the absolute path, the path
-// relative to workingDir when it lies under it, and the base name for a pattern without a slash.
+// relative to workingDir when it lies under it in any letter case, and the base name for a pattern without a slash.
 func pathCandidates(pattern, absPath, workingDir string) []string {
 	candidates := []string{filepath.ToSlash(absPath)}
 	if workingDir != "" {
-		if rel, err := filepath.Rel(workingDir, absPath); err == nil && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(strings.ToLower(workingDir), strings.ToLower(absPath)); err == nil &&
+			!strings.HasPrefix(rel, "..") {
 			candidates = append(candidates, filepath.ToSlash(rel))
 		}
 	}
@@ -117,9 +117,16 @@ func pathCandidates(pattern, absPath, workingDir string) []string {
 	return candidates
 }
 
+// maxResolvedParts is the most path elements resolved walks back through: a longer path is matched as it is written,
+// so a path of thousands of parts cannot stall the gate.
+const maxResolvedParts = 256
+
 // resolved returns the path with the symlinks of its longest existing part resolved, and whether that
-// differs from the path. A path none of whose parts resolves is returned as it is.
+// differs from the path. An empty path, and a path none of whose parts resolves, is returned as it is.
 func resolved(p string) (string, bool) {
+	if p == "" || strings.Count(p, string(filepath.Separator)) > maxResolvedParts {
+		return p, false
+	}
 	rest := ""
 	for cur := p; ; {
 		if target, err := evalSymlinks(cur); err == nil {

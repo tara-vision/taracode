@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -90,12 +91,40 @@ func mustLink(t *testing.T, target, link string) {
 	}
 }
 
-func TestMatchPathResolvesASymlinkedWorkingDirectory(t *testing.T) {
+func TestMatchPathFoldsCaseInTheRelativeForm(t *testing.T) {
+	if !matchPath(".git/**", "/x/PROJ/.git/config", "/x/proj") {
+		t.Error("a relative pattern missed a path written in another case than the working directory")
+	}
+}
+
+// TestMatchPathResolvesTheWorkingDirectoryOnItsOwn: a path already written in its resolved form still matches a
+// relative pattern under a symlinked working directory.
+func TestMatchPathResolvesTheWorkingDirectoryOnItsOwn(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "project", ".git", "config"))
 	mustLink(t, "project", filepath.Join(root, "link"))
-	wd := filepath.Join(root, "link")
-	if !matchPath(".git/**", filepath.Join(wd, ".git", "config"), wd) {
-		t.Error("a protected path under a symlinked working directory did not match")
+	project, err := filepath.EvalSymlinks(filepath.Join(root, "project"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !matchPath(".git/**", filepath.Join(project, ".git", "config"), filepath.Join(root, "link")) {
+		t.Error("a resolved path under a symlinked working directory did not match")
+	}
+}
+
+func TestResolvedGivesUpOnAVeryLongPath(t *testing.T) {
+	calls := 0
+	saved := evalSymlinks
+	evalSymlinks = func(p string) (string, error) { calls++; return p, nil }
+	t.Cleanup(func() { evalSymlinks = saved })
+	long := "/" + strings.Repeat("a/", 300) + "x"
+	if got, ok := resolved(long); ok || got != long || calls != 0 {
+		t.Errorf("resolved of a %d-part path: %q %v after %d lookups", 301, got, ok, calls)
+	}
+}
+
+func TestResolvedLeavesAnEmptyPathAlone(t *testing.T) {
+	if got, ok := resolved(""); ok || got != "" {
+		t.Errorf("resolved of an empty path: %q %v", got, ok)
 	}
 }

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,9 +42,12 @@ func TestADirectoryTargetIsCheckedForTheProtectedPathsItHolds(t *testing.T) {
 		{"a directory holding a state file", "infra", false, "x.tfstate"},
 		{"the project, which holds .git", ".", false, ".git"},
 		{"a directory with nothing protected", "build", true, ""},
+		{"a file with nothing protected", "build/out.bin", true, ""},
+		{"a path that is not there", "gone", true, ""},
 		{"a tree package managers own is not walked", "node_modules", true, ""},
 		{"nor is one nested in the target", "a", true, ""},
-		{".terraform is walked", "b", false, "terraform.tfstate"},
+		{"the backend cache in .terraform is not walked", "b", true, ""},
+		{"nor is .terraform itself", "b/.terraform", true, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -99,10 +103,38 @@ func TestOnlyShellDirectoryTargetsAreChecked(t *testing.T) {
 	}
 }
 
-func TestASymlinkToADirectoryIsNotWalked(t *testing.T) {
+// TestALinkToADirectoryIsCheckedThroughItsTarget: rm -rf link/ removes what the link points to, and the trailing
+// slash is gone by the time the policy sees the path, so a link to a directory is checked as that directory.
+func TestALinkToADirectoryIsCheckedThroughItsTarget(t *testing.T) {
 	wd := project(t)
 	mustLink(t, "infra", filepath.Join(wd, "infra-link"))
-	if v := Default().Evaluate(ModeOperate, shellRemoves(wd, "infra-link")); !v.Allow {
-		t.Errorf("rm -rf of a link removes the link, not what it points to: %+v", v)
+	if v := Default().Evaluate(ModeOperate, shellRemoves(wd, "infra-link")); v.Allow || !strings.Contains(v.Reason,
+		"x.tfstate") {
+		t.Errorf("a link to a directory that holds a state file: %+v", v)
+	}
+}
+
+func TestALiteralPatternMatchesTheDirectoryInAnyCase(t *testing.T) {
+	wd := project(t)
+	mustWrite(t, filepath.Join(wd, "ops", "prod", "main.tf"))
+	if err := os.MkdirAll(filepath.Join(wd, "OPS"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	p := Default()
+	p.Protected.Paths = append(p.Protected.Paths, "ops/prod/**")
+	if v := p.Evaluate(ModeOperate, shellRemoves(wd, "OPS")); v.Allow {
+		t.Errorf("OPS against ops/prod/**: %+v", v)
+	}
+}
+
+// TestABareNamePatternIsCheckedByTheWalk: a pattern without a slash names a base name anywhere, so a directory
+// that holds one is found by the walk, not by a fixed path under the working directory.
+func TestABareNamePatternIsCheckedByTheWalk(t *testing.T) {
+	wd := project(t)
+	mustWrite(t, filepath.Join(wd, "app", ".env"))
+	p := Default()
+	p.Protected.Paths = append(p.Protected.Paths, ".env")
+	if v := p.Evaluate(ModeOperate, shellRemoves(wd, "app")); v.Allow || !strings.Contains(v.Reason, ".env") {
+		t.Errorf("app holding .env: %+v", v)
 	}
 }

@@ -12,11 +12,12 @@ import (
 // test can lower it.
 var dirWalkBound = 50000
 
-// skippedTrees are the directories package managers own. No tool writes state into them, so the walk of a
-// directory target does not descend into them, and a target that is one of them is not walked at all.
-// .terraform is walked: it holds state.
+// skippedTrees are the directories package managers and terraform's backend cache own. No tool keeps state the
+// policy protects in them (.terraform holds a cache of the backend that terraform init rebuilds; the state sits
+// beside it), so the walk of a directory target does not descend into them, and a target that is one of them is not
+// walked at all.
 var skippedTrees = map[string]bool{"node_modules": true, "vendor": true, ".venv": true, "venv": true,
-	"__pycache__": true, ".tox": true, ".gradle": true}
+	"__pycache__": true, ".tox": true, ".gradle": true, ".terraform": true}
 
 // errWalkBound stops a walk that read dirWalkBound entries.
 var errWalkBound = errors.New("the walk reached its bound")
@@ -26,6 +27,7 @@ var errWalkBound = errors.New("the walk reached its bound")
 // one (.git/**, infra/prod/**, an absolute file) is checked by looking for that path under the directory;
 // the other patterns by a walk of at most dirWalkBound entries, which refuses when it reaches the bound.
 func (p Policy) heldPath(dir, workingDir string) (Verdict, bool) {
+	realWd, _ := resolved(workingDir)
 	var walked []pathMatcher
 	for _, pat := range p.Protected.Paths {
 		fixed, ok := literalPart(pat)
@@ -34,9 +36,9 @@ func (p Policy) heldPath(dir, workingDir string) (Verdict, bool) {
 			continue
 		}
 		if !filepath.IsAbs(fixed) {
-			fixed = filepath.Join(workingDir, fixed)
+			fixed = filepath.Join(realWd, fixed)
 		}
-		if within(fixed, dir) && exists(fixed) {
+		if fixed, _ = resolved(fixed); within(fixed, dir) && exists(fixed) {
 			return denied("protected.paths", "%s holds %s, which the protected path pattern %q covers", dir, fixed,
 				pat), true
 		}
@@ -44,7 +46,7 @@ func (p Policy) heldPath(dir, workingDir string) (Verdict, bool) {
 	if len(walked) == 0 || skippedTrees[filepath.Base(dir)] {
 		return Verdict{}, false
 	}
-	return walkFor(dir, workingDir, walked)
+	return walkFor(dir, realWd, walked)
 }
 
 // walkFor walks a directory, skipping the trees package managers own, for an entry a pattern matches.
@@ -54,7 +56,7 @@ func walkFor(dir, workingDir string, walked []pathMatcher) (Verdict, bool) {
 	entries := 0
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || path == dir {
-			return nil // an entry the walk cannot read, the shell command cannot reach either
+			return nil // the walk checks what it can read; an unreadable entry is left out
 		}
 		if entries++; entries > dirWalkBound {
 			return errWalkBound
@@ -90,9 +92,9 @@ func literalPart(pattern string) (string, bool) {
 	return filepath.FromSlash(fixed), true
 }
 
-// within reports whether path is dir or lies under it.
+// within reports whether path is dir or lies under it, in any letter case.
 func within(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
+	rel, err := filepath.Rel(strings.ToLower(dir), strings.ToLower(path))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
@@ -102,8 +104,13 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// isDir reports whether path is a directory, not a symlink to one: removing a link leaves what it points to.
-func isDir(path string) bool {
-	info, err := os.Lstat(path)
-	return err == nil && info.IsDir()
+// dirTarget returns the directory a shell target names, through a link to it: rm -rf link/ removes what the link
+// points to, and the slash is gone by the time the policy sees the path.
+func dirTarget(path string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	target, _ := resolved(path)
+	return target, true
 }
