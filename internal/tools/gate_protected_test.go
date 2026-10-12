@@ -81,6 +81,7 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`find . -name '*.tfstate' -delete`,
 		`find . -type d -name infra -exec rm -rf {} +`,
 		`find -L . -name '*.pyc' -delete`,
+		`cp /tmp/x.tfstate infra`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {
@@ -104,6 +105,7 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`find . -name '*.pyc' -delete`,
 		`find . -type d -name __pycache__ -exec rm -rf {} +`,
 		`find . -name node_modules -type d -prune -exec rm -rf {} +`,
+		`cp terraform.tfstate terraform.tfstate.backup`,
 		`cat terraform.tfstate`,
 		`kubectl --context dev -n apps delete pod x`,
 		`aws --profile=acme-dev s3 rm s3://b/k`,

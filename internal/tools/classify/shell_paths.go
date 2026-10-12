@@ -12,15 +12,16 @@ import (
 
 // lineFiles are the files a line acts on: written, which it writes, moves or removes (fileWriters), so a
 // directory among them is checked for the protected paths it holds; named, which it acts on by name only
-// (namedWriters); and the finds it runs narrowed by name (findTargets).
+// (namedWriters); landings, where a copy, move or link puts each source if its destination is a directory
+// (landingWriters); and the finds it runs narrowed by name (findTargets).
 type lineFiles struct {
-	written, named []string
-	finds          []policy.Find
+	written, named, landings []string
+	finds                    []policy.Find
 }
 
 func (f lineFiles) with(g lineFiles) lineFiles {
 	return lineFiles{written: slices.Concat(f.written, g.written), named: slices.Concat(f.named, g.named),
-		finds: slices.Concat(f.finds, g.finds)}
+		landings: slices.Concat(f.landings, g.landings), finds: slices.Concat(f.finds, g.finds)}
 }
 
 // shellPaths returns the files the segments act on, as written on the line: the targets of redirects into
@@ -43,7 +44,7 @@ func shellPaths(segments []shellwords.Segment) lineFiles {
 			}
 		}
 		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs),
-			finds: findTargets(words, dirs)})
+			landings: underDirs(operandsOf(words, landingWriters), dirs), finds: findTargets(words, dirs)})
 		if d, ok := cdTarget(words, dirs); ok {
 			dirs = append(dirs, d)
 		}

@@ -2,6 +2,7 @@ package classify
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -526,7 +527,7 @@ func (l *kubeLine) writesKubeconfig(words, redirects []string) bool {
 	var targets []string
 	if len(words) > 0 {
 		words = words[assignmentsEnd(words):]
-		targets = append(writtenOperands(words), namedOperands(words)...)
+		targets = slices.Concat(writtenOperands(words), namedOperands(words), operandsOf(words, landingWriters))
 	}
 	for _, r := range redirects {
 		if writesFile(r) {

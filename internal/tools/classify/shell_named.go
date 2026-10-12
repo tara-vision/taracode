@@ -46,25 +46,38 @@ func destinationNamed(r []string) []string {
 	return []string{dest}
 }
 
-// copyWritten are the files cp and install write: each source under the destination, which they write into when
-// it is a directory, and the destination itself when they merge into it (mergesInto); otherwise the destination
-// is named (destinationNamed).
+// landingWriters maps cp, install, mv and ln to where each source lands when the destination is a directory
+// (into); the caller keeps the landings whose directory exists, since a destination that is a file is written
+// itself, by its name.
+var landingWriters = map[string]func(rest []string) []string{
+	"cp": landings, "install": landings, "mv": landings, "ln": landings,
+}
+
+func landings(r []string) []string {
+	dest, sources := destination(r)
+	if dest == "" {
+		return nil
+	}
+	return into(dest, sources)
+}
+
+// copyWritten is the destination of cp and install when they merge into it (mergedInto); otherwise the
+// destination is named (destinationNamed) and each source's landing checked (landings).
 func copyWritten(r []string) []string {
 	dest, sources := destination(r)
 	if dest == "" {
 		return nil
 	}
-	return slices.Concat(into(dest, sources), mergedInto(r, dest, sources))
+	return mergedInto(r, dest, sources)
 }
 
-// moveWritten are the files mv removes and writes: the sources, each source under the destination, and the
-// destination itself when mv merges into it.
+// moveWritten are the files mv removes, the sources, and its destination when it merges into it.
 func moveWritten(r []string) []string {
 	dest, sources := destination(r)
 	if dest == "" {
 		return sources
 	}
-	return slices.Concat(sources, into(dest, sources), mergedInto(r, dest, sources))
+	return slices.Concat(sources, mergedInto(r, dest, sources))
 }
 
 // mergedInto is the destination when a copy or move writes into it rather than under it by a source's base name:
@@ -79,9 +92,9 @@ func mergedInto(r []string, dest string, sources []string) []string {
 	return []string{dest}
 }
 
-// linkWritten are what ln links to and the links it makes: a link reaches what it points to, so the sources are
-// targets too (a relative source of a symbolic link is read from the link's directory). With one operand the link
-// is the source's base name in the working directory.
+// linkWritten are what ln links to: a link reaches what it points to, so the sources are targets (a relative
+// source of a symbolic link is read from the link's directory). With one operand the link is the source's base
+// name in the working directory; with a destination it is named, or lands under it (landings).
 func linkWritten(r []string) []string {
 	dest, sources := destination(r)
 	if dest == "" {
@@ -98,7 +111,7 @@ func linkWritten(r []string) []string {
 		}
 		out = append(out, src)
 	}
-	return slices.Concat(out, into(dest, sources))
+	return out
 }
 
 // tarNamed is the directory tar extracts into (-C, --directory), when it extracts.

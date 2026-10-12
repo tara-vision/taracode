@@ -63,7 +63,7 @@ func TestShellWrittenPaths(t *testing.T) {
 	}{
 		{"shred -n 3 secret.key", []string{"secret.key"}},
 		{"cp -r", nil},
-		{"ln -t dir target", []string{"target", "dir/target"}},
+		{"ln -t dir target", []string{"target"}},
 		{"ln -s", nil},
 		{"chown --reference=ref.txt a.txt b.txt", []string{"a.txt", "b.txt"}},
 		{"chown", nil},

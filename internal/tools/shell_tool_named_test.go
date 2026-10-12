@@ -69,3 +69,21 @@ func TestShellToolResolvesTheStartPointsOfAFind(t *testing.T) {
 		t.Errorf("finds %+v, want %+v", inv.Targets.Finds, want)
 	}
 }
+
+// TestShellToolKeepsALandingUnderADirectoryOnly: where a copy puts a source is a target when the destination is a
+// directory that exists; a destination that is a file is checked by its own name, not as a directory.
+func TestShellToolKeepsALandingUnderADirectoryOnly(t *testing.T) {
+	wd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wd, "infra"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	shell := ShellTool(io.Discard)
+	inv := shell.Classify(map[string]any{"command": "cp terraform.tfstate terraform.tfstate.backup"}, wd)
+	if len(inv.Targets.Paths) != 0 {
+		t.Errorf("a copy to a file: paths %q", inv.Targets.Paths)
+	}
+	inv = shell.Classify(map[string]any{"command": "cp /tmp/x.tfstate infra"}, wd)
+	if !slices.Contains(inv.Targets.Paths, filepath.Join(wd, "infra", "x.tfstate")) {
+		t.Errorf("a copy into a directory: paths %q", inv.Targets.Paths)
+	}
+}

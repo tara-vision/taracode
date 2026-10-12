@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -47,8 +48,9 @@ func ShellTool(stream io.Writer) *Tool {
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
-			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir, true),
-				Named: shellTargets(res.Named, workingDir, true), Finds: findStarts(res.Finds, workingDir)}
+			targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, true),
+				Paths: slices.Concat(shellTargets(res.Paths, workingDir, true), landingTargets(res.Landings, workingDir)),
+				Finds: findStarts(res.Finds, workingDir)}
 			if res.Classification == policy.Mutate && res.Opaque {
 				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, false)...)
 			}
@@ -143,6 +145,18 @@ func shellTargets(paths []string, workingDir string, globs bool) []string {
 			for _, m := range matches {
 				add(m)
 			}
+		}
+	}
+	return out
+}
+
+// landingTargets resolves where a copy, move or link puts each source, as shellTargets resolves a path, and
+// keeps a landing whose directory exists: a destination that is no directory is written by its own name.
+func landingTargets(landings []string, workingDir string) []string {
+	var out []string
+	for _, p := range shellTargets(landings, workingDir, true) {
+		if info, err := os.Stat(filepath.Dir(p)); err == nil && info.IsDir() {
+			out = append(out, p)
 		}
 	}
 	return out
