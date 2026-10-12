@@ -17,9 +17,9 @@ protect more, cloud accounts and hosts included.
 - **A command that runs code from a string named no paths.** A protected path written through `python3 -c`,
   `perl -e`, an `awk` program, `sh -c`, `eval`, backticks, `$(...)`, a heredoc or `xargs` was not seen: the
   policy saw only the targets of redirects and of the programs known to write files. On such a line a word
-  that names a protected path is now refused, and the strings a shell's `-c`, `eval`, `$(...)` or backticks
-  run, and the script a shell reads from a heredoc, are read like the line itself. A read-only line of that
-  kind is refused too; `read_file` and `cat` still read.
+  that names a protected path is now refused, and the strings a shell's `-c`, `eval`, `su -c`, `watch`,
+  `$(...)` or backticks run, and the script a shell reads from a heredoc, are read like the line itself. A
+  read-only line of that kind is refused too; `read_file` and `cat` still read.
 - **kubectl or helm inside a string.** `sh -c "kubectl --context prod ..."` or a Python `subprocess` call
   carried no kube context. A line taracode cannot see into that names kubectl or helm, inside a string or a
   heredoc too, now counts as touching every context and namespace.
@@ -38,10 +38,11 @@ protect more, cloud accounts and hosts included.
   directory target is checked for the protected paths it holds (the README says how far), patterns match in
   any letter case, and a path is matched through its symlinks.
 - **Commands that act on paths without writing them were not checked.** What `find -delete` or `find -exec`
-  reaches, the destination of `cp`, `mv`, `install` and `ln`, the paths `ln` links to, where `tar -x` and
-  `unzip -d` extract, the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after
-  `cd -P`, `env -C`, `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its
-  name tests reach under its start points, and one that follows symbolic links is refused.
+  reaches, the destination of `cp`, `mv`, `install`, `ln` and `rsync` and where each source lands in it, the
+  paths `ln`, `cp -l` and `cp -s` link to, what `tar -x` and `unzip` extract into and the members they name,
+  the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after `cd -P`, `env -C`,
+  `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its name tests reach
+  under its start points, and one that follows symbolic links is refused.
 
 ### Changed
 - Failing closed costs some commands in operate mode while the policy protects paths: a `shell` command that
