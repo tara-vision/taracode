@@ -89,32 +89,39 @@ func innerLines(words []string) []string {
 	case prog == "eval" && len(rest) > 0:
 		return []string{strings.Join(rest, " ")}
 	case shellNames[prog]:
-		if line, ok := commandString(rest); ok {
-			return []string{line}
-		}
+		return commandStrings(rest)
 	}
 	return nil
 }
 
-// commandString returns the string a shell's -c runs: once an option word holds c (-c, -ec, -xc), the first
-// operand after the options, as the shell takes it (bash -c -x 'line', sh -c -- 'line'). -o, +o, --rcfile and
-// --init-file take the next word; -- and - end the options.
-func commandString(rest []string) (string, bool) {
+// shellValued are the options of a shell that take the next word as their value.
+var shellValued = []string{"-o", "+o", "-O", "+O", "--rcfile", "--init-file"}
+
+// commandStrings returns the strings a shell's -c may run: once an option word holds c (-c, -ec, -xc), every
+// operand of the shell. The line is the first operand after the options, but an option that takes a value the
+// classifier does not know would shift it (bash -O extglob -c 'line'), so all of them are read. -- and - end the
+// options.
+func commandStrings(rest []string) []string {
 	dashC := false
+	var ops []string
 	for i := 0; i < len(rest); i++ {
 		switch w := rest[i]; {
 		case w == "--" || w == "-":
-			return first(rest[i+1:]), dashC && i+1 < len(rest)
-		case in(w, "-o", "+o", "--rcfile", "--init-file"):
+			ops = append(ops, rest[i+1:]...)
+			i = len(rest)
+		case in(w, shellValued...):
 			i++
 		case strings.HasPrefix(w, "--"):
 		case strings.HasPrefix(w, "-") || strings.HasPrefix(w, "+"):
 			dashC = dashC || strings.HasPrefix(w, "-") && strings.ContainsRune(w, 'c')
 		default:
-			return w, dashC
+			ops = append(ops, w)
 		}
 	}
-	return "", false
+	if !dashC {
+		return nil
+	}
+	return ops
 }
 
 // scriptInput is the script a segment's here-documents and here-strings hand a shell: their bodies when the
