@@ -368,14 +368,19 @@ func dotGlobPossible(parsed shellwords.Result) bool {
 	return false
 }
 
-// runsShellCode reports a segment that runs shell code the classifier cannot see through: eval, source or ., su
-// or watch (which run their command through a shell), and a shell, also behind a wrapper such as xargs.
+// shellCodeBuiltins run code in the shell itself or hand a command to a shell: eval and source run a string or a
+// file, trap runs one before a command or on a signal, mapfile and readarray -C run a callback, bind -x runs one
+// on a key, enable -f loads a builtin, fc re-runs history, and su runs its command through a shell.
+var shellCodeBuiltins = []string{"eval", "source", ".", "trap", "mapfile", "readarray", "bind", "enable", "fc", "su"}
+
+// runsShellCode reports a segment that runs shell code the classifier cannot see through (shellCodeBuiltins,
+// watch, which runs its command through sh -c) or a shell, also behind a wrapper such as xargs or command.
 func runsShellCode(segments []shellwords.Segment) bool {
 	for _, seg := range segments {
 		simple, _ := simpleCommand(seg.Words)
 		w := unwrap(simple[assignmentsEnd(simple):])
 		if slices.Contains(w.wrappers, "watch") || len(w.words) > 0 && (shellNames[path.Base(w.words[0])] ||
-			in(w.words[0], "eval", "source", ".", "su")) {
+			in(w.words[0], shellCodeBuiltins...)) {
 			return true
 		}
 	}

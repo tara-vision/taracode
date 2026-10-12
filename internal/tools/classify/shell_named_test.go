@@ -261,15 +261,20 @@ func TestShellTellsADynamicNameMayTurnOnDotGlob(t *testing.T) {
 // turn dotglob on (eval, source, a function, a shell run on a string); an external program cannot, opaque or not.
 func TestShellGlobsDotFilesOnlyWhereTheShellMayBeChanged(t *testing.T) {
 	for cmd, want := range map[string]bool{
-		"dos2unix *":                  false,
-		"sed -i 's/a/b/' *":           false,
-		"python3 fix.py *":            false,
-		"eval x; rm *":                true,
-		". ./env.sh; rm *":            true,
-		"source env.sh; rm *":         true,
-		"f() { :; }; f; rm *":         true,
-		"sh -c 'rm *'":                true,
-		"echo x | xargs sh -c 'rm *'": true,
+		"dos2unix *":                    false,
+		"sed -i 's/a/b/' *":             false,
+		"python3 fix.py *":              false,
+		"eval x; rm *":                  true,
+		". ./env.sh; rm *":              true,
+		"source env.sh; rm *":           true,
+		"f() { :; }; f; rm *":           true,
+		"sh -c 'rm *'":                  true,
+		"echo x | xargs sh -c 'rm *'":   true,
+		`trap "$x" DEBUG; rm *`:         true,
+		"mapfile -C f -c 1 a < x; rm *": true,
+		"enable -f ./x.so y; rm *":      true,
+		"command eval x; rm *":          true,
+		"builtin source x; rm *":        true,
 	} {
 		if got := Shell(cmd).DotGlob; got != want {
 			t.Errorf("%q: dotglob %v, want %v", cmd, got, want)
