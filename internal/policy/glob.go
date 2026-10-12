@@ -60,14 +60,14 @@ func matchPath(pattern, absPath, workingDir string) bool {
 	if m.matches(absPath, workingDir) {
 		return true
 	}
-	real, ok := resolved(absPath)
+	target, ok := resolved(absPath)
 	if !ok {
 		return false
 	}
-	if realWd, ok := resolved(workingDir); ok && workingDir != "" {
-		workingDir = realWd
+	if targetWd, ok := resolved(workingDir); ok && workingDir != "" {
+		workingDir = targetWd
 	}
-	return m.matches(real, workingDir)
+	return m.matches(target, workingDir)
 }
 
 // pathMatcher is a path pattern compiled once: the pattern and, for one ending in /**, the directory it
@@ -122,8 +122,8 @@ func pathCandidates(pattern, absPath, workingDir string) []string {
 func resolved(p string) (string, bool) {
 	rest := ""
 	for cur := p; ; {
-		if real, err := evalSymlinks(cur); err == nil {
-			out := filepath.Join(real, rest)
+		if target, err := evalSymlinks(cur); err == nil {
+			out := filepath.Join(target, rest)
 			return out, out != p
 		}
 		parent := filepath.Dir(cur)

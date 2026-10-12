@@ -30,7 +30,7 @@ func TestShellOpaqueMarksALineTheClassifierCannotSeeInto(t *testing.T) {
 			t.Errorf("%s: not opaque", cmd)
 		}
 	}
-	clear := []string{
+	readable := []string{
 		`ls -la`,
 		`rm -rf build`,
 		`cp a b`,
@@ -41,7 +41,7 @@ func TestShellOpaqueMarksALineTheClassifierCannotSeeInto(t *testing.T) {
 		`awk '{ print $1 }' f`,
 		`sed 's/a/b/' f`,
 	}
-	for _, cmd := range clear {
+	for _, cmd := range readable {
 		if Shell(cmd).Opaque {
 			t.Errorf("%s: opaque", cmd)
 		}

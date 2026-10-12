@@ -19,6 +19,9 @@ func commandTokens(command string) []string {
 }
 
 // outsideName reports a character that cannot be part of an account, a host or a file name piece.
-func outsideName(r rune) bool {
-	return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-')
+func outsideName(r rune) bool { return !nameRune(r) }
+
+// nameRune reports a character of [A-Za-z0-9._-].
+func nameRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-'
 }

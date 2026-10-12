@@ -34,6 +34,9 @@ func opaqueSegments(segments []shellwords.Segment) bool {
 }
 
 // outsideToken reports a character that cannot be part of a program name, a host or a file name piece.
-func outsideToken(r rune) bool {
-	return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-')
+func outsideToken(r rune) bool { return !tokenRune(r) }
+
+// tokenRune reports a character of [A-Za-z0-9._-].
+func tokenRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-'
 }
