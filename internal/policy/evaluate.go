@@ -27,8 +27,10 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 	if v, denied := p.protectedTarget(inv); denied {
 		return v
 	}
-	if v, denied := p.denyPattern(inv.Command); denied {
-		return v
+	for _, line := range append([]string{inv.Command}, inv.Lines...) {
+		if v, denied := p.denyPattern(line); denied {
+			return v
+		}
 	}
 	return Verdict{Allow: true, Rule: "policy", DryRun: p.dryRunFor(inv)}
 }

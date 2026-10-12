@@ -18,8 +18,10 @@ type ShellResult struct {
 	Hosts []string
 	Paths []string
 	Kube  []KubeTarget
-	// Opaque marks a line the classifier cannot see into (opaqueLine): what it names, it may act on.
+	// Opaque marks a line the classifier cannot see into (opaqueSegments): what it names, it may act on.
 	Opaque bool
+	// Lines are the forms of the line the deny patterns read besides the whole of it (denyLines).
+	Lines []string
 }
 
 var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
@@ -35,7 +37,7 @@ func Shell(command string) ShellResult {
 	}
 	kube, kubeOpaque := shellKube(parsed)
 	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: kube,
-		Opaque: kubeOpaque || opaqueSegments(parsed.Segments)}
+		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
 	if parsed.FunctionDef {
 		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+
 			"any read-only name")

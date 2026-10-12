@@ -60,9 +60,10 @@ type Invocation struct {
 	Tool           string
 	Verb           string // the effective verb (apply, upgrade, ...); "" for file tools
 	Classification Classification
-	Reason         string // why it was classified so, in words the model and the user read
-	Command        string // the effective command line for deny patterns; "" for file tools
-	WorkingDir     string // where relative protected paths are resolved
+	Reason         string   // why it was classified so, in words the model and the user read
+	Command        string   // the effective command line for deny patterns; "" for file tools
+	Lines          []string // more forms of the command the deny patterns read: its segments, inner strings
+	WorkingDir     string   // where relative protected paths are resolved
 	Targets        Targets
 }
 
