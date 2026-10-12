@@ -461,10 +461,11 @@ func (p *parser) substitutionStart(c rune) bool {
 
 // captureSubstitution returns the text between the $( at the current position and its matching ),
 // following nested parentheses and skipping the spans where a ) does not close the substitution: a
-// quoted string, a backslash escape, a # comment (to the newline) and a ${...} parameter expansion.
-// A heredoc body it cannot follow, so a << makes it capture to the end and fail closed. The position
-// does not move: the body is still parsed into segments as before, so the classifier sees its
-// commands. Capturing too much only makes a body classify as a mutation, never as a false read.
+// quoted string, a backslash escape, a # comment (to the newline), a ${...} parameter expansion and a
+// $((...)) arithmetic one. A here-document body it cannot follow, so a << outside those spans makes it
+// capture to the end of the input; the classifier reads that text as a line of its own, where a
+// here-document without its delimiter line is a parse error. The position does not move: the body is
+// still parsed into segments as before, so the classifier sees its commands.
 func (p *parser) captureSubstitution() string {
 	start := p.pos + 2
 	depth := 0
