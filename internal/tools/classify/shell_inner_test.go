@@ -14,6 +14,9 @@ func TestShellPathsReadTheLinesAStringRuns(t *testing.T) {
 		{`eval 'echo {} > terraform.tfstate'`, "terraform.tfstate"},
 		{`echo "$(rm -f terraform.tfstate)"`, "terraform.tfstate"},
 		{`sh -c "sh -c 'rm -rf .git'"`, ".git"},
+		{"echo `rm -rf infra`", "infra"},
+		{`sh -c -- "rm -rf infra"`, "infra"},
+		{`bash -c -x 'rm -rf infra'`, "infra"},
 	}
 	for _, c := range cases {
 		if paths := Shell(c.cmd).Paths; !slices.Contains(paths, c.want) {

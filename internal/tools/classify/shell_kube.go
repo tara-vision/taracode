@@ -82,6 +82,26 @@ func shellKube(parsed shellwords.Result) ([]KubeTarget, bool) {
 	return l.targets, l.opaque
 }
 
+// innerKubeWords counts the kubectl and helm words of the strings a segment runs as lines of their own (a
+// shell's -c, eval, a script on its input), parsed as the shell parses them, so quotes inside a word
+// (kube""ctl) do not hide one.
+func innerKubeWords(seg shellwords.Segment, depth int) int {
+	simple, _ := simpleCommand(seg.Words)
+	words := simple[assignmentsEnd(simple):]
+	if depth == 0 || len(words) == 0 {
+		return 0
+	}
+	n := 0
+	for _, line := range append(innerLines(words), scriptInput(seg, words)...) {
+		if parsed, err := shellwords.Split(line); err == nil {
+			for _, inner := range parsed.Segments {
+				n += countKubeWords(inner.Words) + innerKubeWords(inner, depth-1)
+			}
+		}
+	}
+	return n
+}
+
 // anyCluster reports a target that already stands for every context and namespace, with the cause that
 // named it first.
 func anyCluster(targets []KubeTarget) bool {
@@ -98,7 +118,7 @@ func anyCluster(targets []KubeTarget) bool {
 // kubeconfig, switches the context, sets a variable outside the safe ones, or runs a program the
 // classifier does not know. A kubectl or helm its here-documents name counts as one the line names.
 func (l *kubeLine) segment(seg shellwords.Segment) {
-	l.words += countKubeWords(seg.Words)
+	l.words += countKubeWords(seg.Words) + innerKubeWords(seg, innerDepth)
 	for _, body := range seg.Heredocs {
 		l.words += countKubeWords(strings.Fields(body))
 	}

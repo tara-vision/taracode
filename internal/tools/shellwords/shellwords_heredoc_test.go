@@ -83,3 +83,25 @@ func TestSplitMarksASegmentThatPipesItsOutput(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitCapturesBacktickBodies: a backtick substitution's command is captured as a $(...) body is, with the
+// backslashes before a $, a backtick or a backslash removed, in a word, in double quotes and in an expanded
+// here-document; its closing backtick opens nothing.
+func TestSplitCapturesBacktickBodies(t *testing.T) {
+	tests := []struct {
+		line string
+		want []string
+	}{
+		{"echo `rm -rf infra` and `date`", []string{"rm -rf infra", "date"}},
+		{"echo \"`date`\"", []string{"date"}},
+		{"echo `echo \\`date\\``", []string{"echo `date`"}},
+		{"echo `unclosed", []string{"unclosed"}},
+		{"cat <<EOF\nnow `rm -rf infra`\nEOF", []string{"rm -rf infra"}},
+	}
+	for _, tt := range tests {
+		res, err := Split(tt.line)
+		if err != nil || !res.Backtick || !reflect.DeepEqual(res.Substitutions, tt.want) {
+			t.Errorf("%q: %+v %v", tt.line, res, err)
+		}
+	}
+}

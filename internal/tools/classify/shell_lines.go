@@ -9,14 +9,13 @@ import (
 )
 
 // innerDepth is how many levels of strings run as lines (sh -c "sh -c '...'") denyLines reads.
-const innerDepth = 2
+const innerDepth = 8
 
 // shellNames run the string after their -c as a command line.
 var shellNames = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true}
 
-// denyLines are the forms of a line the deny patterns read besides the whole of it: each simple command,
-// the same without the one-word options before its first operand (terraform -chdir=. destroy reads as
-// terraform destroy), and the strings a shell's -c, eval or a $(...) runs, read as lines of their own.
+// denyLines are the forms of a line the deny patterns read besides the whole of it: each simple command
+// (segmentLines), and the strings a shell's -c, eval, a $(...) or a backtick runs, read as lines of their own.
 func denyLines(parsed shellwords.Result, depth int) []string {
 	var out []string
 	for _, seg := range parsed.Segments {
@@ -25,10 +24,7 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 		if len(words) == 0 {
 			continue
 		}
-		out = append(out, strings.Join(words, " "))
-		if trimmed := withoutLeadingOptions(words); len(trimmed) != len(words) {
-			out = append(out, strings.Join(trimmed, " "))
-		}
+		out = append(out, segmentLines(words)...)
 		if depth > 0 {
 			for _, inner := range append(innerLines(words), scriptInput(seg, words)...) {
 				out = append(out, linesOf(inner, depth-1)...)
@@ -38,6 +34,25 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 	if depth > 0 {
 		for _, body := range parsed.Substitutions {
 			out = append(out, linesOf(body, depth-1)...)
+		}
+	}
+	return out
+}
+
+// segmentLines are the forms of one simple command a deny pattern reads: as written, and its program without
+// the wrappers in front of it (time, timeout 600, env X=1, sudo -u ops) and by its base name
+// (/opt/homebrew/bin/terraform), the same also without the one-word options before its first operand
+// (terraform -chdir=. destroy reads as terraform destroy).
+func segmentLines(words []string) []string {
+	out := []string{strings.Join(words, " ")}
+	inner := unwrap(words).words
+	if len(inner) == 0 {
+		return out
+	}
+	program := append([]string{path.Base(inner[0])}, inner[1:]...)
+	for _, form := range [][]string{program, withoutLeadingOptions(program)} {
+		if line := strings.Join(form, " "); !slices.Contains(out, line) {
+			out = append(out, line)
 		}
 	}
 	return out
@@ -63,8 +78,7 @@ func withoutLeadingOptions(words []string) []string {
 	return append([]string{words[0]}, words[i:]...)
 }
 
-// innerLines are the strings a command hands to a shell's -c (a short option holding c, as -ec) or to
-// eval, to run as a line of their own.
+// innerLines are the strings a command hands to a shell's -c or to eval, to run as a line of their own.
 func innerLines(words []string) []string {
 	w := unwrap(words)
 	if len(w.words) == 0 {
@@ -75,14 +89,32 @@ func innerLines(words []string) []string {
 	case prog == "eval" && len(rest) > 0:
 		return []string{strings.Join(rest, " ")}
 	case shellNames[prog]:
-		for i, word := range rest {
-			if strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "--") && strings.ContainsRune(word, 'c') &&
-				i+1 < len(rest) {
-				return []string{rest[i+1]}
-			}
+		if line, ok := commandString(rest); ok {
+			return []string{line}
 		}
 	}
 	return nil
+}
+
+// commandString returns the string a shell's -c runs: once an option word holds c (-c, -ec, -xc), the first
+// operand after the options, as the shell takes it (bash -c -x 'line', sh -c -- 'line'). -o, +o, --rcfile and
+// --init-file take the next word; -- and - end the options.
+func commandString(rest []string) (string, bool) {
+	dashC := false
+	for i := 0; i < len(rest); i++ {
+		switch w := rest[i]; {
+		case w == "--" || w == "-":
+			return first(rest[i+1:]), dashC && i+1 < len(rest)
+		case in(w, "-o", "+o", "--rcfile", "--init-file"):
+			i++
+		case strings.HasPrefix(w, "--"):
+		case strings.HasPrefix(w, "-") || strings.HasPrefix(w, "+"):
+			dashC = dashC || strings.HasPrefix(w, "-") && strings.ContainsRune(w, 'c')
+		default:
+			return w, dashC
+		}
+	}
+	return "", false
 }
 
 // scriptInput is the script a segment's here-documents and here-strings hand a shell: their bodies when the

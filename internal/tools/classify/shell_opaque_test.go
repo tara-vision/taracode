@@ -58,6 +58,8 @@ func TestShellKubeCountsAKubectlNamedInsideAWord(t *testing.T) {
 		{`echo "kubectl delete ns x"`, ""},
 		{`git commit -m "bump the helm chart"`, ""},
 		{`sh -c "kubectl-foo run"`, ""},
+		{`sh -c "kube''ctl --context prod delete ns x"`, "{* * }"},
+		{`eval "kube''ctl delete ns x"`, "{* * }"},
 	}
 	for _, c := range cases {
 		if got := kubeOf(c.cmd); got != c.want {

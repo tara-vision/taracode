@@ -43,6 +43,7 @@ type parser struct {
 	ansiStopped bool   // a NUL was decoded inside the current $'...': the rest of the quote is discarded
 	quotedWord  bool   // part of the current word was quoted or escaped
 	heredocs    []heredoc
+	closingTick map[int]bool // the positions of the backticks that close a body already captured
 }
 
 // heredoc is a here-document whose body starts after the next newline: the segment that declared it, its
@@ -116,7 +117,7 @@ func (p *parser) step() error {
 	case p.substitutionStart(c):
 		p.res.Substitution = true
 		if c == '`' {
-			p.res.Backtick = true
+			p.backtick()
 		} else {
 			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
 		}
@@ -270,6 +271,41 @@ func digitValue(c rune) rune {
 		return c - 'A' + 10
 	}
 	return -1
+}
+
+// backtick flags the backtick at the current position and, when it opens a substitution rather than closing one,
+// captures the command it runs into Substitutions, as a $(...) body is. The position does not move: the body is
+// still read as words of the line.
+func (p *parser) backtick() {
+	p.res.Backtick = true
+	if p.closingTick[p.pos] {
+		return
+	}
+	body, end := backtickBody(p.in, p.pos)
+	p.res.Substitutions = append(p.res.Substitutions, body)
+	if p.closingTick == nil {
+		p.closingTick = map[int]bool{}
+	}
+	p.closingTick[end] = true
+}
+
+// backtickBody returns the command of the backtick substitution that opens at start, up to the backtick that closes
+// it (the end of the input when none does), with the backslashes before a $, a backtick or a backslash removed as
+// the shell removes them, and the index of that closing backtick.
+func backtickBody(in []rune, start int) (string, int) {
+	var b strings.Builder
+	for i := start + 1; i < len(in); i++ {
+		switch {
+		case in[i] == '\\' && i+1 < len(in) && strings.ContainsRune("$`\\", in[i+1]):
+			i++
+			b.WriteRune(in[i])
+		case in[i] == '`':
+			return b.String(), i
+		default:
+			b.WriteRune(in[i])
+		}
+	}
+	return b.String(), len(in)
 }
 
 // substitutionStart reports whether c opens a backtick or $(...) command substitution.
@@ -431,7 +467,7 @@ func (p *parser) quoted(q rune) error {
 			p.pos += 2
 		case q == '"' && c == '`':
 			p.res.Substitution = true
-			p.res.Backtick = true
+			p.backtick()
 			p.word.WriteRune(c)
 			p.pos++
 		case q == '"' && c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(':
@@ -539,7 +575,10 @@ func (p *parser) scanExpansions(in []rune) {
 		case in[i] == '\\':
 			i++
 		case in[i] == '`':
+			body, end := backtickBody(in, i)
 			p.res.Substitution, p.res.Backtick = true, true
+			p.res.Substitutions = append(p.res.Substitutions, body)
+			i = end
 		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
 			p.res.Substitution = true
 			p.res.Substitutions = append(p.res.Substitutions, (&parser{in: in, pos: i}).captureSubstitution())
