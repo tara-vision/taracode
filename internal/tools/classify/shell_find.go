@@ -39,15 +39,20 @@ func findTargets(words, dirs []string) []policy.Find {
 }
 
 // findFollows reports a find that follows symbolic links under its start points: -L last among the -H, -L and
-// -P options before them, or -follow anywhere in its expression.
+// -P options before them, alone or in a cluster, or -follow anywhere in its expression.
 func findFollows(opts, expr []string) bool {
 	follows := false
 	for _, o := range opts {
-		switch o {
-		case "-L":
-			follows = true
-		case "-H", "-P":
-			follows = false
+		if strings.HasPrefix(o, "-O") || !findOption(o) {
+			continue
+		}
+		for _, letter := range o[1:] {
+			switch letter {
+			case 'L':
+				follows = true
+			case 'H', 'P':
+				follows = false
+			}
 		}
 	}
 	return follows || slices.Contains(expr, "-follow")
@@ -187,21 +192,41 @@ func findActs(expr []string) bool {
 	return hasFlag(expr, "-delete", "-exec", "-execdir", "-ok", "-okdir")
 }
 
-// findStarts splits find's arguments into the options before its start points (-H, -L, -P, -O level and -D
-// with its debug options), its start points and its expression.
+// findStarts splits find's arguments into the options before its start points (-H, -L, -P, -O level, -D with
+// its debug options, BSD's -E, -X, -d, -s and -x, alone or in a cluster, and -f with a start point), its start
+// points and its expression. With no start point find starts at ".".
 func findStarts(r []string) (opts, starts, expr []string) {
+	var fromF []string
 	i := 0
-	for i < len(r) && (in(r[i], "-H", "-L", "-P", "-D") || strings.HasPrefix(r[i], "-O")) {
-		if r[i] == "-D" && i+1 < len(r) {
+	for ; i < len(r) && findOption(r[i]); i++ {
+		if in(r[i], "-D", "-f") && i+1 < len(r) {
+			if r[i] == "-f" {
+				fromF = append(fromF, r[i+1])
+			}
 			i++
 		}
-		i++
 	}
 	j := i
 	for j < len(r) && !strings.HasPrefix(r[j], "-") && !in(r[j], "(", ")", "!", ",") {
 		j++
 	}
-	return r[:i], r[i:j], r[j:]
+	starts = slices.Concat(fromF, r[i:j])
+	if len(starts) == 0 {
+		starts = []string{"."}
+	}
+	return r[:i], starts, r[j:]
+}
+
+// findOption reports an option find reads before its start points: -O with a level, -D and -f, which take the
+// next word, and a cluster of -H, -L, -P, -E, -X, -d, -s and -x.
+func findOption(w string) bool {
+	switch {
+	case in(w, "-D", "-f") || strings.HasPrefix(w, "-O"):
+		return true
+	case len(w) < 2 || w[0] != '-':
+		return false
+	}
+	return strings.Trim(w[1:], "HLPEXdsx") == ""
 }
 
 // findNarrowed reports whether every branch of a find expression (split at -o, -or and the comma outside
