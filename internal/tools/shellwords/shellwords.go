@@ -25,9 +25,10 @@ type Segment struct {
 type Result struct {
 	Segments      []Segment
 	Substitution  bool     // $(...), a backtick, <(...), >(...) or $"..." appeared anywhere
-	Backtick      bool     // a backtick substitution appeared; its body is not captured
+	Backtick      bool     // a backtick substitution appeared; its body is captured too
 	FunctionDef   bool     // the line defines a shell function (name (), function name), which can shadow any name
-	Substitutions []string // the bodies of every $(...) in order, outermost first, for a classifier to read
+	Substitutions []string // the bodies of every $(...) and backtick, also in expansions and expanded here-documents,
+	// in order, outermost first, for a classifier to read
 }
 
 type parser struct {
@@ -94,8 +95,15 @@ func (p *parser) run() error {
 	}
 	p.endWord()
 	p.endSegment(false)
+	if len(p.heredocs) > 0 {
+		return errNoDelimiter
+	}
 	return nil
 }
+
+// errNoDelimiter refuses a here-document whose delimiter line never comes: the parser cannot tell where its body
+// ends, so it does not read the rest of the line as data.
+var errNoDelimiter = errors.New("a here-document has no delimiter line")
 
 // step consumes and handles the rune at the current position, advancing pos.
 func (p *parser) step() error {
@@ -125,7 +133,7 @@ func (p *parser) step() error {
 		p.hasWord = true
 		p.pos++
 	case c == '|' || c == '&' || c == ';' || c == '\n':
-		p.operator(c)
+		return p.operator(c)
 	case c == '>' || c == '<':
 		p.redirect()
 	case unicode.IsSpace(c):
@@ -162,11 +170,113 @@ func (p *parser) shellStep(c rune) (handled bool, err error) {
 		p.res.Substitution = true // $"..." is translated through the locale's message catalog
 		p.pos++
 		return true, nil
+	case c == '$' && (p.next() == '(' || p.next() == '[' || p.next() == '{'):
+		return p.dollarExpansion()
+	case c == '(' && p.next() == '(' && !p.hasWord && len(p.seg.Words) == 0:
+		if end, ok, closed := arithmeticEnd(p.in, p.pos); !closed {
+			return true, errUnclosed
+		} else if ok { // (( ... )): an arithmetic command
+			p.expansionWord(p.pos, end)
+			return true, nil
+		}
+		p.group(c)
+		return true, nil
 	case c == '(' || c == ')':
 		p.group(c)
 		return true, nil
 	}
 	return false, nil
+}
+
+// errUnclosed refuses an arithmetic or parameter expansion that nothing closes.
+var errUnclosed = errors.New("an arithmetic or parameter expansion is not closed")
+
+// dollarExpansion reads $((...)), $[...] and ${...} at the current position as part of the word: a << in them is
+// a shift or a pattern, not a here-document. handled is false for a $( that opens a command substitution, which
+// step captures.
+func (p *parser) dollarExpansion() (handled bool, err error) {
+	var end int
+	switch p.next() {
+	case '(':
+		e, ok, closed := arithmeticEnd(p.in, p.pos+1)
+		if !closed && p.pos+2 < len(p.in) && p.in[p.pos+2] == '(' {
+			return true, errUnclosed
+		}
+		if !ok {
+			return false, nil
+		}
+		end = e
+	case '[':
+		end = closingBracket(p.in, p.pos+1)
+	default:
+		end = parameterEnd(p.in, p.pos)
+	}
+	if end >= len(p.in) {
+		return true, errUnclosed
+	}
+	p.expansionWord(p.pos, end)
+	return true, nil
+}
+
+// expansionWord takes the expansion from start to end, inclusive, into the current word, capturing the command
+// substitutions inside it; nothing in it is an operator or a redirect.
+func (p *parser) expansionWord(start, end int) {
+	p.scanExpansions(p.in[start+2 : end])
+	p.word.WriteString(string(p.in[start : end+1]))
+	p.hasWord = true
+	p.pos = end + 1
+}
+
+// arithmeticEnd returns, for the (( at open, the index of the ) that closes it: ok is true when the inner
+// parenthesis closes right before the outer one, as in $((...)) and ((...)), and false for anything else, such
+// as a command substitution that starts with a subshell; closed is false when nothing closes the ((.
+func arithmeticEnd(in []rune, open int) (end int, ok, closed bool) {
+	if open+1 >= len(in) || in[open] != '(' || in[open+1] != '(' {
+		return 0, false, true
+	}
+	depth, inner := 0, -1
+	for i := open; i < len(in); i++ {
+		switch in[i] {
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 1 && inner < 0 {
+				inner = i
+			} else if depth == 0 {
+				return i, inner == i-1, true
+			}
+		}
+	}
+	return len(in), false, false
+}
+
+// closingBracket returns the index of the ] that closes the [ at open, or the end when none does.
+func closingBracket(in []rune, open int) int {
+	depth := 0
+	for i := open; i < len(in); i++ {
+		switch in[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth--; depth == 0 {
+				return i
+			}
+		}
+	}
+	return len(in)
+}
+
+// dollarParen reads the $( at the current position inside double quotes: an arithmetic $((...)) as part of the
+// word, any other as a command substitution, captured.
+func (p *parser) dollarParen() {
+	if end, ok, _ := arithmeticEnd(p.in, p.pos+1); ok {
+		p.expansionWord(p.pos, end)
+		return
+	}
+	p.res.Substitution = true
+	p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
+	p.word.WriteRune('$')
+	p.pos++
 }
 
 // next is the rune after the current one, or 0 at the end.
@@ -355,7 +465,11 @@ func skipSpan(in []rune, i int) (int, bool) {
 	case in[i] == '$' && i+1 < len(in) && in[i+1] == '\'':
 		return skipQuoted(in, i+1, true), true // $'...' ANSI-C quoting: backslash escapes the closing quote
 	case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
-		return skipBraces(in, i+1), true
+		return parameterEnd(in, i), true
+	case in[i] == '$' && i+2 < len(in) && in[i+1] == '(' && in[i+2] == '(':
+		if end, ok, _ := arithmeticEnd(in, i+1); ok {
+			return end, true // $((...)): a << in it is a shift
+		}
 	case in[i] == '\'':
 		return skipQuoted(in, i, false), true
 	case in[i] == '"':
@@ -382,18 +496,26 @@ func skipQuoted(in []rune, start int, escapes bool) int {
 	return len(in)
 }
 
-// skipBraces returns the index of the } that matches the { at start, tracking nested braces; the end
-// when it is unbalanced. A ) inside ${...} is a literal, not a substitution close.
-func skipBraces(in []rune, start int) int {
-	depth := 0
-	for i := start; i < len(in); i++ {
-		switch in[i] {
-		case '{':
-			depth++
-		case '}':
-			if depth--; depth == 0 {
-				return i
-			}
+// parameterEnd returns the index of the } that closes the ${ whose $ is at dollar, as the shell finds it: a
+// quote or a backslash keeps a } from closing it, and a ${, $( or backtick inside is a span of its own; the end
+// of the input when nothing closes it.
+func parameterEnd(in []rune, dollar int) int {
+	for i := dollar + 2; i < len(in); i++ {
+		switch {
+		case in[i] == '\\':
+			i++
+		case in[i] == '\'':
+			i = skipQuoted(in, i, false)
+		case in[i] == '"':
+			i = skipQuoted(in, i, true)
+		case in[i] == '`':
+			_, i = backtickBody(in, i)
+		case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
+			i = parameterEnd(in, i)
+		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
+			i += 2 + len([]rune((&parser{in: in, pos: i}).captureSubstitution()))
+		case in[i] == '}':
+			return i
 		}
 	}
 	return len(in)
@@ -470,11 +592,8 @@ func (p *parser) quoted(q rune) error {
 			p.backtick()
 			p.word.WriteRune(c)
 			p.pos++
-		case q == '"' && c == '$' && p.pos+1 < len(p.in) && p.in[p.pos+1] == '(':
-			p.res.Substitution = true
-			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
-			p.word.WriteRune(c)
-			p.pos++
+		case q == '"' && c == '$' && p.next() == '(':
+			p.dollarParen()
 		default:
 			p.word.WriteRune(c)
 			p.pos++
@@ -514,7 +633,7 @@ func (p *parser) nextNonSpaceIsCloseParen() bool {
 	return false
 }
 
-func (p *parser) operator(c rune) {
+func (p *parser) operator(c rune) error {
 	p.endWord()
 	next := rune(0)
 	if p.pos+1 < len(p.in) {
@@ -534,29 +653,33 @@ func (p *parser) operator(c rune) {
 		p.pos++
 		p.endSegment(false)
 		if c == '\n' {
-			p.readHeredocs()
+			return p.readHeredocs()
 		}
 	}
+	return nil
 }
 
 // readHeredocs reads the bodies of the here-documents declared before the newline just passed: each is the
-// lines up to its delimiter line (the end of the input when there is none), attached to the segment that declared
-// it, so a body is never read as commands. The shell expands a body whose delimiter is unquoted, so the command
-// substitutions in it are the line's own.
-func (p *parser) readHeredocs() {
+// lines up to its delimiter line, attached to the segment that declared it, so a body is never read as commands;
+// a body without its delimiter line is an error. The shell expands a body whose delimiter is unquoted, so the
+// command substitutions in it are the line's own.
+func (p *parser) readHeredocs() error {
 	for _, h := range p.heredocs {
 		var body strings.Builder
-		for p.pos < len(p.in) {
+		closed := false
+		for p.pos < len(p.in) && !closed {
 			end := skipToNewline(p.in, p.pos)
 			line := string(p.in[p.pos:end])
 			p.pos = min(end+1, len(p.in))
 			if h.stripTabs {
 				line = strings.TrimLeft(line, "\t")
 			}
-			if line == h.delimiter {
-				break
+			if closed = line == h.delimiter; !closed {
+				body.WriteString(line + "\n")
 			}
-			body.WriteString(line + "\n")
+		}
+		if !closed {
+			return errNoDelimiter
 		}
 		if h.expands {
 			p.scanExpansions([]rune(body.String()))
@@ -565,6 +688,7 @@ func (p *parser) readHeredocs() {
 		seg.Heredocs = append(seg.Heredocs, body.String())
 	}
 	p.heredocs = nil
+	return nil
 }
 
 // scanExpansions flags the command substitutions of an expanded here-document body as those of a double-quoted
@@ -580,8 +704,10 @@ func (p *parser) scanExpansions(in []rune) {
 			p.res.Substitutions = append(p.res.Substitutions, body)
 			i = end
 		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
-			p.res.Substitution = true
-			p.res.Substitutions = append(p.res.Substitutions, (&parser{in: in, pos: i}).captureSubstitution())
+			if _, arithmetic, _ := arithmeticEnd(in, i+1); !arithmetic {
+				p.res.Substitution = true
+				p.res.Substitutions = append(p.res.Substitutions, (&parser{in: in, pos: i}).captureSubstitution())
+			}
 		}
 	}
 }

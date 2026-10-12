@@ -87,6 +87,9 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`find . -name '*.tf' -exec terraform destroy \;`,
 		`find . -name '*.pyc' -exec sh -c 'rm -rf "$(dirname "$1")"' _ {} \;`,
 		`find . -name '*.pyc' -execdir rm -rf infra \;`,
+		"echo $((1<<20))\necho {} > terraform.tfstate",
+		"echo $((1<<20))\nterraform destroy -auto-approve",
+		"echo $((1<<20))\nkubectl --context prod delete ns kube-system",
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {

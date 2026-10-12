@@ -2,7 +2,10 @@ package classify
 
 import (
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/policy"
 )
 
 // TestShellReadsTheScriptAShellTakesOnItsInput: a here-document or here-string that a shell reads as its script
@@ -89,5 +92,24 @@ func TestShellReadsEveryHereDocumentOnAnOpaqueLine(t *testing.T) {
 	if lines := Shell("cat > notes.md <<'EOF'\nterraform destroy needs approval\nEOF").Lines; slices.Contains(lines,
 		"terraform destroy needs approval") {
 		t.Errorf("a file's content became a line: %q", lines)
+	}
+}
+
+// TestShellReadsTheLinesAfterAnArithmeticShift: a << inside an arithmetic or parameter expansion hides nothing:
+// the commands on the lines after it are classified like any other.
+func TestShellReadsTheLinesAfterAnArithmeticShift(t *testing.T) {
+	for _, cmd := range []string{"echo $((1<<20))\nterraform destroy -auto-approve",
+		"echo $[1<<2]\nterraform destroy -auto-approve", "echo ${a:-<<x}\nterraform destroy -auto-approve",
+		"(( x = 1<<2 ))\nterraform destroy -auto-approve", "echo $((1<<20)\nterraform destroy -auto-approve"} {
+		res := Shell(cmd)
+		if res.Classification != policy.Mutate {
+			t.Errorf("%q: %v, want a mutation", cmd, res.Classification)
+		}
+		if !strings.Contains(cmd, "$((1<<20)\n") && !slices.Contains(res.Lines, "terraform destroy -auto-approve") {
+			t.Errorf("%q: lines %q", cmd, res.Lines)
+		}
+	}
+	if res := Shell("echo $((1+2))"); res.Classification != policy.Read {
+		t.Errorf("echo $((1+2)): %v, want a read", res.Classification)
 	}
 }

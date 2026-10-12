@@ -2,6 +2,7 @@ package shellwords
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -23,8 +24,6 @@ func TestSplitReadsHereDocumentBodies(t *testing.T) {
 			[][]string{{"cat"}}, [][]string{{"a\n", "b\n"}}},
 		{"the first command of a pipeline", "cat <<EOF | sh\nrm -rf x\nEOF",
 			[][]string{{"cat"}, {"sh"}}, [][]string{{"rm -rf x\n"}, nil}},
-		{"no delimiter line", "cat <<EOF\nline\n",
-			[][]string{{"cat"}}, [][]string{{"line\n"}}},
 		{"an empty body", "cat <<EOF\nEOF",
 			[][]string{{"cat"}}, [][]string{{""}}},
 		{"a here-string is not one", `sh <<< "rm -rf x"`,
@@ -102,6 +101,56 @@ func TestSplitCapturesBacktickBodies(t *testing.T) {
 		res, err := Split(tt.line)
 		if err != nil || !res.Backtick || !reflect.DeepEqual(res.Substitutions, tt.want) {
 			t.Errorf("%q: %+v %v", tt.line, res, err)
+		}
+	}
+}
+
+// TestSplitReadsArithmeticAndParameterExpansionsAsWords: a << inside $((...)), $[...], ${...} or an arithmetic
+// command ((...)) is a shift or a pattern, not a here-document, so the lines after it are still commands; the
+// command substitutions inside such an expansion are captured.
+func TestSplitReadsArithmeticAndParameterExpansionsAsWords(t *testing.T) {
+	tests := []struct {
+		line  string
+		words [][]string
+	}{
+		{"echo $((1<<20))\nterraform destroy", [][]string{{"echo", "$((1<<20))"}, {"terraform", "destroy"}}},
+		{"echo $[1<<2]\nrm -rf .git/config", [][]string{{"echo", "$[1<<2]"}, {"rm", "-rf", ".git/config"}}},
+		{"echo ${a:-<<x y}\nrm x", [][]string{{"echo", "${a:-<<x y}"}, {"rm", "x"}}},
+		{"(( x = 1<<2 ))\nrm x", [][]string{{"(( x = 1<<2 ))"}, {"rm", "x"}}},
+		{"echo \"$((1<<20))\"\nrm x", [][]string{{"echo", "$((1<<20))"}, {"rm", "x"}}},
+		{"((echo a); echo b)", [][]string{{"echo", "a"}, {"echo", "b"}}},
+		{`echo ${a:-"}"} ${a:-'}'} ${a:-\}} ${a:-` + "`echo }`" + `}`,
+			[][]string{{"echo", `${a:-"}"}`, `${a:-'}'}`, `${a:-\}}`, "${a:-`echo }`}"}}},
+	}
+	for _, tt := range tests {
+		res, err := Split(tt.line)
+		if err != nil || len(res.Segments) != len(tt.words) {
+			t.Errorf("%q: %+v %v", tt.line, res, err)
+			continue
+		}
+		for i, seg := range res.Segments {
+			if !reflect.DeepEqual(seg.Words, tt.words[i]) || len(seg.Heredocs) != 0 {
+				t.Errorf("%q segment %d: words %q heredocs %q", tt.line, i, seg.Words, seg.Heredocs)
+			}
+		}
+	}
+	for line, body := range map[string]string{"echo $(( $(rm -rf infra) + 1 ))": "rm -rf infra",
+		"echo ${a:-$(rm -rf infra)}": "rm -rf infra", "echo $((`rm -rf infra` + 1))": "rm -rf infra",
+		"echo $((echo a); echo b)": "(echo a); echo b", "echo $(echo $((1<<2)))": "echo $((1<<2))",
+		"echo $(echo $((a)+(b)))": "echo $((a)+(b))"} {
+		if res, err := Split(line); err != nil || !res.Substitution || !slices.Contains(res.Substitutions, body) {
+			t.Errorf("%q: %+v %v", line, res, err)
+		}
+	}
+}
+
+// TestSplitRefusesWhatItCannotClose: a here-document without its delimiter line and an arithmetic or parameter
+// expansion without its end are errors, so the classifier fails closed rather than read later lines as data.
+func TestSplitRefusesWhatItCannotClose(t *testing.T) {
+	for _, line := range []string{"cat <<EOF\nline\n", "cat <<EOF", "echo $((1<<20)\nterraform destroy",
+		"echo $[1<<2\nrm x", "echo ${a:-<<x\nrm x", "(( x = 1<<2 )\nrm x", "echo $(echo ${a"} {
+		if res, err := Split(line); err == nil {
+			t.Errorf("%q: %+v, want an error", line, res)
 		}
 	}
 }
