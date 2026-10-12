@@ -45,68 +45,80 @@ func ShellTool(stream io.Writer) *Tool {
 			{Name: "command", Type: "string", Description: "The command line", Required: true},
 			{Name: "timeout", Type: "integer", Description: "Seconds before the command is killed (default 60, max 600)"},
 		},
-		Classify: func(args map[string]any, workingDir string) policy.Invocation {
-			command := argString(args, "command")
-			res := classify.Shell(command)
-			glob := shellGlob(res.DotGlob)
-			targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, glob),
-				Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
-				Finds: findStarts(res.Finds, workingDir)}
-			if res.Classification == policy.Mutate && res.Opaque {
-				targets.Named = slices.Concat(targets.Named, shellTargets(lineTokens(command), workingDir, nil),
-					shellTargets(res.Words, workingDir, glob))
-			}
-			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
-				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
-					shellKubeTargets(context.Background(), workingDir, res.Kube)
-			}
-			return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: command, Lines: res.Lines, Targets: targets}
-		},
-		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
-			command, err := required(args, "command")
-			if err != nil {
-				return "", err
-			}
-			timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
-			if timeout <= 0 {
-				timeout = defaultShellTimeout
-			}
-			if timeout > maxShellTimeout {
-				timeout = maxShellTimeout
-			}
-			ctx, cancel := withTimeout(ctx, timeout)
-			defer cancel()
-			//nolint:gosec // the shell tool runs what the model asked for, after the policy gate
-			cmd := exec.CommandContext(ctx, "sh", "-c", command)
-			cmd.Dir = workingDir
-			var buf bytes.Buffer
-			var w io.Writer = &buf
-			if stream != nil {
-				w = io.MultiWriter(&buf, stream)
-			}
-			cmd.Stdout, cmd.Stderr = w, w
-			runErr := cmd.Run()
-			if f, ok := stream.(interface{ Flush() error }); ok {
-				_ = f.Flush() // the live copy is best effort; the result carries the output
-			}
-			out := strings.TrimRight(buf.String(), "\n")
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return out, fmt.Errorf("command timed out after %s", timeout)
-			}
-			var exitErr *exec.ExitError
-			if errors.As(runErr, &exitErr) {
-				return out + fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode()), nil
-			}
-			if runErr != nil {
-				return out, runErr
-			}
-			if out == "" {
-				return "(no output)", nil
-			}
-			return out, nil
-		},
+		Classify: classifyShell,
+		Run:      runShell(stream),
 	}
+}
+
+// runShell runs a shell call's command line with sh -c in the working directory, with its timeout (default 60
+// seconds, at most 600), streaming the output to stream when it is set; the result carries the merged output and
+// the exit status.
+func runShell(stream io.Writer) func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
+	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
+		command, err := required(args, "command")
+		if err != nil {
+			return "", err
+		}
+		timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
+		if timeout <= 0 {
+			timeout = defaultShellTimeout
+		}
+		if timeout > maxShellTimeout {
+			timeout = maxShellTimeout
+		}
+		ctx, cancel := withTimeout(ctx, timeout)
+		defer cancel()
+		//nolint:gosec // the shell tool runs what the model asked for, after the policy gate
+		cmd := exec.CommandContext(ctx, "sh", "-c", command)
+		cmd.Dir = workingDir
+		var buf bytes.Buffer
+		var w io.Writer = &buf
+		if stream != nil {
+			w = io.MultiWriter(&buf, stream)
+		}
+		cmd.Stdout, cmd.Stderr = w, w
+		runErr := cmd.Run()
+		if f, ok := stream.(interface{ Flush() error }); ok {
+			_ = f.Flush() // the live copy is best effort; the result carries the output
+		}
+		out := strings.TrimRight(buf.String(), "\n")
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return out, fmt.Errorf("command timed out after %s", timeout)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			return out + fmt.Sprintf("\n[exit status %d]", exitErr.ExitCode()), nil
+		}
+		if runErr != nil {
+			return out, runErr
+		}
+		if out == "" {
+			return "(no output)", nil
+		}
+		return out, nil
+	}
+}
+
+// classifyShell classifies a shell call: the line's verb and class, and its targets (the hosts it names, the
+// files it writes or names and where a copy lands, the finds it runs and, for a mutation, the clusters its kubectl
+// and helm mutations act on and the words of a line taracode cannot see into).
+func classifyShell(args map[string]any, workingDir string) policy.Invocation {
+	command := argString(args, "command")
+	res := classify.Shell(command)
+	glob := shellGlob(res.DotGlob)
+	targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, glob),
+		Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
+		Finds: findStarts(res.Finds, workingDir)}
+	if res.Classification == policy.Mutate && res.Opaque {
+		targets.Named = slices.Concat(targets.Named, shellTargets(lineTokens(command), workingDir, nil),
+			shellTargets(res.Words, workingDir, glob))
+	}
+	if res.Classification == policy.Mutate && len(res.Kube) > 0 {
+		targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
+			shellKubeTargets(context.Background(), workingDir, res.Kube)
+	}
+	return policy.Invocation{Tool: "shell", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
+		Command: command, Lines: res.Lines, Targets: targets}
 }
 
 // lineTokens are the words of an opaque line that may name a file: the line split at whitespace, quotes,
