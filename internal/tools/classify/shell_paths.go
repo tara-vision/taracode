@@ -342,13 +342,14 @@ func opaqueWords(segments []shellwords.Segment) []string {
 // dotGlobPossible reports a line that may turn on matching dot files before its globs expand, told from its
 // parsed words: a word that names dotglob, globdots, globignore or bashopts in any case and spelling with
 // underscores, a shopt or setopt, a set with an option bash's set does not have (zsh's set -4) or one named at
-// run time, a variable named at run time (dynamicName), or a line the classifier cannot see into (opaque), a zsh
-// glob qualifier such as *(D) included.
-func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
-	if opaque {
+// run time, a variable named at run time (dynamicName), or code run in the shell itself that the classifier
+// cannot see into: eval, source, a function the line defines, a shell run on a string (runsShellCode). An
+// external program, opaque or not, cannot change the shell that expands the globs.
+func dotGlobPossible(parsed shellwords.Result) bool {
+	if parsed.FunctionDef || runsShellCode(parsed.Segments) {
 		return true
 	}
-	for _, seg := range segments {
+	for _, seg := range parsed.Segments {
 		for _, w := range seg.Words {
 			folded := strings.ToLower(strings.ReplaceAll(w, "_", ""))
 			for _, name := range []string{"dotglob", "globdots", "globignore", "bashopts"} {
@@ -361,6 +362,20 @@ func dotGlobPossible(segments []shellwords.Segment, opaque bool) bool {
 		words := unwrap(simple[assignmentsEnd(simple):]).words
 		if dynamicName(words) || len(words) > 0 && in(path.Base(words[0]), "shopt",
 			"setopt") || len(words) > 0 && words[0] == "set" && setChangesGlobs(words[1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// runsShellCode reports a segment that runs shell code the classifier cannot see through: eval, source or ., su
+// or watch (which run their command through a shell), and a shell, also behind a wrapper such as xargs.
+func runsShellCode(segments []shellwords.Segment) bool {
+	for _, seg := range segments {
+		simple, _ := simpleCommand(seg.Words)
+		w := unwrap(simple[assignmentsEnd(simple):])
+		if slices.Contains(w.wrappers, "watch") || len(w.words) > 0 && (shellNames[path.Base(w.words[0])] ||
+			in(w.words[0], "eval", "source", ".", "su")) {
 			return true
 		}
 	}

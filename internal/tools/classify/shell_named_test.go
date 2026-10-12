@@ -217,8 +217,8 @@ func TestShellTellsALineThatMayGlobDotFiles(t *testing.T) {
 		"env BASH_OPTS=x chmod 644 *":         true,
 		"set -o glob''dots; rm *":             true,
 		"set -e; rm -f *":                     false,
-		"rm -f *(D)":                          true,
-		"make && chmod 644 *":                 true,
+		"rm -f *(D)":                          false, // bash refuses the syntax; sh has no zsh qualifiers
+		"make && chmod 644 *":                 false,
 		"echo dot_glob is off && chmod 644 *": true,
 	} {
 		if got := Shell(cmd).DotGlob; got != want {
@@ -247,11 +247,32 @@ func TestShellTellsADynamicNameMayTurnOnDotGlob(t *testing.T) {
 		{`wait -p "$v"; rm -rf *`, true},
 		{`unset "$x"; rm -rf *`, false},
 		{`declare -n r="$v"; r=.; rm -rf *`, true},
-		{`options[$k]=on; rm -rf *`, true},
+		{`options[$k]=on; rm -rf *`, false}, // a bash array element; zsh's options array needs zsh, a shell run
+		{`zsh -c 'options[$k]=on; rm -rf *'`, true},
 	}
 	for _, c := range cases {
 		if got := Shell(c.cmd).DotGlob; got != c.want {
 			t.Errorf("%q: dotglob %v, want %v", c.cmd, got, c.want)
+		}
+	}
+}
+
+// TestShellGlobsDotFilesOnlyWhereTheShellMayBeChanged: only code that runs in the shell expanding the globs can
+// turn dotglob on (eval, source, a function, a shell run on a string); an external program cannot, opaque or not.
+func TestShellGlobsDotFilesOnlyWhereTheShellMayBeChanged(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"dos2unix *":                  false,
+		"sed -i 's/a/b/' *":           false,
+		"python3 fix.py *":            false,
+		"eval x; rm *":                true,
+		". ./env.sh; rm *":            true,
+		"source env.sh; rm *":         true,
+		"f() { :; }; f; rm *":         true,
+		"sh -c 'rm *'":                true,
+		"echo x | xargs sh -c 'rm *'": true,
+	} {
+		if got := Shell(cmd).DotGlob; got != want {
+			t.Errorf("%q: dotglob %v, want %v", cmd, got, want)
 		}
 	}
 }

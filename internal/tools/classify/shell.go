@@ -53,7 +53,7 @@ func Shell(command string) ShellResult {
 	out := ShellResult{Result: read(""), Paths: files.written, Named: files.named, Finds: files.finds,
 		Landings: files.landings, Kube: kube,
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
-	out.DotGlob = dotGlobPossible(parsed.Segments, out.Opaque)
+	out.DotGlob = dotGlobPossible(parsed)
 	if out.Opaque {
 		out.Lines = append(out.Lines, bodyLines(parsed)...)
 		out.Words = opaqueWords(parsed.Segments)

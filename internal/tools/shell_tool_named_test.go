@@ -114,6 +114,7 @@ func TestShellToolExpandsAGlobAsTheShellDoes(t *testing.T) {
 		{"shopt -s dotglob; chmod 644 *", true, true},
 		{"setopt GLOB_DOTS; chmod 644 *", true, true},
 		{"cp x */", false, true},
+		{"sed -i 's/a/b/' *", false, true},
 	}
 	for _, c := range cases {
 		paths := shell.Classify(map[string]any{"command": c.cmd}, wd).Targets.Paths
@@ -122,6 +123,10 @@ func TestShellToolExpandsAGlobAsTheShellDoes(t *testing.T) {
 		if hasGit != c.git || hasSrc != c.srcs {
 			t.Errorf("%s: paths %q", c.cmd, paths)
 		}
+	}
+	named := shell.Classify(map[string]any{"command": "dos2unix *"}, wd).Targets.Named
+	if slices.ContainsFunc(named, func(p string) bool { return strings.HasSuffix(p, ".git") }) {
+		t.Errorf("dos2unix *: named %q", named)
 	}
 }
 
