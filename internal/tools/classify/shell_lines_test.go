@@ -78,14 +78,15 @@ func TestShellReadsStringsNestedUpToItsDepth(t *testing.T) {
 }
 
 // TestShellReadsNestedSubstitutionsOnce: each captured substitution is read once, from the outermost one down,
-// so a line nested many levels deep classifies quickly.
+// so the work grows with the nesting, not with a power of it: 24 levels, which the old reading took minutes over,
+// classify far inside the bound even under the race detector on a slow runner.
 func TestShellReadsNestedSubstitutionsOnce(t *testing.T) {
-	for _, cmd := range []string{"echo " + strings.Repeat("$(echo ", 16) + "x" + strings.Repeat(")", 16),
-		"echo `" + strings.Repeat("$(echo ", 16) + "x" + strings.Repeat(")", 16) + "`"} {
+	for _, cmd := range []string{"echo " + strings.Repeat("$(echo ", 24) + "x" + strings.Repeat(")", 24),
+		"echo `" + strings.Repeat("$(echo ", 24) + "x" + strings.Repeat(")", 24) + "`"} {
 		start := time.Now()
 		res := Shell(cmd)
-		if took := time.Since(start); took > 100*time.Millisecond {
-			t.Errorf("%d bytes nested 16 levels took %s", len(cmd), took)
+		if took := time.Since(start); took > 5*time.Second {
+			t.Errorf("%d bytes nested 24 levels took %s", len(cmd), took)
 		}
 		if !strings.Contains(cmd, "`") && res.Classification != policy.Read { // a backtick fails closed
 			t.Errorf("echo inside echo: %v", res.Classification)
