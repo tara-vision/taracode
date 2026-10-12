@@ -21,6 +21,9 @@ func TestShellReadsTheScriptAShellTakesOnItsInput(t *testing.T) {
 		{"sh /dev/stdin <<'EOF'\nterraform destroy\nEOF", "", "terraform destroy"},
 		{"bash - <<'EOF'\nterraform destroy\nEOF", "", "terraform destroy"},
 		{"source /dev/stdin <<'EOF'\nrm -rf infra\nEOF", "infra", "rm -rf infra"},
+		{"bash -euo pipefail <<'EOF'\nrm -rf infra\nEOF", "infra", "rm -rf infra"},
+		{"bash -O extglob <<'EOF'\nrm -rf infra\nEOF", "infra", "rm -rf infra"},
+		{"exec 3<<'EOF'\nrm -rf infra\nEOF\nbash /dev/fd/3", "infra", "rm -rf infra"},
 	}
 	for _, c := range cases {
 		res := Shell(c.cmd)

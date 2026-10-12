@@ -35,7 +35,7 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 		}
 	}
 	if depth > 0 {
-		for _, body := range parsed.Substitutions {
+		for _, body := range append(slices.Clone(parsed.Substitutions), fdScripts(parsed)...) {
 			out = append(out, linesOf(body, depth-1)...)
 		}
 	}
@@ -184,11 +184,12 @@ func segmentInput(seg shellwords.Segment) []string {
 }
 
 // scriptOnInput reports whether a shell run without -c reads its script from its standard input: it names no
-// script file or names the input as one, or a -s says so. -o and +o take an option's name.
+// script file or names the input as one, or a -s says so. A valued option (shellValued, or a cluster ending in o
+// or O, as -euo pipefail) takes the next word.
 func scriptOnInput(rest []string) bool {
 	for i := 0; i < len(rest); i++ {
 		switch w := rest[i]; {
-		case w == "-o" || w == "+o":
+		case in(w, shellValued...) || valuedCluster(w):
 			i++
 		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 's'):
 			return true
@@ -197,6 +198,42 @@ func scriptOnInput(rest []string) bool {
 		}
 	}
 	return true
+}
+
+// valuedCluster reports a cluster of a shell's short options that ends in o or O, which take the next word.
+func valuedCluster(w string) bool {
+	return len(w) > 2 && (w[0] == '-' || w[0] == '+') && w[1] != '-' && strings.ContainsAny(w[len(w)-1:], "oO")
+}
+
+// fdScripts are the here-document and here-string bodies of a line on which a shell or source reads its script
+// from a descriptor other than its input (bash /dev/fd/3 after exec 3<<EOF): any of them may be that script.
+func fdScripts(parsed shellwords.Result) []string {
+	reads := false
+	for _, seg := range parsed.Segments {
+		simple, _ := simpleCommand(seg.Words)
+		w := unwrap(simple[assignmentsEnd(simple):]).words
+		if len(w) > 1 && (shellNames[path.Base(w[0])] || in(w[0], "source", ".")) && slices.ContainsFunc(w[1:], fdFile) {
+			reads = true
+		}
+	}
+	if !reads {
+		return nil
+	}
+	var out []string
+	for _, seg := range parsed.Segments {
+		out = append(out, segmentInput(seg)...)
+	}
+	return out
+}
+
+// fdFile reports a path that names an open descriptor other than the standard input.
+func fdFile(w string) bool {
+	for _, prefix := range []string{"/dev/fd/", "/proc/self/fd/"} {
+		if n, ok := strings.CutPrefix(w, prefix); ok && n != "0" {
+			return true
+		}
+	}
+	return false
 }
 
 // stdinFile reports a script operand that names the standard input.
@@ -236,7 +273,7 @@ func innerPaths(parsed shellwords.Result, depth int) lineFiles {
 			}
 		}
 	}
-	for _, body := range parsed.Substitutions {
+	for _, body := range append(slices.Clone(parsed.Substitutions), fdScripts(parsed)...) {
 		visit(body)
 	}
 	return out
