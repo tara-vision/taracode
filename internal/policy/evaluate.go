@@ -122,7 +122,7 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 		return denied("protected.kube_namespaces",
 			"namespace %q matches the protected pattern %q", t.KubeNamespace, pat), true
 	}
-	for _, candidate := range append([]string{t.CloudAccount}, commandTokens(inv.Command)...) {
+	for _, candidate := range append([]string{t.CloudAccount}, commandTokens(inv.Command, inv.Lines...)...) {
 		if pat, ok := firstGlob(p.Protected.CloudAccounts, candidate); ok {
 			return denied("protected.cloud_accounts", "%q matches the protected cloud account pattern %q", candidate, pat), true
 		}
@@ -130,7 +130,7 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 	if v, held := p.protectedPath(inv); held {
 		return v, true
 	}
-	for _, candidate := range append(append([]string{}, t.Hosts...), commandTokens(inv.Command)...) {
+	for _, candidate := range append(append([]string{}, t.Hosts...), commandTokens(inv.Command, inv.Lines...)...) {
 		if pat, ok := firstGlob(p.Protected.Hosts, candidate); ok {
 			return denied("protected.hosts", "%q matches the protected host pattern %q", candidate, pat), true
 		}

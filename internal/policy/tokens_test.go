@@ -25,3 +25,24 @@ func TestAccountsAndHostsMatchThePiecesOfAWord(t *testing.T) {
 		}
 	}
 }
+
+// TestAccountsAndHostsMatchTheParsedLines: the words of the lines the classifier parsed, with their quotes
+// removed, are candidates too, and a fully qualified name's trailing dot does not hide a host.
+func TestAccountsAndHostsMatchTheParsedLines(t *testing.T) {
+	p := Default()
+	p.Protected.CloudAccounts = []string{"acme-prod-acct"}
+	p.Protected.Hosts = []string{"db.prod.example.com"}
+	cases := []struct{ command, line, rule string }{
+		{"aws --profile acme-prod-'acct' s3 rm s3://b/k", "aws --profile acme-prod-acct s3 rm s3://b/k",
+			"protected.cloud_accounts"},
+		{"ssh admin@db.prod.exa''mple.com reboot", "ssh admin@db.prod.example.com reboot", "protected.hosts"},
+		{"ssh admin@db.prod.example.com. reboot", "", "protected.hosts"},
+	}
+	for _, c := range cases {
+		inv := mutate("shell", "", c.command, Targets{})
+		inv.Lines = []string{c.line}
+		if v := p.Evaluate(ModeOperate, inv); v.Allow || v.Rule != c.rule {
+			t.Errorf("%s: got %+v, want %s", c.command, v, c.rule)
+		}
+	}
+}
