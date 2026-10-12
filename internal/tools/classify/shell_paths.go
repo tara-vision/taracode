@@ -35,7 +35,7 @@ func shellPaths(segments []shellwords.Segment) lineFiles {
 	for _, seg := range segments {
 		simple, _ := simpleCommand(seg.Words)
 		simple = withoutGluedBrace(simple)
-		words := simple[assignmentsEnd(simple):]
+		words := expandWords(simple[assignmentsEnd(simple):])
 		written := writtenOperands(words)
 		for _, r := range seg.Redirects {
 			if writesFile(r) {
@@ -275,4 +275,65 @@ func wgetOutputs(r []string) []string {
 	return []string{shortValue(r, 'O', wgetValuedShort), gnuFlagValue(r, "--output-document"),
 		shortValue(r, 'o', wgetValuedShort), gnuFlagValue(r, "--output-file"), shortValue(r, 'a', wgetValuedShort),
 		gnuFlagValue(r, "--append-output"), gnuFlagValue(r, "--save-cookies")}
+}
+
+// braceWords are the words the shell's brace expansion makes of a word ({a,b}, {1..3}): the word itself when it
+// has none. Past braceLimit words, or for a sequence the classifier cannot follow, each brace expansion reads as
+// a * instead, so the caller's glob and name checks still meet whatever it names.
+func braceWords(word string) []string {
+	if _, _, _, _, ok := braceSplit(word, braceSequence); !ok {
+		return []string{word}
+	}
+	var out []string
+	queue := []string{word}
+	for n := 0; len(queue) > 0; n++ {
+		w := queue[0]
+		queue = queue[1:]
+		prefix, alternatives, suffix, opaque, ok := braceSplit(w, braceSequence)
+		switch {
+		case n > braceLimit || opaque:
+			return []string{braceGlob(word)}
+		case !ok:
+			out = append(out, w)
+			continue
+		}
+		for _, a := range alternatives {
+			queue = append(queue, prefix+a+suffix)
+		}
+	}
+	return out
+}
+
+// braceGlob reads every brace expansion of a word as a *.
+func braceGlob(word string) string {
+	for {
+		prefix, _, suffix, _, ok := braceSplit(word, braceSequence)
+		if !ok {
+			return word
+		}
+		word = prefix + "*" + suffix
+	}
+}
+
+// expandWords brace-expands each word (braceWords).
+func expandWords(words []string) []string {
+	var out []string
+	for _, w := range words {
+		out = append(out, braceWords(w)...)
+	}
+	return out
+}
+
+// opaqueWords are the words of a line the classifier cannot see into, brace-expanded and without its options:
+// any of them may name a file the line acts on.
+func opaqueWords(segments []shellwords.Segment) []string {
+	var out []string
+	for _, seg := range segments {
+		for _, w := range expandWords(seg.Words) {
+			if !strings.HasPrefix(w, "-") {
+				out = append(out, w)
+			}
+		}
+	}
+	return out
 }

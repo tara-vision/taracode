@@ -94,6 +94,9 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`find -x . -delete`,
 		`find -name config -delete`,
 		`find -f . -name config -delete`,
+		`mv terraform.tfstate{,.bak}`,
+		`rm -rf .gi{t,}`,
+		`echo .g?t | xargs rm -rf`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {

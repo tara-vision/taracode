@@ -49,6 +49,10 @@ func TestShellToolNamesWhatTheClassifierNamesAndTakesWordsAsWritten(t *testing.T
 		filepath.Join(wd, "*")) {
 		t.Errorf("python3 -c with a *: named %q", inv.Targets.Named)
 	}
+	inv = shell.Classify(map[string]any{"command": "echo .g?t | xargs rm -rf"}, wd)
+	if !slices.Contains(inv.Targets.Named, filepath.Join(wd, ".git")) {
+		t.Errorf("an opaque line's glob word: named %q", inv.Targets.Named)
+	}
 	inv = shell.Classify(map[string]any{"command": "git checkout -- terraform.tfstate"}, wd)
 	if !slices.Contains(inv.Targets.Named, filepath.Join(wd, "terraform.tfstate")) {
 		t.Errorf("git checkout: named %q", inv.Targets.Named)

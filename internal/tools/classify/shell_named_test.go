@@ -174,3 +174,33 @@ func TestShellReadsTheCommandsAFindRuns(t *testing.T) {
 		t.Errorf("a kubectl in a string find runs: %q", got)
 	}
 }
+
+// TestShellExpandsBracesBeforeReadingOperands: a command's words are brace-expanded as the shell expands them
+// before its operands are read; an opaque line's whole words, so expanded, are handed on for the caller to glob.
+func TestShellExpandsBracesBeforeReadingOperands(t *testing.T) {
+	cases := []struct{ cmd, paths, landings string }{
+		{"mv terraform.tfstate{,.bak}", "terraform.tfstate", "terraform.tfstate.bak/terraform.tfstate"},
+		{"rm -rf .gi{t,}", ".git|.gi", ""},
+		{"cp src/{a,b} dest/", "", "dest/a|dest/b"},
+		{"rm -rf x{1..3}", "x1|x2|x3", ""},
+	}
+	for _, c := range cases {
+		res := Shell(c.cmd)
+		if got := strings.Join(res.Paths, "|"); got != c.paths {
+			t.Errorf("%q: paths %q, want %q", c.cmd, got, c.paths)
+		}
+		if got := strings.Join(res.Landings, "|"); got != c.landings {
+			t.Errorf("%q: landings %q, want %q", c.cmd, got, c.landings)
+		}
+	}
+	if got := braceWords("x{" + strings.Repeat("a,", 70) + "b}"); !slices.Equal(got, []string{"x*"}) {
+		t.Errorf("a brace past the limit: %q, want the brace read as *", got)
+	}
+	if words := Shell("echo .g{i,o}?t | xargs rm -rf").Words; !slices.Contains(words, ".gi?t") ||
+		slices.Contains(words, "-rf") {
+		t.Errorf("an opaque line's words: %q", words)
+	}
+	if words := Shell("rm -rf build").Words; len(words) != 0 {
+		t.Errorf("a line the classifier reads hands on words: %q", words)
+	}
+}

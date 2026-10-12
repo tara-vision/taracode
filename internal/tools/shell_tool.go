@@ -53,7 +53,8 @@ func ShellTool(stream io.Writer) *Tool {
 				Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
 				Finds: findStarts(res.Finds, workingDir)}
 			if res.Classification == policy.Mutate && res.Opaque {
-				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, nil)...)
+				targets.Named = slices.Concat(targets.Named, shellTargets(lineTokens(command), workingDir, nil),
+					shellTargets(res.Words, workingDir, glob))
 			}
 			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
 				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =

@@ -24,7 +24,10 @@ type ShellResult struct {
 	// Landings are where a copy, move or link puts each source when its destination is a directory: the
 	// caller keeps those whose directory exists (lineFiles).
 	Landings []string
-	Kube     []KubeTarget
+	// Words are the words of an opaque line, brace-expanded and without options, for the caller to glob: any of
+	// them may name a file the line acts on.
+	Words []string
+	Kube  []KubeTarget
 	// Opaque marks a line the classifier cannot see into (opaqueSegments): what it names, it may act on.
 	Opaque bool
 	// Lines are the forms of the line the deny patterns read besides the whole of it (denyLines).
@@ -49,6 +52,7 @@ func Shell(command string) ShellResult {
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
 	if out.Opaque {
 		out.Lines = append(out.Lines, bodyLines(parsed)...)
+		out.Words = opaqueWords(parsed.Segments)
 	}
 	if parsed.FunctionDef {
 		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+
