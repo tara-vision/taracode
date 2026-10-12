@@ -151,7 +151,7 @@ func TestSplitReadsArithmeticAndParameterExpansionsAsWords(t *testing.T) {
 // expansion without its end are errors, so the classifier fails closed rather than read later lines as data.
 func TestSplitRefusesWhatItCannotClose(t *testing.T) {
 	for _, line := range []string{"cat <<EOF\nline\n", "cat <<EOF", "echo $((1<<20)\nterraform destroy",
-		"echo $[1<<2\nrm x", "echo ${a:-<<x\nrm x", "(( x = 1<<2 )\nrm x", "echo $(echo ${a"} {
+		"echo $[1<<2\nrm x", "echo ${a:-<<x\nrm x", "(( x = 1<<2 )\nrm x", "echo $(echo ${a", "(( $[1 ))"} {
 		if res, err := Split(line); err == nil {
 			t.Errorf("%q: %+v, want an error", line, res)
 		}
