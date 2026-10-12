@@ -16,6 +16,7 @@ import (
 type Segment struct {
 	Words      []string // the command and its arguments, quotes removed
 	Redirects  []string // redirections in this segment, operator and target: "> out.log", "2>&1"
+	Heredocs   []string // the bodies of the segment's here-documents (<< and <<-), in order
 	Background bool     // the segment ends with &
 }
 
@@ -39,6 +40,18 @@ type parser struct {
 	shell       bool   // parse as sh -c does: ( and ) are operators, $'...' and $"..." are bash's quoting
 	closed      bool   // the last segment was ended by a closing )
 	ansiStopped bool   // a NUL was decoded inside the current $'...': the rest of the quote is discarded
+	quotedWord  bool   // part of the current word was quoted or escaped
+	heredocs    []heredoc
+}
+
+// heredoc is a here-document whose body starts after the next newline: the segment that declared it, its
+// delimiter, whether <<- strips the body's leading tabs, and whether the shell expands the body (an unquoted
+// delimiter).
+type heredoc struct {
+	segment   int
+	delimiter string
+	stripTabs bool
+	expands   bool
 }
 
 // Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
@@ -133,7 +146,7 @@ func (p *parser) backslash() {
 		return
 	}
 	p.word.WriteRune(p.in[p.pos+1])
-	p.hasWord = true
+	p.hasWord, p.quotedWord = true, true
 	p.pos += 2
 }
 
@@ -168,7 +181,7 @@ func (p *parser) next() rune {
 // to the closing quote but not emitted, and the word continues with whatever is glued after it.
 func (p *parser) ansiC() error {
 	p.pos += 2 // $'
-	p.ansiStopped = false
+	p.ansiStopped, p.quotedWord = false, true
 	for p.pos < len(p.in) {
 		c := p.in[p.pos]
 		switch {
@@ -402,6 +415,7 @@ func commentStart(in []rune, i int) bool {
 
 func (p *parser) quoted(q rune) error {
 	p.pos++ // opening quote
+	p.quotedWord = true
 	for p.pos < len(p.in) {
 		c := p.in[p.pos]
 		switch {
@@ -481,6 +495,53 @@ func (p *parser) operator(c rune) {
 	default:
 		p.pos++
 		p.endSegment(false)
+		if c == '\n' {
+			p.readHeredocs()
+		}
+	}
+}
+
+// readHeredocs reads the bodies of the here-documents declared before the newline just passed: each is the
+// lines up to its delimiter line (the end of the input when there is none), attached to the segment that declared
+// it, so a body is never read as commands. The shell expands a body whose delimiter is unquoted, so the command
+// substitutions in it are the line's own.
+func (p *parser) readHeredocs() {
+	for _, h := range p.heredocs {
+		var body strings.Builder
+		for p.pos < len(p.in) {
+			end := skipToNewline(p.in, p.pos)
+			line := string(p.in[p.pos:end])
+			p.pos = min(end+1, len(p.in))
+			if h.stripTabs {
+				line = strings.TrimLeft(line, "\t")
+			}
+			if line == h.delimiter {
+				break
+			}
+			body.WriteString(line + "\n")
+		}
+		if h.expands {
+			p.scanExpansions([]rune(body.String()))
+		}
+		seg := &p.res.Segments[h.segment]
+		seg.Heredocs = append(seg.Heredocs, body.String())
+	}
+	p.heredocs = nil
+}
+
+// scanExpansions flags the command substitutions of an expanded here-document body as those of a double-quoted
+// string are flagged: a backslash escapes a $ or a backtick.
+func (p *parser) scanExpansions(in []rune) {
+	for i := 0; i < len(in); i++ {
+		switch {
+		case in[i] == '\\':
+			i++
+		case in[i] == '`':
+			p.res.Substitution, p.res.Backtick = true, true
+		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
+			p.res.Substitution = true
+			p.res.Substitutions = append(p.res.Substitutions, (&parser{in: in, pos: i}).captureSubstitution())
+		}
 	}
 }
 
@@ -504,6 +565,10 @@ func (p *parser) redirect() {
 		p.pos++
 	}
 	op := fd + string(p.in[start:p.pos])
+	if heredocOperator(op) && p.pos < len(p.in) && p.in[p.pos] == '-' {
+		op += "-" // <<-
+		p.pos++
+	}
 	if p.pos < len(p.in) && p.in[p.pos] == '(' {
 		p.res.Substitution = true
 		if p.shell {
@@ -529,10 +594,14 @@ func (p *parser) endWord() {
 	if !p.hasWord {
 		return
 	}
-	w := p.word.String()
+	w, quoted := p.word.String(), p.quotedWord
 	p.word.Reset()
-	p.hasWord = false
+	p.hasWord, p.quotedWord = false, false
 	if p.pending != "" {
+		if p.shell && heredocOperator(strings.TrimSuffix(p.pending, "-")) {
+			p.heredocs = append(p.heredocs, heredoc{segment: len(p.res.Segments), delimiter: w,
+				stripTabs: strings.HasSuffix(p.pending, "-"), expands: !quoted})
+		}
 		p.seg.Redirects = append(p.seg.Redirects, p.pending+" "+w)
 		p.pending = ""
 		return
@@ -554,6 +623,11 @@ func (p *parser) endSegment(background bool) {
 	p.res.Segments = append(p.res.Segments, p.seg)
 	p.seg = Segment{}
 	p.closed = false
+}
+
+// heredocOperator reports a here-document operator, << after an optional descriptor; <<< is a here-string.
+func heredocOperator(op string) bool {
+	return strings.HasSuffix(op, "<<") && !strings.HasSuffix(op, "<<<")
 }
 
 func isDigits(s string) bool {

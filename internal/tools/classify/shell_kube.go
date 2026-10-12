@@ -96,9 +96,12 @@ func anyCluster(targets []KubeTarget) bool {
 // segment reads one simple command after the shell's reserved words (for, do, then, !, {, ...),
 // and notes whether it may change the kube configuration for the commands after it: it writes a
 // kubeconfig, switches the context, sets a variable outside the safe ones, or runs a program the
-// classifier does not know.
+// classifier does not know. A kubectl or helm its here-documents name counts as one the line names.
 func (l *kubeLine) segment(seg shellwords.Segment) {
 	l.words += countKubeWords(seg.Words)
+	for _, body := range seg.Heredocs {
+		l.words += countKubeWords(strings.Fields(body))
+	}
 	words, header := simpleCommand(seg.Words)
 	words = withoutGluedBrace(words)
 	if l.writesKubeconfig(words, seg.Redirects) {

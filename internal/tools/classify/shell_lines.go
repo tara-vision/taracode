@@ -2,6 +2,7 @@ package classify
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
@@ -29,7 +30,7 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 			out = append(out, strings.Join(trimmed, " "))
 		}
 		if depth > 0 {
-			for _, inner := range innerLines(words) {
+			for _, inner := range innerLines(words, segmentInput(seg)) {
 				out = append(out, linesOf(inner, depth-1)...)
 			}
 		}
@@ -63,8 +64,8 @@ func withoutLeadingOptions(words []string) []string {
 }
 
 // innerLines are the strings a command hands to a shell's -c (a short option holding c, as -ec) or to
-// eval, to run as a line of their own.
-func innerLines(words []string) []string {
+// eval, to run as a line of their own, and the script a shell without -c reads from its input.
+func innerLines(words, input []string) []string {
 	w := unwrap(words)
 	if len(w.words) == 0 {
 		return nil
@@ -80,8 +81,38 @@ func innerLines(words []string) []string {
 				return []string{rest[i+1]}
 			}
 		}
+		if scriptOnInput(rest) {
+			return input
+		}
 	}
 	return nil
+}
+
+// segmentInput is what a segment's here-documents and here-strings hand its program on its standard input.
+func segmentInput(seg shellwords.Segment) []string {
+	input := slices.Clone(seg.Heredocs)
+	for _, r := range seg.Redirects {
+		if s, ok := strings.CutPrefix(r, "<<< "); ok {
+			input = append(input, s)
+		}
+	}
+	return input
+}
+
+// scriptOnInput reports whether a shell run without -c reads its script from its standard input: it names no
+// script file, or a -s says so. -o and +o take an option's name.
+func scriptOnInput(rest []string) bool {
+	for i := 0; i < len(rest); i++ {
+		switch w := rest[i]; {
+		case w == "-o" || w == "+o":
+			i++
+		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 's'):
+			return true
+		case !strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "+"):
+			return false
+		}
+	}
+	return true
 }
 
 // innerPaths are the files that the strings a shell's -c, eval or a $(...) runs write or remove, read as
@@ -100,7 +131,7 @@ func innerPaths(parsed shellwords.Result, depth int) []string {
 	for _, seg := range parsed.Segments {
 		simple, _ := simpleCommand(seg.Words)
 		if words := simple[assignmentsEnd(simple):]; len(words) > 0 {
-			for _, line := range innerLines(words) {
+			for _, line := range innerLines(words, segmentInput(seg)) {
 				visit(line)
 			}
 		}
