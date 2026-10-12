@@ -124,3 +124,21 @@ func TestShellToolExpandsAGlobAsTheShellDoes(t *testing.T) {
 		}
 	}
 }
+
+// TestShellToolBoundsTheGlobOfALandingDirectory: a destination directory with more than three wildcard levels is
+// not globbed, which would read the whole tree; its landing is checked as written instead.
+func TestShellToolBoundsTheGlobOfALandingDirectory(t *testing.T) {
+	wd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wd, "a", "b", "c", "d"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	paths := ShellTool(io.Discard).Classify(map[string]any{"command": "cp x.tfstate */*/*/*/"}, wd).Targets.Paths
+	if !slices.Contains(paths, filepath.Join(wd, "*/*/*/*/x.tfstate")) || slices.Contains(paths,
+		filepath.Join(wd, "a/b/c/d/x.tfstate")) {
+		t.Errorf("paths %q", paths)
+	}
+	paths = ShellTool(io.Discard).Classify(map[string]any{"command": "cp x.tfstate */*/*/"}, wd).Targets.Paths
+	if !slices.Contains(paths, filepath.Join(wd, "a/b/c/x.tfstate")) {
+		t.Errorf("three levels: paths %q", paths)
+	}
+}

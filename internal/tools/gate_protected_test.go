@@ -97,6 +97,8 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`mv terraform.tfstate{,.bak}`,
 		`rm -rf .gi{t,}`,
 		`echo .g?t | xargs rm -rf`,
+		`tar -xf /tmp/x.tar -C infra`,
+		`unzip -o /tmp/x.zip -d infra`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {

@@ -193,6 +193,10 @@ func landingTargets(landings []string, workingDir string, glob globFunc) []strin
 	for _, landing := range landings {
 		abs := resolvePath(expandHome(landing, home), workingDir)
 		dirs := []string{filepath.Dir(abs)}
+		if wildcardLevels(dirs[0]) > maxLandingGlobLevels {
+			out = append(out, abs) // too deep to glob: checked as written
+			continue
+		}
 		if strings.ContainsAny(dirs[0], "*?[") {
 			dirs = glob(dirs[0])
 		}
@@ -203,6 +207,21 @@ func landingTargets(landings []string, workingDir string, glob globFunc) []strin
 		}
 	}
 	return out
+}
+
+// maxLandingGlobLevels bounds the wildcard levels of a landing's directory the shell tool globs: a deeper
+// pattern (*/*/*/*/) would read the whole tree for each command.
+const maxLandingGlobLevels = 3
+
+// wildcardLevels counts the elements of a path that hold a glob character.
+func wildcardLevels(p string) int {
+	n := 0
+	for _, e := range strings.Split(filepath.ToSlash(p), "/") {
+		if strings.ContainsAny(e, "*?[") {
+			n++
+		}
+	}
+	return n
 }
 
 // findStarts resolves the start point of each find a shell line runs as shellTargets resolves a path; the

@@ -114,27 +114,43 @@ func linkWritten(r []string) []string {
 	return out
 }
 
-// tarNamed is what tar extracts, when it extracts: the directory it extracts into (-C, --directory) and its
-// operands read from there, the members it names (and the archive and a bundle such as xzf, named harmlessly).
-func tarNamed(r []string) []string {
-	bundle := len(r) > 0 && !strings.HasPrefix(r[0], "-") && strings.ContainsRune(r[0], 'x') // tar xzf
-	if !bundle && !hasFlag(r, "-x", "--extract", "--get") {
-		return nil
-	}
-	dir := flagValue(r, "-C", "--directory")
-	return slices.Concat([]string{dir}, inDir(dir, operands(r, "-f", "--file", "-C", "--directory", "-T",
-		"--files-from", "-X", "--exclude-from")))
+// tarExtracts reports a tar that extracts: x in its first bundle (tar xzf) or an -x, --extract or --get.
+func tarExtracts(r []string) bool {
+	bundle := len(r) > 0 && !strings.HasPrefix(r[0], "-") && strings.ContainsRune(r[0], 'x')
+	return bundle || hasFlag(r, "-x", "--extract", "--get")
 }
 
-// unzipNamed is what unzip extracts: the directory it extracts into (-d, before or after the -x list) and its
-// operands read from there, the members it names (and the archive), up to the -x that starts the members it
-// leaves out.
+// tarWritten is the directory tar extracts into with -C or --directory: an extraction merges into it, so a
+// directory there is checked for the protected paths it holds.
+func tarWritten(r []string) []string {
+	if !tarExtracts(r) {
+		return nil
+	}
+	return []string{flagValue(r, "-C", "--directory")}
+}
+
+// tarNamed are the members a tar that extracts names, read from the directory it extracts into (and the archive
+// and a bundle such as xzf, named harmlessly).
+func tarNamed(r []string) []string {
+	if !tarExtracts(r) {
+		return nil
+	}
+	return inDir(flagValue(r, "-C", "--directory"), operands(r, "-f", "--file", "-C", "--directory", "-T",
+		"--files-from", "-X", "--exclude-from"))
+}
+
+// unzipWritten is the directory unzip extracts into with -d, before or after its -x list: an extraction merges
+// into it.
+func unzipWritten(r []string) []string { return []string{flagValue(r, "-d")} }
+
+// unzipNamed are the members unzip names, read from the directory it extracts into (and the archive), up to the
+// -x that starts the members it leaves out.
 func unzipNamed(r []string) []string {
-	dir, ops := flagValue(r, "-d"), r
+	ops := r
 	if i := slices.Index(r, "-x"); i >= 0 {
 		ops = r[:i]
 	}
-	return slices.Concat([]string{dir}, inDir(dir, operands(ops, "-d", "-P")))
+	return inDir(flagValue(r, "-d"), operands(ops, "-d", "-P"))
 }
 
 // cpWritten is copyWritten, and for cp -l or -s, which make links instead of copies, the sources too: a link

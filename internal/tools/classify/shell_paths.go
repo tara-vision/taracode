@@ -186,6 +186,7 @@ var fileWriters = map[string]func(rest []string) []string{
 		return operands(r, "-s", "--size", "-r", "--reference")
 	},
 	"mv": moveWritten, "cp": cpWritten, "install": copyWritten, "ln": linkWritten, "rsync": rsyncWritten,
+	"tar": tarWritten, "unzip": unzipWritten,
 	"chmod": chmodTargets,
 	"chown": ownerTargets, "chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
 	"curl": curlOutputs, "wget": wgetOutputs,
