@@ -29,6 +29,19 @@ type Result struct {
 	FunctionDef   bool     // the line defines a shell function (name (), function name), which can shadow any name
 	Substitutions []string // the bodies of every $(...) and backtick, also in expansions and expanded here-documents,
 	// in order, outermost first, for a classifier to read
+	outer []bool // for each body, whether no other captured body holds it
+}
+
+// OuterSubstitutions are the bodies of the substitutions no other captured substitution holds: reading each of
+// them as a line of its own reaches the ones nested in it, so each body is read once.
+func (r Result) OuterSubstitutions() []string {
+	var out []string
+	for i, body := range r.Substitutions {
+		if i < len(r.outer) && r.outer[i] {
+			out = append(out, body)
+		}
+	}
+	return out
 }
 
 type parser struct {
@@ -45,6 +58,18 @@ type parser struct {
 	quotedWord  bool   // part of the current word was quoted or escaped
 	heredocs    []heredoc
 	closingTick map[int]bool // the positions of the backticks that close a body already captured
+	outerEnd    int          // the parse is inside a captured substitution up to this position
+}
+
+// addSubstitution records a substitution body captured from start to end in the input: outer unless an earlier
+// capture holds it.
+func (p *parser) addSubstitution(body string, start, end int) {
+	outer := start >= p.outerEnd
+	if outer {
+		p.outerEnd = end
+	}
+	p.res.Substitutions = append(p.res.Substitutions, body)
+	p.res.outer = append(p.res.outer, outer)
 }
 
 // heredoc is a here-document whose body starts after the next newline: the segment that declared it, its
@@ -127,7 +152,8 @@ func (p *parser) step() error {
 		if c == '`' {
 			p.backtick()
 		} else {
-			p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
+			body := p.captureSubstitution()
+			p.addSubstitution(body, p.pos, p.pos+2+len([]rune(body)))
 		}
 		p.word.WriteRune(c)
 		p.hasWord = true
@@ -221,7 +247,7 @@ func (p *parser) dollarExpansion() (handled bool, err error) {
 // expansionWord takes the expansion from start to end, inclusive, into the current word, capturing the command
 // substitutions inside it; nothing in it is an operator or a redirect.
 func (p *parser) expansionWord(start, end int) {
-	p.scanExpansions(p.in[start+2 : end])
+	p.scanExpansions(p.in[start+2:end], start >= p.outerEnd)
 	p.word.WriteString(string(p.in[start : end+1]))
 	p.hasWord = true
 	p.pos = end + 1
@@ -283,7 +309,8 @@ func (p *parser) dollarParen() {
 		return
 	}
 	p.res.Substitution = true
-	p.res.Substitutions = append(p.res.Substitutions, p.captureSubstitution())
+	body := p.captureSubstitution()
+	p.addSubstitution(body, p.pos, p.pos+2+len([]rune(body)))
 	p.word.WriteRune('$')
 	p.pos++
 }
@@ -401,7 +428,7 @@ func (p *parser) backtick() {
 		return
 	}
 	body, end := backtickBody(p.in, p.pos)
-	p.res.Substitutions = append(p.res.Substitutions, body)
+	p.addSubstitution(body, p.pos, end)
 	if p.closingTick == nil {
 		p.closingTick = map[int]bool{}
 	}
@@ -686,7 +713,7 @@ func (p *parser) operator(c rune) error {
 func (p *parser) readHeredocs() error {
 	for _, h := range p.heredocs {
 		var body strings.Builder
-		closed := false
+		closed, bodyStart := false, p.pos
 		for p.pos < len(p.in) && !closed {
 			end := skipToNewline(p.in, p.pos)
 			line := string(p.in[p.pos:end])
@@ -702,7 +729,7 @@ func (p *parser) readHeredocs() error {
 			return errNoDelimiter
 		}
 		if h.expands {
-			p.scanExpansions([]rune(body.String()))
+			p.scanExpansions([]rune(body.String()), bodyStart >= p.outerEnd)
 		}
 		seg := &p.res.Segments[h.segment]
 		seg.Heredocs = append(seg.Heredocs, body.String())
@@ -711,9 +738,11 @@ func (p *parser) readHeredocs() error {
 	return nil
 }
 
-// scanExpansions flags the command substitutions of an expanded here-document body as those of a double-quoted
-// string are flagged: a backslash escapes a $ or a backtick.
-func (p *parser) scanExpansions(in []rune) {
+// scanExpansions captures the command substitutions of text the shell expands apart from the parse of the line
+// (an expanded here-document body, the inside of an arithmetic or parameter expansion) as a double-quoted
+// string's are captured: a backslash escapes a $ or a backtick, a $((...)) is arithmetic, and a substitution
+// inside another is reached through it. outer tells whether the text lies outside every captured substitution.
+func (p *parser) scanExpansions(in []rune, outer bool) {
 	for i := 0; i < len(in); i++ {
 		switch {
 		case in[i] == '\\':
@@ -721,12 +750,14 @@ func (p *parser) scanExpansions(in []rune) {
 		case in[i] == '`':
 			body, end := backtickBody(in, i)
 			p.res.Substitution, p.res.Backtick = true, true
-			p.res.Substitutions = append(p.res.Substitutions, body)
+			p.res.Substitutions, p.res.outer = append(p.res.Substitutions, body), append(p.res.outer, outer)
 			i = end
 		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
 			if _, arithmetic, _ := arithmeticEnd(in, i+1); !arithmetic {
+				body := (&parser{in: in, pos: i}).captureSubstitution()
 				p.res.Substitution = true
-				p.res.Substitutions = append(p.res.Substitutions, (&parser{in: in, pos: i}).captureSubstitution())
+				p.res.Substitutions, p.res.outer = append(p.res.Substitutions, body), append(p.res.outer, outer)
+				i += 2 + len([]rune(body)) // the ) that closes it
 			}
 		}
 	}

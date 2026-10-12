@@ -35,7 +35,7 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 		}
 	}
 	if depth > 0 {
-		for _, body := range append(slices.Clone(parsed.Substitutions), fdScripts(parsed)...) {
+		for _, body := range append(parsed.OuterSubstitutions(), fdScripts(parsed)...) {
 			out = append(out, linesOf(body, depth-1)...)
 		}
 	}
@@ -275,7 +275,7 @@ func innerPaths(parsed shellwords.Result, depth int) lineFiles {
 			}
 		}
 	}
-	for _, body := range append(slices.Clone(parsed.Substitutions), fdScripts(parsed)...) {
+	for _, body := range append(parsed.OuterSubstitutions(), fdScripts(parsed)...) {
 		visit(body)
 	}
 	return out

@@ -100,7 +100,7 @@ func substitutionsRead(parsed shellwords.Result) (string, bool) {
 	if parsed.Backtick || len(parsed.Substitutions) == 0 {
 		return "command substitution (backticks, <(...), >(...)) or a translated $\"...\" hides what runs", false
 	}
-	for _, body := range parsed.Substitutions {
+	for _, body := range parsed.OuterSubstitutions() {
 		res := Shell(body)
 		if res.Classification != policy.Read {
 			return "the command substitution $(" + body + ") " + res.Reason, false

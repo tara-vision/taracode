@@ -157,3 +157,24 @@ func TestSplitRefusesWhatItCannotClose(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitMarksTheOuterSubstitutions: the bodies no other captured body holds are the outer ones; a body
+// nested in another is read through it.
+func TestSplitMarksTheOuterSubstitutions(t *testing.T) {
+	tests := []struct {
+		line  string
+		outer []string
+	}{
+		{"echo $(echo $(id)) `date`", []string{"echo $(id)", "date"}},
+		{"echo \"$(a \"$(b)\")\" $(c)", []string{`a "$(b)"`, "c"}},
+		{"cat <<EOF\n$(a $(b)) `c`\nEOF", []string{"a $(b)", "c"}},
+		{"echo $(( $(a $(b)) ))", []string{"a $(b)"}},
+		{"echo $(cat <<EOF\n$(a)\nEOF\n)", []string{"cat <<EOF\n$(a)\nEOF\n)"}}, // a << captures to the end
+	}
+	for _, tt := range tests {
+		res, err := Split(tt.line)
+		if err != nil || !reflect.DeepEqual(res.OuterSubstitutions(), tt.outer) {
+			t.Errorf("%q: outer %q of %q, %v", tt.line, res.OuterSubstitutions(), res.Substitutions, err)
+		}
+	}
+}

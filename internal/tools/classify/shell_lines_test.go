@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/tara-vision/taracode/internal/policy"
 )
 
 // TestShellLinesAreTheFormsADenyPatternReads: besides the whole line, a deny pattern reads each simple
@@ -69,5 +72,21 @@ func TestShellReadsStringsNestedUpToItsDepth(t *testing.T) {
 	}
 	if res := Shell(nested("rm -rf .git", innerDepth+1)); slices.Contains(res.Paths, ".git") {
 		t.Errorf("%d levels read past the depth: %q", innerDepth+1, res.Paths)
+	}
+}
+
+// TestShellReadsNestedSubstitutionsOnce: each captured substitution is read once, from the outermost one down,
+// so a line nested many levels deep classifies quickly.
+func TestShellReadsNestedSubstitutionsOnce(t *testing.T) {
+	for _, cmd := range []string{"echo " + strings.Repeat("$(echo ", 16) + "x" + strings.Repeat(")", 16),
+		"echo `" + strings.Repeat("$(echo ", 16) + "x" + strings.Repeat(")", 16) + "`"} {
+		start := time.Now()
+		res := Shell(cmd)
+		if took := time.Since(start); took > 100*time.Millisecond {
+			t.Errorf("%d bytes nested 16 levels took %s", len(cmd), took)
+		}
+		if !strings.Contains(cmd, "`") && res.Classification != policy.Read { // a backtick fails closed
+			t.Errorf("echo inside echo: %v", res.Classification)
+		}
 	}
 }
