@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.5] - 2026-10-12
+
 ### Security
 Ways a command in operate mode could reach a protected target without the policy seeing it. All were found on
 2026-10-12, in our own hardware board runs and in the reviews of the policy gate that followed; there is no
@@ -766,7 +768,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.4...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.5...HEAD
+
+[3.2.5]: https://github.com/tara-vision/taracode/compare/v3.2.4...v3.2.5
 
 [3.2.4]: https://github.com/tara-vision/taracode/compare/v3.2.3...v3.2.4
 
