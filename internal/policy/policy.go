@@ -52,6 +52,7 @@ type Targets struct {
 	KubeReason    string // why a "*" context or namespace could not be pinned down, for the deny message
 	CloudAccount  string
 	Paths         []string // absolute paths
+	Named         []string // absolute paths an opaque command names: matched like Paths, never walked
 	Hosts         []string
 }
 

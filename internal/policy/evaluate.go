@@ -138,6 +138,14 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 			}
 		}
 	}
+	for _, path := range t.Named {
+		for _, pat := range p.Protected.Paths {
+			if matchPath(pat, path, inv.WorkingDir) {
+				return denied("protected.paths", "the command names %s, which matches the protected path pattern %q",
+					path, pat), true
+			}
+		}
+	}
 	for _, candidate := range append(append([]string{}, t.Hosts...), commandTokens(inv.Command)...) {
 		if pat, ok := firstGlob(p.Protected.Hosts, candidate); ok {
 			return denied("protected.hosts", "%q matches the protected host pattern %q", candidate, pat), true

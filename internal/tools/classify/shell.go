@@ -36,7 +36,8 @@ func Shell(command string) ShellResult {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")"), Opaque: true}
 	}
 	kube, kubeOpaque := shellKube(parsed)
-	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: kube,
+	paths := append(shellPaths(parsed.Segments), innerPaths(parsed, innerDepth)...)
+	out := ShellResult{Result: read(""), Paths: paths, Kube: kube,
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
 	if parsed.FunctionDef {
 		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+

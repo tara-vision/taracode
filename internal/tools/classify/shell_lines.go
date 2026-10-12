@@ -83,3 +83,30 @@ func innerLines(words []string) []string {
 	}
 	return nil
 }
+
+// innerPaths are the files that the strings a shell's -c, eval or a $(...) runs write or remove, read as
+// the line itself is read (shellPaths), so a target inside such a string is a target of the line.
+func innerPaths(parsed shellwords.Result, depth int) []string {
+	if depth == 0 {
+		return nil
+	}
+	var out []string
+	visit := func(line string) {
+		if inner, err := shellwords.Split(line); err == nil {
+			out = append(out, shellPaths(inner.Segments)...)
+			out = append(out, innerPaths(inner, depth-1)...)
+		}
+	}
+	for _, seg := range parsed.Segments {
+		simple, _ := simpleCommand(seg.Words)
+		if words := simple[assignmentsEnd(simple):]; len(words) > 0 {
+			for _, line := range innerLines(words) {
+				visit(line)
+			}
+		}
+	}
+	for _, body := range parsed.Substitutions {
+		visit(body)
+	}
+	return out
+}
