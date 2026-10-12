@@ -527,7 +527,7 @@ func (l *kubeLine) writesKubeconfig(words, redirects []string) bool {
 	var targets []string
 	if len(words) > 0 {
 		words = words[assignmentsEnd(words):]
-		targets = slices.Concat(writtenOperands(words), namedOperands(words), operandsOf(words, landingWriters))
+		targets = slices.Concat(writtenOperands(words), namedOperands(words), landingOperands(words))
 	}
 	for _, r := range redirects {
 		if writesFile(r) {

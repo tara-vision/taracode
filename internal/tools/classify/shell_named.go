@@ -7,12 +7,12 @@ import (
 )
 
 // namedWriters maps the programs that act on some of the paths they name by name only to those paths: the
-// destination of a copy, move or link, the start points and names of a find that its tests narrow, where tar and
-// unzip extract, and what git checks out, restores, moves or removes. The policy matches them against its
-// protected patterns but does not look inside a directory among them.
+// destination of a copy, move or link, where tar and unzip extract, and what git checks out, restores, moves or
+// removes; find's start points and names, when its tests narrow it, come from findNamed (namedBy). The policy
+// matches them against its protected patterns but does not look inside a directory among them.
 var namedWriters = map[string]func(rest []string) []string{
 	"cp": destinationNamed, "install": destinationNamed, "mv": destinationNamed, "ln": destinationNamed,
-	"find": findNamed, "tar": tarNamed, "unzip": unzipNamed, "git": gitNamed,
+	"tar": tarNamed, "unzip": unzipNamed, "git": gitNamed,
 }
 
 // copyValued are the options of cp, install, mv and ln that take the next word as their value.

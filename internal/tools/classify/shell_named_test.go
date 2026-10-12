@@ -138,6 +138,11 @@ func TestShellReadsTheCommandsAFindRuns(t *testing.T) {
 		{`find . -name x -execdir sh -c 'rm -rf infra' \;`, "infra"},
 		{`find . -name x -exec rm -rf {}/.. \;`, "."},
 		{`find . -name x -exec rm -rf infra`, "infra"},
+		{`find . -name x -exec sh -c 'rm -rf "$(dirname "$1")"' _ {} \;`, "."},
+		{`find . -name '*.py' -exec python3 fix.py {} \;`, "."},
+		{`find . -name x -exec ./cleanup.sh {} \;`, "."},
+		{`find . -name x -exec {} \;`, "."},
+		{`find . -name x -execdir rm -rf infra \;`, "."},
 	}
 	for _, c := range paths {
 		if got := Shell(c.cmd).Paths; !slices.Contains(got, c.want) {
@@ -154,7 +159,7 @@ func TestShellReadsTheCommandsAFindRuns(t *testing.T) {
 		}
 	}
 	for _, cmd := range []string{`find . -name '*.py' -exec sed -i 's/a/b/' {} +`, `find . -name '*.go' -exec gofmt -w {} \;`,
-		`find . -name '*.log' -exec mv {} {}.bak \;`} {
+		`find . -name '*.log' -exec mv {} {}.bak \;`, `find . -name '*.py' -execdir sed -i 's/a/b/' {} +`} {
 		if got := Shell(cmd).Paths; len(got) != 0 {
 			t.Errorf("%s: paths %q, want none beyond the matches", cmd, got)
 		}

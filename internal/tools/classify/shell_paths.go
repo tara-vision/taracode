@@ -44,7 +44,7 @@ func shellPaths(segments []shellwords.Segment) lineFiles {
 			}
 		}
 		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs),
-			landings: underDirs(operandsOf(words, landingWriters), dirs), finds: findTargets(words, dirs)})
+			landings: underDirs(landingOperands(words), dirs), finds: findTargets(words, dirs)})
 		execs, chdir := findExecs(words)
 		for _, cmd := range execs {
 			files = files.with(execFiles(cmd, chdir, dirs))
@@ -111,19 +111,49 @@ var wrapperPrograms = map[string]bool{
 }
 
 // writtenOperands returns the operands a file-writing command writes or removes.
-func writtenOperands(words []string) []string { return operandsOf(words, fileWriters) }
+func writtenOperands(words []string) []string { return operandsOf(words, writtenBy) }
 
 // namedOperands returns the operands a command acts on by name only.
-func namedOperands(words []string) []string { return operandsOf(words, namedWriters) }
+func namedOperands(words []string) []string { return operandsOf(words, namedBy) }
 
-// operandsOf returns what a table gives for a command's operands, past the wrapper programs in front of it and
+// landingOperands returns where a copy, move or link puts each source if its destination is a directory.
+func landingOperands(words []string) []string { return operandsOf(words, landedBy) }
+
+// operandFunc gives the operands of one program.
+type operandFunc = func(rest []string) []string
+
+// writtenBy, namedBy and landedBy look a program up in fileWriters, namedWriters and landingWriters. find's own
+// functions stay out of the tables, since the commands find runs are read with them.
+func writtenBy(prog string) (operandFunc, bool) {
+	if prog == "find" {
+		return findWritten, true
+	}
+	f, ok := fileWriters[prog]
+	return f, ok
+}
+
+func namedBy(prog string) (operandFunc, bool) {
+	if prog == "find" {
+		return findNamed, true
+	}
+	f, ok := namedWriters[prog]
+	return f, ok
+}
+
+func landedBy(prog string) (operandFunc, bool) {
+	f, ok := landingWriters[prog]
+	return f, ok
+}
+
+// operandsOf returns what a lookup gives for a command's operands, past the wrapper programs in front of it and
 // read from the directory they move it to (env -C, sudo -D).
-func operandsOf(words []string, table map[string]func(rest []string) []string) []string {
-	cmd, dir := behindWrappers(words, func(prog string) bool { _, ok := table[prog]; return ok })
+func operandsOf(words []string, lookup func(prog string) (operandFunc, bool)) []string {
+	cmd, dir := behindWrappers(words, func(prog string) bool { _, ok := lookup(prog); return ok })
 	if cmd == nil {
 		return nil
 	}
-	return inDir(dir, nonEmpty(table[path.Base(cmd[0])](cmd[1:])))
+	f, _ := lookup(path.Base(cmd[0]))
+	return inDir(dir, nonEmpty(f(cmd[1:])))
 }
 
 // behindWrappers returns the command a known program runs, as the words from that program on, past the wrapper
@@ -158,7 +188,7 @@ var fileWriters = map[string]func(rest []string) []string{
 	"mv": moveWritten, "cp": cpWritten, "install": copyWritten, "ln": linkWritten, "rsync": rsyncWritten,
 	"chmod": chmodTargets,
 	"chown": ownerTargets, "chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
-	"curl": curlOutputs, "wget": wgetOutputs, "find": findWritten,
+	"curl": curlOutputs, "wget": wgetOutputs,
 }
 
 func allOperands(r []string) []string { return operands(r) }

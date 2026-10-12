@@ -85,6 +85,8 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		`cp /tmp/x.tfstate inf*`,
 		`find . -name '*.pyc' -exec rm -rf infra \;`,
 		`find . -name '*.tf' -exec terraform destroy \;`,
+		`find . -name '*.pyc' -exec sh -c 'rm -rf "$(dirname "$1")"' _ {} \;`,
+		`find . -name '*.pyc' -execdir rm -rf infra \;`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow {
