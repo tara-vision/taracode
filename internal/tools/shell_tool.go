@@ -151,12 +151,21 @@ func shellTargets(paths []string, workingDir string, globs bool) []string {
 }
 
 // landingTargets resolves where a copy, move or link puts each source, as shellTargets resolves a path, and
-// keeps a landing whose directory exists: a destination that is no directory is written by its own name.
+// keeps a landing under each directory its destination names now, a glob expanded as the shell expands it: a
+// destination that is no directory is written by its own name.
 func landingTargets(landings []string, workingDir string) []string {
+	home, _ := os.UserHomeDir()
 	var out []string
-	for _, p := range shellTargets(landings, workingDir, true) {
-		if info, err := os.Stat(filepath.Dir(p)); err == nil && info.IsDir() {
-			out = append(out, p)
+	for _, landing := range landings {
+		abs := resolvePath(expandHome(landing, home), workingDir)
+		dirs := []string{filepath.Dir(abs)}
+		if strings.ContainsAny(dirs[0], "*?[") {
+			dirs, _ = filepath.Glob(dirs[0])
+		}
+		for _, dir := range dirs {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				out = append(out, shellTargets([]string{filepath.Join(dir, filepath.Base(abs))}, "", true)...)
+			}
 		}
 	}
 	return out

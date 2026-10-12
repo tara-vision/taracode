@@ -82,8 +82,10 @@ func TestShellToolKeepsALandingUnderADirectoryOnly(t *testing.T) {
 	if len(inv.Targets.Paths) != 0 {
 		t.Errorf("a copy to a file: paths %q", inv.Targets.Paths)
 	}
-	inv = shell.Classify(map[string]any{"command": "cp /tmp/x.tfstate infra"}, wd)
-	if !slices.Contains(inv.Targets.Paths, filepath.Join(wd, "infra", "x.tfstate")) {
-		t.Errorf("a copy into a directory: paths %q", inv.Targets.Paths)
+	for _, cmd := range []string{"cp /tmp/x.tfstate infra", "cp /tmp/x.tfstate inf*", "cp /tmp/x.tfstate in?ra/"} {
+		inv = shell.Classify(map[string]any{"command": cmd}, wd)
+		if !slices.Contains(inv.Targets.Paths, filepath.Join(wd, "infra", "x.tfstate")) {
+			t.Errorf("%s: paths %q", cmd, inv.Targets.Paths)
+		}
 	}
 }
