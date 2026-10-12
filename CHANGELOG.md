@@ -9,29 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 Ways a command in operate mode could reach a protected target without the policy seeing it. All were found on
-2026-10-12, in our own hardware board runs and a security review of the policy gate that followed; there is no
-report of any of them being used. Upgrade if you use operate mode with protected paths, kube contexts,
-namespaces, cloud accounts or hosts, which the built-in policy has.
+2026-10-12, in our own hardware board runs and in two reviews of the policy gate that followed; there is no
+report of any of them being used. Upgrade if you use operate mode: the built-in policy protects `.git`,
+`*.tfstate` files, kube contexts named like `prod` and the `kube-system` namespace, and a policy file can
+protect more, cloud accounts and hosts included.
 
 - **A command that runs code from a string named no paths.** A protected path written through `python3 -c`,
   `perl -e`, an `awk` program, `sh -c`, `eval`, backticks, `$(...)`, a heredoc or `xargs` was not seen: the
   policy saw only the targets of redirects and of the programs known to write files. On such a line a word
-  that names a protected path is now refused, and the strings that `sh -c`, `eval` and `$(...)` run are read
-  like the line itself. A read-only line of that kind is refused too; `read_file` and `cat` still read.
+  that names a protected path is now refused, and the strings a shell's `-c`, `eval`, `$(...)` or backticks
+  run, and the script a shell reads from a heredoc, are read like the line itself. A read-only line of that
+  kind is refused too; `read_file` and `cat` still read.
 - **kubectl or helm inside a string.** `sh -c "kubectl --context prod ..."` or a Python `subprocess` call
-  carried no kube context. A line taracode cannot see into that names kubectl or helm, inside a string too,
-  now counts as touching every context and namespace.
-- **Glued account and host forms.** `--profile=acct`, `AWS_PROFILE=acct`, `user@host` and the host of a URL did
-  not match the account and host patterns. They do now.
+  carried no kube context. A line taracode cannot see into that names kubectl or helm, inside a string or a
+  heredoc too, now counts as touching every context and namespace.
+- **Account and host forms.** `--profile=acct`, `AWS_PROFILE=acct`, `user@host`, the host of a URL, a name the
+  shell joins from quoted parts and a host name with a trailing dot did not match the account and host
+  patterns. They do now.
 - **Deny patterns matched only the whole line.** `cd infra && terraform destroy`, `terraform -chdir=infra
-  destroy` and `sh -c "terraform destroy"` passed `terraform destroy*`. Each command of a chain, each command
-  without its leading one-word options and the strings a shell's `-c`, `eval` or `$(...)` runs are matched now.
+  destroy`, `time terraform destroy`, `/usr/local/bin/terraform destroy` and `sh -c "terraform destroy"`
+  passed `terraform destroy*`. Each command of a chain is matched now, also without the wrappers in front of
+  its program, by its program's base name and without its leading one-word options, and so are the strings a
+  shell runs.
 - **Path patterns matched too literally.** `.git/**` did not cover `.git` itself, so `rm -rf .git` passed the
   built-in policy; removing a directory that holds a protected file passed; patterns were case-sensitive
-  while the macOS and Windows file systems are not; and a symlink led past the pattern of what it points to.
-  A pattern ending in `/**` now covers its directory, a `shell` command's directory target is checked for the
-  protected paths it holds (the README says how far), patterns match in any letter case, and a path is
-  matched through its symlinks.
+  while the default macOS file system is not; and a symlink, or a link made earlier on the same line, led past
+  the pattern of what it points to. A pattern ending in `/**` now covers its directory, a `shell` command's
+  directory target is checked for the protected paths it holds (the README says how far), patterns match in
+  any letter case, and a path is matched through its symlinks.
+- **Commands that act on paths without writing them were not checked.** What `find -delete` or `find -exec`
+  reaches, the destination of `cp`, `mv`, `install` and `ln`, the paths `ln` links to, where `tar -x` and
+  `unzip -d` extract, the paths `git rm`, `git mv`, `git checkout` and `git restore` act on, and a path after
+  `cd -P`, `env -C`, `sudo -D` or `git -C` are checked now. A `find` is checked for the protected paths its
+  name tests reach under its start points, and one that follows symbolic links is refused.
+
+### Changed
+- Failing closed costs some commands in operate mode while the policy protects paths: a `shell` command that
+  removes or moves a directory holding a protected path, or a directory of more than 50,000 entries; a `find`
+  that deletes or runs a command and has a branch without a name test, over a directory holding a protected
+  path; a `find` that follows symbolic links; a line taracode cannot see into that names a protected path, a
+  read-only one included; and a target more than 256 parts deep. Remove such paths yourself, or name smaller
+  ones.
 
 ## [3.2.4] - 2026-10-01
 
