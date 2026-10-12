@@ -47,22 +47,36 @@ func destinationNamed(r []string) []string {
 }
 
 // copyWritten are the files cp and install write: each source under the destination, which they write into when
-// it is a directory; the destination itself is named (destinationNamed).
+// it is a directory, and the destination itself when they merge into it (mergesInto); otherwise the destination
+// is named (destinationNamed).
 func copyWritten(r []string) []string {
 	dest, sources := destination(r)
 	if dest == "" {
 		return nil
 	}
-	return into(dest, sources)
+	return slices.Concat(into(dest, sources), mergedInto(r, dest, sources))
 }
 
-// moveWritten are the files mv removes and writes: the sources, and each source under the destination.
+// moveWritten are the files mv removes and writes: the sources, each source under the destination, and the
+// destination itself when mv merges into it.
 func moveWritten(r []string) []string {
 	dest, sources := destination(r)
 	if dest == "" {
 		return sources
 	}
-	return slices.Concat(sources, into(dest, sources))
+	return slices.Concat(sources, into(dest, sources), mergedInto(r, dest, sources))
+}
+
+// mergedInto is the destination when a copy or move writes into it rather than under it by a source's base name:
+// with -T, and for a source with a trailing slash, whose contents BSD cp copies.
+func mergedInto(r []string, dest string, sources []string) []string {
+	merges := hasFlag(r, "-T", "--no-target-directory") || slices.ContainsFunc(sources, func(s string) bool {
+		return strings.HasSuffix(s, "/")
+	})
+	if !merges {
+		return nil
+	}
+	return []string{dest}
 }
 
 // linkWritten are what ln links to and the links it makes: a link reaches what it points to, so the sources are
