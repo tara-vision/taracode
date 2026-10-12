@@ -59,13 +59,7 @@ func runShell(stream io.Writer) func(ctx context.Context, args map[string]any, w
 		if err != nil {
 			return "", err
 		}
-		timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
-		if timeout <= 0 {
-			timeout = defaultShellTimeout
-		}
-		if timeout > maxShellTimeout {
-			timeout = maxShellTimeout
-		}
+		timeout := shellTimeout(args)
 		ctx, cancel := withTimeout(ctx, timeout)
 		defer cancel()
 		//nolint:gosec // the shell tool runs what the model asked for, after the policy gate
@@ -97,6 +91,19 @@ func runShell(stream io.Writer) func(ctx context.Context, args map[string]any, w
 		}
 		return out, nil
 	}
+}
+
+// shellTimeout is a shell call's timeout: the seconds its timeout argument names, the default when it names none
+// or a non-positive number, and at most maxShellTimeout.
+func shellTimeout(args map[string]any) time.Duration {
+	timeout := time.Duration(argInt(args, "timeout", 0)) * time.Second
+	switch {
+	case timeout <= 0:
+		return defaultShellTimeout
+	case timeout > maxShellTimeout:
+		return maxShellTimeout
+	}
+	return timeout
 }
 
 // classifyShell classifies a shell call: the line's verb and class, and its targets (the hosts it names, the
