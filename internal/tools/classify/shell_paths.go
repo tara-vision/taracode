@@ -45,6 +45,10 @@ func shellPaths(segments []shellwords.Segment) lineFiles {
 		}
 		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs),
 			landings: underDirs(operandsOf(words, landingWriters), dirs), finds: findTargets(words, dirs)})
+		execs, chdir := findExecs(words)
+		for _, cmd := range execs {
+			files = files.with(execFiles(cmd, chdir, dirs))
+		}
 		if d, ok := cdTarget(words, dirs); ok {
 			dirs = append(dirs, d)
 		}

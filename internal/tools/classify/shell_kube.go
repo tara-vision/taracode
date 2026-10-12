@@ -93,7 +93,7 @@ func innerKubeWords(seg shellwords.Segment, depth int) int {
 		return 0
 	}
 	n := 0
-	for _, line := range append(innerLines(words), scriptInput(seg, words)...) {
+	for _, line := range segmentInnerLines(seg, words) {
 		if parsed, err := shellwords.Split(line); err == nil {
 			for _, inner := range parsed.Segments {
 				n += countKubeWords(inner.Words) + innerKubeWords(inner, depth-1)

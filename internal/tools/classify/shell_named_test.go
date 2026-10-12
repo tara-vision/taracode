@@ -2,6 +2,7 @@ package classify
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -124,5 +125,41 @@ func TestShellFindsAreTheFindsNarrowedByName(t *testing.T) {
 	}
 	if paths := Shell("find . -lname '*x*' -delete").Paths; strings.Join(paths, "|") != "." {
 		t.Errorf("a find narrowed by a link test only: paths %q", paths)
+	}
+}
+
+// TestShellReadsTheCommandsAFindRuns: the command after -exec, -execdir, -ok or -okdir is read as a command of
+// its own, for its targets, its deny lines and the strings it runs; an operand that leads from {} to another
+// path (rm -rf {}/..) makes the find act on all its start points hold.
+func TestShellReadsTheCommandsAFindRuns(t *testing.T) {
+	paths := []struct{ cmd, want string }{
+		{`find . -name '*.pyc' -exec rm -rf infra \;`, "infra"},
+		{`cd sub && find . -name x -ok rm -rf infra \;`, "sub/infra"},
+		{`find . -name x -execdir sh -c 'rm -rf infra' \;`, "infra"},
+		{`find . -name x -exec rm -rf {}/.. \;`, "."},
+		{`find . -name x -exec rm -rf infra`, "infra"},
+	}
+	for _, c := range paths {
+		if got := Shell(c.cmd).Paths; !slices.Contains(got, c.want) {
+			t.Errorf("%s: paths %q, want %q among them", c.cmd, got, c.want)
+		}
+	}
+	lines := []struct{ cmd, want string }{
+		{`find . -name '*.tf' -exec terraform destroy \;`, "terraform destroy"},
+		{`find . -name x -exec sh -c 'terraform destroy' {} +`, "terraform destroy"},
+	}
+	for _, c := range lines {
+		if got := Shell(c.cmd).Lines; !slices.Contains(got, c.want) {
+			t.Errorf("%s: lines %q, want %q among them", c.cmd, got, c.want)
+		}
+	}
+	for _, cmd := range []string{`find . -name '*.py' -exec sed -i 's/a/b/' {} +`, `find . -name '*.go' -exec gofmt -w {} \;`,
+		`find . -name '*.log' -exec mv {} {}.bak \;`} {
+		if got := Shell(cmd).Paths; len(got) != 0 {
+			t.Errorf("%s: paths %q, want none beyond the matches", cmd, got)
+		}
+	}
+	if got := kubeOf(`find . -name x -exec sh -c "kube''ctl --context prod delete ns x" \;`); got != "{* * }" {
+		t.Errorf("a kubectl in a string find runs: %q", got)
 	}
 }

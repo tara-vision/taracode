@@ -25,9 +25,11 @@ func denyLines(parsed shellwords.Result, depth int) []string {
 		if len(words) == 0 {
 			continue
 		}
-		out = append(out, segmentLines(words)...)
+		for _, cmd := range segmentCommands(words) {
+			out = append(out, segmentLines(cmd)...)
+		}
 		if depth > 0 {
-			for _, inner := range append(innerLines(words), scriptInput(seg, words)...) {
+			for _, inner := range segmentInnerLines(seg, words) {
 				out = append(out, linesOf(inner, depth-1)...)
 			}
 		}
@@ -138,6 +140,16 @@ func commandStrings(rest []string) []string {
 	return ops
 }
 
+// segmentInnerLines are the strings a segment's commands, a find's included, run as lines of their own
+// (innerLines), and the script its shell reads from its input (scriptInput).
+func segmentInnerLines(seg shellwords.Segment, words []string) []string {
+	var out []string
+	for _, cmd := range segmentCommands(words) {
+		out = append(out, innerLines(cmd)...)
+	}
+	return append(out, scriptInput(seg, words)...)
+}
+
 // scriptInput is the script a segment's here-documents and here-strings hand a shell: their bodies when the
 // segment pipes its output into the next command, which may run it, and when its program is a shell without -c
 // that reads its script from its input (sh, sh -s, sh -, sh /dev/stdin, source /dev/stdin).
@@ -219,7 +231,7 @@ func innerPaths(parsed shellwords.Result, depth int) lineFiles {
 	for _, seg := range parsed.Segments {
 		simple, _ := simpleCommand(seg.Words)
 		if words := simple[assignmentsEnd(simple):]; len(words) > 0 {
-			for _, line := range append(innerLines(words), scriptInput(seg, words)...) {
+			for _, line := range segmentInnerLines(seg, words) {
 				visit(line)
 			}
 		}

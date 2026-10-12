@@ -24,7 +24,7 @@ func findTargets(words, dirs []string) []policy.Find {
 	}
 	opts, starts, expr := findStarts(cmd[1:])
 	follows := findFollows(opts, expr)
-	if !findActs(expr) || !follows && !findNarrowed(expr) {
+	if !findActs(expr) || !follows && !findNarrows(expr) {
 		return nil
 	}
 	tests := findTests(expr)
@@ -53,11 +53,11 @@ func findFollows(opts, expr []string) bool {
 }
 
 // findWritten are the files find writes (-fprint, -fls) and, when it deletes or runs a command on what it finds
-// and its expression does not narrow that by name, its start points: it acts on whatever they hold.
+// and its expression does not narrow that by name (findNarrows), its start points: it acts on whatever they hold.
 func findWritten(r []string) []string {
 	out := []string{flagValue(r, "-fprint"), flagValue(r, "-fprint0"), flagValue(r, "-fprintf"), flagValue(r, "-fls")}
 	_, starts, expr := findStarts(r)
-	if findActs(expr) && !findNarrowed(expr) {
+	if findActs(expr) && !findNarrows(expr) {
 		out = append(out, starts...)
 	}
 	return out
@@ -67,10 +67,88 @@ func findWritten(r []string) []string {
 // it finds and its expression narrows that by name: it acts on what the patterns match, not on the start points.
 func findNamed(r []string) []string {
 	_, starts, expr := findStarts(r)
-	if !findActs(expr) || !findNarrowed(expr) {
+	if !findActs(expr) || !findNarrows(expr) {
 		return nil
 	}
 	return slices.Concat(starts, findNames(expr))
+}
+
+// findNarrows reports a find expression narrowed by name (findNarrowed) whose commands act only on what it finds:
+// a command's word that leads from {} to another path (rm -rf {}/..) acts beyond it.
+func findNarrows(expr []string) bool {
+	if !findNarrowed(expr) {
+		return false
+	}
+	for _, cmd := range execCommands(expr) {
+		for _, w := range cmd {
+			if strings.Contains(w, "{}") && w != "{}" && strings.Contains(w, "/") {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// findActions are the actions of find that run a command: its words up to a ; or, after {}, a +.
+var findActions = map[string]bool{"-exec": true, "-execdir": true, "-ok": true, "-okdir": true}
+
+// execCommands are the commands a find expression runs with -exec, -execdir, -ok and -okdir, as their words.
+func execCommands(expr []string) [][]string {
+	var out [][]string
+	var cmd []string
+	running := false
+	for _, w := range expr {
+		switch {
+		case !running && findActions[w]:
+			running, cmd = true, nil
+		case running && (w == ";" || w == "+" && len(cmd) > 0 && cmd[len(cmd)-1] == "{}"):
+			out, running = append(out, cmd), false
+		case running:
+			cmd = append(cmd, w)
+		}
+	}
+	if running {
+		out = append(out, cmd)
+	}
+	return out
+}
+
+// findExecs are the commands a segment's find runs, with the directory wrappers move find to, where they run.
+func findExecs(words []string) ([][]string, string) {
+	cmd, dir := behindWrappers(words, func(prog string) bool { return prog == "find" })
+	if cmd == nil {
+		return nil, ""
+	}
+	_, _, expr := findStarts(cmd[1:])
+	var out [][]string
+	for _, c := range execCommands(expr) {
+		if len(c) > 0 {
+			out = append(out, c)
+		}
+	}
+	return out, dir
+}
+
+// segmentCommands are the commands a segment runs: its own words and the commands its find runs.
+func segmentCommands(words []string) [][]string {
+	execs, _ := findExecs(words)
+	return append([][]string{words}, execs...)
+}
+
+// execFiles are the files a command that find runs acts on, read from find's directory, without the entries find
+// hands it ({}), which the find's own check covers.
+func execFiles(cmd []string, chdir string, dirs []string) lineFiles {
+	keep := func(paths []string) []string {
+		var out []string
+		for _, p := range inDir(chdir, paths) {
+			if !strings.Contains(p, "{}") {
+				out = append(out, p)
+			}
+		}
+		return underDirs(out, dirs)
+	}
+	return lineFiles{written: keep(writtenOperands(cmd)), named: keep(namedOperands(cmd)),
+		landings: keep(operandsOf(cmd, landingWriters))}
 }
 
 // findActs reports an expression that deletes or runs a command on what find finds.
