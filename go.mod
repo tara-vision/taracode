@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/tara-vision/taraengine v0.1.0
+	github.com/tara-vision/taraengine v0.1.1-0.20261012091541-5eb7442e59c3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
