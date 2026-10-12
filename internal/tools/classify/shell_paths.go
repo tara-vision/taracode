@@ -3,19 +3,31 @@ package classify
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/tools/shellwords"
 )
 
-// shellPaths returns the files the segments write or remove, as written on the line: the targets of
-// redirects into files and the operands fileWriters names, also behind sudo, env, xargs and the
-// other wrappers and after the shell's reserved words (do, then, !, {, ...). A relative path is
-// also returned joined to every literal directory an earlier cd or pushd of the line moved to, since
-// the caller resolves it against the directory the line starts in. Paths computed at run time
-// (variables, command substitution) are not seen.
-func shellPaths(segments []shellwords.Segment) []string {
-	var paths, dirs []string
+// lineFiles are the files a line acts on: written, which it writes, moves or removes (fileWriters), so a
+// directory among them is checked for the protected paths it holds, and named, which it acts on by name only
+// (namedWriters).
+type lineFiles struct {
+	written, named []string
+}
+
+func (f lineFiles) with(g lineFiles) lineFiles {
+	return lineFiles{written: slices.Concat(f.written, g.written), named: slices.Concat(f.named, g.named)}
+}
+
+// shellPaths returns the files the segments act on, as written on the line: the targets of redirects into
+// files and the operands fileWriters and namedWriters give, also behind sudo, env, xargs and the other wrappers
+// and after the shell's reserved words (do, then, !, {, ...). A relative path is also returned joined to every
+// literal directory an earlier cd or pushd of the line moved to, since the caller resolves it against the
+// directory the line starts in. Paths computed at run time (variables, command substitution) are not seen.
+func shellPaths(segments []shellwords.Segment) lineFiles {
+	var files lineFiles
+	var dirs []string
 	for _, seg := range segments {
 		simple, _ := simpleCommand(seg.Words)
 		simple = withoutGluedBrace(simple)
@@ -27,19 +39,26 @@ func shellPaths(segments []shellwords.Segment) []string {
 				written = append(written, target)
 			}
 		}
-		for _, p := range written {
-			paths = append(paths, p)
-			if relativePath(p) {
-				for _, d := range dirs {
-					paths = append(paths, path.Join(d, p))
-				}
-			}
-		}
+		files = files.with(lineFiles{written: underDirs(written, dirs), named: underDirs(namedOperands(words), dirs)})
 		if d, ok := cdTarget(words, dirs); ok {
 			dirs = append(dirs, d)
 		}
 	}
-	return paths
+	return files
+}
+
+// underDirs returns each path, and a relative one also joined to every directory in dirs.
+func underDirs(paths, dirs []string) []string {
+	var out []string
+	for _, p := range paths {
+		out = append(out, p)
+		if relativePath(p) {
+			for _, d := range dirs {
+				out = append(out, path.Join(d, p))
+			}
+		}
+	}
+	return out
 }
 
 // relativePath reports a path the working directory resolves: not absolute, not under ~ and not
@@ -48,18 +67,25 @@ func relativePath(p string) bool {
 	return p != "" && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "~") && !strings.HasPrefix(p, "$")
 }
 
-// cdTarget returns the directory a cd or pushd with a literal argument moves to, joined to the
-// previous one when it is relative. ok is false for any other command and for a directory known
-// only at run time (cd -, cd $DIR).
+// cdTarget returns the directory a cd or pushd with a literal argument moves to (past -P, -L, -e, -@
+// and --), joined to the previous one when it is relative; a glob stays in it, for the caller to
+// expand. ok is false for any other command and for a directory known only at run time (cd -, cd $DIR).
 func cdTarget(words, dirs []string) (string, bool) {
-	if len(words) == 0 || len(words) > 2 || !in(words[0], "cd", "pushd") {
+	if len(words) == 0 || !in(words[0], "cd", "pushd") {
+		return "", false
+	}
+	args := words[1:]
+	for len(args) > 0 && in(args[0], "-P", "-L", "-e", "-@", "--") {
+		args = args[1:]
+	}
+	if len(args) > 1 {
 		return "", false
 	}
 	dir := "~"
-	if len(words) == 2 {
-		dir = words[1]
+	if len(args) == 1 {
+		dir = args[0]
 	}
-	if dir == "-" || strings.ContainsAny(dir, "$`*?[") {
+	if dir == "-" || strings.ContainsAny(dir, "$`") {
 		return "", false
 	}
 	if relativePath(dir) && len(dirs) > 0 {
@@ -76,20 +102,27 @@ var wrapperPrograms = map[string]bool{
 }
 
 // writtenOperands returns the operands a file-writing command writes or removes.
-func writtenOperands(words []string) []string {
+func writtenOperands(words []string) []string { return operandsOf(words, fileWriters) }
+
+// namedOperands returns the operands a command acts on by name only.
+func namedOperands(words []string) []string { return operandsOf(words, namedWriters) }
+
+// operandsOf returns what a table gives for a command's operands, past the wrapper programs in front of it and
+// read from the directory they move it to (env -C, sudo -D).
+func operandsOf(words []string, table map[string]func(rest []string) []string) []string {
 	if len(words) == 0 {
 		return nil
 	}
 	prog, rest := path.Base(words[0]), words[1:]
 	if wrapperPrograms[prog] {
 		for i, w := range rest {
-			if _, ok := fileWriters[path.Base(w)]; ok {
-				return writtenOperands(rest[i:])
+			if _, ok := table[path.Base(w)]; ok {
+				return inDir(chdirOf(words[:i+1]), operandsOf(rest[i:], table))
 			}
 		}
 		return nil
 	}
-	if writer, ok := fileWriters[prog]; ok {
+	if writer, ok := table[prog]; ok {
 		return nonEmpty(writer(rest))
 	}
 	return nil
@@ -104,12 +137,9 @@ var fileWriters = map[string]func(rest []string) []string{
 	"truncate": func(r []string) []string {
 		return operands(r, "-s", "--size", "-r", "--reference")
 	},
-	"mv": func(r []string) []string {
-		return append(operands(r, "-t", "--target-directory", "-S", "--suffix"), flagValue(r, "-t", "--target-directory"))
-	},
-	"cp": destination, "install": destination, "ln": linkName, "chmod": chmodTargets, "chown": ownerTargets,
-	"chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
-	"curl": curlOutputs, "wget": wgetOutputs, "find": findTargets,
+	"mv": moveWritten, "cp": copyWritten, "install": copyWritten, "ln": linkWritten, "chmod": chmodTargets,
+	"chown": ownerTargets, "chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
+	"curl": curlOutputs, "wget": wgetOutputs, "find": findWritten,
 }
 
 func allOperands(r []string) []string { return operands(r) }
@@ -122,34 +152,6 @@ func nonEmpty(paths []string) []string {
 		}
 	}
 	return out
-}
-
-// destination is where cp and install write: the -t directory, or the last operand.
-func destination(r []string) []string {
-	if dir := flagValue(r, "-t", "--target-directory"); dir != "" {
-		return []string{dir}
-	}
-	ops := operands(r, "-t", "--target-directory", "-S", "--suffix", "-m", "--mode", "-o", "--owner", "-g", "--group")
-	if len(ops) == 0 {
-		return nil
-	}
-	return ops[len(ops)-1:]
-}
-
-// linkName is the link ln creates: the -t directory, the last operand, or the target's base name in
-// the working directory when only the target is given.
-func linkName(r []string) []string {
-	if dir := flagValue(r, "-t", "--target-directory"); dir != "" {
-		return []string{dir}
-	}
-	ops := operands(r, "-t", "--target-directory", "-S", "--suffix")
-	switch len(ops) {
-	case 0:
-		return nil
-	case 1:
-		return []string{path.Base(ops[0])}
-	}
-	return ops[len(ops)-1:]
 }
 
 var chmodMode = regexp.MustCompile(`^([0-7]{1,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*)$`)
@@ -224,21 +226,4 @@ func wgetOutputs(r []string) []string {
 	return []string{shortValue(r, 'O', wgetValuedShort), gnuFlagValue(r, "--output-document"),
 		shortValue(r, 'o', wgetValuedShort), gnuFlagValue(r, "--output-file"), shortValue(r, 'a', wgetValuedShort),
 		gnuFlagValue(r, "--append-output"), gnuFlagValue(r, "--save-cookies")}
-}
-
-// findTargets are the files find writes (-fprint, -fls) and, when it deletes or runs a command on
-// what it finds, its starting points and the name patterns it matches.
-func findTargets(r []string) []string {
-	out := []string{flagValue(r, "-fprint"), flagValue(r, "-fprint0"), flagValue(r, "-fprintf"), flagValue(r, "-fls")}
-	if !hasFlag(r, "-delete", "-exec", "-execdir", "-ok", "-okdir") {
-		return out
-	}
-	for _, t := range r {
-		if strings.HasPrefix(t, "-") || t == "(" || t == "!" {
-			break
-		}
-		out = append(out, t)
-	}
-	return append(out, flagValue(r, "-name"), flagValue(r, "-iname"), flagValue(r, "-path"), flagValue(r, "-ipath"),
-		flagValue(r, "-wholename"))
 }

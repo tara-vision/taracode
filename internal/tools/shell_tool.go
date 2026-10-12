@@ -47,9 +47,10 @@ func ShellTool(stream io.Writer) *Tool {
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
-			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir)}
+			targets := policy.Targets{Hosts: res.Hosts, Paths: shellTargets(res.Paths, workingDir, true),
+				Named: shellTargets(res.Named, workingDir, true)}
 			if res.Classification == policy.Mutate && res.Opaque {
-				targets.Named = shellTargets(lineTokens(command), workingDir)
+				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, false)...)
 			}
 			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
 				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
@@ -104,9 +105,6 @@ func ShellTool(stream io.Writer) *Tool {
 	}
 }
 
-// shellTargets resolves the files a shell line writes or removes: a leading ~, $HOME or ${HOME} to
-// the home directory, a relative path against the working directory, and a glob to itself and to
-// the files it matches now.
 // lineTokens are the words of an opaque line that may name a file: the line split at whitespace, quotes,
 // brackets and the shell's operators, without its options.
 func lineTokens(command string) []string {
@@ -123,7 +121,11 @@ func tokenSeparator(r rune) bool {
 	return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{},;=<>|&+\\", r)
 }
 
-func shellTargets(paths []string, workingDir string) []string {
+// shellTargets resolves the files a shell line acts on: a leading ~, $HOME or ${HOME} to the home
+// directory, a relative path against the working directory, and, with globs, a glob to itself and to
+// the files it matches now. The words of an opaque line are resolved without globs: a * in a program's
+// text is no file name.
+func shellTargets(paths []string, workingDir string, globs bool) []string {
 	home, _ := os.UserHomeDir()
 	var out []string
 	seen := map[string]bool{}
@@ -136,7 +138,7 @@ func shellTargets(paths []string, workingDir string) []string {
 	for _, p := range paths {
 		abs := resolvePath(expandHome(p, home), workingDir)
 		add(abs)
-		if strings.ContainsAny(p, "*?[") {
+		if globs && strings.ContainsAny(p, "*?[") {
 			matches, _ := filepath.Glob(abs)
 			for _, m := range matches {
 				add(m)

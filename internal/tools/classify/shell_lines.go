@@ -151,17 +151,16 @@ func bodyLines(parsed shellwords.Result) []string {
 	return out
 }
 
-// innerPaths are the files that the strings a shell's -c, eval or a $(...) runs write or remove, read as
-// the line itself is read (shellPaths), so a target inside such a string is a target of the line.
-func innerPaths(parsed shellwords.Result, depth int) []string {
+// innerPaths are the files that the strings a shell's -c, eval or a $(...) runs act on, read as the line
+// itself is read (shellPaths), so a target inside such a string is a target of the line.
+func innerPaths(parsed shellwords.Result, depth int) lineFiles {
+	var out lineFiles
 	if depth == 0 {
-		return nil
+		return out
 	}
-	var out []string
 	visit := func(line string) {
 		if inner, err := shellwords.Split(line); err == nil {
-			out = append(out, shellPaths(inner.Segments)...)
-			out = append(out, innerPaths(inner, depth-1)...)
+			out = out.with(shellPaths(inner.Segments)).with(innerPaths(inner, depth-1))
 		}
 	}
 	for _, seg := range parsed.Segments {

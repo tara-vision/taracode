@@ -500,11 +500,13 @@ func knownProgram(words []string) bool {
 }
 
 // writesKubeconfig reports a segment that writes a kubeconfig, through a redirect or a file-writing
-// program: kubectl reads the new file, not the one the classifier saw.
+// program (the destination of a copy, which it names, included): kubectl reads the new file, not the
+// one the classifier saw.
 func (l *kubeLine) writesKubeconfig(words, redirects []string) bool {
 	var targets []string
 	if len(words) > 0 {
-		targets = writtenOperands(words[assignmentsEnd(words):])
+		words = words[assignmentsEnd(words):]
+		targets = append(writtenOperands(words), namedOperands(words)...)
 	}
 	for _, r := range redirects {
 		if writesFile(r) {

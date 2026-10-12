@@ -2,6 +2,7 @@ package tools
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -28,5 +29,28 @@ func TestShellToolNamesThePathsOfAnOpaqueMutation(t *testing.T) {
 	if inv := shell.Classify(map[string]any{"command": `sh -c "terraform destroy"`}, wd); !slices.Contains(inv.Lines,
 		"terraform destroy") {
 		t.Errorf("sh -c: lines %q", inv.Lines)
+	}
+}
+
+// TestShellToolNamesWhatTheClassifierNamesAndTakesWordsAsWritten: the paths a line acts on by name reach the
+// invocation, and the words of an opaque line are matched as written, so a * in a program's text is no glob.
+func TestShellToolNamesWhatTheClassifierNamesAndTakesWordsAsWritten(t *testing.T) {
+	wd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wd, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	shell := ShellTool(io.Discard)
+	inv := shell.Classify(map[string]any{"command": `python3 -c "print(2 * 3)"`}, wd)
+	if slices.Contains(inv.Targets.Named, filepath.Join(wd, ".git")) || !slices.Contains(inv.Targets.Named,
+		filepath.Join(wd, "*")) {
+		t.Errorf("python3 -c with a *: named %q", inv.Targets.Named)
+	}
+	inv = shell.Classify(map[string]any{"command": "git checkout -- terraform.tfstate"}, wd)
+	if !slices.Contains(inv.Targets.Named, filepath.Join(wd, "terraform.tfstate")) {
+		t.Errorf("git checkout: named %q", inv.Targets.Named)
+	}
+	inv = shell.Classify(map[string]any{"command": "find . -name '*.pyc' -delete"}, wd)
+	if !slices.Contains(inv.Targets.Named, wd) || slices.Contains(inv.Targets.Paths, wd) {
+		t.Errorf("find -name: named %q, paths %q", inv.Targets.Named, inv.Targets.Paths)
 	}
 }

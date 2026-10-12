@@ -17,6 +17,8 @@ type ShellResult struct {
 	Result
 	Hosts []string
 	Paths []string
+	// Named are the paths the line acts on by name only (lineFiles).
+	Named []string
 	Kube  []KubeTarget
 	// Opaque marks a line the classifier cannot see into (opaqueSegments): what it names, it may act on.
 	Opaque bool
@@ -36,8 +38,8 @@ func Shell(command string) ShellResult {
 		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")"), Opaque: true}
 	}
 	kube, kubeOpaque := shellKube(parsed)
-	paths := append(shellPaths(parsed.Segments), innerPaths(parsed, innerDepth)...)
-	out := ShellResult{Result: read(""), Paths: paths, Kube: kube,
+	files := shellPaths(parsed.Segments).with(innerPaths(parsed, innerDepth))
+	out := ShellResult{Result: read(""), Paths: files.written, Named: files.named, Kube: kube,
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
 	if out.Opaque {
 		out.Lines = append(out.Lines, bodyLines(parsed)...)
