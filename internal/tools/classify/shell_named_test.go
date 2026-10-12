@@ -60,6 +60,7 @@ func TestShellSplitsWrittenFromNamedPaths(t *testing.T) {
 		{"unzip -o x.zip -d .git", "", ".git|.git/x.zip", ""},
 		{"unzip -o x.zip terraform.tfstate", "", "x.zip|terraform.tfstate", ""},
 		{"unzip x.zip a -d out -x b", "", "out|out/x.zip|out/a", ""},
+		{"unzip x.zip -x b -d .git", "", ".git|.git/x.zip", ""},
 		{"cp -al .git g2", ".git", "g2", "g2/.git"},
 		{"cp --symbolic-link /etc/hosts h", "/etc/hosts", "h", "h/hosts"},
 		{"install -s app bin/", "", "bin/", "bin/app"},

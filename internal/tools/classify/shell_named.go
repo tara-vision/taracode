@@ -126,14 +126,15 @@ func tarNamed(r []string) []string {
 		"--files-from", "-X", "--exclude-from")))
 }
 
-// unzipNamed is what unzip extracts: the directory it extracts into (-d) and its operands read from there, the
-// members it names (and the archive), up to the -x that starts the members it leaves out.
+// unzipNamed is what unzip extracts: the directory it extracts into (-d, before or after the -x list) and its
+// operands read from there, the members it names (and the archive), up to the -x that starts the members it
+// leaves out.
 func unzipNamed(r []string) []string {
+	dir, ops := flagValue(r, "-d"), r
 	if i := slices.Index(r, "-x"); i >= 0 {
-		r = r[:i]
+		ops = r[:i]
 	}
-	dir := flagValue(r, "-d")
-	return slices.Concat([]string{dir}, inDir(dir, operands(r, "-d", "-P")))
+	return slices.Concat([]string{dir}, inDir(dir, operands(ops, "-d", "-P")))
 }
 
 // cpWritten is copyWritten, and for cp -l or -s, which make links instead of copies, the sources too: a link
