@@ -382,8 +382,9 @@ func setChangesGlobs(rest []string) bool {
 }
 
 // dynamicName reports a variable a command names at run time, which may be GLOBIGNORE: the names export,
-// declare, typeset, local, readonly and read set (any expansion in them, and in a declare -n's value), and
-// printf -v's. An assignment whose name holds an expansion already makes the line opaque.
+// declare, typeset, local, readonly and read set (any expansion in them, and in a declare -n's value), printf
+// -v's and wait -p's. An assignment whose name holds an expansion, and let, getopts, mapfile and readarray,
+// already make the line opaque.
 func dynamicName(words []string) bool {
 	dynamic := func(w string) bool { return strings.ContainsAny(w, "$`") }
 	if len(words) == 0 {
@@ -399,6 +400,8 @@ func dynamicName(words []string) bool {
 		}
 	case prog == "printf":
 		return dynamic(flagValue(rest, "-v"))
+	case prog == "wait":
+		return dynamic(flagValue(rest, "-p"))
 	}
 	return false
 }

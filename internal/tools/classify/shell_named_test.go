@@ -243,6 +243,8 @@ func TestShellTellsADynamicNameMayTurnOnDotGlob(t *testing.T) {
 		{`export "$x=."; rm -rf *`, true},
 		{`read "$v" <<< .; rm -rf *`, true},
 		{`printf -v "$v" .; rm -rf *`, true},
+		{`wait -p "$v"; rm -rf *`, true},
+		{`unset "$x"; rm -rf *`, false},
 		{`declare -n r="$v"; r=.; rm -rf *`, true},
 		{`options[$k]=on; rm -rf *`, true},
 	}
