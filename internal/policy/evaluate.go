@@ -130,6 +130,11 @@ func (p Policy) protectedTarget(inv Invocation) (Verdict, bool) {
 				return denied("protected.paths", "%s matches the protected path pattern %q", path, pat), true
 			}
 		}
+		if inv.Tool == "shell" && isDir(path) { // a shell command removes, moves or writes into a directory target
+			if v, held := p.heldPath(path, inv.WorkingDir); held {
+				return v, true
+			}
+		}
 	}
 	for _, candidate := range append(append([]string{}, t.Hosts...), strings.Fields(inv.Command)...) {
 		if pat, ok := firstGlob(p.Protected.Hosts, candidate); ok {

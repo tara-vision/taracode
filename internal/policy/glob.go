@@ -56,26 +56,44 @@ var evalSymlinks = filepath.EvalSymlinks
 // matches the directory it names, and the path is tried as written and with the symlinks of its
 // existing part resolved, so a link reaches the protection of what it points to.
 func matchPath(pattern, absPath, workingDir string) bool {
-	pattern = filepath.ToSlash(pattern)
-	var res []*regexp.Regexp
-	if re, err := globRegexp(pattern, true, true); err == nil {
-		res = append(res, re)
+	m := newPathMatcher(pattern)
+	if m.matches(absPath, workingDir) {
+		return true
 	}
-	if dir, ok := strings.CutSuffix(pattern, "/**"); ok && dir != "" {
+	real, ok := resolved(absPath)
+	if !ok {
+		return false
+	}
+	if realWd, ok := resolved(workingDir); ok && workingDir != "" {
+		workingDir = realWd
+	}
+	return m.matches(real, workingDir)
+}
+
+// pathMatcher is a path pattern compiled once: the pattern and, for one ending in /**, the directory it
+// names. A walk matches many paths with one.
+type pathMatcher struct {
+	pattern string
+	res     []*regexp.Regexp
+}
+
+func newPathMatcher(pattern string) pathMatcher {
+	m := pathMatcher{pattern: filepath.ToSlash(pattern)}
+	if re, err := globRegexp(m.pattern, true, true); err == nil {
+		m.res = append(m.res, re)
+	}
+	if dir, ok := strings.CutSuffix(m.pattern, "/**"); ok && dir != "" {
 		if re, err := globRegexp(dir, true, true); err == nil {
-			res = append(res, re)
+			m.res = append(m.res, re)
 		}
 	}
-	candidates := pathCandidates(pattern, absPath, workingDir)
-	if real, ok := resolved(absPath); ok {
-		wd := workingDir
-		if realWd, ok := resolved(workingDir); ok && workingDir != "" {
-			wd = realWd
-		}
-		candidates = append(candidates, pathCandidates(pattern, real, wd)...)
-	}
-	for _, re := range res {
-		for _, c := range candidates {
+	return m
+}
+
+// matches reports whether the pattern matches a form of the path as written (pathCandidates).
+func (m pathMatcher) matches(absPath, workingDir string) bool {
+	for _, c := range pathCandidates(m.pattern, absPath, workingDir) {
+		for _, re := range m.res {
 			if re.MatchString(c) {
 				return true
 			}
