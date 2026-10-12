@@ -24,6 +24,8 @@ type ShellResult struct {
 	// Landings are where a copy, move or link puts each source when its destination is a directory: the
 	// caller keeps those whose directory exists (lineFiles).
 	Landings []string
+	// DotGlob marks a line that may turn on matching dot files before its globs expand (dotGlobPossible).
+	DotGlob bool
 	// Words are the words of an opaque line, brace-expanded and without options, for the caller to glob: any of
 	// them may name a file the line acts on.
 	Words []string
@@ -43,13 +45,15 @@ var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
 func Shell(command string) ShellResult {
 	parsed, err := shellwords.Split(command)
 	if err != nil {
-		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")"), Opaque: true}
+		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")"), Opaque: true,
+			DotGlob: true}
 	}
 	kube, kubeOpaque := shellKube(parsed)
 	files := shellPaths(parsed.Segments).with(innerPaths(parsed, innerDepth))
 	out := ShellResult{Result: read(""), Paths: files.written, Named: files.named, Finds: files.finds,
 		Landings: files.landings, Kube: kube,
 		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
+	out.DotGlob = dotGlobPossible(parsed.Segments, out.Opaque)
 	if out.Opaque {
 		out.Lines = append(out.Lines, bodyLines(parsed)...)
 		out.Words = opaqueWords(parsed.Segments)

@@ -48,7 +48,7 @@ func ShellTool(stream io.Writer) *Tool {
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
-			glob := shellGlob(dotglobOn(command))
+			glob := shellGlob(res.DotGlob)
 			targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, glob),
 				Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
 				Finds: findStarts(res.Finds, workingDir)}
@@ -156,13 +156,6 @@ func dotHidden(pattern, match []string) bool {
 		}
 	}
 	return false
-}
-
-// dotglobOn reports a line that turns on matching dot files (bash's dotglob or GLOBIGNORE, zsh's globdots).
-func dotglobOn(command string) bool {
-	folded := strings.ToLower(strings.ReplaceAll(command, "_", ""))
-	return strings.Contains(folded, "dotglob") || strings.Contains(folded, "globdots") ||
-		strings.Contains(folded, "globignore")
 }
 
 // shellTargets resolves the files a shell line acts on: a leading ~, $HOME or ${HOME} to the home

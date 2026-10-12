@@ -204,3 +204,24 @@ func TestShellExpandsBracesBeforeReadingOperands(t *testing.T) {
 		t.Errorf("a line the classifier reads hands on words: %q", words)
 	}
 }
+
+// TestShellTellsALineThatMayGlobDotFiles: a line that may turn on matching dot files before its globs expand is
+// told from its parsed words, whatever quotes split them, and a line the classifier cannot see into may too.
+func TestShellTellsALineThatMayGlobDotFiles(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"chmod 644 *":                         false,
+		"shopt -s dot''glob; chmod 644 *":     true,
+		"shopt -s $(echo x); chmod 644 *":     true,
+		"GLOBIGNORE=x chmod 644 *":            true,
+		"env BASH_OPTS=x chmod 644 *":         true,
+		"set -o glob''dots; rm *":             true,
+		"set -e; rm -f *":                     false,
+		"rm -f *(D)":                          true,
+		"make && chmod 644 *":                 true,
+		"echo dot_glob is off && chmod 644 *": true,
+	} {
+		if got := Shell(cmd).DotGlob; got != want {
+			t.Errorf("%q: dotglob %v, want %v", cmd, got, want)
+		}
+	}
+}
