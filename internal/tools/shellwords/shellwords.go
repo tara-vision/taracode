@@ -47,6 +47,8 @@ type parser struct {
 	heredocs    []heredoc
 	closingTick map[int]bool // the positions of the backticks that close a body already captured
 	outerEnd    int          // the parse is inside a captured substitution up to this position
+	noHeredocs  bool         // a << is a plain redirect: the text is the inside of an arithmetic command
+	extra       []Segment    // the commands inside arithmetic commands, appended after the line's own
 }
 
 // Split parses a command line as sh -c runs it. An unquoted ( or ) ends the segment the way ; does:
@@ -90,6 +92,7 @@ func (p *parser) run() error {
 	if len(p.heredocs) > 0 {
 		return errNoDelimiter
 	}
+	p.res.Segments = append(p.res.Segments, p.extra...)
 	return nil
 }
 
@@ -165,8 +168,7 @@ func (p *parser) shellStep(c rune) (handled bool, err error) {
 		if end, ok, closed := arithmeticEnd(p.in, p.pos); !closed {
 			return true, errUnclosed
 		} else if ok { // (( ... )): an arithmetic command
-			p.expansionWord(p.pos, end)
-			return true, nil
+			return true, p.arithmeticCommand(end)
 		}
 		p.group(c)
 		return true, nil
@@ -551,7 +553,7 @@ func (p *parser) endWord() {
 	p.word.Reset()
 	p.hasWord, p.quotedWord = false, false
 	if p.pending != "" {
-		if p.shell && heredocOperator(strings.TrimSuffix(p.pending, "-")) {
+		if p.shell && !p.noHeredocs && heredocOperator(strings.TrimSuffix(p.pending, "-")) {
 			p.heredocs = append(p.heredocs, heredoc{segment: len(p.res.Segments), delimiter: w,
 				stripTabs: strings.HasSuffix(p.pending, "-"), expands: !quoted})
 		}

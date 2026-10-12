@@ -41,6 +41,27 @@ func (p *parser) expansionWord(start, end int) {
 	p.pos = end + 1
 }
 
+// arithmeticCommand reads the arithmetic command ((...)) that ends at end as one word, as bash runs it, so a <<
+// in it hides no later line, and reads its inside as commands too, since sh may be dash, which runs ((...)) as
+// nested subshells. Those commands come after the line's own segments, so its here-documents keep their places,
+// and no here-document is read among them.
+func (p *parser) arithmeticCommand(end int) error {
+	inner := &parser{in: p.in[p.pos+1 : end], shell: true, noHeredocs: true}
+	if err := inner.run(); err != nil {
+		return err
+	}
+	p.res.Substitution = p.res.Substitution || inner.res.Substitution
+	p.res.Backtick = p.res.Backtick || inner.res.Backtick
+	p.res.FunctionDef = p.res.FunctionDef || inner.res.FunctionDef
+	p.res.Substitutions = append(p.res.Substitutions, inner.res.Substitutions...)
+	p.res.outer = append(p.res.outer, inner.res.outer...)
+	p.extra = append(p.extra, inner.res.Segments...)
+	p.word.WriteString(string(p.in[p.pos : end+1]))
+	p.hasWord = true
+	p.pos = end + 1
+	return nil
+}
+
 // arithmeticEnd returns, for the (( at open, the index of the ) that closes it: ok is true when the inner
 // parenthesis closes right before the outer one, as in $((...)) and ((...)), and false for anything else, such
 // as a command substitution that starts with a subshell; closed is false when nothing closes the ((.

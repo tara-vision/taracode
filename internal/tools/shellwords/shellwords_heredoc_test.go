@@ -116,7 +116,7 @@ func TestSplitReadsArithmeticAndParameterExpansionsAsWords(t *testing.T) {
 		{"echo $((1<<20))\nterraform destroy", [][]string{{"echo", "$((1<<20))"}, {"terraform", "destroy"}}},
 		{"echo $[1<<2]\nrm -rf .git/config", [][]string{{"echo", "$[1<<2]"}, {"rm", "-rf", ".git/config"}}},
 		{"echo ${a:-<<x y}\nrm x", [][]string{{"echo", "${a:-<<x y}"}, {"rm", "x"}}},
-		{"(( x = 1<<2 ))\nrm x", [][]string{{"(( x = 1<<2 ))"}, {"rm", "x"}}},
+		{"(( x = 1<<2 ))\nrm x", [][]string{{"(( x = 1<<2 ))"}, {"rm", "x"}, {"x", "="}}},
 		{"echo \"$((1<<20))\"\nrm x", [][]string{{"echo", "$((1<<20))"}, {"rm", "x"}}},
 		{"((echo a); echo b)", [][]string{{"echo", "a"}, {"echo", "b"}}},
 		{"echo $[ \"[\" ]\nterraform destroy\n# ]", [][]string{{"echo", `$[ "[" ]`}, {"terraform", "destroy"}}},
@@ -176,5 +176,29 @@ func TestSplitMarksTheOuterSubstitutions(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(res.OuterSubstitutions(), tt.outer) {
 			t.Errorf("%q: outer %q of %q, %v", tt.line, res.OuterSubstitutions(), res.Substitutions, err)
 		}
+	}
+}
+
+// TestSplitReadsAnArithmeticCommandAsCommandsToo: sh may be dash, which runs ((...)) as nested subshells, so
+// the text inside is also read as commands, after the line's own segments; bash's arithmetic reading keeps the
+// lines after it commands.
+func TestSplitReadsAnArithmeticCommandAsCommandsToo(t *testing.T) {
+	res, err := Split("((rm -rf infra))\necho done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var words [][]string
+	for _, seg := range res.Segments {
+		words = append(words, seg.Words)
+	}
+	want := [][]string{{"((rm -rf infra))"}, {"echo", "done"}, {"rm", "-rf", "infra"}}
+	if !reflect.DeepEqual(words, want) {
+		t.Errorf("segments %q, want %q", words, want)
+	}
+	if res, err := Split("((echo $(rm -rf x)))"); err != nil || !slices.Contains(res.OuterSubstitutions(), "rm -rf x") {
+		t.Errorf("a substitution inside: %+v %v", res, err)
+	}
+	if _, err := Split("((echo 'x))"); err == nil {
+		t.Error("an unbalanced quote inside an arithmetic command parsed")
 	}
 }

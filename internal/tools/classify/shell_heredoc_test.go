@@ -118,3 +118,14 @@ func TestShellReadsTheLinesAfterAnArithmeticShift(t *testing.T) {
 		t.Errorf("echo $((1+2)): %v, want a read", res.Classification)
 	}
 }
+
+// TestShellReadsAnArithmeticCommandAsCommands: dash runs ((rm -rf infra)) as nested subshells, so its inside is
+// classified for targets and deny lines too.
+func TestShellReadsAnArithmeticCommandAsCommands(t *testing.T) {
+	if res := Shell("((rm -rf infra))"); !slices.Contains(res.Paths, "infra") || !slices.Contains(res.Lines, "rm -rf infra") {
+		t.Errorf("paths %q lines %q", res.Paths, res.Lines)
+	}
+	if lines := Shell("((terraform destroy))").Lines; !slices.Contains(lines, "terraform destroy") {
+		t.Errorf("lines %q", lines)
+	}
+}
