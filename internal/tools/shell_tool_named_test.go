@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -86,6 +87,36 @@ func TestShellToolKeepsALandingUnderADirectoryOnly(t *testing.T) {
 		inv = shell.Classify(map[string]any{"command": cmd}, wd)
 		if !slices.Contains(inv.Targets.Paths, filepath.Join(wd, "infra", "x.tfstate")) {
 			t.Errorf("%s: paths %q", cmd, inv.Targets.Paths)
+		}
+	}
+}
+
+// TestShellToolExpandsAGlobAsTheShellDoes: a * or ? does not match a leading dot unless the pattern's element
+// starts with one or the line turns dotglob on, so chmod 644 * leaves .git alone.
+func TestShellToolExpandsAGlobAsTheShellDoes(t *testing.T) {
+	wd := t.TempDir()
+	for _, dir := range []string{".git", "src"} {
+		if err := os.MkdirAll(filepath.Join(wd, dir), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shell := ShellTool(io.Discard)
+	cases := []struct {
+		cmd       string
+		git, srcs bool
+	}{
+		{"chmod 644 *", false, true},
+		{"rm -rf .g*", true, false},
+		{"shopt -s dotglob; chmod 644 *", true, true},
+		{"setopt GLOB_DOTS; chmod 644 *", true, true},
+		{"cp x */", false, true},
+	}
+	for _, c := range cases {
+		paths := shell.Classify(map[string]any{"command": c.cmd}, wd).Targets.Paths
+		hasGit := slices.ContainsFunc(paths, func(p string) bool { return strings.Contains(p, ".git") })
+		hasSrc := slices.ContainsFunc(paths, func(p string) bool { return strings.Contains(p, "src") })
+		if hasGit != c.git || hasSrc != c.srcs {
+			t.Errorf("%s: paths %q", c.cmd, paths)
 		}
 	}
 }

@@ -48,11 +48,12 @@ func ShellTool(stream io.Writer) *Tool {
 		Classify: func(args map[string]any, workingDir string) policy.Invocation {
 			command := argString(args, "command")
 			res := classify.Shell(command)
-			targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, true),
-				Paths: slices.Concat(shellTargets(res.Paths, workingDir, true), landingTargets(res.Landings, workingDir)),
+			glob := shellGlob(dotglobOn(command))
+			targets := policy.Targets{Hosts: res.Hosts, Named: shellTargets(res.Named, workingDir, glob),
+				Paths: slices.Concat(shellTargets(res.Paths, workingDir, glob), landingTargets(res.Landings, workingDir, glob)),
 				Finds: findStarts(res.Finds, workingDir)}
 			if res.Classification == policy.Mutate && res.Opaque {
-				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, false)...)
+				targets.Named = append(targets.Named, shellTargets(lineTokens(command), workingDir, nil)...)
 			}
 			if res.Classification == policy.Mutate && len(res.Kube) > 0 {
 				targets.KubeContext, targets.KubeNamespace, targets.KubeReason =
@@ -123,11 +124,51 @@ func tokenSeparator(r rune) bool {
 	return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{},;=<>|&+\\", r)
 }
 
+// globFunc expands a path glob to the files it matches now.
+type globFunc func(pattern string) []string
+
+// shellGlob expands a glob as the shell does: a * or ? does not match the leading dot of a name unless the
+// pattern's element starts with a dot or the line turns dotglob on.
+func shellGlob(dotglob bool) globFunc {
+	return func(pattern string) []string {
+		matches, _ := filepath.Glob(pattern)
+		if dotglob {
+			return matches
+		}
+		elems := strings.Split(filepath.ToSlash(pattern), "/")
+		var out []string
+		for _, m := range matches {
+			if !dotHidden(elems, strings.Split(filepath.ToSlash(m), "/")) {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+}
+
+// dotHidden reports a match the shell's glob leaves out: an element that starts with a dot where the pattern's
+// element does not.
+func dotHidden(pattern, match []string) bool {
+	for i := range min(len(pattern), len(match)) {
+		if strings.HasPrefix(match[i], ".") && !strings.HasPrefix(pattern[i], ".") {
+			return true
+		}
+	}
+	return false
+}
+
+// dotglobOn reports a line that turns on matching dot files (bash's dotglob or GLOBIGNORE, zsh's globdots).
+func dotglobOn(command string) bool {
+	folded := strings.ToLower(strings.ReplaceAll(command, "_", ""))
+	return strings.Contains(folded, "dotglob") || strings.Contains(folded, "globdots") ||
+		strings.Contains(folded, "globignore")
+}
+
 // shellTargets resolves the files a shell line acts on: a leading ~, $HOME or ${HOME} to the home
-// directory, a relative path against the working directory, and, with globs, a glob to itself and to
-// the files it matches now. The words of an opaque line are resolved without globs: a * in a program's
-// text is no file name.
-func shellTargets(paths []string, workingDir string, globs bool) []string {
+// directory, a relative path against the working directory, and, given a glob function, a glob to
+// itself and to the files it matches now. The words of an opaque line are resolved without one: a * in
+// a program's text is no file name.
+func shellTargets(paths []string, workingDir string, glob globFunc) []string {
 	home, _ := os.UserHomeDir()
 	var out []string
 	seen := map[string]bool{}
@@ -140,9 +181,8 @@ func shellTargets(paths []string, workingDir string, globs bool) []string {
 	for _, p := range paths {
 		abs := resolvePath(expandHome(p, home), workingDir)
 		add(abs)
-		if globs && strings.ContainsAny(p, "*?[") {
-			matches, _ := filepath.Glob(abs)
-			for _, m := range matches {
+		if glob != nil && strings.ContainsAny(p, "*?[") {
+			for _, m := range glob(abs) {
 				add(m)
 			}
 		}
@@ -153,18 +193,18 @@ func shellTargets(paths []string, workingDir string, globs bool) []string {
 // landingTargets resolves where a copy, move or link puts each source, as shellTargets resolves a path, and
 // keeps a landing under each directory its destination names now, a glob expanded as the shell expands it: a
 // destination that is no directory is written by its own name.
-func landingTargets(landings []string, workingDir string) []string {
+func landingTargets(landings []string, workingDir string, glob globFunc) []string {
 	home, _ := os.UserHomeDir()
 	var out []string
 	for _, landing := range landings {
 		abs := resolvePath(expandHome(landing, home), workingDir)
 		dirs := []string{filepath.Dir(abs)}
 		if strings.ContainsAny(dirs[0], "*?[") {
-			dirs, _ = filepath.Glob(dirs[0])
+			dirs = glob(dirs[0])
 		}
 		for _, dir := range dirs {
 			if info, err := os.Stat(dir); err == nil && info.IsDir() {
-				out = append(out, shellTargets([]string{filepath.Join(dir, filepath.Base(abs))}, "", true)...)
+				out = append(out, shellTargets([]string{filepath.Join(dir, filepath.Base(abs))}, "", glob)...)
 			}
 		}
 	}
