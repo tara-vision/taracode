@@ -22,8 +22,8 @@ func findTargets(words, dirs []string) []policy.Find {
 	if cmd == nil {
 		return nil
 	}
-	starts, expr := findStarts(cmd[1:])
-	follows := findFollows(cmd[1:])
+	opts, starts, expr := findStarts(cmd[1:])
+	follows := findFollows(opts, expr)
 	if !findActs(expr) || !follows && !findNarrowed(expr) {
 		return nil
 	}
@@ -37,26 +37,26 @@ func findTargets(words, dirs []string) []policy.Find {
 	return out
 }
 
-// findFollows reports a find that follows symbolic links under its start points: -L last among -H, -L and -P,
-// or -follow in its expression.
-func findFollows(r []string) bool {
+// findFollows reports a find that follows symbolic links under its start points: -L last among the -H, -L and
+// -P options before them, or -follow anywhere in its expression.
+func findFollows(opts, expr []string) bool {
 	follows := false
-	for _, t := range r {
-		switch t {
-		case "-L", "-follow":
+	for _, o := range opts {
+		switch o {
+		case "-L":
 			follows = true
 		case "-H", "-P":
 			follows = false
 		}
 	}
-	return follows
+	return follows || slices.Contains(expr, "-follow")
 }
 
 // findWritten are the files find writes (-fprint, -fls) and, when it deletes or runs a command on what it finds
 // and its expression does not narrow that by name, its start points: it acts on whatever they hold.
 func findWritten(r []string) []string {
 	out := []string{flagValue(r, "-fprint"), flagValue(r, "-fprint0"), flagValue(r, "-fprintf"), flagValue(r, "-fls")}
-	starts, expr := findStarts(r)
+	_, starts, expr := findStarts(r)
 	if findActs(expr) && !findNarrowed(expr) {
 		out = append(out, starts...)
 	}
@@ -66,7 +66,7 @@ func findWritten(r []string) []string {
 // findNamed are find's start points and the patterns of its name tests, when it deletes or runs a command on what
 // it finds and its expression narrows that by name: it acts on what the patterns match, not on the start points.
 func findNamed(r []string) []string {
-	starts, expr := findStarts(r)
+	_, starts, expr := findStarts(r)
 	if !findActs(expr) || !findNarrowed(expr) {
 		return nil
 	}
@@ -78,9 +78,9 @@ func findActs(expr []string) bool {
 	return hasFlag(expr, "-delete", "-exec", "-execdir", "-ok", "-okdir")
 }
 
-// findStarts splits find's arguments into its start points and its expression, past the options before them
-// (-H, -L, -P, -O level and -D with its debug options).
-func findStarts(r []string) (starts, expr []string) {
+// findStarts splits find's arguments into the options before its start points (-H, -L, -P, -O level and -D
+// with its debug options), its start points and its expression.
+func findStarts(r []string) (opts, starts, expr []string) {
 	i := 0
 	for i < len(r) && (in(r[i], "-H", "-L", "-P", "-D") || strings.HasPrefix(r[i], "-O")) {
 		if r[i] == "-D" && i+1 < len(r) {
@@ -92,7 +92,7 @@ func findStarts(r []string) (starts, expr []string) {
 	for j < len(r) && !strings.HasPrefix(r[j], "-") && !in(r[j], "(", ")", "!", ",") {
 		j++
 	}
-	return r[i:j], r[j:]
+	return r[:i], r[i:j], r[j:]
 }
 
 // findNarrowed reports whether every branch of a find expression (split at -o, -or and the comma outside

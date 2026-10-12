@@ -91,6 +91,8 @@ func TestShellFindsAreTheFindsNarrowedByName(t *testing.T) {
 		{"find -L . -name config -delete", "{. . [{-name config}] true}"},
 		{"find . -follow -name x -delete", "{. . [{-name x}] true}"},
 		{"find -L -P . -name x -delete", "{. . [{-name x}] false}"},
+		{"find -L . -name x -exec chmod -P 600 {} +", "{. . [{-name x}] true}"},
+		{"find . -name -L -delete", "{. . [{-name -L}] false}"},
 		{"find -L . -delete", "{. . [] true}"},
 		{"find . -delete", ""},
 		{"find . -name x", ""},
