@@ -59,7 +59,7 @@ func (l *kubeLine) noteChanged(cause string) {
 // are on segment and kubeCommand), and a target of "*" when a word names kubectl or helm where the
 // classifier does not read it as a program (an argument of sh, eval, find -exec, docker run, kubectl
 // exec, a program it does not know) on a line that runs something it cannot see into.
-func shellKube(parsed shellwords.Result) []KubeTarget {
+func shellKube(parsed shellwords.Result) ([]KubeTarget, bool) {
 	if parsed.FunctionDef {
 		// A function body runs on the call, with arguments the classifier cannot correlate, so a
 		// kubectl or helm anywhere on the line acts on a context it cannot know.
@@ -68,18 +68,29 @@ func shellKube(parsed shellwords.Result) []KubeTarget {
 			words += countKubeWords(seg.Words)
 		}
 		if words > 0 {
-			return []KubeTarget{{Context: "*", Namespace: "*", Cause: causeFunctionDef}}
+			return []KubeTarget{{Context: "*", Namespace: "*", Cause: causeFunctionDef}}, true
 		}
-		return nil
+		return nil, true
 	}
 	l := kubeLine{opaque: parsed.Substitution, named: namedKubeconfigs(parsed.Segments), vars: lineVars{}}
 	for _, seg := range parsed.Segments {
 		l.segment(seg)
 	}
-	if l.opaque && l.words > l.placed {
+	if l.opaque && l.words > l.placed && !anyCluster(l.targets) {
 		l.targets = append(l.targets, KubeTarget{Context: "*", Namespace: "*", Cause: causeUnknownProg})
 	}
-	return l.targets
+	return l.targets, l.opaque
+}
+
+// anyCluster reports a target that already stands for every context and namespace, with the cause that
+// named it first.
+func anyCluster(targets []KubeTarget) bool {
+	for _, t := range targets {
+		if t.Context == "*" && t.Namespace == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // segment reads one simple command after the shell's reserved words (for, do, then, !, {, ...),
@@ -554,11 +565,20 @@ func countKubeWords(words []string) int {
 	return n
 }
 
-// namesKubeProgram reports a word that names kubectl or helm (countKubeWords).
+// namesKubeProgram reports a word that names kubectl or helm (countKubeWords): the word itself, or a token
+// of it, so a string an interpreter runs (sh -c "kubectl ...", a Python list) names one too.
 func namesKubeProgram(w string) bool {
 	name := path.Base(strings.TrimLeft(w, "{`"))
 	if i := strings.IndexAny(name, ":@"); i > 0 {
 		name = name[:i]
 	}
-	return name == "kubectl" || name == "helm"
+	if name == "kubectl" || name == "helm" {
+		return true
+	}
+	for _, token := range strings.FieldsFunc(w, outsideToken) {
+		if token == "kubectl" || token == "helm" {
+			return true
+		}
+	}
+	return false
 }
