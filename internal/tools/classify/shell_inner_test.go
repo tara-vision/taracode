@@ -17,6 +17,11 @@ func TestShellPathsReadTheLinesAStringRuns(t *testing.T) {
 		{"echo `rm -rf infra`", "infra"},
 		{`sh -c -- "rm -rf infra"`, "infra"},
 		{`bash -c -x 'rm -rf infra'`, "infra"},
+		{"watch -n 1 'rm -rf infra'", "infra"},
+		{"su -c 'rm -rf infra'", "infra"},
+		{"csh -c 'rm -rf infra'", "infra"},
+		{"busybox sh -c 'rm -rf infra'", "infra"},
+		{"eval -- 'rm -rf infra'", "infra"},
 	}
 	for _, c := range cases {
 		if paths := Shell(c.cmd).Paths; !slices.Contains(paths, c.want) {

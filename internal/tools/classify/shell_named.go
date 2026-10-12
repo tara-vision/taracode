@@ -114,16 +114,53 @@ func linkWritten(r []string) []string {
 	return out
 }
 
-// tarNamed is the directory tar extracts into (-C, --directory), when it extracts.
+// tarNamed is what tar extracts, when it extracts: the directory it extracts into (-C, --directory) and its
+// operands read from there, the members it names (and the archive and a bundle such as xzf, named harmlessly).
 func tarNamed(r []string) []string {
 	bundle := len(r) > 0 && !strings.HasPrefix(r[0], "-") && strings.ContainsRune(r[0], 'x') // tar xzf
 	if !bundle && !hasFlag(r, "-x", "--extract", "--get") {
 		return nil
 	}
-	return []string{flagValue(r, "-C", "--directory")}
+	dir := flagValue(r, "-C", "--directory")
+	return slices.Concat([]string{dir}, inDir(dir, operands(r, "-f", "--file", "-C", "--directory", "-T",
+		"--files-from", "-X", "--exclude-from")))
 }
 
-func unzipNamed(r []string) []string { return []string{flagValue(r, "-d")} }
+// unzipNamed is what unzip extracts: the directory it extracts into (-d) and its operands read from there, the
+// members it names (and the archive), up to the -x that starts the members it leaves out.
+func unzipNamed(r []string) []string {
+	if i := slices.Index(r, "-x"); i >= 0 {
+		r = r[:i]
+	}
+	dir := flagValue(r, "-d")
+	return slices.Concat([]string{dir}, inDir(dir, operands(r, "-d", "-P")))
+}
+
+// cpWritten is copyWritten, and for cp -l or -s, which make links instead of copies, the sources too: a link
+// reaches what it points to.
+func cpWritten(r []string) []string {
+	if !hasFlag(r, "-l", "--link", "-s", "--symbolic-link") {
+		return copyWritten(r)
+	}
+	_, sources := destination(r)
+	return slices.Concat(sources, copyWritten(r))
+}
+
+// rsyncValued are the options of rsync that take the next word as their value.
+var rsyncValued = []string{"-e", "--rsh", "-f", "--filter", "-T", "--temp-dir", "-B", "--block-size", "--exclude",
+	"--include", "--exclude-from", "--include-from", "--files-from", "--log-file", "--password-file", "--backup-dir",
+	"--suffix", "--partial-dir", "--compare-dest", "--copy-dest", "--link-dest", "--bwlimit", "--chmod", "--chown",
+	"--timeout", "--port"}
+
+// rsyncWritten is the destination rsync writes into, its last operand, which it merges the sources into (and with
+// --delete empties of what they lack); a remote one (host:path) is no local file.
+func rsyncWritten(r []string) []string {
+	ops := operands(r, rsyncValued...)
+	if len(ops) < 2 || strings.Contains(ops[len(ops)-1], ":") {
+		return nil
+	}
+	return ops[len(ops)-1:]
+}
 
 // gitNamed are the paths git rm, mv, checkout and restore act on: their operands, under the directory git's -C
 // options move it to.

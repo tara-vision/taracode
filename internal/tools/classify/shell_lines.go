@@ -12,7 +12,8 @@ import (
 const innerDepth = 8
 
 // shellNames run the string after their -c as a command line.
-var shellNames = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true}
+var shellNames = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true,
+	"mksh": true, "fish": true, "csh": true, "tcsh": true}
 
 // denyLines are the forms of a line the deny patterns read besides the whole of it: each simple command
 // (segmentLines), and the strings a shell's -c, eval, a $(...) or a backtick runs, read as lines of their own.
@@ -78,16 +79,29 @@ func withoutLeadingOptions(words []string) []string {
 	return append([]string{words[0]}, words[i:]...)
 }
 
-// innerLines are the strings a command hands to a shell's -c or to eval, to run as a line of their own.
+// innerLines are the strings a command hands to a shell's -c, to eval, to su -c or to watch, which runs its
+// command through sh -c, to run as a line of their own.
 func innerLines(words []string) []string {
 	w := unwrap(words)
 	if len(w.words) == 0 {
 		return nil
 	}
+	if slices.Contains(w.wrappers, "watch") {
+		return []string{strings.Join(w.words, " ")}
+	}
 	prog, rest := path.Base(w.words[0]), w.words[1:]
 	switch {
-	case prog == "eval" && len(rest) > 0:
-		return []string{strings.Join(rest, " ")}
+	case prog == "eval":
+		if first(rest) == "--" {
+			rest = rest[1:]
+		}
+		if len(rest) > 0 {
+			return []string{strings.Join(rest, " ")}
+		}
+	case prog == "su":
+		if line := flagValue(rest, "-c", "--command"); line != "" {
+			return []string{line}
+		}
 	case shellNames[prog]:
 		return commandStrings(rest)
 	}

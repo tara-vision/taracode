@@ -103,7 +103,7 @@ func cdTarget(words, dirs []string) (string, bool) {
 var wrapperPrograms = map[string]bool{
 	"sudo": true, "doas": true, "env": true, "command": true, "exec": true, "nohup": true, "time": true,
 	"nice": true, "timeout": true, "builtin": true, "xargs": true, "parallel": true, "stdbuf": true,
-	"ionice": true, "watch": true,
+	"ionice": true, "watch": true, "busybox": true,
 }
 
 // writtenOperands returns the operands a file-writing command writes or removes.
@@ -151,7 +151,8 @@ var fileWriters = map[string]func(rest []string) []string{
 	"truncate": func(r []string) []string {
 		return operands(r, "-s", "--size", "-r", "--reference")
 	},
-	"mv": moveWritten, "cp": copyWritten, "install": copyWritten, "ln": linkWritten, "chmod": chmodTargets,
+	"mv": moveWritten, "cp": cpWritten, "install": copyWritten, "ln": linkWritten, "rsync": rsyncWritten,
+	"chmod": chmodTargets,
 	"chown": ownerTargets, "chgrp": ownerTargets, "dd": ddOutput, "sed": sedTargets, "yq": yqTargets, "sort": sortOutput,
 	"curl": curlOutputs, "wget": wgetOutputs, "find": findWritten,
 }
