@@ -53,7 +53,6 @@ func TestSplitCapturesSubstitutionBodiesPastLiteralParens(t *testing.T) {
 		{"echo $(echo ${x})", "echo ${x}"},
 		{`echo $(echo "a\")b")`, `echo "a\")b"`},
 		{"echo $(echo ${a:-${b}})", "echo ${a:-${b}}"},
-		{"echo $(echo ${a", "echo ${a"},
 		{"echo $(showcase x)", "showcase x"},
 		{"echo $(echo a#b)", "echo a#b"},
 		{"echo $(date # c)", "date # c)"},

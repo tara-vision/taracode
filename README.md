@@ -172,21 +172,60 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    before it runs counts as touching the protected ones: a value the shell computes, an option repeated with
    two values, `sudo` or `xargs` in front, a kubeconfig that is not a small regular file, and a context
    switched earlier on the line (`kubectl config use-context`, `kubectx`, `kubens`, a `KUBECONFIG` assignment,
-   a sourced file that can set `KUBECONFIG`, a script). kubectl or helm run from another program's string or
-   file, such as `sh -c "kubectl ..."` or a script, is not seen; nor is one inside a double-quoted
-   substitution (`"$(kubectl ...)"` or backticks in double quotes), though the unquoted `$(kubectl ...)` is.
+   a sourced file that can set `KUBECONFIG`, a script). A line taracode cannot see into (a shell's `-c`
+   string, `eval`, an interpreter's code such as `python3 -c`, `xargs`, a script or a program it has no rule
+   for) that names `kubectl` or `helm` anywhere, inside a string or a heredoc too (`sh -c "kubectl ..."`, with
+   the string's quotes removed), counts as touching every context and namespace; a script that runs kubectl
+   without naming it is not seen.
    A namespace a `kubectl` mutation changes as an object (`kubectl delete ns kube-system`,
    `kubectl label ns/kube-system ...`) is the namespace it touches, and on a `shell` line such a command with
    a glob or a brace list in any word, even a quoted JSON value (`kubectl patch ns shop -p '{"a":1,"b":2}'`),
    counts as touching every namespace; the `kubectl` tool, which runs no shell, reads the same words
    literally.
-   Protected paths cover the file `write_file`
-   or `edit_file` changes, the directory the `terraform` tool runs in, and in a `shell` command the targets of
-   its redirects and the files it hands to a file-writing program (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`,
-   `chmod`, `ln`, `dd`, `sort -o`, `curl -o`, ...), also after a literal `cd`. A path a command builds at run
-   time (a variable, a command substitution) is not seen, which is why the built-in deny patterns also refuse
-   any mutation that names `.taracode/policy.yaml`.
-2. **Deny patterns** - command globs that are refused outright.
+   Cloud account and host patterns also match a value glued to a flag or an assignment (`--profile=prod`,
+   `AWS_PROFILE=prod`), a host after a user name (`admin@host`), the host of a URL, the words of the line once
+   the shell removes its quotes, and a host name without its trailing dot.
+   Protected paths cover the file `write_file` or `edit_file` changes, the directory the `terraform` tool runs
+   in, and in a `shell` command the targets of its redirects and the files it hands to a file-writing program
+   (`tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, `chmod`, `ln`, `rsync`, `dd`, `sort -o`, `curl -o`, ...), with
+   its braces and globs expanded as the shell expands them (a `*` does not match `.git`), also after a literal
+   `cd` (with `-P`, or to a glob), `env -C`, `sudo -D` or `git -C`, and inside the strings a shell's `-c`,
+   `eval`, `su -c`, `watch`, `$(...)` or backticks run and the script a shell reads from a heredoc, eight levels
+   deep. `cp`, `mv`, `install` and `ln` are checked by their destination's name and, when it is a directory,
+   where each source lands in it; `ln`, `cp -l` and `cp -s` also by the paths they link to; and a copy that
+   merges into its destination (`-T`, a source with a trailing slash, `rsync`), and an archive extracted into a
+   directory (`tar -x -C`, `unzip -d`), as a write to it. The members `tar -x` and `unzip` name, and the paths
+   `git rm`, `git mv`, `git checkout` and `git restore` act on, are checked by name. A `find` that deletes or
+   runs a command is checked for the protected paths its name tests (`-name`, `-path`, `-regex`) reach under its
+   start points (BSD's `-x`, `-s`, `-E` and `-f` included, and `.` when it names none), and the command it runs
+   is read like the line's own; when a branch of its expression has no name test, or its command may act beyond
+   what it finds (a shell, an interpreter, a script, `{}/..`), it is checked for all its start points hold, and a
+   `find` that follows symbolic links (`-L`, `-follow`) is refused. On a mutating line taracode cannot see into,
+   a word that names a protected path is refused, its globs expanded: `python3 -c "open('terraform.tfstate',
+   'w')..."` is, and so is a read-only line of that kind, so read a protected file with `read_file` or a plain
+   `cat`. A pattern ending in `/**` also covers the directory it names (`.git/**` covers `.git`), patterns match
+   in any letter case, and a path is matched through its symlinks, a link to a directory included. A `shell`
+   command whose target is a directory is refused when the directory holds a protected path: taracode looks for a
+   pattern that names one path (`.git/**`, an absolute file) under it, and reads the directory for the other
+   patterns, at most 50,000 entries and without entering `node_modules`, `vendor`, `.venv`, `venv`,
+   `__pycache__`, `.tox`, `.gradle` and `.terraform`; a larger directory is refused, so remove it yourself or
+   name a smaller one, and so is a path more than 256 parts deep. A line taracode cannot parse (an unclosed quote
+   or expansion, a heredoc without its delimiter line) counts as a mutation it cannot see into.
+   Not seen: a path a command builds at run time (a variable such as `$PWD`, a computed string), a directory an
+   interpreter, a script or `xargs` acts on without naming a protected path, a script piped into a shell (`echo
+   ... | sh`), what an archive extracted into the working directory or a commit restored inside a named directory
+   overwrites, the files `git clean -x` or `-X` removes, a program git runs from its configuration
+   (`core.hooksPath`), what a container reaches through a bind mount, the archive `tar -c` writes, a copy into a
+   directory the same line makes first, strings run as lines nested deeper than eight levels, and a path that
+   changes between the check and the run. That is why the built-in deny patterns also refuse any mutation that
+   names `.taracode/policy.yaml`.
+2. **Deny patterns** - command globs that are refused outright. A pattern is matched against the whole line, each
+   command of a chain (`cd infra && terraform destroy`), each command without the wrappers in front of its
+   program (`time`, `timeout 600`, `env X=1`, `sudo`) and by its program's base name
+   (`/usr/local/bin/terraform`), each command without its leading one-word options (`terraform -chdir=infra
+   destroy`), the command a `find` runs, and the strings a shell's `-c`, `eval`, `su -c`, `$(...)` or backticks
+   run, with the script a shell reads from a heredoc. On a line taracode cannot see into, the lines of every
+   heredoc are matched too.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
    produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first (a release with a
    `--post-renderer` is refused: the dry run would run the renderer before you approve).

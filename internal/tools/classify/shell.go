@@ -17,7 +17,23 @@ type ShellResult struct {
 	Result
 	Hosts []string
 	Paths []string
+	// Named are the paths the line acts on by name only (lineFiles).
+	Named []string
+	// Finds are the finds the line runs narrowed by name, their start points as written on the line.
+	Finds []policy.Find
+	// Landings are where a copy, move or link puts each source when its destination is a directory: the
+	// caller keeps those whose directory exists (lineFiles).
+	Landings []string
+	// DotGlob marks a line that may turn on matching dot files before its globs expand (dotGlobPossible).
+	DotGlob bool
+	// Words are the words of an opaque line, brace-expanded and without options, for the caller to glob: any of
+	// them may name a file the line acts on.
+	Words []string
 	Kube  []KubeTarget
+	// Opaque marks a line the classifier cannot see into (opaqueSegments): what it names, it may act on.
+	Opaque bool
+	// Lines are the forms of the line the deny patterns read besides the whole of it (denyLines).
+	Lines []string
 }
 
 var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
@@ -29,9 +45,19 @@ var hostToken = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$`)
 func Shell(command string) ShellResult {
 	parsed, err := shellwords.Split(command)
 	if err != nil {
-		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")")}
+		return ShellResult{Result: mutate("", "the command could not be parsed ("+err.Error()+")"), Opaque: true,
+			DotGlob: true}
 	}
-	out := ShellResult{Result: read(""), Paths: shellPaths(parsed.Segments), Kube: shellKube(parsed)}
+	kube, kubeOpaque := shellKube(parsed)
+	files := shellPaths(parsed.Segments).with(innerPaths(parsed, innerDepth))
+	out := ShellResult{Result: read(""), Paths: files.written, Named: files.named, Finds: files.finds,
+		Landings: files.landings, Kube: kube,
+		Opaque: kubeOpaque || opaqueSegments(parsed.Segments), Lines: denyLines(parsed, innerDepth)}
+	out.DotGlob = dotGlobPossible(parsed)
+	if out.Opaque {
+		out.Lines = append(out.Lines, bodyLines(parsed)...)
+		out.Words = opaqueWords(parsed.Segments)
+	}
 	if parsed.FunctionDef {
 		out.Result = mutate("", "the line defines a shell function, whose body runs on the call and can shadow "+
 			"any read-only name")
@@ -74,7 +100,7 @@ func substitutionsRead(parsed shellwords.Result) (string, bool) {
 	if parsed.Backtick || len(parsed.Substitutions) == 0 {
 		return "command substitution (backticks, <(...), >(...)) or a translated $\"...\" hides what runs", false
 	}
-	for _, body := range parsed.Substitutions {
+	for _, body := range parsed.OuterSubstitutions() {
 		res := Shell(body)
 		if res.Classification != policy.Read {
 			return "the command substitution $(" + body + ") " + res.Reason, false
