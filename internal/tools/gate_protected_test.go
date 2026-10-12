@@ -90,6 +90,7 @@ func TestTheGateKeepsProtectedTargetsForEveryCommand(t *testing.T) {
 		"echo $((1<<20))\necho {} > terraform.tfstate",
 		"echo $((1<<20))\nterraform destroy -auto-approve",
 		"echo $((1<<20))\nkubectl --context prod delete ns kube-system",
+		"echo $(( \"(\" ))\nterraform destroy -auto-approve\n# ))",
 		`find -x . -delete`,
 		`find -name config -delete`,
 		`find -f . -name config -delete`,

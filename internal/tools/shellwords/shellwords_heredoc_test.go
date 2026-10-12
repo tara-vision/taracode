@@ -119,6 +119,9 @@ func TestSplitReadsArithmeticAndParameterExpansionsAsWords(t *testing.T) {
 		{"(( x = 1<<2 ))\nrm x", [][]string{{"(( x = 1<<2 ))"}, {"rm", "x"}}},
 		{"echo \"$((1<<20))\"\nrm x", [][]string{{"echo", "$((1<<20))"}, {"rm", "x"}}},
 		{"((echo a); echo b)", [][]string{{"echo", "a"}, {"echo", "b"}}},
+		{"echo $[ \"[\" ]\nterraform destroy\n# ]", [][]string{{"echo", `$[ "[" ]`}, {"terraform", "destroy"}}},
+		{"echo $(( \"(\" ))\nterraform destroy\n# ))", [][]string{{"echo", `$(( "(" ))`}, {"terraform", "destroy"}}},
+		{"echo $(( '(' ))\nterraform destroy\n# ))", [][]string{{"echo", `$(( '(' ))`}, {"terraform", "destroy"}}},
 		{`echo ${a:-"}"} ${a:-'}'} ${a:-\}} ${a:-` + "`echo }`" + `}`,
 			[][]string{{"echo", `${a:-"}"}`, `${a:-'}'}`, `${a:-\}}`, "${a:-`echo }`}"}}},
 	}
@@ -137,7 +140,7 @@ func TestSplitReadsArithmeticAndParameterExpansionsAsWords(t *testing.T) {
 	for line, body := range map[string]string{"echo $(( $(rm -rf infra) + 1 ))": "rm -rf infra",
 		"echo ${a:-$(rm -rf infra)}": "rm -rf infra", "echo $((`rm -rf infra` + 1))": "rm -rf infra",
 		"echo $((echo a); echo b)": "(echo a); echo b", "echo $(echo $((1<<2)))": "echo $((1<<2))",
-		"echo $(echo $((a)+(b)))": "echo $((a)+(b))"} {
+		"echo $(echo $((a)+(b)))": "echo $((a)+(b))", `echo $(( $(wc -l < "f)") + 1 ))`: `wc -l < "f)"`} {
 		if res, err := Split(line); err != nil || !res.Substitution || !slices.Contains(res.Substitutions, body) {
 			t.Errorf("%q: %+v %v", line, res, err)
 		}

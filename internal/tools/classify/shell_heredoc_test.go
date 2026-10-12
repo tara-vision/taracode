@@ -103,7 +103,8 @@ func TestShellReadsEveryHereDocumentOnAnOpaqueLine(t *testing.T) {
 func TestShellReadsTheLinesAfterAnArithmeticShift(t *testing.T) {
 	for _, cmd := range []string{"echo $((1<<20))\nterraform destroy -auto-approve",
 		"echo $[1<<2]\nterraform destroy -auto-approve", "echo ${a:-<<x}\nterraform destroy -auto-approve",
-		"(( x = 1<<2 ))\nterraform destroy -auto-approve", "echo $((1<<20)\nterraform destroy -auto-approve"} {
+		"(( x = 1<<2 ))\nterraform destroy -auto-approve", "echo $((1<<20)\nterraform destroy -auto-approve",
+		"echo $[ \"[\" ]\nterraform destroy -auto-approve\n# ]"} {
 		res := Shell(cmd)
 		if res.Classification != policy.Mutate {
 			t.Errorf("%q: %v, want a mutation", cmd, res.Classification)

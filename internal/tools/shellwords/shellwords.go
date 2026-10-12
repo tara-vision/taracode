@@ -236,6 +236,10 @@ func arithmeticEnd(in []rune, open int) (end int, ok, closed bool) {
 	}
 	depth, inner := 0, -1
 	for i := open; i < len(in); i++ {
+		if end, nested := nestedEnd(in, i); nested {
+			i = end
+			continue
+		}
 		switch in[i] {
 		case '(':
 			depth++
@@ -250,10 +254,15 @@ func arithmeticEnd(in []rune, open int) (end int, ok, closed bool) {
 	return len(in), false, false
 }
 
-// closingBracket returns the index of the ] that closes the [ at open, or the end when none does.
+// closingBracket returns the index of the ] that closes the [ at open, or the end when none does; a bracket
+// in a quoted string or a nested expansion does not count (nestedEnd).
 func closingBracket(in []rune, open int) int {
 	depth := 0
 	for i := open; i < len(in); i++ {
+		if end, nested := nestedEnd(in, i); nested {
+			i = end
+			continue
+		}
 		switch in[i] {
 		case '[':
 			depth++
@@ -501,24 +510,35 @@ func skipQuoted(in []rune, start int, escapes bool) int {
 // of the input when nothing closes it.
 func parameterEnd(in []rune, dollar int) int {
 	for i := dollar + 2; i < len(in); i++ {
-		switch {
-		case in[i] == '\\':
-			i++
-		case in[i] == '\'':
-			i = skipQuoted(in, i, false)
-		case in[i] == '"':
-			i = skipQuoted(in, i, true)
-		case in[i] == '`':
-			_, i = backtickBody(in, i)
-		case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
-			i = parameterEnd(in, i)
-		case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
-			i += 2 + len([]rune((&parser{in: in, pos: i}).captureSubstitution()))
-		case in[i] == '}':
+		if end, nested := nestedEnd(in, i); nested {
+			i = end
+		} else if in[i] == '}' {
 			return i
 		}
 	}
 	return len(in)
+}
+
+// nestedEnd returns the index of the last rune of a span that starts at i and keeps the brackets of an
+// enclosing expansion from counting, as the shell reads it: an escaped character, a quoted string, a backtick
+// substitution, a ${...} or a $(...); nested is false when none starts at i.
+func nestedEnd(in []rune, i int) (end int, nested bool) {
+	switch {
+	case in[i] == '\\':
+		return i + 1, true
+	case in[i] == '\'':
+		return skipQuoted(in, i, false), true
+	case in[i] == '"':
+		return skipQuoted(in, i, true), true
+	case in[i] == '`':
+		_, end = backtickBody(in, i)
+		return end, true
+	case in[i] == '$' && i+1 < len(in) && in[i+1] == '{':
+		return parameterEnd(in, i), true
+	case in[i] == '$' && i+1 < len(in) && in[i+1] == '(':
+		return i + 2 + len([]rune((&parser{in: in, pos: i}).captureSubstitution())), true
+	}
+	return i, false
 }
 
 // caseKeyword reports whether the word "case" begins at i in a substitution body: a token boundary
