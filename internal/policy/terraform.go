@@ -32,8 +32,14 @@ func canonicalTerraformCommand(command string) string {
 	if !ok {
 		return command
 	}
+	fromEnv := envDestroy(words[:program]) && verb < len(words) && (words[verb] == "apply" || words[verb] == "plan")
 	out := append(append([]string{}, words[:program]...), "terraform")
-	return strings.Join(append(out, rewriteDestroy(words, verb)...), " ")
+	if fromEnv {
+		// The assignment that carries the destroy is consumed into the verb, so the line starts with the
+		// program as the patterns expect.
+		out = []string{"terraform"}
+	}
+	return strings.Join(append(out, rewriteDestroy(words, verb, fromEnv)...), " ")
 }
 
 // canonicalTerraformPattern spells a deny pattern the way canonicalTerraformCommand spells a line, but keeps
@@ -47,20 +53,37 @@ func canonicalTerraformPattern(pattern string) string {
 	}
 	out := append(append([]string{}, words[:program]...), "terraform")
 	out = append(out, words[program+1:verb]...)
-	return strings.Join(append(out, rewriteDestroy(words, verb)...), " ")
+	return strings.Join(append(out, rewriteDestroy(words, verb, false)...), " ")
 }
 
-// rewriteDestroy is the verb and what follows it, with apply or plan under a true destroy flag spelled as
-// destroy without the flag; nothing when no verb follows the program.
-func rewriteDestroy(words []string, verb int) []string {
+// rewriteDestroy is the verb and what follows it, with apply or plan under a true destroy flag (on the line,
+// or set through the environment) spelled as destroy without the flag; nothing when no verb follows the
+// program.
+func rewriteDestroy(words []string, verb int, fromEnv bool) []string {
 	if verb >= len(words) {
 		return nil
 	}
 	rest := words[verb+1:]
-	if (words[verb] == "apply" || words[verb] == "plan") && destroyFlag(rest) {
+	if (words[verb] == "apply" || words[verb] == "plan") && (fromEnv || destroyFlag(rest)) {
 		return append([]string{"destroy"}, withoutDestroyFlag(rest)...)
 	}
 	return words[verb:]
+}
+
+// envDestroy reports a true destroy flag set through terraform's environment in the words before the
+// program: TF_CLI_ARGS, TF_CLI_ARGS_apply or TF_CLI_ARGS_plan (lowercased by collapse), as an assignment in
+// front of the command or exported earlier on the line; the value may be quoted.
+func envDestroy(before []string) bool {
+	for _, w := range before {
+		name, value, ok := strings.Cut(strings.TrimRight(w, ";"), "=")
+		if !ok || !strings.HasPrefix(name, "tf_cli_args") {
+			continue
+		}
+		if destroyFlag(strings.Fields(strings.Trim(value, `"'`))) {
+			return true
+		}
+	}
+	return false
 }
 
 // terraformVerb finds the first terraform program on the line and the index of its verb, the first word

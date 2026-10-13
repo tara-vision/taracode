@@ -34,6 +34,8 @@ func TestTheGateRefusesADestroyByEverySpelling(t *testing.T) {
 		`terragrunt stack run destroy`,
 		`terraform plan -destroy -out=tfplan`,
 		`cd infra && terraform plan -destroy -out=tfplan`,
+		`TF_CLI_ARGS_apply=-destroy terraform apply -auto-approve`,
+		`export TF_CLI_ARGS_apply=-destroy; terraform apply -auto-approve`,
 	}
 	for _, cmd := range deny {
 		if v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd); v.Allow || v.Rule != "deny.commands" {
@@ -68,8 +70,8 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 		`terraform -chdir=infra apply -auto-approve`,
 		`cd infra && terraform apply -auto-approve`,
 		`sh -c "terraform apply -auto-approve"`,
-		`TF_CLI_ARGS_apply=-destroy terraform apply -auto-approve`,
-		`export TF_CLI_ARGS_apply=-destroy; terraform apply -auto-approve`,
+		`TF_CLI_ARGS_apply=-lock=false terraform apply -auto-approve`,
+		`export TF_CLI_ARGS_apply=-lock=false; terraform apply -auto-approve`,
 		`tofu apply -auto-approve`,
 		`terragrunt run-all apply`,
 		`terragrunt --working-dir infra apply -auto-approve`,
@@ -87,6 +89,18 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 	for _, cmd := range held {
 		if v := gateVerdict(off, shell, map[string]any{"command": cmd}, wd); !v.Allow || v.Rule != "policy" {
 			t.Errorf("%s with terraform_apply off: %+v, want an ordinary mutation", cmd, v)
+		}
+	}
+	// A destroy set through terraform's environment is a destroy for the deny pattern, with the plan
+	// requirement off as well.
+	for _, cmd := range []string{
+		`TF_CLI_ARGS_apply=-destroy tofu apply -auto-approve`,
+		`TF_CLI_ARGS=-destroy terraform apply -auto-approve`,
+		`TF_CLI_ARGS_plan=-destroy terraform plan -out=x`,
+		`export TF_CLI_ARGS_apply=-destroy; terraform apply -auto-approve`,
+	} {
+		if v := gateVerdict(off, shell, map[string]any{"command": cmd}, wd); v.Allow || v.Rule != "deny.commands" {
+			t.Errorf("%s with terraform_apply off: %+v, want the deny pattern", cmd, v)
 		}
 	}
 	unchanged := []string{
