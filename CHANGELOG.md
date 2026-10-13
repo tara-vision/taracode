@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+A teardown in operate mode that the built-in deny pattern did not read as one. Found on 2026-10-13 in our own
+hardware board runs and the review of the policy gate that followed; there is no report of it being used.
+Upgrade if you use operate mode.
+
+- **A destroy by another spelling passed the deny pattern.** `terraform destroy*` matched a line that starts
+  so and nothing else: `terraform apply -destroy`, `terraform plan -destroy -out=tfplan` with the apply of that
+  file, `tofu destroy` and `terragrunt destroy` passed. The deny patterns now read a canonical terraform form,
+  where `terraform`, `tofu` and `terragrunt` are one program and an `apply` or `plan` with a true `-destroy`
+  flag is a destroy, so the pattern already in your policy file refuses them; and the terraform tool remembers
+  a plan made with `-destroy`, so the apply of that plan reads as a destroy too.
+- **A `terraform apply` through the shell ran with no plan.** The terraform tool requires a plan from this
+  session and shows its summary before the prompt; the shell ran an apply as given. While
+  `require_dry_run.terraform_apply` is on, a terraform apply through the shell is refused and steered to the
+  terraform tool.
+
+### Changed
+- Failing closed costs, in operate mode: a `terraform`, `tofu` or `terragrunt` apply through the shell while
+  `require_dry_run.terraform_apply` is on, and a plan written with `-destroy` and `-out`. Apply through the
+  terraform tool, or switch the requirement off in the policy.
+
 ## [3.2.5] - 2026-10-12
 
 ### Security

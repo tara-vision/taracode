@@ -225,10 +225,18 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    (`/usr/local/bin/terraform`), each command without its leading one-word options (`terraform -chdir=infra
    destroy`), the command a `find` runs, and the strings a shell's `-c`, `eval`, `su -c`, `$(...)` or backticks
    run, with the script a shell reads from a heredoc. On a line taracode cannot see into, the lines of every
-   heredoc are matched too.
+   heredoc are matched too. Each line and each pattern is also read in a canonical form: `kubectl` resource
+   aliases are spelled out, and `terraform`, `tofu` and `terragrunt` read as `terraform`, with the global
+   options before the verb dropped and an `apply` or `plan` that carries a true `-destroy` flag read as
+   `destroy`, so `terraform destroy*` refuses `tofu destroy`, `terragrunt run-all destroy`, `terraform apply
+   -auto-approve -destroy` and `terraform plan -destroy -out=tfplan` alike, and the apply of a plan the
+   terraform tool made with `-destroy` carries a `terraform destroy` line of its own.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
-   produced in this session and shows its summary, `helm upgrade` runs `--dry-run` first (a release with a
-   `--post-renderer` is refused: the dry run would run the renderer before you approve).
+   produced in this session and shows its summary (a `terraform apply` through the shell, which would run with
+   no such plan, is refused and steered to the terraform tool while this is on, and so is a `tofu` or
+   `terragrunt` apply: a policy that needs those sets `terraform_apply: false`), `helm upgrade` runs
+   `--dry-run` first (a release with a `--post-renderer` is refused: the dry run would run the renderer before
+   you approve).
 4. **Permission** - the remembered allow/ask/deny rule for the tool, or a prompt.
 
 ```bash
@@ -256,7 +264,7 @@ protected:                      # never mutated in operate mode (hard deny, prin
   cloud_accounts: []            # AWS account ids, Azure subscription ids, GCP project ids, or *globs*
   paths: ["**/*.tfstate", ".git/**"]
   hosts: []
-deny:                           # refused outright; the last pattern keeps the policy files safe
+deny:                           # refused outright, a destroy by any spelling; the last keeps the policy files safe
   commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*", "*.taracode/policy.yaml*"]
 require_dry_run:                # shown before the permission prompt
   kubectl_apply: true           # kubectl diff first
