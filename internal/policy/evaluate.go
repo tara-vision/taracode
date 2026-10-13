@@ -9,13 +9,14 @@ import (
 // Verdict is the policy's answer for one invocation.
 type Verdict struct {
 	Allow  bool
-	Rule   string // read | mode | protected.<list> | deny.commands | policy
+	Rule   string // read | mode | protected.<list> | deny.commands | require_dry_run | policy
 	Reason string // set on every denial, phrased for the model and the user
 	DryRun string // kubectl_apply | terraform_apply | helm_upgrade when a dry run must come first
 }
 
 // Evaluate applies, in order: classification (reads always pass), mode, protected targets, deny
-// patterns, dry-run requirements. Permissions are the caller's next step.
+// patterns, a terraform apply through the shell, dry-run requirements. Permissions are the caller's
+// next step.
 func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 	if inv.Classification != Mutate {
 		return Verdict{Allow: true, Rule: "read"}
@@ -33,7 +34,31 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 			return v
 		}
 	}
+	if v, denied := p.shellApply(inv); denied {
+		return v
+	}
 	return Verdict{Allow: true, Rule: "policy", DryRun: p.dryRunFor(inv)}
+}
+
+// shellApply refuses a terraform apply run through the shell while the policy requires a plan from
+// this session (require_dry_run.terraform_apply): the shell runs the line as given, so only the
+// terraform tool can show the plan's summary before the prompt. The lines are the deny lines, so an
+// apply inside sh -c, behind xargs or by tofu and terragrunt is read too; a line that only mentions
+// terraform after another program (echo terraform apply > notes.txt) is not one.
+func (p Policy) shellApply(inv Invocation) (Verdict, bool) {
+	if inv.Tool != "shell" || !enabled(p.RequireDryRun.TerraformApply) {
+		return Verdict{}, false
+	}
+	for _, line := range append([]string{inv.Command}, inv.Lines...) {
+		words := strings.Fields(collapse(line))
+		if program, verb, ok := terraformVerb(words); ok && program == 0 && verb < len(words) && words[verb] == "apply" {
+			return Verdict{Rule: "require_dry_run", Reason: fmt.Sprintf("%q: a terraform apply through the shell "+
+				"skips the plan this session requires; plan and apply with the terraform tool, which applies the plan "+
+				"from this session after showing its summary (a policy with require_dry_run.terraform_apply: false "+
+				"allows the shell apply)", line)}, true
+		}
+	}
+	return Verdict{}, false
 }
 
 // denyPattern matches the deny patterns against the command as written and against its canonical
