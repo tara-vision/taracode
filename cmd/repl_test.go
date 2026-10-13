@@ -8,7 +8,7 @@ import (
 
 	"github.com/chzyer/readline"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // discardCloser is a readline output that keeps nothing.
@@ -57,7 +57,7 @@ func runLines(t *testing.T, r *repl, lines ...string) (stdout, stderr string) {
 
 func TestRunRoutesEveryKindOfLine(t *testing.T) {
 	resetConfig(t)
-	r, _ := projectREPL(t, ollamatest.Turn{Content: "The pod restarts. Would you like me to check its logs?"})
+	r, _ := projectREPL(t, taraenginetest.Turn{Content: "The pod restarts. Would you like me to check its logs?"})
 	if err := os.Mkdir(filepath.Join(r.projectRoot, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestRunRoutesEveryKindOfLine(t *testing.T) {
 
 func TestRunStopsAtExitOrQuit(t *testing.T) {
 	for _, word := range []string{"exit", "quit"} {
-		r := replOn(t, fakeOllama(t), t.TempDir(), true)
+		r := replOn(t, fakeEngine(t), t.TempDir(), true)
 		stdout, _ := runLines(t, r, word, "/help")
 		if !strings.Contains(stdout, "Goodbye!") || strings.Contains(stdout, "Commands:") {
 			t.Errorf("%s: the loop must end before the next line:\n%s", word, stdout)
@@ -92,7 +92,7 @@ func TestRunStopsAtExitOrQuit(t *testing.T) {
 
 func TestAskOffersToRememberAConvention(t *testing.T) {
 	resetConfig(t)
-	r, _ := projectREPL(t, ollamatest.Turn{Content: "Understood."})
+	r, _ := projectREPL(t, taraenginetest.Turn{Content: "Understood."})
 	var stdout string
 	withStdin(t, "y\n", func() { stdout, _ = runLines(t, r, "We always use helm for every deploy here") })
 	list := r.memory.List()
@@ -102,7 +102,7 @@ func TestAskOffersToRememberAConvention(t *testing.T) {
 }
 
 func TestAskReportsAModelError(t *testing.T) {
-	r := replOn(t, fakeOllama(t, ollamatest.Turn{Status: 500, Error: "model crashed"}), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t, taraenginetest.Turn{Status: 500, Error: "model crashed"}), t.TempDir(), true)
 	_, stderr := runLines(t, r, "hello")
 	if !strings.Contains(stderr, "model crashed") {
 		t.Fatalf("stderr %q", stderr)
@@ -110,7 +110,7 @@ func TestAskReportsAModelError(t *testing.T) {
 }
 
 func TestAskSendsTheReferencedImage(t *testing.T) {
-	srv := fakeOllama(t, ollamatest.Turn{Content: "A diagram."})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "A diagram."})
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "pic.png"), "png-bytes")
 	r := replOn(t, srv, dir, true)
@@ -118,16 +118,22 @@ func TestAskSendsTheReferencedImage(t *testing.T) {
 	if !strings.Contains(stdout, "Loaded image: pic.png") || !strings.Contains(stdout, "A diagram.") {
 		t.Fatalf("%q", stdout)
 	}
-	var images []any
+	var images int
 	for _, req := range srv.Requests {
-		if req.Path != "/api/chat" {
+		if req.Path != "/v1/chat/completions" {
 			continue
 		}
 		messages, _ := req.Body["messages"].([]any)
 		last, _ := messages[len(messages)-1].(map[string]any)
-		images, _ = last["images"].([]any)
+		parts, _ := last["content"].([]any)
+		images = 0
+		for _, p := range parts {
+			if part, _ := p.(map[string]any); part["type"] == "image_url" {
+				images++
+			}
+		}
 	}
-	if len(images) != 1 {
-		t.Fatalf("the chat request carries images %v", images)
+	if images != 1 {
+		t.Fatalf("the chat request carries %d images", images)
 	}
 }

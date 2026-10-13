@@ -2,21 +2,29 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
-func TestOllamaProviderLLMIsNative(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"tools"}, ContextLength: 4096, Family: "gemma4"}}
+func TestOllamaRunsOnTheOpenAIPath(t *testing.T) {
+	srv := newFakeServer(t, map[string]func(w http.ResponseWriter, r *http.Request){
+		"/v1/models": answer(200, `{"data":[{"id":"gemma4:latest"}]}`),
+	})
 	p := NewOllamaProvider(srv.URL, "")
-	details, err := p.LLM().Show(context.Background(), "gemma4:12b")
-	if err != nil || !details.Has("tools") {
-		t.Fatalf("native Show failed: %+v %v", details, err)
+	if p.Info().Type != TypeOllama || p.Info().Name != "Ollama" {
+		t.Fatalf("info %+v", p.Info())
 	}
-	if srv.Requests[len(srv.Requests)-1].Path != "/api/show" {
-		t.Fatalf("expected the native /api/show, got %s", srv.Requests[len(srv.Requests)-1].Path)
+	if _, err := p.LLM().Show(context.Background(), "gemma4"); !errors.Is(err, llm.ErrNotSupported) {
+		t.Fatalf("Show on the OpenAI path: %v", err)
+	}
+	if names, err := p.DetectModels(context.Background()); err != nil || len(names) != 1 || names[0] != "gemma4:latest" {
+		t.Fatalf("DetectModels %v %v", names, err)
+	}
+	if _, ok := any(p).(ModelManager); ok {
+		t.Fatal("Ollama has no model management on the OpenAI path")
 	}
 }
 

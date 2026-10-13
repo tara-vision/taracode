@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/llm"
 )
 
 // ErrorSuggestion represents an actionable suggestion for an error
@@ -14,6 +14,7 @@ type ErrorSuggestion struct {
 	Title       string   // Short title for the error
 	Suggestions []string // Actionable suggestions
 	DocURL      string   // Optional documentation URL
+	Connection  bool     // no server answered in time; at startup the connection box says more
 }
 
 // Common error patterns and their suggestions
@@ -23,10 +24,11 @@ var errorSuggestions = []ErrorSuggestion{
 		Pattern: "connection refused",
 		Title:   "Connection Refused",
 		Suggestions: []string{
-			"Ensure Ollama is running: ollama serve",
-			"Check the host URL in your config: ~/.taracode/config.yaml",
-			"Verify the server is accessible: curl <host>/api/tags",
+			"Start taraengine: taraengine serve",
+			"Check the host in ~/.taracode/config.yaml, or pass --host",
+			"Run taracode doctor",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "no such host",
@@ -34,17 +36,19 @@ var errorSuggestions = []ErrorSuggestion{
 		Suggestions: []string{
 			"Check your network connection",
 			"Verify the hostname in TARACODE_HOST or config.yaml",
-			"Try using localhost:11434 for local Ollama",
+			"taraengine listens on http://127.0.0.1:8272 by default",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "connection reset",
 		Title:   "Connection Reset",
 		Suggestions: []string{
 			"The server closed the connection unexpectedly",
-			"Check if Ollama has enough memory for the model",
-			fmt.Sprintf("Try a smaller model: taracode --model %s", models.DefaultName(models.Tier16)),
+			"Check that the machine has the memory for the model: taracode doctor",
+			"Try a smaller model: /model",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "timeout",
@@ -54,6 +58,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"Try a simpler query or smaller context",
 			"Check if the server is under heavy load",
 		},
+		Connection: true,
 	},
 	{
 		Pattern: "context deadline exceeded",
@@ -63,6 +68,7 @@ var errorSuggestions = []ErrorSuggestion{
 			"For long commands, increase timeout in params",
 			"Break complex tasks into smaller steps",
 		},
+		Connection: true,
 	},
 
 	// Model errors
@@ -71,8 +77,8 @@ var errorSuggestions = []ErrorSuggestion{
 		Title:   "Model Not Found",
 		Suggestions: []string{
 			"The requested model is not available",
-			"Pull the model: ollama pull <model>",
-			"List available models: ollama list",
+			"Pull the model: taraengine pull <model>",
+			"List the engine's models: taraengine list",
 			"Switch models with: /model",
 		},
 	},
@@ -80,10 +86,18 @@ var errorSuggestions = []ErrorSuggestion{
 		Pattern: "no models available",
 		Title:   "No Models Available",
 		Suggestions: []string{
-			"No models are loaded on the server",
-			fmt.Sprintf("Pull a model: ollama pull %s (16 GB) or %s (32 GB)",
-				models.DefaultName(models.Tier16), models.DefaultName(models.Tier32)),
-			"Check Ollama status: ollama list",
+			"No model is pulled on the server",
+			"Pull one: taraengine pull <model> (taracode doctor recommends one for this machine)",
+			"List the engine's models: taraengine list",
+		},
+	},
+	{
+		Pattern: "does not support tools",
+		Title:   "Model Without Tools",
+		Suggestions: []string{
+			"taracode needs a model that calls tools",
+			"Choose a model with tools: taracode doctor lists them",
+			"Pick it with --model, or with /model in a session",
 		},
 	},
 
@@ -172,18 +186,29 @@ func EnhanceError(err error) string {
 		return ""
 	}
 
-	errStr := err.Error()
-	errLower := strings.ToLower(errStr)
+	if s, ok := serverSuggestion(err); ok {
+		return FormatEnhancedError(withoutHint(err), s)
+	}
 
-	// Find matching suggestion
-	for _, suggestion := range errorSuggestions {
-		if strings.Contains(errLower, suggestion.Pattern) {
-			return FormatEnhancedError(errStr, suggestion)
-		}
+	errStr := err.Error()
+	if suggestion, ok := matchSuggestion(errStr, true); ok {
+		return FormatEnhancedError(errStr, suggestion)
 	}
 
 	// No enhancement found, return original error
 	return ErrorStyle.Render("Error: " + errStr)
+}
+
+// matchSuggestion is the first entry of the table whose pattern errStr holds. Without withConnection it skips the
+// entries about the connection.
+func matchSuggestion(errStr string, withConnection bool) (ErrorSuggestion, bool) {
+	errLower := strings.ToLower(errStr)
+	for _, suggestion := range errorSuggestions {
+		if (withConnection || !suggestion.Connection) && strings.Contains(errLower, suggestion.Pattern) {
+			return suggestion, true
+		}
+	}
+	return ErrorSuggestion{}, false
 }
 
 // FormatEnhancedError formats an error with its suggestion
@@ -313,16 +338,17 @@ func FormatConnectionError(host string, err error) string {
 
 	sb.WriteString(ErrorStyle.Render("Error: Cannot connect to LLM server"))
 	sb.WriteString("\n")
-	sb.WriteString(Subtle.Render(fmt.Sprintf("  Host: %s", host)))
+	shown := llm.RedactedHost(host)
+	sb.WriteString(Subtle.Render(fmt.Sprintf("  Host: %s", shown)))
 	sb.WriteString("\n")
 	sb.WriteString(Subtle.Render(fmt.Sprintf("  %s", err.Error())))
 	sb.WriteString("\n\n")
 
 	sb.WriteString(WarningStyle.Render("Suggestions:"))
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("  %s Start Ollama: ollama serve\n", IconTip))
-	sb.WriteString(fmt.Sprintf("  %s Check config: ~/.taracode/config.yaml\n", IconTip))
-	sb.WriteString(fmt.Sprintf("  %s Test connection: curl %s/api/tags\n", IconTip, host))
+	fmt.Fprintf(&sb, "  %s Start taraengine: taraengine serve\n", IconTip)
+	fmt.Fprintf(&sb, "  %s Check config: ~/.taracode/config.yaml\n", IconTip)
+	fmt.Fprintf(&sb, "  %s Test the connection: curl %s/api/health\n", IconTip, shown)
 
 	return sb.String()
 }

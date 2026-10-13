@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/evals"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // resetModelFlag clears --model after a test that passed it to the real root command.
@@ -31,7 +31,7 @@ func TestEvalSubcommandsRunThroughCobra(t *testing.T) {
 	resetConfig(t)
 	isolateHome(t)
 	resetModelFlag(t)
-	srv := fakeEvalOllama(t)
+	srv := fakeEvalEngine(t)
 	viper.Set("host", srv.URL)
 	empty := t.TempDir()
 
@@ -62,7 +62,7 @@ func TestEvalRunRejectsItsInputs(t *testing.T) {
 		flags   evalRunFlags
 		wantErr string
 	}{
-		{"no host", evalRunFlags{}, "LLM server host not found"},
+		{"no model", evalRunFlags{}, "set --model"},
 		{"no corpus", evalRunFlags{host: "http://127.0.0.1:1", model: "m", think: "auto",
 			corpus: filepath.Join(corpus, "absent")}, "loading the corpus from"},
 		{"no match", evalRunFlags{host: "http://127.0.0.1:1", model: "m", think: "auto", corpus: corpus, tasks: "zzz*"},
@@ -103,17 +103,17 @@ func runnableCorpus(t *testing.T) string {
 	return corpus
 }
 
-func runnableFlags(srv *ollamatest.Server, corpus string) evalRunFlags {
+func runnableFlags(srv *taraenginetest.Server, corpus string) evalRunFlags {
 	return evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
 		timeout: 30 * time.Second, hostLabel: "lab"}
 }
 
-func kubectlGetPods() ollamatest.Turn {
+func kubectlGetPods() taraenginetest.Turn {
 	return evalToolCall("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"})
 }
 
 func TestEvalRunReportsAResultsWriteError(t *testing.T) {
-	srv := fakeEvalOllama(t, kubectlGetPods(), ollamatest.Turn{Content: "done"})
+	srv := fakeEvalEngine(t, kubectlGetPods(), taraenginetest.Turn{Content: "done"})
 	f := runnableFlags(srv, runnableCorpus(t))
 	blocker := filepath.Join(t.TempDir(), "file")
 	writeFile(t, blocker, "not a directory")
@@ -150,10 +150,10 @@ func TestEvalRunFailsOnASafetyFailure(t *testing.T) {
 	if err := store.Save("kubectl scale deployment/checkout -n shop --replicas=3", "deployment.apps/checkout scaled", false); err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeEvalOllama(t,
+	srv := fakeEvalEngine(t,
 		evalToolCall("kubectl", map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout",
 			"namespace": "shop", "args": "--replicas=3"}),
-		ollamatest.Turn{Content: "Scaled."})
+		taraenginetest.Turn{Content: "Scaled."})
 	f := runnableFlags(srv, corpus)
 	f.out = t.TempDir()
 	var out bytes.Buffer
@@ -192,7 +192,7 @@ func defectCorpus(t *testing.T) string {
 }
 
 func TestAStoppedRunWithoutARunsDirectoryWritesNothing(t *testing.T) {
-	srv := fakeEvalOllama(t, kubectlGetPods(), ollamatest.Turn{Content: "done"})
+	srv := fakeEvalEngine(t, kubectlGetPods(), taraenginetest.Turn{Content: "done"})
 	f := runnableFlags(srv, defectCorpus(t))
 	f.out = t.TempDir()
 	var out bytes.Buffer
@@ -211,7 +211,7 @@ func TestAStoppedRunReportsAPartialResultsWriteError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(readOnly, 0o755) })
 	for _, runsDir := range []string{filepath.Join(blocker, "runs"), readOnly} {
-		srv := fakeEvalOllama(t, kubectlGetPods(), ollamatest.Turn{Content: "done"})
+		srv := fakeEvalEngine(t, kubectlGetPods(), taraenginetest.Turn{Content: "done"})
 		f := runnableFlags(srv, defectCorpus(t))
 		f.runsDir = runsDir
 		err := runEvalRun(f, io.Discard)

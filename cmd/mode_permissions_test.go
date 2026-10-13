@@ -36,7 +36,7 @@ func brokenPolicyREPL(t *testing.T) *repl {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, ".taracode", "policy.yaml"), "version: 1\nprotected:\n  pths: []\n")
-	return replOn(t, fakeOllama(t), dir, false)
+	return replOn(t, fakeEngine(t), dir, false)
 }
 
 func TestABrokenPolicyIsShownByModeAndPolicy(t *testing.T) {
@@ -68,7 +68,7 @@ func TestPolicyShowListsTheRememberedPermissions(t *testing.T) {
 }
 
 func TestPermissionsNeedAnInitialisedProject(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	if out := captureStdoutForTest(t, func() { r.dispatch("/permissions") }); !strings.Contains(out, "No permission store: run /init first.") {
 		t.Fatalf("%q", out)
 	}
@@ -144,7 +144,7 @@ func auditREPL(t *testing.T) *repl {
 }
 
 func TestAuditListsTheSessionsMutations(t *testing.T) {
-	ephemeral := replOn(t, fakeOllama(t), t.TempDir(), true)
+	ephemeral := replOn(t, fakeEngine(t), t.TempDir(), true)
 	if out := captureStdoutForTest(t, func() { ephemeral.dispatch("/audit") }); !strings.Contains(out, "No audit log: run /init first.") {
 		t.Fatalf("%q", out)
 	}

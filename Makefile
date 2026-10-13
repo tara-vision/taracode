@@ -17,15 +17,16 @@ LAB_MODEL ?= gemma4:12b
 
 # Label for the machine the lab engine runs on, written to the results, for example
 # LAB_HARDWARE="NVIDIA RTX 5090 (32 GB)". Empty writes none. Never a host name.
-# To measure the GPU memory as well, pass the probe through EVAL_ARGS, for example
+# taraengine measures the GPU memory itself on NVIDIA. For an engine that only estimates it, pass a probe
+# through EVAL_ARGS, for example
 # EVAL_ARGS='--gpu-probe "ssh -o BatchMode=yes <engine host> nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits"'.
 LAB_HARDWARE ?=
 
 # Recorder host: the SSH alias of the lab VM and the directory the corpus is synced to.
 RECORD_HOST ?= taracode
 RECORD_DIR ?= taracode-evals
-# Models the scoreboard target runs, tier defaults first (registry order for the rest).
-SCOREBOARD_MODELS ?= gemma4:12b qwen3.8:27b qwen3.6:35b gemma4:e4b qwen3.5:9b ministral-3:14b qwen3.6:27b gemma4:26b muse-glimmer:30b glm-4.7-flash gemma4:31b nemotron-3.5-lightning:30b
+# Models the scoreboard target runs: the engine catalog's eight models, in catalog order.
+SCOREBOARD_MODELS ?= gemma4:e4b gemma4:12b gemma4:26b gemma4:31b glm-4.7-flash qwen3.6:27b qwen3.8:27b qwen3.6:35b
 
 # Linker flags to inject version and strip debug info
 LDFLAGS=-s -w -X $(PKG).Version=$(VERSION)
@@ -76,7 +77,8 @@ build-all:
 snapshot:
 	$(GORELEASER) release --snapshot --clean --skip=publish,sign
 
-# Three real sessions against a lab Ollama. Needs LAB_HOST=http://<host>:<port> in the environment.
+# Three real sessions against a lab engine. Needs LAB_HOST=http://<host>:<port> in the environment,
+# and TARACODE_KEY for a keyed engine.
 lab-smoke: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) doctor --host $(LAB_HOST)
@@ -94,13 +96,16 @@ record:
 	ssh $(RECORD_HOST) 'cd $(RECORD_DIR) && ./taracode eval record --corpus evals/tasks --scenarios evals/scenarios $(if $(RECORD_TASKS),--tasks "$(RECORD_TASKS)",)'
 	rsync -az --delete --include='*/' --include='fixtures/***' --exclude='*' $(RECORD_HOST):$(RECORD_DIR)/evals/tasks/ evals/tasks/
 
-# Run the corpus against one lab model. Needs LAB_HOST; EVAL_ARGS passes extra flags (--tasks, --runs).
+# Run the corpus against one lab model. Needs LAB_HOST, and TARACODE_KEY for a keyed engine;
+# EVAL_ARGS passes extra flags (--tasks, --runs).
 eval-lab: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	./$(BINARY) eval run --host $(LAB_HOST) --model $(LAB_MODEL) $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS)
 
 # The whole board: every model in SCOREBOARD_MODELS in order, then the report. Stops at the first
-# model that fails (a safety failure or an unusable model).
+# model that fails (a safety failure or an unusable model). On the engine a model that does not fit
+# fails to load instead of spilling to the CPU, so `make scoreboard` stops at it too; the eight
+# catalog models fit a 32 GB card.
 scoreboard: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	for m in $(SCOREBOARD_MODELS); do ./$(BINARY) eval run --host $(LAB_HOST) --model $$m $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS) || exit 1; done

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
@@ -33,7 +33,7 @@ func TestCallSummaryNamesARefusedCall(t *testing.T) {
 // model is told why, and the audit log records the denial.
 func TestASavedDenyRuleRefusesAndIsAudited(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeOperate,
-		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), ollamatest.Turn{Content: "ok"})
+		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), taraenginetest.Turn{Content: "ok"})
 	if err := a.permissions.Set("write_file", policy.Deny); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestAuditReportsWhatItCouldNotRecord(t *testing.T) {
 
 func TestAFailingToolIsAnErrorResult(t *testing.T) {
 	a, srv, _ := gateAssistant(t, policy.ModeInvestigate,
-		toolCall("read_file", map[string]any{"path": "missing.txt"}), ollamatest.Turn{Content: "not there"})
+		toolCall("read_file", map[string]any{"path": "missing.txt"}), taraenginetest.Turn{Content: "not there"})
 	_ = captureStdout(t, func() {
 		if err := a.ProcessMessage("read it"); err != nil {
 			t.Error(err)
@@ -123,7 +123,7 @@ func TestTheTestAssistantAllowsWhatItIsAsked(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.permissions = nil // no saved rules: every mutation asks
 	enterOperate(t, a)
-	srv.Turns = []ollamatest.Turn{toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}),
+	srv.Turns = []taraenginetest.Turn{toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}),
 		{Content: "written"}}
 	_ = captureStdout(t, func() {
 		if err := a.ProcessMessage("write x.txt"); err != nil {

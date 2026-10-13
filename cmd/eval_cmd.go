@@ -14,7 +14,6 @@ import (
 
 	"github.com/tara-vision/taracode/internal/evals"
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 // evalRunFlags are the flags of `taracode eval run`.
@@ -35,7 +34,7 @@ var evalCmd = &cobra.Command{
 
 var evalRunCmd = &cobra.Command{
 	Use:          "run",
-	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<date>.json",
+	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<server>-<date>.json",
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -102,25 +101,23 @@ func init() {
 		"label for the machine the engine runs on, at most 60 characters, e.g. \"NVIDIA RTX 5090 (32 GB)\" "+
 			"(never a host name or an address)")
 	evalRunCmd.Flags().StringVar(&evalRun.gpuProbe, "gpu-probe", "",
-		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded, e.g. "+
-			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; the engine's own "+
-			"figure is an estimate. The run unloads its model when it ends")
+		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded when the "+
+			"engine only estimates its memory, e.g. "+
+			"\"nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits\"; an engine that "+
+			"measures it needs none. The run unloads its model when it ends")
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
 	evalReportCmd.Flags().String("results", "docs/evals/results", "results directory")
 	evalReportCmd.Flags().String("out-dir", "docs/evals", "where scoreboard.md and scoreboard.json go")
 	evalReportCmd.Flags().String("corpus", "evals/tasks", "task directory (for the task count)")
-	evalReportCmd.Flags().Bool("check-defaults", false, "print the registry default and the top scorer per tier")
+	evalReportCmd.Flags().Bool("check-defaults", false, "print each tier's default and its top scorer")
 	evalLintCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalCmd.AddCommand(evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd)
 }
 
 // runEvalRun is the testable core of `eval run`.
 func runEvalRun(f evalRunFlags, out io.Writer) error {
-	if f.host == "" {
-		return noHost()
-	}
 	if f.model == "" {
 		return errors.New("set --model: evals run one named model at a time")
 	}
@@ -176,7 +173,8 @@ func reportStoppedRun(f evalRunFlags, tasks []evals.Task, res evals.Results, run
 }
 
 // writePartialResults writes a stopped run's partial task results as JSON to
-// <runsDir>/<model-slug>-<date>-partial.json, mirroring evals.WriteResults' file shape.
+// <runsDir>/<model>-<server>-<date>-partial.json (evals.ResultsName plus the marker), mirroring
+// evals.WriteResults' file shape.
 func writePartialResults(runsDir string, res evals.Results) (string, error) {
 	//nolint:gosec // runsDir is a git-ignored working directory (evals/runs by default)
 	if err := os.MkdirAll(runsDir, 0o755); err != nil {
@@ -198,7 +196,7 @@ func writePartialResults(runsDir string, res evals.Results) (string, error) {
 // scoreboard - which only ever reads the results directory, never the runs directory - can never
 // mistake this for a committed result.
 func partialResultsName(res evals.Results) string {
-	return evals.ModelSlug(res.Model) + "-" + res.Date + "-partial.json"
+	return evals.ResultsName(res) + "-partial.json"
 }
 
 // runEvalRecord records every recorded task matching glob.
@@ -237,11 +235,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 	if err != nil {
 		return fmt.Errorf("loading results from %s: %w", results, err)
 	}
-	reg, err := models.Load()
-	if err != nil {
-		return fmt.Errorf("loading the model registry: %w", err)
-	}
-	sb := evals.BuildScoreboard(all, reg, count, Version)
+	sb := evals.BuildScoreboard(all, count, Version)
 	//nolint:gosec // outDir is repository content (docs/evals by default)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", outDir, err)
@@ -270,7 +264,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
 	}
 	if checkDefaults {
-		for _, line := range sb.CheckDefaults(reg) {
+		for _, line := range sb.CheckDefaults() {
 			_, _ = fmt.Fprintln(out, line)
 		}
 	}

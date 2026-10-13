@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,23 +12,21 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
 )
 
-// doctorCmd is `taracode doctor`: it checks the LLM server, the installed models and their
-// capabilities, the host RAM tier and the registry's recommendation for it, and the external
-// tools on PATH, then prints the report and exits 1 when the server could not be reached.
+// `doctorCmd` is `taracode doctor`: it checks the server (on taraengine: its version, runtime, the
+// machine and the recommended model), the pulled models and their capabilities, and the external
+// tools on PATH, then prints the report and exits 1 when taracode cannot use the server.
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Diagnose the LLM server, installed models and external tools",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		targetHost, apiKey, vendor, configuredModel := resolveDoctorTarget()
-		if targetHost == "" {
-			return noHost()
-		}
 		rep, err := runDoctor(cmd.Context(), targetHost, apiKey, vendor, configuredModel)
 		if err != nil {
 			return err
@@ -60,17 +59,25 @@ func doctorResolveWindow(modelMax int) (int, string) {
 	return agent.ResolveContextWindow(viper.GetString("context.window"), modelMax)
 }
 
-// runDoctor builds a provider for hostURL and runs models.Diagnose against it. It is the testable
-// core of the command: asserting a real process exit code is awkward under go test, so tests call
-// this (and doctorExitCode) directly instead of driving the command through cobra's Execute.
+// runDoctor builds a provider for hostURL and runs models.Diagnose against it; a host that nothing answers at gives
+// the unreachable report, not an error. It is the testable core of the command: asserting a real process exit code
+// is awkward under go test, so tests call this (and doctorExitCode) directly instead of driving the command through
+// cobra's Execute.
 func runDoctor(ctx context.Context, hostURL, apiKey, vendor, configuredModel string) (models.Report, error) {
 	prov, err := provider.New(ctx, hostURL, vendor, apiKey)
-	if err != nil {
+	var unreachable *llm.UnreachableError
+	switch {
+	case errors.As(err, &unreachable):
+		return models.UnreachableReport(hostURL, err, configuredModel, exec.LookPath), nil
+	case err != nil:
 		return models.Report{}, fmt.Errorf("doctor: create provider: %w", err)
 	}
-	ramGB, _ := models.HostRAMGB()
-	return models.Diagnose(ctx, prov.LLM(), hostURL, ramGB, configuredModel, exec.LookPath, doctorResolveWindow), nil
+	return models.Diagnose(ctx, prov.LLM(), hostURL, configuredModel, keepAliveSet(), exec.LookPath,
+		doctorResolveWindow), nil
 }
+
+// keepAliveSet reports whether the config sets keep_alive, which taracode sends to no server.
+func keepAliveSet() bool { return viper.GetString("keep_alive") != "" }
 
 // doctorExitCode is 1 when the server could not be reached, the condition RunE turns into
 // os.Exit(1).
@@ -106,10 +113,9 @@ func handleDoctor(asst *agent.Assistant, projectRoot string) {
 	if info := asst.GetProviderInfo(); info != nil {
 		liveHost = info.Host
 	}
-	ramGB, _ := models.HostRAMGB()
 	rep := models.Diagnose(
-		context.Background(), asst.GetProvider().LLM(), liveHost, ramGB, asst.GetCurrentModel(), exec.LookPath,
-		doctorResolveWindow,
+		context.Background(), asst.GetProvider().LLM(), liveHost, asst.GetCurrentModel(), keepAliveSet(),
+		exec.LookPath, doctorResolveWindow,
 	)
 	rep.PolicyNote = policyNote(projectRoot)
 	fmt.Print(rep.Render())

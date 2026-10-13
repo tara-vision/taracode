@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -16,8 +17,8 @@ const (
 // ErrModelWithoutTools is returned when the selected model cannot call tools.
 var ErrModelWithoutTools = errors.New("model does not support tools")
 
-// ResolveContextWindow turns the context.window setting ("auto" or a number) into the num_ctx to
-// request. modelMax is the model's native maximum (0 = unknown). The below-floor warning applies
+// ResolveContextWindow turns the context.window setting ("auto" or a number) into the window the model
+// loads at. modelMax is the model's native maximum (0 = unknown). The below-floor warning applies
 // on every path, including an explicit numeric window, and combines with a clamp warning when a
 // value carries both (never clamped upward).
 func ResolveContextWindow(configured string, modelMax int) (int, string) {
@@ -58,7 +59,7 @@ func withFloorWarning(window int, warning string) (int, string) {
 
 // SetThink changes the reasoning mode for later requests, downgrading it to auto when the current
 // model has no thinking capability (the same gate applyModelDetails runs on every model switch), so
-// a runtime /think cannot put a level on the wire that Ollama will reject with a 400. Returns the
+// a runtime /think cannot put a level on the wire that the server will reject with a 400. Returns the
 // mode that will actually be sent, which the caller should report instead of the one requested.
 func (a *Assistant) SetThink(t llm.Think) llm.Think {
 	a.think = t
@@ -69,20 +70,31 @@ func (a *Assistant) SetThink(t llm.Think) llm.Think {
 // Think returns the current reasoning mode.
 func (a *Assistant) Think() llm.Think { return a.think }
 
-// applyModelDetails resolves the context window and gates on tool support after a model is chosen.
+// applyModelDetails resolves the context window and gates on tool support after a model is chosen. A refusal the
+// server explained (not pulled, a key, faulty) and a server nothing answers at stop here.
 func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) error {
-	if err != nil {
-		if errors.Is(err, llm.ErrNotSupported) {
-			// OpenAI-compatible servers: no capability data; the tools go out and the server decides.
-			a.contextWindow = 0
-			a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
-			return nil
-		}
-		// A transient Show failure still requests a window instead of silently disabling num_ctx
-		// for the whole session; the tools gate is skipped since capabilities are unknown.
+	var refused *llm.ServerError
+	var unreachable *llm.UnreachableError
+	switch {
+	case errors.As(err, &refused) || errors.As(err, &unreachable):
+		return err
+	case errors.Is(err, llm.ErrNotSupported):
+		// OpenAI-compatible servers: no capability data; the tools go out and the server decides.
+		a.contextWindow = 0
+		a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
+		return nil
+	case err != nil:
+		// A transient Show failure still resolves a window for the load; the tools gate is skipped since the
+		// capabilities are unknown.
 		_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("Could not read model capabilities: %v", err)))
 		a.thinkingSupported = true // capabilities unknown; SetThink must not downgrade blindly
 		a.resolveAndApplyWindow(0)
+		return nil
+	case details != nil && details.CapabilitiesUnknown:
+		// An import the engine has not loaded yet: it infers the capabilities at the load, so the tools gate is
+		// skipped as for a server without capability data, and the native window still caps the load.
+		a.thinkingSupported = true
+		a.resolveAndApplyWindow(details.ContextLength)
 		return nil
 	}
 	if !details.Has("tools") {
@@ -94,7 +106,33 @@ func (a *Assistant) applyModelDetails(details *llm.ModelDetails, err error) erro
 	return nil
 }
 
-// resolveAndApplyWindow resolves the num_ctx to request against modelMax, keeps the compaction
+// settingsSnapshot is the part of the session that applyModelDetails sets: the reasoning mode, whether the model
+// supports it, the window the model loads at and the compaction budget. A model switch that does not happen puts
+// it back.
+type settingsSnapshot struct {
+	think             llm.Think
+	thinkingSupported bool
+	contextWindow     int
+	maxTokens         int
+}
+
+// snapshotSettings copies the settings applyModelDetails sets.
+func (a *Assistant) snapshotSettings() settingsSnapshot {
+	return settingsSnapshot{
+		think:             a.think,
+		thinkingSupported: a.thinkingSupported,
+		contextWindow:     a.contextWindow,
+		maxTokens:         a.compactionCfg.MaxTokens,
+	}
+}
+
+// restoreSettings puts a snapshot back.
+func (a *Assistant) restoreSettings(s settingsSnapshot) {
+	a.think, a.thinkingSupported = s.think, s.thinkingSupported
+	a.contextWindow, a.compactionCfg.MaxTokens = s.contextWindow, s.maxTokens
+}
+
+// resolveAndApplyWindow resolves the window the model loads at against modelMax, keeps the compaction
 // budget in step, and prints any warning ResolveContextWindow has.
 func (a *Assistant) resolveAndApplyWindow(modelMax int) {
 	window, warning := ResolveContextWindow(a.configuredWindow, modelMax)
@@ -107,8 +145,24 @@ func (a *Assistant) resolveAndApplyWindow(modelMax int) {
 	}
 }
 
+// loadModel loads the model at the resolved window on a backend that sets the window at load time (llm.Loader:
+// taraengine); other backends have nothing to load. The engine client bounds the load itself, which can take minutes,
+// so the session says what it waits for first.
+func (a *Assistant) loadModel() error {
+	loader, ok := a.llm.(llm.Loader)
+	if !ok || a.contextWindow <= 0 {
+		return nil
+	}
+	_, _ = fmt.Fprintln(a.out, a.renderer.Dim(fmt.Sprintf("Loading %s at a %d-token window...", a.model,
+		a.contextWindow)))
+	if err := loader.Load(context.Background(), a.model, a.contextWindow); err != nil {
+		return fmt.Errorf("loading %s: %w", a.model, err)
+	}
+	return nil
+}
+
 // downgradeThinkIfUnsupported resets a configured think level to auto when the current model has no
-// thinking capability: sending think on such a model makes Ollama reject every turn with a 400. It
+// thinking capability: sending think on such a model makes the server reject every turn with a 400. It
 // is a no-op when capabilities are unknown (thinkingSupported defaults to true then) or the level is
 // already auto/off, and warns once when it actually changes something. Shared by applyModelDetails
 // (every model switch) and SetThink (the runtime /think command), so neither path can bypass it.

@@ -13,7 +13,7 @@ import (
 
 	projectcontext "github.com/tara-vision/taracode/internal/context"
 	"github.com/tara-vision/taracode/internal/llm"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/storage"
 )
@@ -157,7 +157,7 @@ func (p *fakeProvider) CreateClient() *openai.Client                   { return 
 func (p *fakeProvider) LLM() llm.Client                                { return nil }
 func (p *fakeProvider) SetModel(m string)                              { p.info.Model = m }
 
-func TestModelManagementNeedsAnOllamaProvider(t *testing.T) {
+func TestModelManagementNeedsAnEngineProvider(t *testing.T) {
 	a, _ := newTestAssistant(t, false)
 	a.provider = nil
 	if a.GetProviderInfo() != nil {
@@ -178,9 +178,9 @@ func TestModelManagementNeedsAnOllamaProvider(t *testing.T) {
 	}
 }
 
-func TestListModelsAndSwitchModelOnOllama(t *testing.T) {
+func TestListModelsAndSwitchModelOnTheEngine(t *testing.T) {
 	a, srv, _ := gateAssistant(t, "investigate")
-	srv.Models = append(srv.Models, ollamatest.ModelSpec{Name: "qwen3.5:9b", Capabilities: []string{"completion", "tools"},
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "qwen3.5:9b", Capabilities: []string{"completion", "tools"},
 		ContextLength: 32768, ParameterSize: "9B"})
 	list, err := a.ListModels()
 	if err != nil || len(list) != 2 || list[1].Name != "qwen3.5:9b" || list[1].Params != "9B" {
@@ -196,7 +196,7 @@ func TestListModelsAndSwitchModelOnOllama(t *testing.T) {
 
 func TestSwitchModelReportsWhatItCouldNotDo(t *testing.T) {
 	a, srv, dir := gateAssistant(t, "investigate")
-	srv.Models = append(srv.Models, ollamatest.ModelSpec{Name: "qwen3.5:9b", Capabilities: []string{"completion", "tools"},
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "qwen3.5:9b", Capabilities: []string{"completion", "tools"},
 		ContextLength: 32768})
 	var out bytes.Buffer
 	a.out = &out

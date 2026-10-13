@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
 // dropToolSupport makes the fake's model a completion-only one, so any assistant built after this
 // refuses it.
-func dropToolSupport(srv *ollamatest.Server) {
+func dropToolSupport(srv *taraenginetest.Server) {
 	srv.Models[0].Capabilities = []string{"completion"}
 }
 
@@ -72,7 +72,7 @@ func TestReloadReportsAFailure(t *testing.T) {
 // TestInitConnectsTheAutoConnectServers: MCP servers that connect on their own wait for /init in an
 // uninitialised project.
 func TestInitConnectsTheAutoConnectServers(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	r.mcp = newMCPManager(t, fakeMCPServer("fake", true))
 	_ = captureStdoutForTest(t, func() { r.dispatch("/init") })
 	if !r.initialised || !r.mcp.IsConnected("fake") {
@@ -82,7 +82,7 @@ func TestInitConnectsTheAutoConnectServers(t *testing.T) {
 
 func TestInitReportsAnUnwritableProject(t *testing.T) {
 	skipIfRoot(t)
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	if err := os.Chmod(r.projectRoot, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestInitReportsAnUnwritableProject(t *testing.T) {
 }
 
 func TestInitReportsAFailedReconnect(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	r := replOn(t, srv, t.TempDir(), true)
 	dropToolSupport(srv)
 	_, stderr := captureOutput(t, func() { r.dispatch("/init") })

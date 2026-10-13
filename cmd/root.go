@@ -180,10 +180,11 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.taracode/config.yaml)")
-	rootCmd.PersistentFlags().StringVar(&host, "host", "", "LLM server URL (e.g., http://localhost:11434)")
+	rootCmd.PersistentFlags().StringVar(&host, "host", "",
+		"taraengine URL (default http://127.0.0.1:8272); any OpenAI-compatible server works too")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "key", "", "API key (optional for local servers)")
 	rootCmd.PersistentFlags().StringVar(&model, "model", "", "model name (optional, auto-detected from server)")
-	rootCmd.PersistentFlags().StringVar(&vendor, "vendor", "", "LLM vendor (auto, vllm, ollama, llama.cpp)")
+	rootCmd.PersistentFlags().StringVar(&vendor, "vendor", "", "server type (auto, taraengine, vllm, llama.cpp, ollama)")
 	rootCmd.PersistentFlags().StringVar(&mode, "mode", "", "operating mode (investigate, operate)")
 	rootCmd.PersistentFlags().StringVar(&severity, "severity", "", "default severity filter for security scans (e.g., HIGH,CRITICAL)")
 	rootCmd.PersistentFlags().BoolVar(&noStream, "no-stream", false, "disable streaming output (show response all at once)")

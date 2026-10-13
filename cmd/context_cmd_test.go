@@ -30,7 +30,7 @@ func TestPrintContextBudget(t *testing.T) {
 	out := captureStdoutForTest(t, func() { printContextBudget(over) })
 	for _, want := range []string{
 		"Context Budget: 40.0k / 32.8k tokens (122%)", "System prompt:    1.2k tokens", "Tool definitions: 3.4k tokens",
-		"Server context:   16.4k tokens (Ollama num_ctx)", "Context window (requested): 32.8k tokens",
+		"Server context:   16.4k tokens (the window the model runs at)", "Context window (requested): 32.8k tokens",
 		"Conversation:     5.0k tokens (7 messages, 2 compactions)", "Available:        0.0k tokens",
 	} {
 		if !strings.Contains(out, want) {

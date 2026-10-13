@@ -43,10 +43,12 @@ This security policy covers:
 - The Tara Code CLI application
 - Official distribution channels (GitHub releases, Homebrew tap)
 
+taraengine reports go to its own policy: https://github.com/tara-vision/taraengine/blob/main/SECURITY.md
+
 ### Out of Scope
 
 - Vulnerabilities in third-party dependencies (please report to the upstream project)
-- Issues with self-hosted LLM servers (Ollama, vLLM, llama.cpp)
+- Issues with third-party self-hosted LLM servers (vLLM, llama.cpp, Ollama)
 - Social engineering attacks
 
 ## Verifying Downloads
@@ -71,7 +73,7 @@ When using Tara Code:
 - Keep your installation updated to the latest version
 - Review commands before execution when using the `shell` tool, and review the policy before switching to operate mode
 - Be cautious with file operations in sensitive directories
-- Ensure your self-hosted LLM servers (Ollama, vLLM, llama.cpp) are properly secured if exposed to a network
+- Ensure your self-hosted LLM servers (taraengine, vLLM, llama.cpp, Ollama) are properly secured if exposed to a network
 - `.taracode/audit.jsonl` stores the model's raw command for every mutation, so a secret it echoes into a
   command (rather than one taracode reads from a file or an environment variable) lands unredacted in that
   0600 file; treat it like any other local file with your command history in it

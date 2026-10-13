@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -35,7 +35,7 @@ func secondSession(t *testing.T, r *repl, name string, n int) *storage.Session {
 }
 
 func TestSessionShowsTheStoredSession(t *testing.T) {
-	r, _ := projectREPL(t, ollamatest.Turn{Content: "hello back"})
+	r, _ := projectREPL(t, taraenginetest.Turn{Content: "hello back"})
 	_ = captureStdoutForTest(t, func() {
 		if err := r.asst.ProcessMessage("hello"); err != nil {
 			t.Error(err)
@@ -60,7 +60,7 @@ func TestSessionShowsTheStoredSession(t *testing.T) {
 }
 
 func TestSessionCommandsWithoutStorage(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	tests := []struct {
 		command, stdout, stderr string
 	}{
@@ -187,7 +187,7 @@ func TestSessionCommandsWhenNoSessionCouldBeCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(history, 0o755) })
-	r := replOn(t, fakeOllama(t), dir, false)
+	r := replOn(t, fakeEngine(t), dir, false)
 	if r.asst.GetStorage() == nil || r.asst.GetSession() != nil {
 		t.Fatalf("storage %v, session %v", r.asst.GetStorage(), r.asst.GetSession())
 	}

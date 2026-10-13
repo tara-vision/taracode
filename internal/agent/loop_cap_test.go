@@ -10,14 +10,14 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
-// chatBodies are the bodies of the /api/chat requests the fake served, in order.
-func chatBodies(srv *ollamatest.Server) []map[string]any {
+// chatBodies are the bodies of the chat requests the fake served, in order.
+func chatBodies(srv *taraenginetest.Server) []map[string]any {
 	var out []map[string]any
 	for _, r := range srv.Requests {
-		if r.Path == "/api/chat" {
+		if r.Path == chatPath {
 			out = append(out, r.Body)
 		}
 	}
@@ -57,11 +57,11 @@ func TestTheCapAnswersWithTheFindingsSoFar(t *testing.T) {
 		a.maxIterations = 2
 		var events []ToolEvent
 		a.observer = func(ev ToolEvent) { events = append(events, ev) }
-		read := ollamatest.ToolCall{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}
-		srv.Turns = []ollamatest.Turn{
-			{ToolCalls: []ollamatest.ToolCall{read}},
-			{ToolCalls: []ollamatest.ToolCall{read}},
-			{Content: "So far: hello.txt says hello from disk.", ToolCalls: []ollamatest.ToolCall{read}},
+		read := taraenginetest.ToolCall{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}
+		srv.Turns = []taraenginetest.Turn{
+			{ToolCalls: []taraenginetest.ToolCall{read}},
+			{ToolCalls: []taraenginetest.ToolCall{read}},
+			{Content: "So far: hello.txt says hello from disk.", ToolCalls: []taraenginetest.ToolCall{read}},
 			{Content: "Next turn."},
 		}
 		if err := a.ProcessMessage("what does hello.txt say?"); err != nil {
@@ -102,8 +102,8 @@ func TestTheCapWarnsWhenTheFinalCompletionFails(t *testing.T) {
 	var out bytes.Buffer
 	a.out = &out
 	a.maxIterations = 2
-	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}}
-	srv.Turns = []ollamatest.Turn{call, call, {Status: http.StatusInternalServerError, Error: "the model crashed"},
+	call := taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}}
+	srv.Turns = []taraenginetest.Turn{call, call, {Status: http.StatusInternalServerError, Error: "the model crashed"},
 		{Content: "Next turn."}}
 	if err := a.ProcessMessage("loop"); err != nil {
 		t.Fatalf("a failed final completion must not fail the turn: %v", err)
@@ -133,8 +133,8 @@ func TestTheCapReturnsAContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	a.observer = func(ToolEvent) { cancel() }
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "never asked"},
 	}
 	if err := a.ProcessMessageContext(ctx, "read"); !errors.Is(err, context.Canceled) {
@@ -148,16 +148,16 @@ func TestTheCapReturnsAContextError(t *testing.T) {
 // TestTheCapWarnsOnAnEmptyAnswer: a final completion with no text, only a tool call or only reasoning,
 // is reported instead of passed over in silence, and nothing is stored for it (ruling P3-R63).
 func TestTheCapWarnsOnAnEmptyAnswer(t *testing.T) {
-	read := ollamatest.ToolCall{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}
-	for name, final := range map[string]ollamatest.Turn{
-		"a tool call only": {ToolCalls: []ollamatest.ToolCall{read}},
+	read := taraenginetest.ToolCall{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}
+	for name, final := range map[string]taraenginetest.Turn{
+		"a tool call only": {ToolCalls: []taraenginetest.ToolCall{read}},
 		"reasoning only":   {Thinking: "I would read it again."},
 	} {
 		a, srv := newTestAssistant(t, false)
 		var out bytes.Buffer
 		a.out = &out
 		a.maxIterations = 1
-		srv.Turns = []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{read}}, final}
+		srv.Turns = []taraenginetest.Turn{{ToolCalls: []taraenginetest.ToolCall{read}}, final}
 		if err := a.ProcessMessage("read"); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

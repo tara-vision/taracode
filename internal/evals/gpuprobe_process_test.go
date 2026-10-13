@@ -115,7 +115,7 @@ func TestRunProbesAfterTheWarmUpAndBeforeTheFirstTask(t *testing.T) {
 	var mu sync.Mutex
 	var probedAtChat []bool
 	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/chat" {
+		if r.URL.Path == "/v1/chat/completions" {
 			_, statErr := os.Stat(marker)
 			mu.Lock()
 			probedAtChat = append(probedAtChat, statErr == nil)

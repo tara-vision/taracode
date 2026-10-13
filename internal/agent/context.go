@@ -57,8 +57,8 @@ type ContextInfo struct {
 	CompactionEnabled   bool
 	CompactionThreshold float64
 	MaxIterations       int
-	ServerContextTokens int // context window reported by the Ollama server (0 = unknown)
-	ContextWindow       int // num_ctx requested for the current model (0 = unresolved)
+	ServerContextTokens int // the window the server loaded the model with (0 = unknown)
+	ContextWindow       int // the window the current model loads at (0 = unresolved)
 }
 
 // ForceCompact triggers immediate conversation compaction regardless of threshold
@@ -76,8 +76,8 @@ func (a *Assistant) ForceCompact() error {
 	forceCfg.Enabled = true
 	forceCfg.Threshold = 0.0 // Always trigger
 
-	// The summary request carries the session's own options (num_ctx, keep_alive) with thinking
-	// off and a small token budget, the same as the automatic path in loop.go.
+	// The summary request carries the session's own options with thinking off and a small token budget, the same as
+	// the automatic path in loop.go.
 	options := a.requestOptions()
 	options.NumPredict = compactionSummaryTokens
 	options.Think = llm.ThinkOff

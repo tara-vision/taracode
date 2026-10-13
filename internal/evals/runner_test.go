@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // corpusWithTriage writes the crashloop task with three fixtures into a temp corpus.
@@ -36,19 +36,21 @@ func corpusWithTriage(t *testing.T) (string, []Task) {
 	return root, tasks
 }
 
-func fakeOllama(t *testing.T, turns ...ollamatest.Turn) *ollamatest.Server {
+func fakeEngine(t *testing.T, turns ...taraenginetest.Turn) *taraenginetest.Server {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = append([]ollamatest.Turn{{Content: "ready"}}, turns...) // the warm-up answer first
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
+		ContextLength: 32768, Tier: "16", Default: true}}
+	srv.Turns = append([]taraenginetest.Turn{{Content: "ready"}}, turns...) // the warm-up answer first
 	return srv
 }
 
-func call(name string, args map[string]any) ollamatest.Turn {
-	return ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: name, Args: args}}, PromptTokens: 100, CompletionTokens: 10}
+func call(name string, args map[string]any) taraenginetest.Turn {
+	return taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: name, Args: args}}, PromptTokens: 100,
+		CompletionTokens: 10}
 }
 
-func runOptions(srv *ollamatest.Server, runsDir string) RunOptions {
+func runOptions(srv *taraenginetest.Server, runsDir string) RunOptions {
 	return RunOptions{Host: srv.URL, Model: "gemma4:12b", Timeout: 30 * time.Second, RunsDir: runsDir, Version: "test",
 		Now: func() time.Time { return time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC) }}
 }
@@ -62,18 +64,20 @@ func triageRowWrong(tr TaskResult) bool {
 
 func TestRunnerScoresATaskEndToEnd(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		call("kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}),
 		call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}),
 		call("shell", map[string]any{"command": "kubectl logs checkout-1 -n shop --previous"}),
-		ollamatest.Turn{Content: "The container was OOMKilled: it exceeded its memory limit of 64Mi.", PromptTokens: 400, CompletionTokens: 30},
+		taraenginetest.Turn{Content: "The container was OOMKilled: it exceeded its memory limit of 64Mi.", PromptTokens: 400,
+			CompletionTokens: 30},
 	)
 	runsDir := t.TempDir()
 	res, err := Run(context.Background(), tasks, runOptions(srv, runsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Model != "gemma4:12b" || res.Tier != "16" || res.Ollama != "0.34.2" || res.Date != "2026-09-26" || res.Taracode != "test" {
+	if res.Model != "gemma4:12b" || res.Tier != "16" || res.Server == nil || res.Server.String() != "taraengine 0.2.0" ||
+		res.Date != "2026-09-26" || res.Taracode != "test" {
 		t.Fatalf("header %+v", res)
 	}
 	if len(res.Tasks) != 1 {
@@ -93,10 +97,10 @@ func TestRunnerScoresATaskEndToEnd(t *testing.T) {
 
 func TestRunnerRecordsFixtureMisses(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		call("kubectl", map[string]any{"verb": "get", "resource": "events", "namespace": "shop"}),
 		call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}),
-		ollamatest.Turn{Content: "OOMKilled at the memory limit."},
+		taraenginetest.Turn{Content: "OOMKilled at the memory limit."},
 	)
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err != nil {
@@ -133,9 +137,9 @@ func TestRunnerSurfacesASafetyFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		call("kubectl", map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop", "args": "--replicas=3"}),
-		ollamatest.Turn{Content: "Scaled. OOMKilled memory limit."},
+		taraenginetest.Turn{Content: "Scaled. OOMKilled memory limit."},
 	)
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err != nil {
@@ -175,9 +179,9 @@ func TestRunnerStopsOnACorpusDefect(t *testing.T) {
 	if err != nil || len(tasks) != 2 {
 		t.Fatalf("tasks %d, err %v", len(tasks), err)
 	}
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}),
-		ollamatest.Turn{Content: "OOMKilled at the memory limit."},
+		taraenginetest.Turn{Content: "OOMKilled at the memory limit."},
 	)
 	res, err := Run(context.Background(), tasks, runOptions(srv, ""))
 	if err == nil || !strings.Contains(err.Error(), "corpus defect") || !strings.Contains(err.Error(), "crashloop-oomkilled") {
@@ -215,14 +219,14 @@ func TestRunnerResolvesTheRunDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", link)
-	srv := fakeOllama(t, call("list_files", map[string]any{"path": "."}), ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, call("list_files", map[string]any{"path": "."}), taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	if _, err := Run(context.Background(), tasks, runOptions(srv, "")); err != nil {
 		t.Fatal(err)
 	}
 	var dirs []string
 	var toolResults string
 	for _, r := range srv.Requests {
-		if r.Path != "/api/chat" {
+		if r.Path != "/v1/chat/completions" {
 			continue
 		}
 		messages, _ := r.Body["messages"].([]any)
@@ -254,19 +258,18 @@ func TestRunnerResolvesTheRunDirectory(t *testing.T) {
 // carries temperature 0 explicitly (spec 7), which a zero Generation.Temperature alone would leave out.
 func TestRunnerSendsTemperatureZero(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	if _, err := Run(context.Background(), tasks, runOptions(srv, "")); err != nil {
 		t.Fatal(err)
 	}
 	chats := 0
 	for _, r := range srv.Requests {
-		if r.Path != "/api/chat" {
+		if r.Path != "/v1/chat/completions" {
 			continue
 		}
 		chats++
-		options, _ := r.Body["options"].(map[string]any)
-		if temperature, ok := options["temperature"]; !ok || temperature != 0.0 {
-			t.Errorf("chat request %d options %v", chats, options)
+		if temperature, ok := r.Body["temperature"]; !ok || temperature != 0.0 {
+			t.Errorf("chat request %d temperature %v", chats, r.Body["temperature"])
 		}
 	}
 	if chats != 2 {
@@ -278,10 +281,10 @@ func TestRunnerSendsTemperatureZero(t *testing.T) {
 // counts rounded (ruling P3-R48), and the pass mark is applied to the mean.
 func TestRunnerAveragesRepeatedRuns(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t,
+	srv := fakeEngine(t,
 		call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}),
-		ollamatest.Turn{Content: "OOMKilled: the memory limit.", PromptTokens: 50},
-		ollamatest.Turn{Content: "No idea.", PromptTokens: 50},
+		taraenginetest.Turn{Content: "OOMKilled: the memory limit.", PromptTokens: 50},
+		taraenginetest.Turn{Content: "No idea.", PromptTokens: 50},
 	)
 	opts := runOptions(srv, "")
 	opts.Runs = 2
@@ -299,7 +302,7 @@ func TestRunnerAveragesRepeatedRuns(t *testing.T) {
 
 func TestRunnerTimesOutATask(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	opts := runOptions(srv, "")
 	opts.Timeout = time.Nanosecond
 	res, err := Run(context.Background(), tasks, opts)
@@ -313,8 +316,8 @@ func TestRunnerTimesOutATask(t *testing.T) {
 
 func TestRunnerRefusesAModelWithoutTools(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "plain:1b", Capabilities: []string{"completion"}, ContextLength: 4096}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "plain:1b", Capabilities: []string{"completion"}, ContextLength: 4096}}
 	opts := runOptions(srv, "")
 	opts.Model = "plain:1b"
 	if _, err := Run(context.Background(), tasks, opts); err == nil || !strings.Contains(err.Error(), "tools") {
@@ -368,8 +371,8 @@ func TestRunnerAveragesEveryCountPerRun(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	describe := call("kubectl", map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"})
 	events := call("kubectl", map[string]any{"verb": "get", "resource": "events", "namespace": "shop"})
-	answer := ollamatest.Turn{Content: "OOMKilled at the memory limit.", PromptTokens: 40, CompletionTokens: 6}
-	srv := fakeOllama(t, describe, events, answer, describe, events, answer)
+	answer := taraenginetest.Turn{Content: "OOMKilled at the memory limit.", PromptTokens: 40, CompletionTokens: 6}
+	srv := fakeEngine(t, describe, events, answer, describe, events, answer)
 	opts := runOptions(srv, "")
 	opts.Runs = 2
 	res, err := Run(context.Background(), tasks, opts)
@@ -394,12 +397,12 @@ func TestRunnerAveragesEveryCountPerRun(t *testing.T) {
 // stays behind it for an engine whose show resolves more than its list names.
 func TestRunnerRefusesAModelTheEngineDoesNotServe(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "aaa:1b", Capabilities: []string{"completion", "tools"}, ContextLength: 4096},
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768},
 	}
-	srv.Turns = []ollamatest.Turn{{Content: "ready"}, {Content: "OOMKilled memory limit"}}
+	srv.Turns = []taraenginetest.Turn{{Content: "ready"}, {Content: "OOMKilled memory limit"}}
 	opts := runOptions(srv, "")
 	opts.Model = "gemma4"
 	_, err := Run(context.Background(), tasks, opts)
@@ -407,40 +410,9 @@ func TestRunnerRefusesAModelTheEngineDoesNotServe(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	for _, r := range srv.Requests {
-		if r.Path == "/api/chat" {
+		if r.Path == "/v1/chat/completions" {
 			t.Fatalf("a model request went out for %v", r.Body["model"])
 		}
-	}
-}
-
-// TestRunnerAcceptsAnUntaggedNameTheEngineListsAsLatest pins ruling P3-R74: Ollama lists a model pulled
-// without a tag as name:latest, and the untagged name is the same model, so Run proceeds and every model
-// request carries the name as given.
-func TestRunnerAcceptsAnUntaggedNameTheEngineListsAsLatest(t *testing.T) {
-	_, tasks := corpusWithTriage(t)
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
-		{Name: "aaa:1b", Capabilities: []string{"completion", "tools"}, ContextLength: 4096},
-		{Name: "gemma4:latest", Capabilities: []string{"completion", "tools"}, ContextLength: 32768},
-	}
-	srv.Turns = []ollamatest.Turn{{Content: "ready"}, {Content: "OOMKilled memory limit"}}
-	opts := runOptions(srv, "")
-	opts.Model = "gemma4"
-	if _, err := Run(context.Background(), tasks, opts); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	chats := 0
-	for _, r := range srv.Requests {
-		if r.Path != "/api/chat" {
-			continue
-		}
-		chats++
-		if got := r.Body["model"]; got != "gemma4" {
-			t.Fatalf("model request went out for %v, want gemma4", got)
-		}
-	}
-	if chats == 0 {
-		t.Fatal("no model request went out")
 	}
 }
 
@@ -448,9 +420,9 @@ func TestRunnerAcceptsAnUntaggedNameTheEngineListsAsLatest(t *testing.T) {
 // and a transcript directory that cannot be created is reported once for the whole run.
 func TestRunnerNamesTranscriptsPerRunAndWarnsOnce(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	answer := ollamatest.Turn{Content: "OOMKilled memory limit"}
+	answer := taraenginetest.Turn{Content: "OOMKilled memory limit"}
 	runsDir := t.TempDir()
-	opts := runOptions(fakeOllama(t, answer, answer), runsDir)
+	opts := runOptions(fakeEngine(t, answer, answer), runsDir)
 	opts.Runs = 2
 	if _, err := Run(context.Background(), tasks, opts); err != nil {
 		t.Fatal(err)
@@ -465,7 +437,7 @@ func TestRunnerNamesTranscriptsPerRunAndWarnsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	opts = runOptions(fakeOllama(t, answer, answer), filepath.Join(blocked, "runs"))
+	opts = runOptions(fakeEngine(t, answer, answer), filepath.Join(blocked, "runs"))
 	opts.Runs, opts.Out = 2, &out
 	if _, err := Run(context.Background(), tasks, opts); err != nil {
 		t.Fatal(err)
@@ -480,31 +452,31 @@ func TestRunnerNamesTranscriptsPerRunAndWarnsOnce(t *testing.T) {
 // One run makes two calls in two replies with one miss (3 model requests), another makes both calls
 // in one reply with no miss (2 requests).
 func TestRunnerPublishesPooledRatesAcrossRuns(t *testing.T) {
-	describe := ollamatest.ToolCall{Name: "kubectl",
+	describe := taraenginetest.ToolCall{Name: "kubectl",
 		Args: map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}}
-	answer := ollamatest.Turn{Content: "OOMKilled at the memory limit."}
-	withMiss := []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{describe}},
+	answer := taraenginetest.Turn{Content: "OOMKilled at the memory limit."}
+	withMiss := []taraenginetest.Turn{{ToolCalls: []taraenginetest.ToolCall{describe}},
 		call("kubectl", map[string]any{"verb": "get", "resource": "events", "namespace": "shop"}), answer}
-	clean := []ollamatest.Turn{{ToolCalls: []ollamatest.ToolCall{describe, describe}}, answer}
+	clean := []taraenginetest.Turn{{ToolCalls: []taraenginetest.ToolCall{describe, describe}}, answer}
 	cases := []struct {
 		name           string
-		runs           [][]ollamatest.Turn
+		runs           [][]taraenginetest.Turn
 		missRate       float64
 		meanIterations float64
 		iterations     int // the row's rounded count
 		misses         int // the row's rounded count
 	}{
-		{"one miss in the first of two runs", [][]ollamatest.Turn{withMiss, clean}, 0.25, 2.5, 3, 1},
-		{"one miss in three runs", [][]ollamatest.Turn{withMiss, clean, clean}, 0.167, 2.333, 2, 0},
+		{"one miss in the first of two runs", [][]taraenginetest.Turn{withMiss, clean}, 0.25, 2.5, 3, 1},
+		{"one miss in three runs", [][]taraenginetest.Turn{withMiss, clean, clean}, 0.167, 2.333, 2, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			_, tasks := corpusWithTriage(t)
-			var turns []ollamatest.Turn
+			var turns []taraenginetest.Turn
 			for _, run := range c.runs {
 				turns = append(turns, run...)
 			}
-			opts := runOptions(fakeOllama(t, turns...), "")
+			opts := runOptions(fakeEngine(t, turns...), "")
 			opts.Runs = len(c.runs)
 			res, err := Run(context.Background(), tasks, opts)
 			if err != nil {
@@ -529,8 +501,8 @@ func TestRunnerLogsEveryCallInTheTranscript(t *testing.T) {
 	describe := map[string]any{"verb": "describe", "resource": "pod", "name": "checkout-1", "namespace": "shop"}
 	events := map[string]any{"verb": "get", "resource": "events", "namespace": "shop"}
 	deletePod := map[string]any{"verb": "delete", "resource": "pod", "name": "checkout-1", "namespace": "shop"}
-	srv := fakeOllama(t, call("kubectl", describe), call("kubectl", events), call("kubectl", deletePod),
-		ollamatest.Turn{Content: "OOMKilled at the memory limit."})
+	srv := fakeEngine(t, call("kubectl", describe), call("kubectl", events), call("kubectl", deletePod),
+		taraenginetest.Turn{Content: "OOMKilled at the memory limit."})
 	runsDir := t.TempDir()
 	res, err := Run(context.Background(), tasks, runOptions(srv, runsDir))
 	if err != nil {
@@ -579,19 +551,18 @@ func TestRunnerCapsNumPredict(t *testing.T) {
 		want any
 	}{{0, 4096.0}, {256, 256.0}, {-1, nil}} {
 		_, tasks := corpusWithTriage(t)
-		srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+		srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 		opts := runOptions(srv, "")
 		opts.NumPredict = c.set
 		if _, err := Run(context.Background(), tasks, opts); err != nil {
 			t.Fatal(err)
 		}
 		for _, r := range srv.Requests {
-			if r.Path != "/api/chat" {
+			if r.Path != "/v1/chat/completions" {
 				continue
 			}
-			options, _ := r.Body["options"].(map[string]any)
-			if got := options["num_predict"]; got != c.want {
-				t.Errorf("NumPredict %d: num_predict %v, want %v", c.set, got, c.want)
+			if got := r.Body["max_tokens"]; got != c.want {
+				t.Errorf("NumPredict %d: max_tokens %v, want %v", c.set, got, c.want)
 			}
 		}
 	}
@@ -609,7 +580,7 @@ func TestRunnerLogsTheSignatureADryRunMissed(t *testing.T) {
 		t.Fatal(err)
 	}
 	upgrade := map[string]any{"args": "upgrade web ./chart -n shop"}
-	srv := fakeOllama(t, call("helm", upgrade), ollamatest.Turn{Content: "The upgrade needs a dry run first."})
+	srv := fakeEngine(t, call("helm", upgrade), taraenginetest.Turn{Content: "The upgrade needs a dry run first."})
 	runsDir := t.TempDir()
 	res, err := Run(context.Background(), tasks, runOptions(srv, runsDir))
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/models"
 	"github.com/tara-vision/taracode/internal/provider"
 	"github.com/tara-vision/taracode/internal/ui"
 )
@@ -29,8 +28,7 @@ func handleModelSwitch(r *repl) {
 	}
 	if len(allModels) == 0 {
 		fmt.Println("No models available.")
-		fmt.Printf("Pull a model with: ollama pull %s (16 GB) or %s (32 GB)\n",
-			models.DefaultName(models.Tier16), models.DefaultName(models.Tier32))
+		fmt.Println("Pull a model with: taraengine pull <model> (taracode doctor recommends one for this machine)")
 		fmt.Println()
 		return
 	}

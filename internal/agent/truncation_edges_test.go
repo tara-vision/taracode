@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/memory"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/provider"
@@ -119,13 +119,13 @@ func TestServerContextCheckBackOffs(t *testing.T) {
 	}
 
 	b, srv := newTestAssistant(t, false)
-	srv.PsStatus = 500
+	srv.Failures["GET /api/loaded"] = &taraenginetest.Failure{Status: 500, Message: "loaded failed"}
 	b.checkServerContextOnce()
 	if b.serverContextChecked || b.serverContextTokens != 0 {
 		t.Fatal("a failed check is tried again later")
 	}
 
-	vllm := ollamatest.New(t)
+	vllm := taraenginetest.New(t)
 	c := newForTest(t.TempDir(), "gemma4:12b", vllm.URL, false)
 	c.llm = provider.NewVLLMProvider(vllm.URL, "").LLM()
 	c.checkServerContextOnce()

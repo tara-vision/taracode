@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/models"
 )
 
@@ -98,20 +98,16 @@ func TestResolveDoctorTarget(t *testing.T) {
 // diagnosis against the assistant's already-connected provider, model and host, with no extra
 // network setup of its own.
 func TestHandleDoctorRunsAgainstTheLiveAssistant(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Version = "0.34.2"
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
-
-	a, err := agent.New(agent.Options{Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama", WorkingDir: t.TempDir(), Ephemeral: true})
+	a, err := agent.New(agent.Options{Host: srv.URL, Model: "gemma4:12b", WorkingDir: t.TempDir(), Ephemeral: true})
 	if err != nil {
 		t.Fatalf("agent.New() = %v", err)
 	}
-
 	out := captureStdoutForTest(t, func() { handleDoctor(a, t.TempDir()) })
-
-	for _, want := range []string{"Ollama 0.34.2", "gemma4:12b"} {
+	for _, want := range []string{"taraengine 0.2.0", "gemma4:12b"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("handleDoctor output lacks %q:\n%s", want, out)
 		}

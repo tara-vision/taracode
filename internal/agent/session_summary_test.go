@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -34,7 +34,7 @@ func TestGenerateSummarySendsTheConversationShortened(t *testing.T) {
 	a.session = summarySession(storage.ConversationMessage{Role: "user", Content: long},
 		storage.ConversationMessage{Role: "tool", Content: "pod list"},
 		storage.ConversationMessage{Role: "assistant", Content: "three pods"})
-	srv.Turns = []ollamatest.Turn{{Content: "  Counted the pods.  "}}
+	srv.Turns = []taraenginetest.Turn{{Content: "  Counted the pods.  "}}
 	summary, err := a.GenerateSummary()
 	if err != nil || summary != "Counted the pods." {
 		t.Fatalf("summary %q, err %v", summary, err)
@@ -49,7 +49,7 @@ func TestGenerateSummaryReportsAFailedRequest(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.session = summarySession(storage.ConversationMessage{Role: "user", Content: "deploy"},
 		storage.ConversationMessage{Role: "assistant", Content: "deployed"})
-	srv.Turns = []ollamatest.Turn{{Status: 500, Error: "model crashed"}}
+	srv.Turns = []taraenginetest.Turn{{Status: 500, Error: "model crashed"}}
 	if _, err := a.GenerateSummary(); err == nil || !strings.HasPrefix(err.Error(), "failed to generate summary: ") {
 		t.Fatalf("err = %v", err)
 	}

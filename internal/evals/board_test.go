@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/tara-vision/taracode/internal/models"
 )
 
 const testHardware = "NVIDIA RTX 5090 (32 GB)"
@@ -31,10 +29,16 @@ func hardwareResult(model, tier string, pass, score, tps float64, engine *Engine
 		Summary: Summary{PassRate: pass, MeanScore: score, MeanWallMs: 5000, TokensPerS: tps, ByArea: map[string]AreaSummary{}}}
 }
 
+// asDefault marks a result as the default of its tier, which a result carries from the run that wrote it.
+func asDefault(r Results) Results {
+	r.Default = true
+	return r
+}
+
 func hardwareResults() []Results {
 	return []Results{
 		hardwareResult("qwen3.8:27b", "32", 0.94, 0.96, 60, testEngine(22_100_000_000, 22_100_000_000, 100)),
-		hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100)),
+		asDefault(hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))),
 		hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, testEngine(9_300_000_000, 9_300_000_000, 100)),
 		hardwareResult("laguna-xs-2.1", "other", 0.97, 0.95, 120, testEngine(20_600_000_000, 20_600_000_000, 100)),
 		hardwareResult("huge:70b", "other", 0.99, 0.99, 8, testEngine(44_000_000_000, 33_000_000_000, 75)),
@@ -54,11 +58,7 @@ func boardModels(rows []Row) []string {
 
 func testBoard(t *testing.T, results []Results, corpusTasks int) Scoreboard {
 	t.Helper()
-	reg, err := models.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return BuildScoreboard(results, reg, corpusTasks, "v3.2.0")
+	return BuildScoreboard(results, corpusTasks, "v3.2.0")
 }
 
 // glmRowWrong is TestBuildScoreboardRanksAHardwareBoard's check of one whole row, split out to keep
@@ -204,8 +204,8 @@ func TestScoreboardJSONCarriesTheKeysTheSiteReads(t *testing.T) {
 	}
 	for _, key := range []string{"generated_at", "taracode", "corpus_tasks", "boards", "tiers", "hardware", "rows",
 		"did_not_fit", "model", "default", "tier", "pass_rate", "mean_score", "mean_wall_s", "tokens_per_s", "vram_gb",
-		"size_gb", "gpu_percent", "quantization", "runs", "tasks", "ollama", "date", "by_area", "fixture_miss_rate",
-		"mean_iterations"} {
+		"size_gb", "gpu_percent", "quantization", "runs", "tasks", "server", "ollama", "date", "by_area",
+		"fixture_miss_rate", "mean_iterations"} {
 		if !strings.Contains(string(data), `"`+key+`":`) {
 			t.Errorf("scoreboard.json lacks the key %q", key)
 		}
@@ -242,11 +242,11 @@ func TestScoreboardMarkdownPutsTheHardwareBoardFirst(t *testing.T) {
 	md := testBoard(t, hardwareResults(), testCorpus).Markdown()
 	for _, want := range []string{
 		"\n## NVIDIA RTX 5090 (32 GB)\n",
-		"5 models, Ollama 0.35.0, context window 32768, one run each.",
-		"| # | Model | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |",
-		"| 1 | laguna-xs-2.1 | - | 97% | 0.95 | 120 | 5 s | ~19.2 GiB | Q4_K_M | 1 |",
-		"| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 1 |",
-		"| 5 | unknown-engine:1b | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
+		"5 models, ollama 0.35.0, context window 32768, one run each.",
+		"| # | Model | Engine | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |",
+		"| 1 | laguna-xs-2.1 | ollama 0.35.0 | - | 97% | 0.95 | 120 | 5 s | ~19.2 GiB | Q4_K_M | 1 |",
+		"| 2 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 1 |",
+		"| 5 | unknown-engine:1b | ollama 0.35.0 | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
 		"- huge:70b: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 99%",
 	} {
 		if !strings.Contains(md, want) {
@@ -266,7 +266,7 @@ func TestBoardFactsNameMixedRuns(t *testing.T) {
 	if !strings.Contains(md, "runs per model in the last column.") || strings.Contains(md, "one run each") {
 		t.Fatalf("facts line does not name the mixed runs:\n%s", md)
 	}
-	if !strings.Contains(md, "| 2 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 3 |") {
+	if !strings.Contains(md, "| 2 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 3 |") {
 		t.Fatalf("the re-run row does not show its run count:\n%s", md)
 	}
 }
@@ -315,7 +315,7 @@ func TestUncheckedCountsRankedRowsWithoutMemoryData(t *testing.T) {
 // TestBoardNamesTheSmallTier: the registry's small tier has no size, so the Tier column says "small".
 func TestBoardNamesTheSmallTier(t *testing.T) {
 	md := testBoard(t, []Results{hardwareResult("gemma4:e4b", "small", 0.7, 0.8, 150, onGPU())}, testCorpus).Markdown()
-	if !strings.Contains(md, "| 1 | gemma4:e4b | small | 70% | 0.80 | 150 | 5 s | ~0.9 GiB | Q4_K_M | 1 |") {
+	if !strings.Contains(md, "| 1 | gemma4:e4b | ollama 0.35.0 | small | 70% | 0.80 | 150 | 5 s | ~0.9 GiB | Q4_K_M | 1 |") {
 		t.Fatalf("the small tier is not named:\n%s", md)
 	}
 }

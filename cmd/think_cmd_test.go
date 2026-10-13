@@ -8,7 +8,7 @@ import (
 )
 
 func TestThinkShowsAndSetsTheReasoningMode(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	srv.Models[0].Capabilities = append(srv.Models[0].Capabilities, "thinking")
 	r := replOn(t, srv, t.TempDir(), true)
 	tests := []struct {
@@ -32,7 +32,7 @@ func TestThinkShowsAndSetsTheReasoningMode(t *testing.T) {
 // TestThinkReportsTheModeThatIsSent: a model without the thinking capability keeps auto, and /think
 // says so rather than echoing the request.
 func TestThinkReportsTheModeThatIsSent(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	out := captureStdoutForTest(t, func() { r.dispatch("/think high") })
 	if !strings.Contains(out, "Reasoning mode set to auto.") || r.asst.Think() != llm.ThinkAuto {
 		t.Fatalf("output %q, think %q", out, r.asst.Think())

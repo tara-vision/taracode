@@ -1,14 +1,14 @@
 # Roadmap
 
 taracode is becoming the local-first DevOps operator: a terminal agent that investigates infrastructure by
-default, changes it only through an explicit policy, runs on Ollama with any modern open model, and publishes
-a reproducible scoreboard of which local models can actually do DevOps work.
+default, changes it only through an explicit policy, runs on taraengine, or any OpenAI-compatible server, with any
+modern open model, and publishes a reproducible scoreboard of which local models can actually do DevOps work.
 
 ## v2.1 (2026-09-21, the previous stable line)
 
 Supported Go toolchain, clean vulnerability scan, lint and scan gates in CI, signed four-platform releases with
 checksums and provenance, deb and rpm packages, a Homebrew cask, an installer that verifies checksums, 2026 model
-recommendations, and a warning when Ollama's context window is smaller than the tool budget.
+recommendations, and a warning when the server's context window is smaller than the tool budget.
 
 ## v3.0 (stable since 3.0.0, 2026-09-25)
 

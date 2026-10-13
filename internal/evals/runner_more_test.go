@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/tara-vision/taracode/internal/agent"
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 )
 
@@ -45,7 +45,7 @@ func brokenTempDir(t *testing.T) {
 }
 
 func TestRunReportsAnEnvironmentItCannotIsolate(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	brokenTempDir(t)
 	if restore, err := isolateEnv(); err == nil || restore != nil {
 		t.Fatalf("isolateEnv: %v", err)
@@ -63,8 +63,8 @@ func TestRunNeedsAnEngine(t *testing.T) {
 }
 
 func TestRunStopsWhenTheWarmUpFails(t *testing.T) {
-	srv := fakeOllama(t)
-	srv.Turns = []ollamatest.Turn{{Status: 500, Error: "model crashed"}}
+	srv := fakeEngine(t)
+	srv.Turns = []taraenginetest.Turn{{Status: 500, Error: "model crashed"}}
 	_, tasks := corpusWithTriage(t)
 	if _, err := Run(context.Background(), tasks, runOptions(srv, "")); err == nil || !strings.HasPrefix(err.Error(), "warm-up: ") {
 		t.Fatalf("err = %v", err)
@@ -79,16 +79,18 @@ func TestRunStopsWhenTheWarmUpFails(t *testing.T) {
 // request (ruling P3-R49).
 func TestRunStopsWhenTheWarmUpRunsAnotherModel(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{Name: "other:1b",
+		Capabilities: []string{"completion", "tools"}, ContextLength: 32768})
 	target, err := url.Parse(srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	forward := httputil.NewSingleHostReverseProxy(target)
 	alias := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
+		if r.URL.Path == "/api/models" {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"models":[{"name":"other:1b","model":"other:1b"}]}`))
+			_, _ = w.Write([]byte(`[{"name":"other:1b","status":"pulled"}]`))
 			return
 		}
 		forward.ServeHTTP(w, r)
@@ -123,7 +125,7 @@ func (w *cancelAfterRow) Write(p []byte) (int, error) {
 // further task and returns the rows so far with the cancellation.
 func TestRunStopsBetweenTasksWhenCancelled(t *testing.T) {
 	tasks := promptedTasks(t, "a-first", "b-never")
-	srv := fakeOllama(t, ollamatest.Turn{Content: "OOMKilled memory limit"})
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	opts := runOptions(srv, "")
@@ -166,8 +168,9 @@ func newTaskAssistant(t *testing.T, task Task, opts RunOptions) *agent.Assistant
 
 func TestCheckAssistantRefusesAnotherModeOrModel(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "other:1b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "other:1b", Capabilities: []string{"completion", "tools"},
+		ContextLength: 32768}}
 	opts := withDefaults(runOptions(srv, ""))
 	opts.Model = "other:1b"
 	a := newTaskAssistant(t, tasks[0], opts)
@@ -200,7 +203,7 @@ func TestCorpusDefectNamesEachSignatureOnce(t *testing.T) {
 
 func TestRunTaskStopsOnASetupItCannotMake(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	noHost := withDefaults(runOptions(srv, ""))
 	noHost.Host = ""
 	run := runTask(context.Background(), tasks[0], noHost, 1)

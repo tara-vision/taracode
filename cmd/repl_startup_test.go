@@ -12,7 +12,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/spf13/viper"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/upgrade"
 )
@@ -41,7 +41,7 @@ func readlineInput(t *testing.T, input string) {
 
 // startupConfig is the configuration newREPL reads: the fake's host and model, no spinner, HOME
 // isolated, and dir as the working directory.
-func startupConfig(t *testing.T, srv *ollamatest.Server, dir string) {
+func startupConfig(t *testing.T, srv *taraenginetest.Server, dir string) {
 	t.Helper()
 	resetConfig(t)
 	isolateHome(t)
@@ -77,13 +77,14 @@ func runAndClose(t *testing.T, r *repl) string {
 	return out
 }
 
-func TestNewREPLNeedsAHost(t *testing.T) {
+func TestNewREPLPrintsTheWarningsBeforeAStartupError(t *testing.T) {
 	resetConfig(t)
 	isolateHome(t)
+	viper.Set("host", "http://127.0.0.1:1")
 	viper.Set("watch", map[string]any{"interval": 5}) // a 2.x section: its warning comes before the error
 	var err error
 	out := captureStdoutForTest(t, func() { _, err = newREPL() })
-	if err == nil || !strings.Contains(err.Error(), "LLM server host not found") {
+	if err == nil || !strings.Contains(err.Error(), "nothing answers at http://127.0.0.1:1") {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(out, "the watch: section is ignored") {
@@ -98,14 +99,32 @@ func TestNewREPLReportsAConnectionFailure(t *testing.T) {
 	viper.Set("host", "http://127.0.0.1:1")
 	var err error
 	_ = captureStdoutForTest(t, func() { _, err = newREPL() })
-	if err == nil || !strings.Contains(err.Error(), "Cannot connect to LLM server") ||
-		!strings.Contains(err.Error(), "Host: http://127.0.0.1:1") {
+	if err == nil || !strings.Contains(err.Error(), "Server Not Reachable") ||
+		!strings.Contains(err.Error(), "nothing answers at http://127.0.0.1:1") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
+// TestNewREPLOnAnEngineWithNothingPulled: the first run on a running engine with no model pulled prints the engine's
+// advice and stops with the suggestion to pull one, not with the box that says taracode cannot connect.
+func TestNewREPLOnAnEngineWithNothingPulled(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "glm-4.7-flash", Status: "available"}}
+	startupConfig(t, srv, t.TempDir())
+	viper.Set("model", "")
+	var err error
+	out := captureStdoutForTest(t, func() { _, err = newREPL() })
+	if err == nil || !strings.Contains(err.Error(), "No Models Available") ||
+		!strings.Contains(err.Error(), "taraengine pull <model>") || strings.Contains(err.Error(), "Cannot connect") {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out, "taraengine pull glm-4.7-flash") {
+		t.Fatalf("the engine's advice prints before the error: %q", out)
+	}
+}
+
 func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())
 	answerUpdateCheck(t, &upgrade.CheckResult{CurrentVersion: "dev", LatestVersion: "v9.9.9", UpdateAvailable: true})
 	readlineInput(t, "pwd\nexit\nleft over\n")
@@ -116,13 +135,16 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Connected to Ollama", "Tara Code", "Run '/init' to initialize project context",
+		"Connected to taraengine", "Tara Code", "Run '/init' to initialize project context",
 		fmt.Sprintf("Mode: investigate (%d tools)", r.asst.ToolRegistry().Available(r.asst.Mode())),
 		"Not initialised: nothing is saved", "Update available:", "v9.9.9",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("startup lacks %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "no window control") { // the line a session on Ollama shows, never one on an engine
+		t.Errorf("an engine session shows the Ollama notice:\n%s", out)
 	}
 	if r.initialised || r.history != nil || r.memory != nil || r.mcp != nil || r.asst.GetStorage() != nil {
 		t.Fatalf("an uninitialised start: %+v", r)
@@ -137,6 +159,36 @@ func TestNewREPLStartsAnUninitialisedSession(t *testing.T) {
 	(&repl{}).close() // a repl that never opened readline closes too
 }
 
+// TestNewREPLOnOllamaShowsTheNotice: a session on Ollama prints what it is connected to and, once, the line that says
+// what taracode cannot do there. Ollama is used through the OpenAI-compatible API; the fake engine answers 404 on
+// /v1/models, so the Ollama start runs on the configured-model fallback.
+func TestNewREPLOnOllamaShowsTheNotice(t *testing.T) {
+	srv := fakeEngine(t)
+	startupConfig(t, srv, t.TempDir())
+	viper.Set("vendor", "ollama")
+	viper.Set("upgrade.auto_check", false)
+	forbidUpdateCheck(t, "upgrade.auto_check is false")
+	readlineInput(t, "exit\n")
+	var r *repl
+	var err error
+	out := captureStdoutForTest(t, func() { r, err = newREPL() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Connected to Ollama", "no window control"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("startup lacks %q:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "no window control"); n != 1 {
+		t.Errorf("the notice prints once at start, not %d times:\n%s", n, out)
+	}
+	out = runAndClose(t, r)
+	if !strings.Contains(out, "Goodbye!") {
+		t.Fatalf("the loop over readline's input: %q", out)
+	}
+}
+
 // TestNewREPLEnablesAnInitialisedProject starts in a project with a session, a memory and an MCP
 // server that connects on its own: the session resumes, the managers exist and the server's tools
 // are registered before the first prompt.
@@ -147,7 +199,7 @@ func TestNewREPLEnablesAnInitialisedProject(t *testing.T) {
 		nil, storage.MemorySourceManual); err != nil {
 		t.Fatal(err)
 	}
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, dir)
 	forbidUpdateCheck(t, "the configuration is offline")
 	viper.SetConfigType("yaml")
@@ -190,7 +242,7 @@ func TestNewREPLEnablesAnInitialisedProject(t *testing.T) {
 // TestNewREPLLeavesTheUpdateCheckOffWhenItIsSwitchedOff: upgrade.auto_check false keeps the startup
 // update check from running on an online session.
 func TestNewREPLLeavesTheUpdateCheckOffWhenItIsSwitchedOff(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	startupConfig(t, srv, t.TempDir())
 	viper.Set("upgrade.auto_check", false)
 	forbidUpdateCheck(t, "upgrade.auto_check is false")

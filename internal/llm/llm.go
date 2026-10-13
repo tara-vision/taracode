@@ -5,7 +5,6 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -43,12 +42,9 @@ func ParseThink(s string) (Think, bool) {
 	return ThinkAuto, false
 }
 
-// Options carries everything taracode controls about a request.
+// Options carries everything taracode controls about a request. The window is set when the model loads (Loader).
 type Options struct {
-	NumCtx      int             // context window; 0 = server default
-	KeepAlive   string          // "" = server default, "-1" = keep loaded
-	Think       Think           // reasoning mode
-	Format      json.RawMessage // JSON schema for structured output, nil = free text
+	Think       Think // reasoning mode
 	Temperature *float32
 	TopP        *float32
 	NumPredict  int // max tokens per reply; 0 = model default
@@ -114,6 +110,11 @@ type ModelDetails struct {
 	ContextLength int      // native maximum, 0 = unknown
 	Family        string
 	ParameterSize string
+	Quantization  string // the weights' quantization, "" when the server does not say
+	Digest        string // the model file's digest as the server shows it, "" when it does not say
+	// CapabilitiesUnknown is set when the server cannot say yet what the model can do: the engine infers an import's
+	// capabilities only while it is loaded. Capabilities is empty then, and means nothing.
+	CapabilitiesUnknown bool
 }
 
 // Has reports whether the model advertises a capability.
@@ -129,16 +130,14 @@ func (d *ModelDetails) Has(capability string) bool {
 	return false
 }
 
-// LoadedModel is one entry of the server's loaded-model list. Size is everything the loaded model
-// occupies at its context window, SizeVRAM the part of it on the GPU.
+// LoadedModel is one entry of the server's loaded-model list. Size is the memory the loaded model occupies at its
+// context window, SizeVRAM the part of it on the GPU.
 type LoadedModel struct {
 	Name          string
 	ContextLength int
 	Size          int64
 	SizeVRAM      int64
-	Quantization  string
-	ParameterSize string
-	Digest        string
+	Measured      bool // true when the server measured the memory on the machine, false for an estimate
 }
 
 // Client is implemented by every backend.
@@ -151,4 +150,10 @@ type Client interface {
 	Loaded(ctx context.Context) ([]LoadedModel, error)
 	Version(ctx context.Context) (string, error)
 	Unload(ctx context.Context, model string) error
+}
+
+// Loader is implemented by a backend that sets the context window when it loads a model, not per request
+// (taraengine). The session calls it at start and on /model; other backends have no such step.
+type Loader interface {
+	Load(ctx context.Context, model string, window int) error
 }

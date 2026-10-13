@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"testing"
+
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestNewAndNewWithTypeNeedAHost(t *testing.T) {
@@ -23,7 +25,7 @@ func TestNewBuildsTheVendorsProvider(t *testing.T) {
 		vendor string
 		want   Type
 	}{
-		{"ollama", TypeOllama}, {"llama.cpp", TypeLlamaCpp}, {"vllm", TypeVLLM},
+		{"ollama", TypeOllama}, {"llama.cpp", TypeLlamaCpp}, {"vllm", TypeVLLM}, {"taraengine", TypeTaraengine},
 	}
 	for _, tt := range tests {
 		p, err := New(context.Background(), host, tt.vendor, "k")
@@ -31,8 +33,12 @@ func TestNewBuildsTheVendorsProvider(t *testing.T) {
 			t.Errorf("New(%q) = %v, %v", tt.vendor, p, err)
 		}
 	}
-	if p, _ := New(context.Background(), "http://my-ollama.invalid", "auto", ""); p.Info().Type != TypeOllama {
-		t.Errorf("auto detects from the host name: %s", p.Info().Type)
+	if _, err := New(context.Background(), "http://my-ollama.invalid", "auto", ""); err == nil {
+		t.Fatal("a host that does not resolve: no error")
+	}
+	srv := taraenginetest.New(t)
+	if p, err := New(context.Background(), srv.URL, "auto", ""); err != nil || p.Info().Type != TypeTaraengine {
+		t.Fatalf("auto-detecting the engine: %v %v", p, err)
 	}
 }
 
@@ -42,13 +48,15 @@ func TestNewFallsBackToTheOpenAIAPI(t *testing.T) {
 	if err != nil || p.Info().Type != TypeVLLM {
 		t.Fatalf("an unrecognised server is used through the OpenAI API: %v, %v", p, err)
 	}
-	if _, paths := srv.seen(); len(paths) != 2 || paths[0] != "/api/tags" || paths[1] != "/v1/models" {
+	if _, paths := srv.seen(); len(paths) != 3 || paths[0] != "/api/health" || paths[1] != "/api/version" ||
+		paths[2] != "/v1/models" {
 		t.Fatalf("probes %v", paths)
 	}
 }
 
 func TestNewWithTypeBuildsThatType(t *testing.T) {
-	tests := map[Type]Type{TypeOllama: TypeOllama, TypeLlamaCpp: TypeLlamaCpp, TypeVLLM: TypeVLLM, TypeUnknown: TypeVLLM}
+	tests := map[Type]Type{TypeTaraengine: TypeTaraengine, TypeOllama: TypeOllama, TypeLlamaCpp: TypeLlamaCpp,
+		TypeVLLM: TypeVLLM, TypeUnknown: TypeVLLM}
 	for typ, want := range tests {
 		p, err := NewWithType(typ, "http://h.invalid", "")
 		if err != nil || p.Info().Type != want {

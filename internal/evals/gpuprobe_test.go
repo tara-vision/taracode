@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 func TestParseProbeAddsUpTheLines(t *testing.T) {
@@ -86,12 +86,14 @@ func TestProbeGPURefusesAFloodOfOutput(t *testing.T) {
 	}
 }
 
-// loadedGemma is an engine that reports gemma4:12b as loaded, entirely on the GPU, at 9.3 GB.
-func loadedGemma(t *testing.T) *ollamatest.Server {
+// loadedGemma is an engine that reports gemma4:12b as loaded, entirely on the GPU, at 9.3 GB. The engine
+// only estimates that memory, so the probe is what measures the model; a measuring engine is tested apart.
+func loadedGemma(t *testing.T) *taraenginetest.Server {
 	t.Helper()
-	srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
-	srv.Loaded = []ollamatest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768,
-		Size: 9_300_000_000, SizeVRAM: 9_300_000_000, Quantization: "Q4_K_M"}}
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
+	srv.Models[0].Quantization = "Q4_K_M"
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
+		Source: "estimated"}}
 	return srv
 }
 
@@ -158,6 +160,32 @@ func TestRunSurvivesAFailingProbe(t *testing.T) {
 	}
 }
 
+// TestRunRecordsTheEnginesMeasurementWithoutAProbe: an engine that measured the model's memory is the run's
+// measurement: the results carry its figure, the last line names it, and a probe the operator gave is not run.
+func TestRunRecordsTheEnginesMeasurementWithoutAProbe(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	marker := filepath.Join(t.TempDir(), "probed")
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	opts.GPUProbe = `: > "` + marker + `"; echo 23676`
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.GPUMemoryMiB != 9_300_000_000>>20 || res.Engine == nil || !res.Engine.Measured {
+		t.Fatalf("measured %d, engine %+v", res.GPUMemoryMiB, res.Engine)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("the probe ran although the engine measured the model")
+	}
+	if want := ", 8.7 GiB on the GPU (engine reports 9.3 GB, 100% GPU)"; !strings.Contains(out.String(), want) {
+		t.Fatalf("the last line lacks %q: %q", want, out.String())
+	}
+}
+
 func TestRunWithoutAProbeMeasuresNothing(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	srv := loadedGemma(t)
@@ -189,9 +217,9 @@ func TestBoardPrintsMeasuredMemoryAndMarksEstimates(t *testing.T) {
 	}
 	md := sb.Markdown()
 	for _, want := range []string{
-		"| 1 | glm-4.7-flash | 32 GB | 94% | 0.96 | 140 | 5 s | 23.1 GiB | Q4_K_M | 1 |",
-		"| 2 | gemma4:12b | 16 GB | 82% | 0.88 | 95 | 5 s | ~8.7 GiB | Q4_K_M | 1 |",
-		"| 3 | unknown-engine:1b | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
+		"| 1 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | 23.1 GiB | Q4_K_M | 1 |",
+		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | ~8.7 GiB | Q4_K_M | 1 |",
+		"| 3 | unknown-engine:1b | ollama 0.35.0 | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
 		"A figure marked ~ is the engine's own estimate",
 	} {
@@ -244,11 +272,11 @@ func TestParseProbeNeverRepeatsWhatTheProbePrinted(t *testing.T) {
 // name the engine does not know, and never calls the run's own model "another model".
 func TestRunMeasuresOnlyAModelTheEngineListsAsLoaded(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
-	for name, loaded := range map[string][]ollamatest.LoadedSpec{
+	for name, loaded := range map[string][]taraenginetest.LoadedSpec{
 		"nothing is listed":         nil,
-		"listed under another name": {{Name: "library/gemma4:12b", Size: 9_300_000_000, SizeVRAM: 9_300_000_000}},
+		"listed under another name": {{Name: "library/gemma4:12b", Size: 9_300_000_000}},
 	} {
-		srv := fakeOllama(t, ollamatest.Turn{Content: oomAnswer})
+		srv := fakeEngine(t, taraenginetest.Turn{Content: oomAnswer})
 		srv.Loaded = loaded
 		marker := filepath.Join(t.TempDir(), "probed")
 		var out bytes.Buffer
@@ -267,7 +295,7 @@ func TestRunMeasuresOnlyAModelTheEngineListsAsLoaded(t *testing.T) {
 		}
 		for _, want := range []string{
 			"warning: no engine block in the results: the engine does not list gemma4:12b as loaded",
-			"use the one `ollama list` prints",
+			"use the name `taraengine list` prints",
 			"warning: no measured GPU memory in the results: the engine did not describe gemma4:12b as loaded",
 		} {
 			if !strings.Contains(out.String(), want) {
@@ -289,23 +317,6 @@ func TestSpeedAndMemoryNamesAMeasurementAlone(t *testing.T) {
 	}
 }
 
-// TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure: another model the engine holds entirely in system
-// memory (an embedding model, say) takes nothing on the GPU, so it does not stop the measurement.
-func TestAModelOnTheCPUOnlyIsNotInTheGPUsFigure(t *testing.T) {
-	_, tasks := corpusWithTriage(t)
-	srv := loadedGemma(t)
-	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "embed:1b", Size: 600_000_000, SizeVRAM: 0})
-	opts := runOptions(srv, "")
-	opts.GPUProbe = "echo 23676"
-	res, err := Run(context.Background(), tasks, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.GPUMemoryMiB != 23676 {
-		t.Fatalf("measured %d, want 23676", res.GPUMemoryMiB)
-	}
-}
-
 // TestBoardWithEveryRowMeasuredSaysOnlyThat: no "~" sentence when there is no estimate to mark.
 func TestBoardWithEveryRowMeasuredSaysOnlyThat(t *testing.T) {
 	a := hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))
@@ -315,7 +326,7 @@ func TestBoardWithEveryRowMeasuredSaysOnlyThat(t *testing.T) {
 	md := testBoard(t, []Results{a, b}, testCorpus).Markdown()
 	for _, want := range []string{
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
-		"| 2 | gemma4:12b | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | - | 1 |",
+		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | - | 1 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
@@ -348,7 +359,7 @@ func TestRunDoesNotRepeatAProbesOutputOnTheTerminal(t *testing.T) {
 func TestRunDoesNotMeasureWhileAnotherModelIsLoaded(t *testing.T) {
 	_, tasks := corpusWithTriage(t)
 	srv := loadedGemma(t)
-	srv.Loaded = append(srv.Loaded, ollamatest.LoadedSpec{Name: "other:7b", Size: 5_000_000_000, SizeVRAM: 5_000_000_000})
+	srv.Loaded = append(srv.Loaded, taraenginetest.LoadedSpec{Name: "other:7b", Size: 5_000_000_000})
 	marker := filepath.Join(t.TempDir(), "probed")
 	var out bytes.Buffer
 	opts := runOptions(srv, "")
@@ -428,6 +439,19 @@ func TestMeasuredGPUIsSilentWhenTheRunIsAlreadyCancelled(t *testing.T) {
 	}
 }
 
+// TestMeasuredGPUTakesTheEnginesMeasurement: a figure the engine measured is the run's measurement; an estimate
+// is not one without a probe.
+func TestMeasuredGPUTakesTheEnginesMeasurement(t *testing.T) {
+	engine := &EngineInfo{VRAMBytes: 9_300_000_000, Measured: true}
+	if got := measuredGPU(context.Background(), RunOptions{}, engine, 0); got != 9_300_000_000>>20 {
+		t.Fatalf("the engine's measurement: %d MiB", got)
+	}
+	estimated := &EngineInfo{VRAMBytes: 9_300_000_000}
+	if got := measuredGPU(context.Background(), RunOptions{}, estimated, 0); got != 0 {
+		t.Fatalf("an estimate without a probe: %d", got)
+	}
+}
+
 // TestMeasuredGPUWorksWithoutARunScope: outside Run the probe gets the process environment.
 func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
 	t.Setenv("PROBE_VALUE", "777")
@@ -435,6 +459,22 @@ func TestMeasuredGPUWorksWithoutARunScope(t *testing.T) {
 	opts := RunOptions{GPUProbe: `echo "$PROBE_VALUE"`, Out: &out}
 	if got := measuredGPU(context.Background(), opts, &EngineInfo{VRAMBytes: 1 << 20}, 0); got != 777 {
 		t.Fatalf("measuredGPU = %d, output %q", got, out.String())
+	}
+}
+
+// TestMemoryNoteNamesWhereAMeasurementCameFrom: a measurement names what made it, taraengine or the operator's
+// probe, and an estimate says how to get a measurement.
+func TestMemoryNoteNamesWhereAMeasurementCameFrom(t *testing.T) {
+	measured := hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))
+	measured.GPUMemoryMiB = 23676
+	md := testBoard(t, []Results{measured}, testCorpus).Markdown()
+	if want := "by taraengine for its own server or by the operator's probe."; !strings.Contains(md, want) {
+		t.Fatalf("missing %q in:\n%s", want, md)
+	}
+	estimated := hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, testEngine(9_300_000_000, 9_300_000_000, 100))
+	md = testBoard(t, []Results{estimated}, testCorpus).Markdown()
+	if want := "run on taraengine with an NVIDIA GPU, or with --gpu-probe, to measure it."; !strings.Contains(md, want) {
+		t.Fatalf("missing %q in:\n%s", want, md)
 	}
 }
 

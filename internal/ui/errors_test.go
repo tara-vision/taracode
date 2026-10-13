@@ -17,7 +17,7 @@ func TestEnhanceError(t *testing.T) {
 			err:  errors.New("dial tcp: connection refused"),
 			contains: []string{
 				"Connection Refused",
-				"ollama serve",
+				"taraengine serve",
 			},
 		},
 		{
@@ -41,7 +41,7 @@ func TestEnhanceError(t *testing.T) {
 			err:  errors.New("model not found: llama3"),
 			contains: []string{
 				"Model Not Found",
-				"ollama pull",
+				"taraengine pull",
 			},
 		},
 		{
@@ -200,7 +200,30 @@ func TestFormatConnectionError(t *testing.T) {
 		t.Error("Expected result to contain host")
 	}
 
-	if !strings.Contains(result, "ollama serve") {
-		t.Error("Expected suggestion to start ollama")
+	if !strings.Contains(result, "taraengine serve") {
+		t.Error("Expected suggestion to start taraengine")
+	}
+}
+
+// TestFormatConnectionErrorHidesThePasswordOfTheHost: the box names the host twice, in the Host line and in the curl
+// line it suggests, and both show the password of a user:password in the host's URL masked; a host without user info
+// prints as it is.
+func TestFormatConnectionErrorHidesThePasswordOfTheHost(t *testing.T) {
+	err := errors.New("connection refused")
+	out := FormatConnectionError("http://user:secret@example.com:8272", err)
+	for _, want := range []string{"Host: http://user:xxxxx@example.com:8272\n",
+		"curl http://user:xxxxx@example.com:8272/api/health\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the box lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "secret") {
+		t.Errorf("the box shows the password:\n%s", out)
+	}
+	plain := FormatConnectionError("http://example.com:8272", err)
+	for _, want := range []string{"Host: http://example.com:8272\n", "curl http://example.com:8272/api/health\n"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("a host without user info: the box lacks %q:\n%s", want, plain)
+		}
 	}
 }

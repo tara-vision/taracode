@@ -6,16 +6,16 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
 // TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne covers the capability gate SwitchModel
-// runs on the new model: a model the fake server lists without the "tools" capability is refused,
+// runs on the new model: a model the fake engine lists without the "tools" capability is refused,
 // and the assistant is left exactly as it was (the model, the provider's model and the resolved
 // context window all stay at their pre-switch values).
 func TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Models = append(srv.Models, ollamatest.ModelSpec{
+	srv.Models = append(srv.Models, taraenginetest.ModelSpec{
 		Name: "old:7b", Capabilities: []string{"completion"}, ContextLength: 4096, Family: "old",
 	})
 	beforeModel := a.GetCurrentModel()
@@ -44,8 +44,8 @@ func TestSwitchModelRefusesAModelWithoutToolsAndKeepsTheOldOne(t *testing.T) {
 func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
@@ -73,13 +73,13 @@ func TestNewConstructsAgainstAShowlessBackend(t *testing.T) {
 func TestNewClampsInvalidCompactionSettings(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{
 		{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768, Family: "gemma4"},
 	}
 
 	a, err := New(Options{
-		Host: srv.URL, Model: "gemma4:12b", Vendor: "ollama",
+		Host: srv.URL, Model: "gemma4:12b", Vendor: "taraengine",
 		Compaction: CompactionConfig{Enabled: true, Threshold: 75, KeepRecent: -1, MaxTokens: 32768},
 	})
 	if err != nil {

@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/storage"
 )
 
@@ -22,7 +23,7 @@ func TestClearStartsANewSession(t *testing.T) {
 // TestClearWithoutStorageRebuildsTheAssistant: an ephemeral session has no session to start, so
 // /clear builds a fresh assistant on the same connection instead.
 func TestClearWithoutStorageRebuildsTheAssistant(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	asst := r.asst
 	_ = captureStdoutForTest(t, func() {
 		if err := asst.ProcessMessage("unused"); err == nil {
@@ -40,7 +41,7 @@ func TestClearWithoutStorageRebuildsTheAssistant(t *testing.T) {
 }
 
 func TestClearReportsAFailedRebuild(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	asst := r.asst
 	r.opts.Host, r.opts.Model = "http://127.0.0.1:1", "" // nothing to connect to and no model to fall back on
 	stdout, stderr := captureOutput(t, func() { r.dispatch("/clear") })
@@ -50,19 +51,19 @@ func TestClearReportsAFailedRebuild(t *testing.T) {
 }
 
 // loadedSession builds a project repl whose startup session already holds three messages.
-func loadedSession(t *testing.T, turns ...ollamatest.Turn) (*repl, *storage.Manager) {
+func loadedSession(t *testing.T, turns ...taraenginetest.Turn) (*repl, *storage.Manager) {
 	t.Helper()
 	dir := t.TempDir()
 	storedSession(t, dir, []storage.ConversationMessage{
 		{Role: "user", Content: "the pods crash"}, {Role: "assistant", Content: "the image tag is wrong"},
 		{Role: "user", Content: "fixed it"},
 	})
-	r := replOn(t, fakeOllama(t, turns...), dir, false)
+	r := replOn(t, fakeEngine(t, turns...), dir, false)
 	return r, r.asst.GetStorage()
 }
 
 func TestExitSummarisesTheSession(t *testing.T) {
-	r, st := loadedSession(t, ollamatest.Turn{Content: "They fixed the crashing pods."})
+	r, st := loadedSession(t, taraenginetest.Turn{Content: "They fixed the crashing pods."})
 	out := captureStdoutForTest(t, func() { handleExitWithSummary(r.asst) })
 	if out != "Generating summary... done.\nGoodbye!\n" {
 		t.Fatalf("%q", out)
@@ -77,25 +78,25 @@ func TestExitSummarisesTheSession(t *testing.T) {
 }
 
 func TestExitSkipsAFailedSummary(t *testing.T) {
-	r, _ := loadedSession(t, ollamatest.Turn{Status: 500, Error: "model crashed"})
+	r, _ := loadedSession(t, taraenginetest.Turn{Status: 500, Error: "model crashed"})
 	if out := captureStdoutForTest(t, func() { handleExitWithSummary(r.asst) }); out != "Generating summary... skipped.\nGoodbye!\n" {
 		t.Fatalf("%q", out)
 	}
 }
 
 func TestExitWithoutASessionJustSaysGoodbye(t *testing.T) {
-	r := replOn(t, fakeOllama(t), t.TempDir(), true)
+	r := replOn(t, fakeEngine(t), t.TempDir(), true)
 	if out := captureStdoutForTest(t, func() { handleExitWithSummary(r.asst) }); out != "Goodbye!\n" {
 		t.Fatalf("%q", out)
 	}
 }
 
 func TestStatusShowsTheConnectionProjectAndSession(t *testing.T) {
-	srv := fakeOllama(t)
+	srv := fakeEngine(t)
 	ephemeral := replOn(t, srv, t.TempDir(), true)
 	out := captureStdoutForTest(t, func() { ephemeral.dispatch("/status") })
 	for _, want := range []string{
-		"Status:", "Provider: Ollama (ollama)", "Host: " + srv.URL, "Model: gemma4:12b",
+		"Status:", "Provider: taraengine (taraengine)", "Host: " + srv.URL, "Model: gemma4:12b",
 		"Project: Not initialized (run /init)", "Session: None", "Storage: Not available",
 	} {
 		if !strings.Contains(out, want) {
@@ -116,5 +117,22 @@ func TestStatusShowsTheConnectionProjectAndSession(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("/status lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestStatusHidesThePasswordOfTheHost: the host comes from the configuration, where a user:password may stand in its URL
+// (the fake engine takes it as basic auth and ignores it). /status prints the host with the password masked, and the
+// session keeps the host as configured.
+func TestStatusHidesThePasswordOfTheHost(t *testing.T) {
+	srv := fakeEngine(t)
+	withPassword := strings.Replace(srv.URL, "http://", "http://user:secret@", 1)
+	r := replOn(t, srv, t.TempDir(), true, func(o *agent.Options) { o.Host = withPassword })
+	out := captureStdoutForTest(t, func() { r.dispatch("/status") })
+	if want := "Host: " + strings.Replace(srv.URL, "http://", "http://user:xxxxx@", 1) + "\n"; !strings.Contains(out, want) ||
+		strings.Contains(out, "secret") {
+		t.Fatalf("/status lacks %q or shows the password:\n%s", want, out)
+	}
+	if got := r.asst.GetProviderInfo().Host; got != withPassword {
+		t.Fatalf("the session's host is %q, want it as configured: %q", got, withPassword)
 	}
 }

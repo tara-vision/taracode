@@ -1,183 +1,24 @@
 package provider
 
-import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
+import "context"
 
-	"github.com/sashabaranov/go-openai"
-
-	"github.com/tara-vision/taracode/internal/llm"
-	ollamaclient "github.com/tara-vision/taracode/internal/llm/ollama"
-)
-
-// OllamaProvider implements Provider for Ollama servers
+// OllamaProvider runs an Ollama server on the generic OpenAI-compatible path: taracode has no window control, no
+// thinking on or off, no /model and no evals there, and says so once per session (ui's ProviderNotice). taraengine
+// is the native backend.
 type OllamaProvider struct {
 	*BaseProvider
 }
 
 var _ Provider = (*OllamaProvider)(nil)
 
-// NewOllamaProvider creates a new Ollama provider
+// NewOllamaProvider creates the provider for an Ollama server at host.
 func NewOllamaProvider(host, apiKey string) *OllamaProvider {
 	base := NewBaseProvider(TypeOllama, host, apiKey)
-	// Ollama has limited tool calling support (depends on model)
-	base.info.SupportsTools = false
+	base.info.SupportsTools = true
 	return &OllamaProvider{BaseProvider: base}
 }
 
-// LLM returns the native Ollama client bound to this provider's host.
-func (p *OllamaProvider) LLM() llm.Client {
-	return ollamaclient.New(p.info.Host, p.httpClient)
-}
-
-// Info returns provider metadata
-func (p *OllamaProvider) Info() *Info {
-	return p.BaseProvider.Info()
-}
-
-// DetectModels queries available models from the Ollama server
-// Tries OpenAI-compatible endpoint first, falls back to native /api/tags
+// DetectModels lists the models Ollama serves on its OpenAI-compatible API.
 func (p *OllamaProvider) DetectModels(ctx context.Context) ([]string, error) {
-	// Try OpenAI-compatible endpoint first
-	models, err := p.DetectModelsOpenAI(ctx)
-	if err == nil && len(models) > 0 {
-		return models, nil
-	}
-
-	// Fall back to native Ollama API
-	return p.detectModelsNative(ctx)
-}
-
-// detectModelsNative queries the Ollama-specific /api/tags endpoint
-func (p *OllamaProvider) detectModelsNative(ctx context.Context) ([]string, error) {
-	url := p.info.Host + "/api/tags"
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	// Ollama /api/tags response format
-	var tagsResp struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-
-	models := make([]string, 0, len(tagsResp.Models))
-	for _, m := range tagsResp.Models {
-		models = append(models, m.Name)
-	}
-
-	p.info.Models = models
-	return models, nil
-}
-
-// CreateClient returns an OpenAI-compatible client
-func (p *OllamaProvider) CreateClient() *openai.Client {
-	return p.BaseProvider.CreateClient()
-}
-
-// SetModel sets the active model
-func (p *OllamaProvider) SetModel(model string) {
-	p.BaseProvider.SetModel(model)
-}
-
-// UnloadModel unloads a model from Ollama memory by setting keep_alive to 0
-func (p *OllamaProvider) UnloadModel(ctx context.Context, model string) error {
-	url := p.info.Host + "/api/generate"
-
-	payload := map[string]interface{}{
-		"model":      model,
-		"keep_alive": 0,
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 200 OK means the model was unloaded (or will be unloaded)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-// ListModels returns all available models from the Ollama server
-func (p *OllamaProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	url := p.info.Host + "/api/tags"
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	var tagsResp struct {
-		Models []struct {
-			Name       string `json:"name"`
-			Size       int64  `json:"size"`
-			ModifiedAt string `json:"modified_at"`
-			Details    struct {
-				Family        string `json:"family"`
-				ParameterSize string `json:"parameter_size"`
-			} `json:"details"`
-		} `json:"models"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-
-	models := make([]ModelInfo, 0, len(tagsResp.Models))
-	for _, m := range tagsResp.Models {
-		models = append(models, ModelInfo{
-			Name:   m.Name,
-			Size:   m.Size,
-			Family: m.Details.Family,
-			Params: m.Details.ParameterSize,
-		})
-	}
-
-	return models, nil
+	return p.DetectModelsOpenAI(ctx)
 }

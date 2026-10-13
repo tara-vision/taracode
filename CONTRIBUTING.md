@@ -35,18 +35,22 @@ make test
 
 ### Testing with LLM
 
-taracode requires a local LLM backend. Ollama is recommended:
+taracode's native backend is taraengine, which serves the models on this machine:
 
 ```bash
-# Install Ollama
-brew install ollama
+# Install taraengine and its runtime, start it, and pull the model taracode doctor recommends for this machine
+go install github.com/tara-vision/taraengine/cmd/taraengine@latest
+taraengine runtime install
+taraengine serve &
+taraengine pull glm-4.7-flash   # gemma4:12b on 16 GB machines
 
-# Pull recommended model
-ollama pull glm-4.7-flash   # gemma4:12b on 16 GB machines
-
-# Run taracode
+# Run taracode (it finds the engine at http://127.0.0.1:8272)
 ./taracode
 ```
+
+The release brings `brew install --cask tara-vision/taracode/taraengine`; until then the engine installs with Go.
+
+Any OpenAI-compatible server works too (`--host`), without window control, thinking on or off, or evals.
 
 ### Code Style
 
@@ -132,13 +136,13 @@ taracode/
 │   │   ├── shellwords/        # Shell command-line tokenizer
 │   │   ├── redact/            # Secret redaction of tool output
 │   │   └── tfplan/            # terraform plan -json summariser
-│   ├── llm/                   # Transport to the model server (native Ollama, OpenAI-compatible adapter)
-│   ├── models/                # Embedded model registry and host RAM diagnostics
+│   ├── llm/                   # Transport to the model server (taraengine client, OpenAI-compatible adapter)
+│   ├── models/                # taracode doctor: the server, the models and the external tools
 │   ├── context/               # Project context analysis
 │   ├── history/               # Operation history and undo
 │   ├── mcp/                   # Model Context Protocol
 │   ├── memory/                # Project memory
-│   ├── provider/              # LLM providers (Ollama, vLLM, llama.cpp)
+│   ├── provider/              # LLM providers (taraengine, vLLM, llama.cpp, Ollama)
 │   ├── search/                # Web search providers
 │   ├── storage/               # Session persistence and the audit log
 │   ├── upgrade/               # Auto-upgrade
@@ -172,7 +176,7 @@ registration step left from the old 58-tool set.
 ## Adding an Eval Task
 
 taracode's offline eval suite (`evals/tasks/`, `internal/evals`) needs new tasks as the tool set and the
-model registry grow. Writing a task, recording its fixtures against the lab sandbox, authoring fixtures by
+engine's model catalog grow. Writing a task, recording its fixtures against the lab sandbox, authoring fixtures by
 hand for a task that needs no live scenario, and running `taracode eval lint` over the corpus are all covered
 in [docs/evals/README.md](docs/evals/README.md); start there.
 

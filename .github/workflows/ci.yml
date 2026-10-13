@@ -60,6 +60,25 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  engine:
+    name: Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet with the engine tag
+        run: go vet -tags engine ./internal/llm/taraengine/
+
+      - name: taracode against a real taraengine
+        run: bash scripts/engine-ci.sh
+
   hygiene:
     name: Hygiene
     runs-on: ubuntu-latest

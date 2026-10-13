@@ -3,6 +3,7 @@ package agent
 
 import (
 	gocontext "context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -73,15 +74,14 @@ type Assistant struct {
 	// The day the system prompt was built on; a turn on a later day rebuilds it (3.1.0).
 	promptDay string
 
-	// Ollama context window check (v2.1.0)
-	serverContextChecked bool // true once /api/ps has answered for the current model
-	serverContextTokens  int  // context window Ollama loaded the model with (0 = unknown)
+	// The once-per-session context check (v2.1.0)
+	serverContextChecked bool // true once the server has reported the window it runs the current model at
+	serverContextTokens  int  // the window the server runs the model at (0 = unknown)
 
 	// Request options sent with every turn (Task 8 wires these to config)
 	think             llm.Think // reasoning mode
 	thinkingSupported bool      // whether the current model has the "thinking" capability; true when unknown
-	keepAlive         string    // how long the server keeps the model loaded
-	contextWindow     int       // num_ctx for the request, 0 = server default
+	contextWindow     int       // the window the model loads at; 0 = the server decides
 	configuredWindow  string    // context.window config value ("auto" or a number); re-read on model switch
 
 	// Context management (v2.0.2)
@@ -175,7 +175,7 @@ func New(opts Options) (*Assistant, error) {
 
 	// Determine which model to use (priority: persisted > config > auto-detect)
 	models, detectErr := prov.DetectModels(ctx)
-	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer, out)
+	model, err := chooseModel(models, detectErr, persistedModel, opts.Model, renderer, out, prov.LLM())
 	if err != nil {
 		return nil, err
 	}
@@ -206,8 +206,8 @@ func New(opts Options) (*Assistant, error) {
 		compactionCfg.KeepRecent = 4
 	}
 
-	// Request options (Task 8): reasoning mode, context window, keep-alive. An unrecognized think
-	// value falls back to auto rather than failing the whole assistant.
+	// Request options: reasoning mode and context window. An unrecognized think value falls back to auto
+	// rather than failing the whole assistant.
 	think, thinkOK := llm.ParseThink(opts.Think)
 	if !thinkOK {
 		_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("think %q not recognized; using auto", opts.Think)))
@@ -235,7 +235,6 @@ func New(opts Options) (*Assistant, error) {
 		projectCtx:         projectCtx,
 		sessionUsage:       &storage.TokenUsage{},
 		think:              think,
-		keepAlive:          opts.KeepAlive,
 		configuredWindow:   opts.ContextWindow,
 		truncationCfg:      opts.Truncation,
 		compactionCfg:      compactionCfg,
@@ -254,12 +253,15 @@ func New(opts Options) (*Assistant, error) {
 		a.confirmPermission = opts.PermissionDecider
 	}
 
-	// Resolve the context window and gate on tool support once the model is chosen, before the
-	// system prompt is built: an OpenAI-compatible server without Show just leaves the window
-	// unresolved (v3 native core, Task 8).
+	// Resolve the context window and gate on tool support once the model is chosen, before the system prompt is
+	// built, then load the model at that window on a backend that sets it at load (taraengine). An
+	// OpenAI-compatible server without Show leaves the window unresolved.
 	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
 	defer showCancel()
 	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
+		return nil, err
+	}
+	if err := a.loadModel(); err != nil {
 		return nil, err
 	}
 
@@ -276,20 +278,27 @@ func New(opts Options) (*Assistant, error) {
 }
 
 // sameModel reports whether a and b name the same Ollama model once its implicit tag is accounted
-// for: Ollama treats a name given without a tag as "name:latest" and lists it that way from
-// /api/tags, so a bare "name" and a listed "name:latest" must compare equal (ruling P3-R74). Only
-// one trailing ":latest" is stripped from each side (Ollama never double-tags a real model name),
-// so "x:latest:latest" is compared as "x:latest", not collapsed any further.
+// for: Ollama treats a name given without a tag as "name:latest" and lists it that way on its
+// OpenAI-compatible /v1/models, so a bare "name" and a listed "name:latest" must compare equal (ruling
+// P3-R74). Only one trailing ":latest" is stripped from each side (Ollama never double-tags a real model
+// name), so "x:latest:latest" is compared as "x:latest", not collapsed any further.
 func sameModel(a, b string) bool {
 	return strings.TrimSuffix(a, ":latest") == strings.TrimSuffix(b, ":latest")
 }
 
 // chooseModel picks the model New uses: the persisted one while the server still lists it, then the
 // configured one, then the first the server lists. When the server cannot list its models the
-// persisted or configured name is trusted.
+// persisted or configured name is trusted, unless nothing answers at it (*llm.UnreachableError, which only the
+// engine client reports): the session would stop at its next call to the server anyway, a dial's wait later, so the
+// choice ends with that error, before any name is trusted, and says nothing.
 func chooseModel(
 	models []string, detectErr error, persistedModel, configModel string, renderer *ui.Renderer, out io.Writer,
+	client llm.Client,
 ) (string, error) {
+	var unreachable *llm.UnreachableError
+	if errors.As(detectErr, &unreachable) {
+		return "", detectErr
+	}
 	var model string
 
 	// Helper to check if model exists in available models
@@ -332,6 +341,9 @@ func chooseModel(
 			model = models[0]
 			_, _ = fmt.Fprintln(out, renderer.WarningMessage(
 				fmt.Sprintf("Configured model '%s' not available. Using: %s", configModel, model)))
+			if _, onEngine := client.(llm.Loader); onEngine { // the engine pulls its models; other servers say nothing
+				_, _ = fmt.Fprintln(out, renderer.WarningMessage(fmt.Sprintf("Pull it with: taraengine pull %s", configModel)))
+			}
 		} else {
 			model = models[0]
 			_, _ = fmt.Fprintln(out, renderer.SuccessMessage(fmt.Sprintf("Using model: %s", model)))
@@ -343,8 +355,8 @@ func chooseModel(
 			model = configModel
 		} else {
 			// No model persisted or configured, and the server lists none either: point at the
-			// registry's recommendation for this host before failing (native core, Task 11).
-			printFirstRunAdvice(out)
+			// engine's recommendation for this machine before failing.
+			printFirstRunAdvice(out, client)
 			return "", fmt.Errorf("no models available and no fallback configured")
 		}
 	}
@@ -394,12 +406,12 @@ func loadGate(workingDir string, storageMgr *storage.Manager, renderer *ui.Rende
 	return g
 }
 
-// newForTest builds an Assistant on a fake server without storage, spinner or interactive
+// newForTest builds an Assistant on a fake engine without storage, spinner or interactive
 // prompts, with the same setting values DefaultOptions gives the binary. Auto-compaction is kept
 // off (ForceCompact is exercised directly where a test cares about it), so an ordinary test never
 // triggers a surprise summarization call. Test-only: New is the constructor the binary uses.
 func newForTest(workingDir, model, host string, streaming bool) *Assistant {
-	prov := provider.NewOllamaProvider(host, "")
+	prov := provider.NewTaraengineProvider(host, "")
 	prov.SetModel(model)
 	// The built-in policy has redaction on; the test redactor leaves the environment out so what a
 	// test sees does not depend on the machine's variables.
@@ -526,7 +538,7 @@ func (a *Assistant) GetProjectContext() *context.ProjectContext {
 	return a.projectCtx
 }
 
-// ListModels returns available models from the provider (Ollama only)
+// ListModels returns available models from the provider (taraengine only)
 func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	if a.provider == nil {
 		return nil, fmt.Errorf("provider not initialized")
@@ -535,7 +547,7 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	// Check if provider supports model management
 	mm, ok := a.provider.(provider.ModelManager)
 	if !ok {
-		return nil, fmt.Errorf("provider does not support model listing (Ollama only)")
+		return nil, fmt.Errorf("provider does not support model listing (taraengine only)")
 	}
 
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), modelOperationTimeout)
@@ -544,46 +556,41 @@ func (a *Assistant) ListModels() ([]provider.ModelInfo, error) {
 	return mm.ListModels(ctx)
 }
 
-// SwitchModel switches to a different model, unloading the current one first
+// SwitchModel switches to a different model. It reads the new model first, so a model the server refuses (not
+// pulled, no tools) never costs the session the old one; then it unloads the old model, loads the new one at its
+// window and saves the choice. When that load fails it puts the session's settings back, reloads the old model at
+// the window it had and returns the failure.
 func (a *Assistant) SwitchModel(newModel string) error {
 	if a.provider == nil {
 		return fmt.Errorf("provider not initialized")
 	}
-
-	// Check if provider supports model management
 	mm, ok := a.provider.(provider.ModelManager)
 	if !ok {
-		return fmt.Errorf("provider does not support model switching (Ollama only)")
+		return fmt.Errorf("provider does not support model switching (taraengine only)")
 	}
-
 	oldModel := a.model
-
-	// Only unload if we're actually changing models
+	prior := a.snapshotSettings()
+	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
+	defer showCancel()
+	a.model = newModel
+	if err := a.applyModelDetails(a.llm.Show(showCtx, newModel)); err != nil {
+		a.model = oldModel
+		return err
+	}
 	if oldModel != "" && oldModel != newModel {
 		ctx, cancel := gocontext.WithTimeout(gocontext.Background(), modelOperationTimeout)
 		defer cancel()
-
-		// Unload the old model to free memory
 		if err := mm.UnloadModel(ctx, oldModel); err != nil {
-			// Log but don't fail - the model might not be loaded
 			_, _ = fmt.Fprintf(a.out, "  Note: Could not unload %s (may not be loaded)\n", oldModel)
 		}
 	}
-
-	// Set the new model
-	a.model = newModel
-	a.resetServerContextCheck()
-	a.provider.SetModel(newModel)
-
-	// Resolve the new model's context window and gate on tool support (Task 8); a refused
-	// switch restores the model the assistant already had loaded.
-	showCtx, showCancel := gocontext.WithTimeout(gocontext.Background(), 5*time.Second)
-	defer showCancel()
-	if err := a.applyModelDetails(a.llm.Show(showCtx, a.model)); err != nil {
-		a.model = oldModel
-		a.provider.SetModel(oldModel)
+	if err := a.loadModel(); err != nil {
+		a.restoreSettings(prior)
+		a.restoreModel(oldModel)
 		return err
 	}
+	a.resetServerContextCheck()
+	a.provider.SetModel(newModel)
 
 	// Persist the model selection
 	if a.storage != nil {
@@ -592,6 +599,15 @@ func (a *Assistant) SwitchModel(newModel string) error {
 			_, _ = fmt.Fprintf(a.out, "  Note: Could not save model preference: %v\n", err)
 		}
 	}
-
 	return nil
+}
+
+// restoreModel goes back to model after a switch whose load failed: it reloads model at the window the session had,
+// without reading it again, because restoreSettings has just put that window, the thinking flag, the think level and
+// the compaction budget back. A failure here is printed, not returned: the switch's own error is the one to show.
+func (a *Assistant) restoreModel(model string) {
+	a.model = model
+	if err := a.loadModel(); err != nil {
+		_, _ = fmt.Fprintf(a.out, "  Note: Could not load %s back: %v\n", model, err)
+	}
 }

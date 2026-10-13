@@ -6,16 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
 )
 
-func gateAssistant(t *testing.T, mode policy.Mode, turns ...ollamatest.Turn) (*Assistant, *ollamatest.Server, string) {
+func gateAssistant(t *testing.T, mode policy.Mode, turns ...taraenginetest.Turn) (*Assistant, *taraenginetest.Server, string) {
 	t.Helper()
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
 	srv.Turns = turns
 	dir := t.TempDir()
 	a := newForTest(dir, "gemma4:12b", srv.URL, false)
@@ -33,8 +33,8 @@ func gateAssistant(t *testing.T, mode policy.Mode, turns ...ollamatest.Turn) (*A
 	return a, srv, dir
 }
 
-func toolCall(name string, args map[string]any) ollamatest.Turn {
-	return ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: name, Args: args}}}
+func toolCall(name string, args map[string]any) taraenginetest.Turn {
+	return taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: name, Args: args}}}
 }
 
 // messageContent is the text of the message offsetFromEnd places from the end of a recorded chat
@@ -47,7 +47,7 @@ func messageContent(t *testing.T, body map[string]any, offsetFromEnd int) string
 
 func TestInvestigateModeBlocksMutationsWithoutRunningThem(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeInvestigate,
-		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), ollamatest.Turn{Content: "ok"})
+		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), taraenginetest.Turn{Content: "ok"})
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("write") })
 	if _, err := os.Stat(filepath.Join(dir, "x.txt")); err == nil {
 		t.Fatal("the file must not be written")
@@ -72,7 +72,7 @@ func TestInvestigateModeBlocksMutationsWithoutRunningThem(t *testing.T) {
 func TestOperateModeDeniesProtectedPathsAndDenyPatterns(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeOperate,
 		toolCall("write_file", map[string]any{"path": "infra/terraform.tfstate", "content": "{}"}),
-		toolCall("shell", map[string]any{"command": "terraform destroy -auto-approve"}), ollamatest.Turn{Content: "ok"})
+		toolCall("shell", map[string]any{"command": "terraform destroy -auto-approve"}), taraenginetest.Turn{Content: "ok"})
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("go") })
 	recs, _ := a.storage.ReadAudit("")
 	if len(recs) != 2 || recs[0].Rule != "protected.paths" || recs[1].Rule != "deny.commands" {
@@ -89,7 +89,7 @@ func TestOperateModeDeniesProtectedPathsAndDenyPatterns(t *testing.T) {
 func TestOperateModeAsksAndRemembersTheAnswer(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeOperate,
 		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}),
-		toolCall("write_file", map[string]any{"path": "b.txt", "content": "2"}), ollamatest.Turn{Content: "ok"})
+		toolCall("write_file", map[string]any{"path": "b.txt", "content": "2"}), taraenginetest.Turn{Content: "ok"})
 	a.permissions, _, _ = policy.LoadPermissions(filepath.Join(dir, ".taracode", "permissions.json"))
 	asked := 0
 	a.confirmPermission = func(inv policy.Invocation, _ map[string]any) ui.PermissionChoice {
@@ -127,7 +127,7 @@ func TestDryRunRunsBeforeThePromptAndReadsNeverAsk(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	a, srv, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("kubectl", map[string]any{"verb": "get", "resource": "pods"}),
-		toolCall("kubectl", map[string]any{"verb": "apply", "args": "-f x.yaml"}), ollamatest.Turn{Content: "ok"})
+		toolCall("kubectl", map[string]any{"verb": "apply", "args": "-f x.yaml"}), taraenginetest.Turn{Content: "ok"})
 	var seen []string
 	a.confirmPermission = func(inv policy.Invocation, _ map[string]any) ui.PermissionChoice {
 		seen = append(seen, inv.Verb)
@@ -152,7 +152,7 @@ func TestDryRunRunsBeforeThePromptAndReadsNeverAsk(t *testing.T) {
 
 func TestToolOutputIsRedactedBeforeTheModelSeesIt(t *testing.T) {
 	a, srv, dir := gateAssistant(t, policy.ModeInvestigate,
-		toolCall("read_file", map[string]any{"path": "creds.txt"}), ollamatest.Turn{Content: "ok"})
+		toolCall("read_file", map[string]any{"path": "creds.txt"}), taraenginetest.Turn{Content: "ok"})
 	if err := os.WriteFile(filepath.Join(dir, "creds.txt"), []byte("key=AKIAIOSFODNN7EXAMPLE\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestFailedDryRunIsRedactedBeforeTheModelAndTheAuditLog(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	a, srv, _ := gateAssistant(t, policy.ModeOperate,
-		toolCall("kubectl", map[string]any{"verb": "apply", "args": "-f x.yaml"}), ollamatest.Turn{Content: "ok"})
+		toolCall("kubectl", map[string]any{"verb": "apply", "args": "-f x.yaml"}), taraenginetest.Turn{Content: "ok"})
 	out := captureStdout(t, func() { _ = a.ProcessMessage("apply") })
 	msg := messageContent(t, lastChatBody(t, srv), 0)
 	if !strings.Contains(msg, "Dry run (kubectl_apply) failed") || strings.Contains(msg, "AKIAIOSFODNN7EXAMPLE") ||
@@ -196,7 +196,7 @@ func TestFailedDryRunIsRedactedBeforeTheModelAndTheAuditLog(t *testing.T) {
 func TestRememberedAnswerThatCannotBeSavedWarns(t *testing.T) {
 	a, _, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}),
-		toolCall("write_file", map[string]any{"path": "b.txt", "content": "2"}), ollamatest.Turn{Content: "ok"})
+		toolCall("write_file", map[string]any{"path": "b.txt", "content": "2"}), taraenginetest.Turn{Content: "ok"})
 	storeDir := t.TempDir()
 	perms, _, err := policy.LoadPermissions(filepath.Join(storeDir, "sub", "permissions.json"))
 	if err != nil {
@@ -223,7 +223,7 @@ func TestRememberedAnswerThatCannotBeSavedWarns(t *testing.T) {
 
 func TestRememberWithoutAPermissionStoreWarns(t *testing.T) {
 	a, _, _ := gateAssistant(t, policy.ModeOperate,
-		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}), ollamatest.Turn{Content: "ok"})
+		toolCall("write_file", map[string]any{"path": "a.txt", "content": "1"}), taraenginetest.Turn{Content: "ok"})
 	a.permissions = nil
 	a.confirmPermission = func(policy.Invocation, map[string]any) ui.PermissionChoice {
 		return ui.PermissionChoice{Allowed: true, Remember: true}
@@ -324,7 +324,7 @@ func TestApplyStartupModePrecedence(t *testing.T) {
 
 func TestAuditWithoutStorageWarns(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
-	srv.Turns = []ollamatest.Turn{
+	srv.Turns = []taraenginetest.Turn{
 		toolCall("write_file", map[string]any{"path": "x.txt", "content": "hi"}), {Content: "ok"},
 	}
 	out := captureStdout(t, func() { _ = a.ProcessMessage("write") })
@@ -371,7 +371,7 @@ func TestKubectlArgumentErrorIsRefusedInOperateMode(t *testing.T) {
 	wellFormed := map[string]any{"verb": "scale", "resource": "deployment", "name": "checkout", "namespace": "shop",
 		"context": "prod-cluster", "args": "--replicas=3"}
 	a, srv, _ := gateAssistant(t, policy.ModeOperate, toolCall("kubectl", malformedProdScale),
-		toolCall("kubectl", wellFormed), ollamatest.Turn{Content: "ok"})
+		toolCall("kubectl", wellFormed), taraenginetest.Turn{Content: "ok"})
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
 	out := captureStdout(t, func() { _ = a.ProcessMessage("scale checkout to 3 on prod") })
@@ -418,7 +418,7 @@ func TestKubectlArgumentErrorIsRefusedInInvestigateMode(t *testing.T) {
 	anotherVerb := map[string]any{"verb": "get", "args": "describe pod x"}
 	repeated := map[string]any{"verb": "get", "resource": "pods", "namespace": "billing", "args": "get pods -n billing"}
 	a, srv, _ := gateAssistant(t, policy.ModeInvestigate, toolCall("kubectl", malformedProdScale),
-		toolCall("kubectl", anotherVerb), toolCall("kubectl", repeated), ollamatest.Turn{Content: "ok"})
+		toolCall("kubectl", anotherVerb), toolCall("kubectl", repeated), taraenginetest.Turn{Content: "ok"})
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("look at checkout") })
@@ -481,12 +481,12 @@ func TestANamespaceObjectIsProtectedInEverySpelling(t *testing.T) {
 		{"kubectl", map[string]any{"verb": "delete", "resource": "ns", "name": "shop"}, denyPattern},
 		{"shell", map[string]any{"command": "kubectl delete ns/shop"}, denyPattern},
 	}
-	turns := make([]ollamatest.Turn, 0, len(denied)+2)
+	turns := make([]taraenginetest.Turn, 0, len(denied)+2)
 	for _, d := range denied {
 		turns = append(turns, toolCall(d.tool, d.args))
 	}
 	turns = append(turns, toolCall("kubectl", map[string]any{"verb": "get", "resource": "ns", "name": "kube-system"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	a, srv, _ := gateAssistant(t, policy.ModeOperate, turns...)
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
@@ -547,11 +547,11 @@ func TestKubectlPairsAndShellExpansionsAreProtected(t *testing.T) {
 		{"shell", map[string]any{"command": "kubectl {delete,ns} kube-system"}, namespaces},
 		{"shell", map[string]any{"command": "{kubectl,delete} ns kube-system"}, contexts},
 	}
-	turns := make([]ollamatest.Turn, 0, len(denied)+1)
+	turns := make([]taraenginetest.Turn, 0, len(denied)+1)
 	for _, d := range denied {
 		turns = append(turns, toolCall(d.tool, d.args))
 	}
-	a, _, _ := gateAssistant(t, policy.ModeOperate, append(turns, ollamatest.Turn{Content: "ok"})...)
+	a, _, _ := gateAssistant(t, policy.ModeOperate, append(turns, taraenginetest.Turn{Content: "ok"})...)
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
 	_ = captureStdout(t, func() { _ = a.ProcessMessage("relabel the namespaces") })
@@ -586,11 +586,11 @@ func TestALabelChangeIsNotANamespace(t *testing.T) {
 		{"shell", map[string]any{"command": "kubectl annotate namespace/shop note=x"}},
 		{"kubectl", map[string]any{"verb": "label", "resource": "ns/shop", "args": "team=x"}},
 	}
-	turns := make([]ollamatest.Turn, 0, len(calls)+1)
+	turns := make([]taraenginetest.Turn, 0, len(calls)+1)
 	for _, c := range calls {
 		turns = append(turns, toolCall(c.tool, c.args))
 	}
-	a, _, _ := gateAssistant(t, policy.ModeOperate, append(turns, ollamatest.Turn{Content: "ok"})...)
+	a, _, _ := gateAssistant(t, policy.ModeOperate, append(turns, taraenginetest.Turn{Content: "ok"})...)
 	a.permissions, _, _ = policy.LoadPermissions("")
 	var asked []policy.Invocation
 	a.confirmPermission = func(inv policy.Invocation, _ map[string]any) ui.PermissionChoice {
@@ -621,7 +621,7 @@ func TestANamespaceDeleteWithoutProtectionReachesThePrompt(t *testing.T) {
 	setProcessKubeconfig(t, false)
 	a, _, _ := gateAssistant(t, policy.ModeOperate,
 		toolCall("kubectl", map[string]any{"verb": "delete", "resource": "namespace", "name": "shop"}),
-		ollamatest.Turn{Content: "ok"})
+		taraenginetest.Turn{Content: "ok"})
 	a.pol = policy.Policy{Version: policy.CurrentVersion, Mode: policy.ModeOperate}
 	a.permissions, _, _ = policy.LoadPermissions("")
 	var asked []policy.Invocation

@@ -1,38 +1,38 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"time"
 
-	"github.com/tara-vision/taracode/internal/models"
+	"github.com/tara-vision/taracode/internal/llm"
+	"github.com/tara-vision/taracode/internal/llm/taraengine"
 )
 
-// hostRAMGB and loadRegistry are models.HostRAMGB and models.Load; tests replace them to size a
-// host and load a registry without depending on the machine.
-var (
-	hostRAMGB    = models.HostRAMGB
-	loadRegistry = models.Load
-)
+// firstRunTimeout bounds the one call the first-run advice makes.
+const firstRunTimeout = 5 * time.Second
 
-// printFirstRunAdvice prints the registry's recommended model for this host's RAM tier, in the
-// same "Advice ... ollama pull <name>" shape `taracode doctor` uses (spec 5.2: "First run with no
-// model configured calls the same recommendation"). New calls this right before it fails because
-// no model is persisted, configured, or installed on the server. It is best-effort: a host it
-// cannot size, or a registry it cannot load, leaves it silent rather than failing New over an
-// unrelated error.
-func printFirstRunAdvice(out io.Writer) {
-	ramGB, err := hostRAMGB()
+// printFirstRunAdvice prints the engine's recommended model for this machine's tier, in the same "Advice ...
+// taraengine pull <name>" shape `taracode doctor` uses. New calls it right before it fails because no model is
+// persisted, configured or pulled. It is best-effort: a server that is not the engine, or an engine that cannot say,
+// leaves it silent rather than failing New over an unrelated error. The tier and the name come from the engine and
+// reach the terminal, so their control characters are dropped.
+func printFirstRunAdvice(out io.Writer, client llm.Client) {
+	ec, ok := client.(interface{ Engine() *taraengine.Engine })
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), firstRunTimeout)
+	defer cancel()
+	d, err := ec.Engine().Doctor(ctx)
 	if err != nil {
 		return
 	}
-	registry, err := loadRegistry()
-	if err != nil {
+	name := llm.Printable(d.Recommendation[d.Machine.Tier])
+	if name == "" {
 		return
 	}
-	entry := registry.DefaultForTier(models.TierFor(ramGB))
-	if entry.Name == "" {
-		return
-	}
-	_, _ = fmt.Fprintf(out, "Advice    recommended for %d GB: %s (%.0f GB download)\n          ollama pull %s\n",
-		ramGB, entry.Name, entry.DownloadGB, entry.Name)
+	_, _ = fmt.Fprintf(out, "Advice    recommended for tier %s: %s\n          taraengine pull %s\n",
+		llm.Printable(d.Machine.Tier), name, name)
 }

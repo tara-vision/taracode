@@ -12,7 +12,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/tara-vision/taracode/internal/llm/ollamatest"
+	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/tools"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -48,8 +48,8 @@ func TestOutputWriterCarriesTheAnswerAndToolLines(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	var buf bytes.Buffer
 	a.out = &buf
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
 		{Content: "It says hello from disk."},
 	}
 	if err := a.ProcessMessage("What does hello.txt say?"); err != nil {
@@ -66,8 +66,8 @@ func TestObserverSeesAllowedAndDeniedCallsAndLastTurnCounts(t *testing.T) {
 	a.out = io.Discard
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{
 			{Name: "read_file", Args: map[string]any{"path": "hello.txt"}},
 			{Name: "kubectl", Args: map[string]any{"verb": "delete", "resource": "pod", "name": "x"}},
 		}, PromptTokens: 100, CompletionTokens: 20},
@@ -97,8 +97,8 @@ func TestLastTurnMarksTheIterationCap(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.out = io.Discard
 	a.maxIterations = 2
-	call := ollamatest.Turn{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}}
-	srv.Turns = []ollamatest.Turn{call, call, {Content: "the findings so far"}}
+	call := taraenginetest.Turn{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}}
+	srv.Turns = []taraenginetest.Turn{call, call, {Content: "the findings so far"}}
 	if err := a.ProcessMessage("loop"); err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +121,8 @@ func TestPermissionDeciderReplacesThePrompt(t *testing.T) {
 	}
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "write_file", Args: map[string]any{"path": "new.txt", "content": "x"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "write_file", Args: map[string]any{"path": "new.txt", "content": "x"}}}},
 		{Content: "denied"},
 	}
 	if err := a.ProcessMessage("write"); err != nil {
@@ -137,10 +137,10 @@ func TestPermissionDeciderReplacesThePrompt(t *testing.T) {
 }
 
 func TestHeadlessOptionsReachTheAssistantThroughNew(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "shell", Args: map[string]any{"command": "echo hi"}}}},
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "shell", Args: map[string]any{"command": "echo hi"}}}},
 		{Content: "replayed"},
 	}
 	var buf bytes.Buffer
@@ -184,9 +184,9 @@ func TestHeadlessOptionsReachTheAssistantThroughNew(t *testing.T) {
 // at each write, as the bare prints did, so an assistant built while os.Stdout was swapped (the cmd
 // tests build theirs inside a capture) still prints to the stdout of the moment.
 func TestNilOutputFollowsStdoutAfterNew(t *testing.T) {
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = []ollamatest.Turn{{Content: "printed to the current stdout"}}
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv.Turns = []taraenginetest.Turn{{Content: "printed to the current stdout"}}
 	opts := DefaultOptions()
 	opts.Host, opts.Model, opts.WorkingDir = srv.URL, "gemma4:12b", t.TempDir()
 	opts.Ephemeral, opts.Spinner, opts.Streaming = true, false, false
@@ -211,10 +211,10 @@ func TestNilOutputFollowsStdoutAfterNew(t *testing.T) {
 // permission): a write in operate mode asks New's decider, and its refusal stands.
 func TestPermissionDeciderReachesTheGateThroughNew(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // no ~/.taracode/policy.yaml from the machine running the test
-	srv := ollamatest.New(t)
-	srv.Models = []ollamatest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "write_file", Args: map[string]any{"path": "new.txt", "content": "x"}}}},
+	srv := taraenginetest.New(t)
+	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"}, ContextLength: 32768}}
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "write_file", Args: map[string]any{"path": "new.txt", "content": "x"}}}},
 		{Content: "refused"},
 	}
 	opts := DefaultOptions()
@@ -249,8 +249,8 @@ func TestAnUnknownToolIsARefusalInTheObserver(t *testing.T) {
 	a.out = &buf
 	var events []ToolEvent
 	a.observer = func(ev ToolEvent) { events = append(events, ev) }
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "bash", Args: map[string]any{"command": "echo hi"}}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "bash", Args: map[string]any{"command": "echo hi"}}}},
 		{Content: "done"},
 	}
 	if err := a.ProcessMessage("say hi"); err != nil {
@@ -279,8 +279,8 @@ func TestAnUnknownToolIsARefusalInTheObserver(t *testing.T) {
 func TestLastTurnSumsTheEngineDurations(t *testing.T) {
 	a, srv := newTestAssistant(t, false)
 	a.out = io.Discard
-	srv.Turns = []ollamatest.Turn{
-		{ToolCalls: []ollamatest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}},
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}},
 			PromptTokens: 100, CompletionTokens: 20,
 			PromptEvalDuration: 300 * time.Millisecond, EvalDuration: 200 * time.Millisecond},
 		{Content: "done", PromptTokens: 150, CompletionTokens: 5,

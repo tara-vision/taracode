@@ -28,7 +28,7 @@ func commandTable() []command {
 		},
 		{"/sessions", "", "List all sessions", "Session", (*repl).cmdSessions},
 		{"/clear", "", "Clear the conversation (new session)", "Session", (*repl).cmdClear},
-		{"/model", "", "Switch between available models", "Model", (*repl).cmdModel},
+		{"/model", "", "Switch between the engine's pulled models", "Model", (*repl).cmdModel},
 		{"/think", "[auto|off|on|low|medium|high]", "Show or set the reasoning mode", "Model", (*repl).cmdThink},
 		{"/mode", "[investigate|operate]", "Show or switch the operating mode", "Safety", (*repl).cmdMode},
 		{
