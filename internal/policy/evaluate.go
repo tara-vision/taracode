@@ -38,25 +38,32 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 
 // denyPattern matches the deny patterns against the command as written and against its canonical
 // form (ruling P3-R69), where kubectl resource aliases are spelled out and type/name is type then
-// name; a pattern is read the same way, so kubectl delete namespace * refuses kubectl delete ns/x and
-// a pattern written with an alias refuses the long form. The raw match keeps every pattern working as
-// it did.
+// name, and where terraform, tofu and terragrunt read as terraform and an apply or plan with -destroy
+// reads as destroy; a pattern is read the same way, so kubectl delete namespace * refuses kubectl
+// delete ns/x, terraform destroy* refuses tofu apply -destroy, and a pattern written with an alias
+// refuses the long form. The raw match keeps every pattern working as it did.
 func (p Policy) denyPattern(command string) (Verdict, bool) {
 	if command == "" {
 		return Verdict{}, false
 	}
 	raw := collapse(command)
-	canonical := canonicalKubeCommand(raw)
+	canonical := canonicalCommand(raw)
 	for _, pattern := range p.Deny.Commands {
 		if matchGlob(pattern, raw) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", command, pattern)}, true
 		}
-		if matchGlob(canonicalKubeCommand(collapse(pattern)), canonical) {
+		if matchGlob(canonicalCommand(collapse(pattern)), canonical) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q (read as %q) matches the deny pattern %q",
 				command, canonical, pattern)}, true
 		}
 	}
 	return Verdict{}, false
+}
+
+// canonicalCommand is the one spelling the deny patterns and the lines are compared in: the kubectl form,
+// then the terraform form.
+func canonicalCommand(collapsed string) string {
+	return canonicalTerraformCommand(canonicalKubeCommand(collapsed))
 }
 
 // kubeRemedy tells the model how to turn a "*" kube target into one taracode can pin down, so it does

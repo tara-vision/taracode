@@ -431,3 +431,36 @@ func TestHelmPostRendererIsRefusedBeforeThePrompt(t *testing.T) {
 		t.Fatal("helm must not run")
 	}
 }
+
+// TestADestroyByAnotherSpellingNeverRuns: with every permission allowed in operate mode, a teardown the
+// model spells as an apply, or runs through tofu, is refused by the built-in deny pattern and never
+// reaches the binary.
+func TestADestroyByAnotherSpellingNeverRuns(t *testing.T) {
+	fake := "#!/bin/sh\ntouch \"$TERRAFORM_RAN\"\necho \"$0 $@\"\n"
+	bin := t.TempDir()
+	for _, name := range []string{"terraform", "tofu"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(fake), 0o755); err != nil { //nolint:gosec // test binary
+			t.Fatal(err)
+		}
+	}
+	ranMarker := filepath.Join(t.TempDir(), "ran")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("TERRAFORM_RAN", ranMarker)
+	a, srv, _ := gateAssistant(t, policy.ModeOperate,
+		toolCall("shell", map[string]any{"command": "terraform apply -destroy -auto-approve"}),
+		toolCall("shell", map[string]any{"command": "tofu destroy -auto-approve"}),
+		ollamatest.Turn{Content: "ok"})
+	_ = captureStdout(t, func() { _ = a.ProcessMessage("tear it down") })
+	recs, _ := a.storage.ReadAudit("")
+	if len(recs) != 2 || recs[0].Rule != "deny.commands" || recs[1].Rule != "deny.commands" {
+		t.Fatalf("audit %+v", recs)
+	}
+	for _, msg := range toolMessages(t, srv) {
+		if !strings.Contains(msg, "terraform destroy*") {
+			t.Errorf("refusal %q", msg)
+		}
+	}
+	if _, err := os.Stat(ranMarker); !os.IsNotExist(err) {
+		t.Fatal("a refused teardown must not run at all")
+	}
+}

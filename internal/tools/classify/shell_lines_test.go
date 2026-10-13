@@ -44,6 +44,7 @@ func TestShellLinesAreTheFormsADenyPatternReads(t *testing.T) {
 		{"env X=1 terraform destroy", "terraform destroy"},
 		{"/opt/homebrew/bin/terraform destroy", "terraform destroy"},
 		{"sudo -u ops terraform -chdir=. destroy", "terraform destroy"},
+		{"terraform -chdir=infra apply -destroy", "terraform apply -destroy"},
 	}
 	for _, c := range cases {
 		if lines := Shell(c.cmd).Lines; !slices.Contains(lines, c.want) {
