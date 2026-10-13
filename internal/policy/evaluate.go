@@ -9,13 +9,14 @@ import (
 // Verdict is the policy's answer for one invocation.
 type Verdict struct {
 	Allow  bool
-	Rule   string // read | mode | protected.<list> | deny.commands | policy
+	Rule   string // read | mode | protected.<list> | deny.commands | require_dry_run | policy
 	Reason string // set on every denial, phrased for the model and the user
 	DryRun string // kubectl_apply | terraform_apply | helm_upgrade when a dry run must come first
 }
 
 // Evaluate applies, in order: classification (reads always pass), mode, protected targets, deny
-// patterns, dry-run requirements. Permissions are the caller's next step.
+// patterns, a terraform apply through the shell, dry-run requirements. Permissions are the caller's
+// next step.
 func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 	if inv.Classification != Mutate {
 		return Verdict{Allow: true, Rule: "read"}
@@ -33,30 +34,70 @@ func (p Policy) Evaluate(mode Mode, inv Invocation) Verdict {
 			return v
 		}
 	}
+	if v, denied := p.shellApply(inv); denied {
+		return v
+	}
 	return Verdict{Allow: true, Rule: "policy", DryRun: p.dryRunFor(inv)}
+}
+
+// shellApply refuses a terraform apply run through the shell while the policy requires a plan from
+// this session (require_dry_run.terraform_apply): the shell runs the line as given, so only the
+// terraform tool can show the plan's summary before the prompt. The lines are the deny lines, so an
+// apply inside sh -c, behind xargs or by tofu and terragrunt is read too; a line that only mentions
+// terraform after another program (echo terraform apply > notes.txt) is not one.
+func (p Policy) shellApply(inv Invocation) (Verdict, bool) {
+	if inv.Tool != "shell" || !enabled(p.RequireDryRun.TerraformApply) {
+		return Verdict{}, false
+	}
+	for _, line := range append([]string{inv.Command}, inv.Lines...) {
+		words := strings.Fields(collapse(line))
+		program, verb, ok := terraformVerb(words)
+		if ok && program == 0 && verb < len(words) && terraformVerbWord(words[verb]) == "apply" {
+			return Verdict{Rule: "require_dry_run", Reason: fmt.Sprintf("%q: a terraform apply through the shell "+
+				"skips the plan this session requires; plan and apply with the terraform tool, which applies the plan "+
+				"from this session after showing its summary (a policy with require_dry_run.terraform_apply: false "+
+				"allows the shell apply)", line)}, true
+		}
+	}
+	return Verdict{}, false
 }
 
 // denyPattern matches the deny patterns against the command as written and against its canonical
 // form (ruling P3-R69), where kubectl resource aliases are spelled out and type/name is type then
-// name; a pattern is read the same way, so kubectl delete namespace * refuses kubectl delete ns/x and
-// a pattern written with an alias refuses the long form. The raw match keeps every pattern working as
-// it did.
+// name, and where terraform, tofu and terragrunt read as terraform and an apply or plan with -destroy
+// reads as destroy; a pattern is read the same way, so kubectl delete namespace * refuses kubectl
+// delete ns/x, terraform destroy* refuses tofu apply -destroy, and a pattern written with an alias
+// refuses the long form. The raw match keeps every pattern working as it did.
 func (p Policy) denyPattern(command string) (Verdict, bool) {
 	if command == "" {
 		return Verdict{}, false
 	}
 	raw := collapse(command)
-	canonical := canonicalKubeCommand(raw)
+	canonical, kept := canonicalCommand(raw), canonicalPattern(raw)
 	for _, pattern := range p.Deny.Commands {
 		if matchGlob(pattern, raw) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", command, pattern)}, true
 		}
-		if matchGlob(canonicalKubeCommand(collapse(pattern)), canonical) {
+		// The pattern is read with its own words kept, against the line with the words between its program
+		// and verb dropped (the shipped terraform destroy* meets terraform -chdir=infra apply -destroy) and
+		// against the line with them kept (an operator's terraform -chdir=*prod* destroy* meets
+		// tofu -chdir=prod apply -destroy).
+		if pat := canonicalPattern(collapse(pattern)); matchGlob(pat, canonical) || matchGlob(pat, kept) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q (read as %q) matches the deny pattern %q",
 				command, canonical, pattern)}, true
 		}
 	}
 	return Verdict{}, false
+}
+
+// canonicalCommand is the one spelling the deny patterns and the lines are compared in: the kubectl form,
+// then the terraform form. A pattern keeps the words its operator wrote between the program and the verb.
+func canonicalCommand(collapsed string) string {
+	return canonicalTerraformCommand(canonicalKubeCommand(collapsed))
+}
+
+func canonicalPattern(collapsed string) string {
+	return canonicalTerraformPattern(canonicalKubeCommand(collapsed))
 }
 
 // kubeRemedy tells the model how to turn a "*" kube target into one taracode can pin down, so it does

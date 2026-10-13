@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+A teardown in operate mode that the built-in deny pattern did not read as one. Found on 2026-10-13 in our own
+hardware board runs and the review of the policy gate that followed; there is no report of it being used.
+Upgrade if you use operate mode.
+
+- **A destroy by another spelling passed the deny pattern.** `terraform destroy*` matched a line that starts
+  so and nothing else: `terraform apply -destroy`, `terraform plan -destroy -out=tfplan` with the apply of that
+  file, a `-destroy` set through `TF_CLI_ARGS`, `tofu destroy` and `terragrunt destroy` passed. The deny
+  patterns now read a canonical terraform form, where `terraform`, `tofu` and `terragrunt` are one program and
+  an `apply` or `plan` with a true `-destroy` flag, on the line or in the environment in front of it, is a
+  destroy, so the pattern already in your policy file refuses them; the terraform tool remembers a plan made
+  with `-destroy`, so the apply of that plan reads as a destroy too; and a terraform tool call whose command
+  is an option (`-chdir=infra apply`) is refused instead of running past the plan the tool requires.
+- **A `terraform apply` through the shell ran with no plan.** The terraform tool requires a plan from this
+  session and shows its summary before the prompt; the shell ran an apply as given. While
+  `require_dry_run.terraform_apply` is on, a terraform apply through the shell is refused and steered to the
+  terraform tool.
+
+### Changed
+- Failing closed costs, in operate mode: a `terraform`, `tofu` or `terragrunt` apply through the shell while
+  `require_dry_run.terraform_apply` is on (apply through the terraform tool, or switch the requirement off in
+  the policy); a plan written with `-destroy` and `-out`, and the apply of a plan the terraform tool made with
+  `-destroy`, which `terraform destroy*` now refuses; and `terragrunt plan -destroy` even without `-out`, since
+  a terragrunt line is a mutation.
+
 ## [3.2.5] - 2026-10-12
 
 ### Security

@@ -32,6 +32,10 @@ func TestEvaluateOrder(t *testing.T) {
 		{"terraform apply needs a plan", ModeOperate, mutate("terraform", "apply", "terraform apply", Targets{Paths: []string{"/w/infra"}}), true, "policy", "terraform_apply"},
 		{"helm install dry-runs", ModeOperate, mutate("helm", "install", "helm install x y", Targets{}), true, "policy", "helm_upgrade"},
 		{"plain mutation passes to permissions", ModeOperate, mutate("shell", "", "make deploy", Targets{}), true, "policy", ""},
+		{"a terraform apply through the shell needs the plan too", ModeOperate, mutate("shell", "", "terraform apply -auto-approve", Targets{}), false, "require_dry_run", ""},
+		{"a shell apply of a saved plan too", ModeOperate, mutate("shell", "", "cd infra && make", Targets{}), true, "policy", ""},
+		{"a shell line whose inner string applies", ModeOperate, Invocation{Tool: "shell", Classification: Mutate, Reason: "test", Command: `sh -c "terraform apply tfplan"`, Lines: []string{"terraform apply tfplan"}, WorkingDir: "/w"}, false, "require_dry_run", ""},
+		{"a kubectl apply through the shell is unchanged", ModeOperate, mutate("shell", "", "kubectl apply -f x", Targets{KubeContext: "dev", KubeNamespace: "apps"}), true, "policy", ""},
 	}
 	pol := p
 	pol.Protected.Paths = append(pol.Protected.Paths, "/w/.taracode/policy.yaml")
@@ -73,6 +77,23 @@ func TestDryRunCanBeSwitchedOffPerKind(t *testing.T) {
 	v := p.Evaluate(ModeOperate, mutate("kubectl", "apply", "kubectl apply -f x", Targets{KubeContext: "dev"}))
 	if !v.Allow || v.DryRun != "" {
 		t.Fatalf("%+v", v)
+	}
+	shellApply := mutate("shell", "", "tofu apply -auto-approve", Targets{})
+	if v := p.Evaluate(ModeOperate, shellApply); v.Allow || v.Rule != "require_dry_run" ||
+		!strings.Contains(v.Reason, "terraform tool") || !strings.Contains(v.Reason, "require_dry_run.terraform_apply") {
+		t.Fatalf("a shell apply is refused while the plan is required, with the steer: %+v", v)
+	}
+	p.RequireDryRun.TerraformApply = &f
+	if v := p.Evaluate(ModeOperate, shellApply); !v.Allow || v.Rule != "policy" || v.DryRun != "" {
+		t.Fatalf("with terraform_apply off a shell apply is an ordinary mutation: %+v", v)
+	}
+	open := Default()
+	open.Deny.Commands = nil
+	if v := open.Evaluate(ModeOperate, mutate("shell", "", "terraform apply -destroy -auto-approve", Targets{})); v.Allow || v.Rule != "require_dry_run" {
+		t.Fatalf("without the destroy pattern a shell apply -destroy still needs the plan: %+v", v)
+	}
+	if v := Default().Evaluate(ModeOperate, mutate("shell", "", "echo terraform apply > notes.txt", Targets{})); !v.Allow || v.Rule != "policy" {
+		t.Fatalf("a line that only mentions terraform is no apply: %+v", v)
 	}
 	if !strings.Contains(Default().Evaluate(ModeInvestigate, mutate("git", "push", "git push", Targets{})).Reason, "/mode operate") {
 		t.Fatal("the investigate denial must tell the model how the user switches modes")

@@ -14,6 +14,7 @@ protected:                      # never mutated in operate mode (hard deny, prin
   paths: ["**/*.tfstate", ".git/**"]
   hosts: []
 deny:                           # refused outright; the last pattern keeps the policy files safe
+  # terraform destroy* also reads tofu, terragrunt, and an apply or plan with -destroy (see the README)
   commands: ["rm -rf /*", "kubectl delete namespace *", "terraform destroy*", "*.taracode/policy.yaml*"]
 require_dry_run:                # shown before the permission prompt
   kubectl_apply: true           # kubectl diff first
