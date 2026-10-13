@@ -9,16 +9,23 @@ import (
 // terraformPrograms are the programs the canonical terraform form reads as terraform, by base name.
 var terraformPrograms = map[string]bool{"terraform": true, "tofu": true, "terragrunt": true}
 
-// terragruntRunWords are the words terragrunt puts before the terraform verb: run-all destroy, run --all destroy.
-var terragruntRunWords = map[string]bool{"run-all": true, "run": true}
+// terraformVerbs are the commands of terraform and tofu. The verb of a line is the first of them after the
+// program, past the global options with their values (-chdir=infra, --working-dir infra) and terragrunt's
+// run words (run-all, run --all, stack run).
+var terraformVerbs = map[string]bool{
+	"apply": true, "console": true, "destroy": true, "env": true, "fmt": true, "force-unlock": true, "get": true,
+	"graph": true, "import": true, "init": true, "login": true, "logout": true, "metadata": true, "modules": true,
+	"output": true, "plan": true, "providers": true, "query": true, "refresh": true, "show": true, "state": true,
+	"taint": true, "test": true, "untaint": true, "validate": true, "version": true, "workspace": true,
+}
 
 // canonicalTerraformCommand spells the terraform commands of a collapsed command line one way for the deny
 // patterns, next to the kubectl form: terraform, tofu and terragrunt (a path to one is its name) read as
-// terraform, the global options before the verb (-chdir=infra) and terragrunt's run words are dropped, and
-// apply or plan with a true destroy flag reads as destroy, the flag dropped. So tofu apply -auto-approve
-// -destroy and terragrunt run-all destroy both read as terraform destroy ..., which the shipped pattern
-// terraform destroy* refuses. Words before the first terraform program, and a line without one, stay as
-// written.
+// terraform, the words between the program and its verb (global options, their values, terragrunt's run
+// words) are dropped, and apply or plan with a true destroy flag reads as destroy, the flag dropped. So
+// tofu apply -auto-approve -destroy, terragrunt run-all destroy and terragrunt --working-dir infra destroy
+// all read as terraform destroy ..., which the shipped pattern terraform destroy* refuses. Words before
+// the first terraform program, and a line without one, stay as written.
 func canonicalTerraformCommand(command string) string {
 	words := strings.Fields(command)
 	program, verb, ok := terraformVerb(words)
@@ -26,26 +33,45 @@ func canonicalTerraformCommand(command string) string {
 		return command
 	}
 	out := append(append([]string{}, words[:program]...), "terraform")
+	return strings.Join(append(out, rewriteDestroy(words, verb)...), " ")
+}
+
+// canonicalTerraformPattern spells a deny pattern the way canonicalTerraformCommand spells a line, but keeps
+// the words the operator wrote between the program and the verb (an option such as -chdir=*prod*, a
+// terragrunt run word), so a pattern narrower than the shipped one refuses only what it names.
+func canonicalTerraformPattern(pattern string) string {
+	words := strings.Fields(pattern)
+	program, verb, ok := terraformVerb(words)
+	if !ok {
+		return pattern
+	}
+	out := append(append([]string{}, words[:program]...), "terraform")
+	out = append(out, words[program+1:verb]...)
+	return strings.Join(append(out, rewriteDestroy(words, verb)...), " ")
+}
+
+// rewriteDestroy is the verb and what follows it, with apply or plan under a true destroy flag spelled as
+// destroy without the flag; nothing when no verb follows the program.
+func rewriteDestroy(words []string, verb int) []string {
 	if verb >= len(words) {
-		return strings.Join(out, " ")
+		return nil
 	}
 	rest := words[verb+1:]
 	if (words[verb] == "apply" || words[verb] == "plan") && destroyFlag(rest) {
-		return strings.Join(append(append(out, "destroy"), withoutDestroyFlag(rest)...), " ")
+		return append([]string{"destroy"}, withoutDestroyFlag(rest)...)
 	}
-	return strings.Join(append(out, words[verb:]...), " ")
+	return words[verb:]
 }
 
-// terraformVerb finds the first terraform program on the line and the index of its verb, past the global
-// options and terragrunt's run words; verb is len(words) when nothing follows the program.
+// terraformVerb finds the first terraform program on the line and the index of its verb, the first word
+// after it that names a terraform command; verb is len(words) when none follows the program.
 func terraformVerb(words []string) (program, verb int, ok bool) {
 	for i, w := range words {
-		name := path.Base(w)
-		if !terraformPrograms[name] {
+		if !terraformPrograms[path.Base(w)] {
 			continue
 		}
 		j := i + 1
-		for j < len(words) && (strings.HasPrefix(words[j], "-") || (name == "terragrunt" && terragruntRunWords[words[j]])) {
+		for j < len(words) && !terraformVerbs[words[j]] {
 			j++
 		}
 		return i, j, true

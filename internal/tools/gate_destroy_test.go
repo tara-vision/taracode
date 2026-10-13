@@ -28,6 +28,10 @@ func TestTheGateRefusesADestroyByEverySpelling(t *testing.T) {
 		`terragrunt destroy`,
 		`terragrunt run-all destroy`,
 		`terragrunt run --all destroy`,
+		`terragrunt --working-dir infra destroy -auto-approve`,
+		`terragrunt --log-level debug destroy`,
+		`terragrunt run --all --queue-include-dir app destroy`,
+		`terragrunt stack run destroy`,
 		`terraform plan -destroy -out=tfplan`,
 		`cd infra && terraform plan -destroy -out=tfplan`,
 	}
@@ -68,6 +72,8 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 		`export TF_CLI_ARGS_apply=-destroy; terraform apply -auto-approve`,
 		`tofu apply -auto-approve`,
 		`terragrunt run-all apply`,
+		`terragrunt --working-dir infra apply -auto-approve`,
+		`echo infra | xargs -I{} terraform -chdir={} apply -auto-approve`,
 	}
 	for _, cmd := range held {
 		v := gateVerdict(p, shell, map[string]any{"command": cmd}, wd)
@@ -84,6 +90,7 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 		}
 	}
 	unchanged := []string{
+		`terraform -chdir=infra`,
 		`echo terraform apply > notes.txt`,
 		`grep -c "terraform apply" deploy.log > count.txt`,
 		`kubectl --context dev -n apps apply -f x.yaml`,

@@ -77,7 +77,7 @@ func (p Policy) denyPattern(command string) (Verdict, bool) {
 		if matchGlob(pattern, raw) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", command, pattern)}, true
 		}
-		if matchGlob(canonicalCommand(collapse(pattern)), canonical) {
+		if matchGlob(canonicalPattern(collapse(pattern)), canonical) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q (read as %q) matches the deny pattern %q",
 				command, canonical, pattern)}, true
 		}
@@ -86,9 +86,13 @@ func (p Policy) denyPattern(command string) (Verdict, bool) {
 }
 
 // canonicalCommand is the one spelling the deny patterns and the lines are compared in: the kubectl form,
-// then the terraform form.
+// then the terraform form. A pattern keeps the words its operator wrote between the program and the verb.
 func canonicalCommand(collapsed string) string {
 	return canonicalTerraformCommand(canonicalKubeCommand(collapsed))
+}
+
+func canonicalPattern(collapsed string) string {
+	return canonicalTerraformPattern(canonicalKubeCommand(collapsed))
 }
 
 // kubeRemedy tells the model how to turn a "*" kube target into one taracode can pin down, so it does

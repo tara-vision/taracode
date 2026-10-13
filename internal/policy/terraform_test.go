@@ -32,6 +32,14 @@ func TestCanonicalTerraformCommandSpellsADestroyOneWay(t *testing.T) {
 		{"terragrunt run-all destroy", "terraform destroy"},
 		{"terragrunt run --all destroy -auto-approve", "terraform destroy -auto-approve"},
 		{"terragrunt run-all apply -destroy", "terraform destroy"},
+		{"terragrunt --working-dir infra destroy -auto-approve", "terraform destroy -auto-approve"},
+		{"terragrunt --log-level debug destroy", "terraform destroy"},
+		{"terragrunt run --all --queue-include-dir app destroy", "terraform destroy"},
+		{"terragrunt stack run destroy", "terraform destroy"},
+		{"terragrunt --working-dir infra apply -destroy", "terraform destroy"},
+		{"terragrunt hcl fmt", "terraform fmt"},
+		{"terragrunt catalog", "terraform"},
+		{"terraform -var region=apply plan -out=x", "terraform plan -out=x"},
 		{"cd infra && terraform apply -destroy", "cd infra && terraform destroy"},
 		{"terraform apply tfplan", "terraform apply tfplan"},
 		{"terraform", "terraform"},
@@ -93,5 +101,28 @@ func TestDenyPatternsMatchTheCanonicalTerraformCommand(t *testing.T) {
 	own := Policy{Deny: DenyRules{Commands: []string{"tofu destroy*"}}}
 	if v := own.Evaluate(ModeOperate, mutate("shell", "", "terraform apply -destroy -auto-approve", Targets{})); v.Allow {
 		t.Errorf("a pattern is read in the canonical form too: %+v", v)
+	}
+}
+
+// TestAPatternKeepsItsOwnWordsInTheCanonicalForm: a deny pattern is read with its program name and its destroy
+// flag canonical, but the words the operator wrote between the program and the verb stay, so a pattern
+// narrower than the shipped one refuses only what it names.
+func TestAPatternKeepsItsOwnWordsInTheCanonicalForm(t *testing.T) {
+	narrow := Policy{Deny: DenyRules{Commands: []string{"terraform -chdir=*prod* apply*"}}}
+	if v := narrow.Evaluate(ModeOperate, mutate("shell", "", "terraform -chdir=prod-eu apply", Targets{})); v.Allow {
+		t.Errorf("the pattern refuses what it names: %+v", v)
+	}
+	if v := narrow.Evaluate(ModeOperate, mutate("terraform", "apply", "terraform apply", Targets{Paths: []string{"/w/dev"}})); !v.Allow {
+		t.Errorf("the pattern leaves another directory's apply alone: %+v", v)
+	}
+	runAll := Policy{Deny: DenyRules{Commands: []string{"terragrunt run-all *"}}}
+	if v := runAll.Evaluate(ModeOperate, mutate("shell", "", "terraform init", Targets{})); !v.Allow {
+		t.Errorf("a terragrunt pattern leaves terraform alone: %+v", v)
+	}
+	if v := runAll.Evaluate(ModeOperate, mutate("shell", "", "terragrunt run-all init", Targets{})); v.Allow {
+		t.Errorf("the terragrunt pattern refuses what it names: %+v", v)
+	}
+	if got := canonicalTerraformPattern("tofu -chdir=*prod* apply -destroy -auto-approve*"); got != "terraform -chdir=*prod* destroy -auto-approve*" {
+		t.Errorf("canonicalTerraformPattern = %q", got)
 	}
 }
