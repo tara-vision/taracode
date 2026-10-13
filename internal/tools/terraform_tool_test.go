@@ -157,3 +157,71 @@ func TestTerraformCommandSplitsTheCommandParameter(t *testing.T) {
 		t.Error("an unbalanced quote must be an error")
 	}
 }
+
+// TestTheApplyOfADestroyPlanIsRefusedAtTheGate: a plan made with -destroy is remembered as one, and the
+// apply that would run it carries a terraform destroy line, so the built-in deny pattern refuses it before
+// the dry run and the prompt; a plan without the flag, or with -destroy=false, leaves the apply as it was.
+func TestTheApplyOfADestroyPlanIsRefusedAtTheGate(t *testing.T) {
+	fakeBin(t, "terraform", fakeTerraform)
+	tool := TerraformTool()
+	dir := t.TempDir()
+	p := policy.Default()
+	if out, err := tool.Run(context.Background(), map[string]any{"command": "plan", "args": "-destroy"}, dir); err != nil || !strings.Contains(out, "saved for terraform apply") {
+		t.Fatalf("plan -destroy %q %v", out, err)
+	}
+	inv := tool.Classify(map[string]any{"command": "apply"}, dir)
+	if !strings.Contains(strings.Join(inv.Lines, "\n"), "terraform destroy (the plan from this session was made with -destroy)") {
+		t.Fatalf("the apply of a destroy plan must carry the destroy line: %+v", inv)
+	}
+	if v := gateVerdict(p, tool, map[string]any{"command": "apply"}, dir); v.Allow || v.Rule != "deny.commands" ||
+		!strings.Contains(v.Reason, "terraform destroy*") || !strings.Contains(v.Reason, "made with -destroy") {
+		t.Fatalf("the gate refuses the apply of a destroy plan: %+v", v)
+	}
+	other := t.TempDir()
+	if v := gateVerdict(p, tool, map[string]any{"command": "apply", "dir": other}, dir); v.Rule != "policy" || v.DryRun != "terraform_apply" {
+		t.Fatalf("another directory's apply is untouched: %+v", v)
+	}
+	for _, args := range []string{"", "-destroy=false", "-destroy -destroy=false"} {
+		if _, err := tool.Run(context.Background(), map[string]any{"command": "plan", "args": args}, dir); err != nil {
+			t.Fatal(err)
+		}
+		inv := tool.Classify(map[string]any{"command": "apply"}, dir)
+		if len(inv.Lines) != 0 || inv.Command != "terraform apply" {
+			t.Errorf("plan %q then apply: %+v, want no destroy line", args, inv)
+		}
+		if v := gateVerdict(p, tool, map[string]any{"command": "apply"}, dir); !v.Allow || v.DryRun != "terraform_apply" {
+			t.Errorf("plan %q then apply: %+v, want the plan dry run", args, v)
+		}
+	}
+	if _, err := tool.Run(context.Background(), map[string]any{"command": "plan", "args": "-destroy=true -lock=false"}, dir); err != nil {
+		t.Fatal(err)
+	}
+	if v := gateVerdict(p, tool, map[string]any{"command": "apply"}, dir); v.Allow {
+		t.Fatalf("a plan with -destroy=true is a destroy plan: %+v", v)
+	}
+}
+
+// TestTheTerraformToolRefusesACommandThatIsAnOption: a command parameter that starts with an option
+// (-chdir=infra apply) would run as a plain terraform call past the plan guard; the registry refuses it before
+// anything runs and asks for the command by name with the directory as dir.
+func TestTheTerraformToolRefusesACommandThatIsAnOption(t *testing.T) {
+	check, ok := argumentChecks["terraform"]
+	if !ok {
+		t.Fatal("the terraform tool has no argument check")
+	}
+	err := check(map[string]any{"command": "-chdir=infra apply", "args": "-auto-approve"})
+	if err == nil || !strings.Contains(err.Error(), "-chdir=infra") || !strings.Contains(err.Error(), "dir") {
+		t.Fatalf("an option as the command must be refused with the remedy: %v", err)
+	}
+	for _, command := range []string{"apply", "plan", "state list", "init -backend=false"} {
+		if err := check(map[string]any{"command": command}); err != nil {
+			t.Errorf("%q: %v, want no error", command, err)
+		}
+	}
+	if err := check(map[string]any{"command": ""}); err == nil {
+		t.Error("an empty command is still refused")
+	}
+	if !strings.Contains(TerraformTool().Description, "-destroy") {
+		t.Error("the description says a plan made with -destroy is refused at apply")
+	}
+}

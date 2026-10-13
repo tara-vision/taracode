@@ -16,12 +16,17 @@ import (
 
 const terraformTimeout = 600 * time.Second
 
-// planRecord is a plan produced in this session, keyed by the absolute directory.
+// planRecord is a plan produced in this session, keyed by the absolute directory; destroy marks a plan made
+// with -destroy, whose apply the deny patterns read as a destroy.
 type planRecord struct {
 	file    string
 	summary string
 	at      time.Time
+	destroy bool
 }
+
+// destroyPlanLine is the line the apply of a destroy plan carries for the deny patterns.
+const destroyPlanLine = "terraform destroy (the plan from this session was made with -destroy)"
 
 type terraformState struct {
 	mu    sync.Mutex
@@ -41,8 +46,8 @@ func TerraformTool() *Tool {
 	return &Tool{
 		Name: "terraform", ReadForm: true,
 		Description: "Run terraform in a directory. plan returns a summary and keeps the plan for apply; apply applies " +
-			"the plan from this session. Read commands: validate, plan, show, state list, output, graph, fmt -check, " +
-			"init -backend=false.",
+			"the plan from this session (a plan made with -destroy is refused at apply). Read commands: validate, plan, " +
+			"show, state list, output, graph, fmt -check, init -backend=false.",
 		Params: []Param{
 			{Name: "command", Type: "string",
 				Description: "terraform command, for example plan, apply, validate, state, output", Required: true},
@@ -57,8 +62,13 @@ func TerraformTool() *Tool {
 				return policy.Invocation{Tool: "terraform", Classification: policy.Mutate, Reason: err.Error(), Command: line}
 			}
 			res := classify.Terraform(command, words)
-			return policy.Invocation{Tool: "terraform", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
-				Command: line, Targets: policy.Targets{Paths: []string{resolvePath(argString(args, "dir"), workingDir)}}}
+			dir := resolvePath(argString(args, "dir"), workingDir)
+			inv := policy.Invocation{Tool: "terraform", Verb: res.Verb, Classification: res.Classification, Reason: res.Reason,
+				Command: line, Targets: policy.Targets{Paths: []string{dir}}}
+			if rec, ok := st.get(dir); command == "apply" && ok && rec.destroy {
+				inv.Lines = []string{destroyPlanLine}
+			}
+			return inv
 		},
 		Run: func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 			command, words, err := TerraformCommand(args)
@@ -150,7 +160,8 @@ func (st *terraformState) plan(ctx context.Context, dir string, words []string) 
 	if old, ok := st.plans[dir]; ok {
 		_ = os.Remove(old.file)
 	}
-	st.plans[dir] = planRecord{file: planFile, summary: text, at: time.Now()}
+	st.plans[dir] = planRecord{file: planFile, summary: text, at: time.Now(),
+		destroy: classify.TerraformDestroyFlag(words)}
 	stored = true
 	st.mu.Unlock()
 	return text + "\nThe plan is saved for terraform apply in this session.", nil

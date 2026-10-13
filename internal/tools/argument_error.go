@@ -1,13 +1,25 @@
 package tools
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // argumentChecks are the built-in tools that refuse some arguments before anything runs, each with the
-// check its own Run applies. Only kubectl for now: its argument errors used to reach the policy as an
-// invocation with no verb and no targets (ruling P3-R59).
+// check its own Run applies: kubectl, whose argument errors used to reach the policy as an invocation with
+// no verb and no targets (ruling P3-R59), and terraform, whose command must be a command and not an option
+// (-chdir=infra apply would run as a plain call, past the plan the tool promises before an apply).
 var argumentChecks = map[string]func(args map[string]any) error{
 	"kubectl": func(args map[string]any) error {
 		_, err := KubectlArgv(args)
+		return err
+	},
+	"terraform": func(args map[string]any) error {
+		command, _, err := TerraformCommand(args)
+		if err == nil && strings.HasPrefix(command, "-") {
+			return fmt.Errorf("command %q is an option: name the terraform command and give the directory as dir", command)
+		}
 		return err
 	},
 }
