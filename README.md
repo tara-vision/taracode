@@ -235,7 +235,8 @@ you. **operate** mode exposes every tool; each mutation goes through the policy,
    A pattern keeps the words its operator wrote between the program and the verb, so `terraform
    -chdir=*prod* destroy*` refuses only what it names. Not seen: a teardown handed to another program
    (`aws-vault exec`, `ssh host`, `caffeinate`, `env -S`, a script, a `Makefile`), one run by anything but
-   terraform, tofu and terragrunt, and a flag built at run time.
+   terraform, tofu and terragrunt, a verb fed to the program at run time (`echo destroy | xargs terraform`),
+   and a flag built at run time.
 3. **Required dry runs** - `kubectl apply` shows a server-side diff first, `terraform apply` requires a plan
    produced in this session and shows its summary (a `terraform apply` through the shell, which would run with
    no such plan, is refused and steered to the terraform tool while this is on, and so is a `tofu` or
