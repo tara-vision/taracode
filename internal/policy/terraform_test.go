@@ -38,7 +38,11 @@ func TestCanonicalTerraformCommandSpellsADestroyOneWay(t *testing.T) {
 		{"terragrunt stack run destroy", "terraform destroy"},
 		{"terragrunt --working-dir infra apply -destroy", "terraform destroy"},
 		{"terragrunt hcl fmt", "terraform fmt"},
-		{"terragrunt catalog", "terraform"},
+		{"terragrunt catalog", "terraform catalog"},
+		{"terragrunt destroy-all", "terraform destroy-all"},
+		{"terragrunt --working-dir infra destroy-all", "terraform destroy-all"},
+		{"terragrunt apply-all -destroy", "terraform destroy"},
+		{"terragrunt plan-all -destroy -out=x", "terraform destroy -out=x"},
 		{"terraform -var region=apply plan -out=x", "terraform plan -out=x"},
 		{"tf_cli_args_apply=-destroy terraform apply -auto-approve", "terraform destroy -auto-approve"},
 		{"tf_cli_args=-destroy tofu apply", "terraform destroy"},
@@ -132,5 +136,17 @@ func TestAPatternKeepsItsOwnWordsInTheCanonicalForm(t *testing.T) {
 	}
 	if got := canonicalTerraformPattern("tofu -chdir=*prod* apply -destroy -auto-approve*"); got != "terraform -chdir=*prod* destroy -auto-approve*" {
 		t.Errorf("canonicalTerraformPattern = %q", got)
+	}
+	// A pattern that names an option meets the line that carries it, by any spelling of the destroy.
+	off := false
+	prod := Policy{Deny: DenyRules{Commands: []string{"terraform -chdir=*prod* destroy*"}}, RequireDryRun: RequireDryRun{TerraformApply: &off}}
+	if v := prod.Evaluate(ModeOperate, mutate("shell", "", "tofu -chdir=prod apply -destroy", Targets{})); v.Allow {
+		t.Errorf("the narrow pattern refuses the destroy it names by another spelling: %+v", v)
+	}
+	if v := prod.Evaluate(ModeOperate, mutate("shell", "", "tofu -chdir=dev apply -destroy", Targets{})); !v.Allow {
+		t.Errorf("the narrow pattern leaves another directory alone: %+v", v)
+	}
+	if v := Default().Evaluate(ModeOperate, mutate("shell", "", "terragrunt destroy-all", Targets{})); v.Allow {
+		t.Errorf("an unknown verb stays in the line for the pattern to read: %+v", v)
 	}
 }

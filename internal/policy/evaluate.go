@@ -51,7 +51,8 @@ func (p Policy) shellApply(inv Invocation) (Verdict, bool) {
 	}
 	for _, line := range append([]string{inv.Command}, inv.Lines...) {
 		words := strings.Fields(collapse(line))
-		if program, verb, ok := terraformVerb(words); ok && program == 0 && verb < len(words) && words[verb] == "apply" {
+		program, verb, ok := terraformVerb(words)
+		if ok && program == 0 && verb < len(words) && terraformVerbWord(words[verb]) == "apply" {
 			return Verdict{Rule: "require_dry_run", Reason: fmt.Sprintf("%q: a terraform apply through the shell "+
 				"skips the plan this session requires; plan and apply with the terraform tool, which applies the plan "+
 				"from this session after showing its summary (a policy with require_dry_run.terraform_apply: false "+
@@ -72,12 +73,16 @@ func (p Policy) denyPattern(command string) (Verdict, bool) {
 		return Verdict{}, false
 	}
 	raw := collapse(command)
-	canonical := canonicalCommand(raw)
+	canonical, kept := canonicalCommand(raw), canonicalPattern(raw)
 	for _, pattern := range p.Deny.Commands {
 		if matchGlob(pattern, raw) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q matches the deny pattern %q", command, pattern)}, true
 		}
-		if matchGlob(canonicalPattern(collapse(pattern)), canonical) {
+		// The pattern is read with its own words kept, against the line with the words between its program
+		// and verb dropped (the shipped terraform destroy* meets terraform -chdir=infra apply -destroy) and
+		// against the line with them kept (an operator's terraform -chdir=*prod* destroy* meets
+		// tofu -chdir=prod apply -destroy).
+		if pat := canonicalPattern(collapse(pattern)); matchGlob(pat, canonical) || matchGlob(pat, kept) {
 			return Verdict{Rule: "deny.commands", Reason: fmt.Sprintf("%q (read as %q) matches the deny pattern %q",
 				command, canonical, pattern)}, true
 		}

@@ -32,6 +32,7 @@ func TestTheGateRefusesADestroyByEverySpelling(t *testing.T) {
 		`terragrunt --log-level debug destroy`,
 		`terragrunt run --all --queue-include-dir app destroy`,
 		`terragrunt stack run destroy`,
+		`terragrunt destroy-all`,
 		`terraform plan -destroy -out=tfplan`,
 		`cd infra && terraform plan -destroy -out=tfplan`,
 		`TF_CLI_ARGS_apply=-destroy terraform apply -auto-approve`,
@@ -75,6 +76,7 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 		`tofu apply -auto-approve`,
 		`terragrunt run-all apply`,
 		`terragrunt --working-dir infra apply -auto-approve`,
+		`terragrunt apply-all`,
 		`echo infra | xargs -I{} terraform -chdir={} apply -auto-approve`,
 	}
 	for _, cmd := range held {
