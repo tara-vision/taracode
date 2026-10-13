@@ -46,3 +46,11 @@ func Terraform(command string, tokens []string) Result {
 	}
 	return mutate(command, "terraform "+command+" changes infrastructure or state")
 }
+
+// TerraformDestroyFlag reports whether terraform's -destroy is set and true on an argument list, read as
+// terraform reads it (the last occurrence wins, -destroy=false turns it off); the terraform tool remembers
+// a plan made with it as a destroy plan.
+func TerraformDestroyFlag(words []string) bool {
+	value, _ := goBoolFlag(words, "destroy")
+	return value
+}
