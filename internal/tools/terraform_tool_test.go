@@ -200,3 +200,28 @@ func TestTheApplyOfADestroyPlanIsRefusedAtTheGate(t *testing.T) {
 		t.Fatalf("a plan with -destroy=true is a destroy plan: %+v", v)
 	}
 }
+
+// TestTheTerraformToolRefusesACommandThatIsAnOption: a command parameter that starts with an option
+// (-chdir=infra apply) would run as a plain terraform call past the plan guard; the registry refuses it before
+// anything runs and asks for the command by name with the directory as dir.
+func TestTheTerraformToolRefusesACommandThatIsAnOption(t *testing.T) {
+	check, ok := argumentChecks["terraform"]
+	if !ok {
+		t.Fatal("the terraform tool has no argument check")
+	}
+	err := check(map[string]any{"command": "-chdir=infra apply", "args": "-auto-approve"})
+	if err == nil || !strings.Contains(err.Error(), "-chdir=infra") || !strings.Contains(err.Error(), "dir") {
+		t.Fatalf("an option as the command must be refused with the remedy: %v", err)
+	}
+	for _, command := range []string{"apply", "plan", "state list", "init -backend=false"} {
+		if err := check(map[string]any{"command": command}); err != nil {
+			t.Errorf("%q: %v, want no error", command, err)
+		}
+	}
+	if err := check(map[string]any{"command": ""}); err == nil {
+		t.Error("an empty command is still refused")
+	}
+	if !strings.Contains(TerraformTool().Description, "-destroy") {
+		t.Error("the description says a plan made with -destroy is refused at apply")
+	}
+}

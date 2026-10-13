@@ -46,8 +46,8 @@ func TerraformTool() *Tool {
 	return &Tool{
 		Name: "terraform", ReadForm: true,
 		Description: "Run terraform in a directory. plan returns a summary and keeps the plan for apply; apply applies " +
-			"the plan from this session. Read commands: validate, plan, show, state list, output, graph, fmt -check, " +
-			"init -backend=false.",
+			"the plan from this session (a plan made with -destroy is refused at apply). Read commands: validate, plan, " +
+			"show, state list, output, graph, fmt -check, init -backend=false.",
 		Params: []Param{
 			{Name: "command", Type: "string",
 				Description: "terraform command, for example plan, apply, validate, state, output", Required: true},
