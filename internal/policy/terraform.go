@@ -79,18 +79,29 @@ func rewriteDestroy(words []string, verb int, fromEnv bool) []string {
 
 // envDestroy reports a true destroy flag set through terraform's environment in the words before the
 // program: TF_CLI_ARGS, TF_CLI_ARGS_apply or TF_CLI_ARGS_plan (lowercased by collapse), as an assignment in
-// front of the command or exported earlier on the line; the value may be quoted.
+// front of the command or exported earlier on the line. A quoted value may span several words of the
+// collapsed line, so every word from the assignment to the program counts as its value, each stripped of
+// quotes and a trailing semicolon; a destroy among them is a destroy, which fails closed.
 func envDestroy(before []string) bool {
-	for _, w := range before {
-		name, value, ok := strings.Cut(strings.TrimRight(w, ";"), "=")
+	for i, w := range before {
+		name, value, ok := strings.Cut(w, "=")
 		if !ok || !strings.HasPrefix(name, "tf_cli_args") {
 			continue
 		}
-		if destroyFlag(strings.Fields(strings.Trim(value, `"'`))) {
+		flags := []string{unquote(value)}
+		for _, rest := range before[i+1:] {
+			flags = append(flags, unquote(rest))
+		}
+		if destroyFlag(flags) {
 			return true
 		}
 	}
 	return false
+}
+
+// unquote strips the quotes and the trailing semicolon a collapsed word may carry.
+func unquote(w string) string {
+	return strings.Trim(strings.TrimRight(w, ";"), `"'`)
 }
 
 // terraformVerb finds the first terraform program on the line and the index of its verb: the first word

@@ -100,6 +100,7 @@ func TestTheGateHoldsAShellApplyToTheSessionPlan(t *testing.T) {
 		`TF_CLI_ARGS=-destroy terraform apply -auto-approve`,
 		`TF_CLI_ARGS_plan=-destroy terraform plan -out=x`,
 		`export TF_CLI_ARGS_apply=-destroy; terraform apply -auto-approve`,
+		`TF_CLI_ARGS_apply="-lock=false -destroy" terraform apply -auto-approve`,
 	} {
 		if v := gateVerdict(off, shell, map[string]any{"command": cmd}, wd); v.Allow || v.Rule != "deny.commands" {
 			t.Errorf("%s with terraform_apply off: %+v, want the deny pattern", cmd, v)
