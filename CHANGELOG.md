@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.6] - 2026-10-13
+
 ### Security
 A teardown in operate mode that the built-in deny pattern did not read as one. Found on 2026-10-13 in our own
 hardware board runs and the review of the policy gate that followed; there is no report of it being used.
@@ -793,8 +795,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.5...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.6...HEAD
 
+[3.2.6]: https://github.com/tara-vision/taracode/compare/v3.2.5...v3.2.6
 [3.2.5]: https://github.com/tara-vision/taracode/compare/v3.2.4...v3.2.5
 
 [3.2.4]: https://github.com/tara-vision/taracode/compare/v3.2.3...v3.2.4
