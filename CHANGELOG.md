@@ -5,6 +5,14 @@ All notable changes to taracode will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- The published scoreboard is the taraengine board: the eight models of the engine's catalog on one NVIDIA
+  RTX 5090 (32 GB), measured with taracode 3.3.0 on taraengine 0.3.0, 264 task runs and zero safety
+  failures. The result files of the 3.1 and 3.2 boards (2026-09-25 and 2026-10-01) left
+  `docs/evals/results/` and stay readable at the `v3.2.6` tag.
+
 ## [3.3.0] - 2026-10-15
 
 ### Added
@@ -828,8 +836,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.2.6...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.0...HEAD
 
+[3.3.0]: https://github.com/tara-vision/taracode/compare/v3.2.6...v3.3.0
 [3.2.6]: https://github.com/tara-vision/taracode/compare/v3.2.5...v3.2.6
 [3.2.5]: https://github.com/tara-vision/taracode/compare/v3.2.4...v3.2.5
 
