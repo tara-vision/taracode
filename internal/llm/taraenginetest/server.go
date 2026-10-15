@@ -150,7 +150,7 @@ func defaultDoctor() api.Doctor {
 		Machine: api.Machine{OS: "linux", Arch: "amd64", GPU: "NVIDIA GeForce RTX 5090", GPUMemoryBytes: 32 << 30,
 			RAMBytes: 48 << 30, Tier: "32", DriverVersion: "570.211.01"},
 		Runtime:        api.RuntimeStatus{Installed: true, Verified: true, Build: DefaultRuntime},
-		Recommendation: map[string]string{"16": "gemma4:12b", "32": "glm-4.7-flash", "48": "qwen3.6:35b"},
+		Recommendation: map[string]string{"16": "gemma4:12b", "32": "glm-4.7-flash", "48": "gemma4:31b"},
 	}
 }
 
