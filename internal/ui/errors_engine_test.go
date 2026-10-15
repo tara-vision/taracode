@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
+
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/provider"
 )
@@ -42,6 +44,11 @@ func TestEnhanceErrorPutsTheEngineHintFirst(t *testing.T) {
 		{&llm.ServerError{Status: 500, Message: "Failed to parse tool call arguments as JSON: syntax error at line 1, " +
 			"column 10764: missing closing quote"}, "Tool Call Cut Off",
 			"Failed to parse tool call arguments as JSON: syntax error at line 1, column 10764: missing closing quote",
+			[]string{"The model's tool call was longer than the output limit",
+				"Raise generation.num_predict in config.yaml, or ask for a smaller step"}},
+		{fmt.Errorf("openai: %w", &openai.APIError{HTTPStatusCode: 500, HTTPStatus: "500 Internal Server Error",
+			Message: "500: incomplete GLM tool call"}), "Tool Call Cut Off",
+			"openai: error, status code: 500, status: 500 Internal Server Error, message: 500: incomplete GLM tool call",
 			[]string{"The model's tool call was longer than the output limit",
 				"Raise generation.num_predict in config.yaml, or ask for a smaller step"}},
 		{fmt.Errorf("loading x: %w", &llm.ServerError{Status: 404, Message: "unknown model: x",
