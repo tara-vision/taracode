@@ -5,6 +5,7 @@ package taraengine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -30,6 +31,15 @@ const (
 	loadBackstop = 15 * time.Minute
 )
 
+// How long AwaitReady waits for an engine that is starting, how often it asks, and how long it bears health calls
+// that nothing answers before it gives up: the engine's own commands use the same three bounds. They are variables
+// only so that a test can wait less.
+var (
+	startWait    = 10 * time.Minute
+	pollEvery    = time.Second
+	refusedGrace = 20 * time.Second
+)
+
 // Engine is the engine's control API with taracode's error handling: a refusal becomes *llm.ServerError with the
 // engine's hint, a dial that reached nothing becomes *llm.UnreachableError, and a 503 is retried once.
 type Engine struct {
@@ -53,6 +63,45 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	case <-timer.C:
 		return nil
+	}
+}
+
+// AwaitReady returns once the engine is no longer starting: at once for an engine that answers ok or degraded, and
+// for one that is starting after polling its health every pollEvery, with each new detail of the start handed to
+// progress once. It gives up after startWait; after refusedGrace in which a starting engine answered no health call
+// at all; at once, with *llm.UnreachableError, when nothing answers the first call; with the typed error when a
+// health call is refused; and with the context's error when ctx ends. The detail reaches the terminal, so its control
+// characters are dropped.
+func (e *Engine) AwaitReady(ctx context.Context, progress func(step string)) error {
+	deadline := time.Now().Add(startWait)
+	answered := time.Now()
+	starting := false
+	last := ""
+	for {
+		h, err := e.Health(ctx)
+		var unreachable *llm.UnreachableError
+		switch {
+		case err == nil && h.Status != api.HealthStarting:
+			return nil
+		case err == nil:
+			answered, starting = time.Now(), true
+			if h.Detail != last {
+				last = h.Detail
+				progress(llm.Printable(h.Detail))
+			}
+		case !errors.As(err, &unreachable) || !starting:
+			return err
+		case time.Since(answered) > refusedGrace:
+			return fmt.Errorf("taraengine stopped answering at %s; `taraengine service status` shows why",
+				llm.RedactedHost(e.host))
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("taraengine did not get ready within %s at %s; `taraengine service status` shows why",
+				startWait, llm.RedactedHost(e.host))
+		}
+		if err := e.sleep(ctx, pollEvery); err != nil {
+			return err
+		}
 	}
 }
 
