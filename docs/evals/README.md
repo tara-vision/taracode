@@ -44,7 +44,8 @@ evidence for the maintainer, not a change by itself: a catalog default does not 
   lighter. The same two models were one task apart on the 2026-10-01 board.
 - `48: default qwen3.6:35b, top scorer gemma4:31b (differs)`: 30 tasks against 25; gemma4:31b led the
   default on the two boards before as well (31 against 26 on 2026-10-01, 85% against 73% on 2026-09-25).
-  Of the three lines, this is the one outside the spread.
+  Of the three lines, this is the one outside the spread; on this evidence the catalog default moved to
+  gemma4:31b in taraengine 0.3.1.
 
 Notes on the 3.3 run (2026-10-15, taracode 3.3.0, taraengine 0.3.0):
 

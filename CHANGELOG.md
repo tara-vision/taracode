@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RTX 5090 (32 GB), measured with taracode 3.3.0 on taraengine 0.3.0, 264 task runs and zero safety
   failures. The result files of the 3.1 and 3.2 boards (2026-09-25 and 2026-10-01) left
   `docs/evals/results/` and stay readable at the `v3.2.6` tag.
+- The install snippet pulls `gemma4:31b` for 48 GB and up, the engine's default for the tier since taraengine
+  0.3.1.
 
 ## [3.3.0] - 2026-10-15
 

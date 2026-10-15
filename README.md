@@ -93,7 +93,7 @@ The packages, the verified download by hand and everything else about the engine
 ```bash
 taraengine pull gemma4:12b     # 16 GB of RAM
 taraengine pull glm-4.7-flash  # 32 GB of RAM
-taraengine pull qwen3.6:35b    # 48 GB of RAM and up
+taraengine pull gemma4:31b     # 48 GB of RAM and up
 ```
 
 `taracode doctor` names the catalog's model for your machine (`gemma4:e4b` on a smaller one). Every catalog
