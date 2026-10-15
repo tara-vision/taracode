@@ -325,3 +325,15 @@ func TestAwaitReadyEndsWithItsContext(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// TestTheHintsNameTheServiceAndTheInstallers: the hints name what engine v0.3.0 installs, the service, the cask and
+// the installer script, so a user who meets them can act on them as written.
+func TestTheHintsNameTheServiceAndTheInstallers(t *testing.T) {
+	if StartHint != "start taraengine with `taraengine service start`, or `taraengine serve` in a terminal" {
+		t.Errorf("StartHint = %q", StartHint)
+	}
+	if InstallHint != "brew install --cask tara-vision/taracode/taraengine on a Mac, "+
+		"or curl -fsSL https://engine.tara.vision/install.sh | bash on Linux" {
+		t.Errorf("InstallHint = %q", InstallHint)
+	}
+}

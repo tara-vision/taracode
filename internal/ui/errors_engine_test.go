@@ -118,8 +118,8 @@ func TestProviderNoticeIsForOllamaOnly(t *testing.T) {
 	notice := r.ProviderNotice(&provider.Info{Type: provider.TypeOllama, Name: "Ollama"})
 	want := IconWarning + " Ollama runs on the generic OpenAI-compatible path: no window control (set " +
 		"OLLAMA_CONTEXT_LENGTH on the Ollama server), no thinking on or off, no /model and no evals. taraengine is the " +
-		"native backend: brew install --cask tara-vision/taracode/taraengine, or see " +
-		"https://github.com/tara-vision/taraengine\n"
+		"native backend: brew install --cask tara-vision/taracode/taraengine on a Mac, or curl -fsSL " +
+		"https://engine.tara.vision/install.sh | bash on Linux\n"
 	if notice != want {
 		t.Errorf("the notice:\n got %q\nwant %q", notice, want)
 	}

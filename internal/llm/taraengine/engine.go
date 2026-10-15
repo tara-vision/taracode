@@ -17,10 +17,12 @@ import (
 )
 
 const (
-	// StartHint tells the user how to start an engine nothing answers at.
-	StartHint = "start taraengine with `taraengine serve`"
-	// InstallHint tells the user how to install the engine.
-	InstallHint = "brew install --cask tara-vision/taracode/taraengine, or see https://github.com/tara-vision/taraengine"
+	// StartHint tells the user how to start an engine nothing answers at: the service that the cask, the installer
+	// script and the packages install, or serve by hand.
+	StartHint = "start taraengine with `taraengine service start`, or `taraengine serve` in a terminal"
+	// InstallHint tells the user how to install the engine: the cask on a Mac, the engine site's installer elsewhere.
+	InstallHint = "brew install --cask tara-vision/taracode/taraengine on a Mac, " +
+		"or curl -fsSL https://engine.tara.vision/install.sh | bash on Linux"
 	// MinVersion is the oldest engine this taracode supports; doctor warns below it and never refuses.
 	MinVersion = "0.2.0"
 	// retryDelay is the wait before the one retry after a 503: the engine is restarting its server, and its /v1
