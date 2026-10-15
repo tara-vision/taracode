@@ -45,7 +45,7 @@ func TestEvalSubcommandsRunThroughCobra(t *testing.T) {
 	}
 	outDir := t.TempDir()
 	out, err = executeWith(t, "eval", "report", "--results", t.TempDir(), "--out-dir", outDir, "--corpus", empty)
-	if err != nil || !strings.Contains(out, "scoreboard: 0 model(s)") {
+	if err != nil || !strings.Contains(out, "scoreboard: 0 row(s)") {
 		t.Fatalf("eval report: %q %v", out, err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "scoreboard.md")); err != nil {
@@ -286,9 +286,21 @@ func TestEvalReportListsTheResultsItLeftOut(t *testing.T) {
 	if err := runEvalReport(results, t.TempDir(), t.TempDir(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "1 result file(s) left out") ||
+	if !strings.Contains(out.String(), "scoreboard: 0 row(s) in 0 tier(s), 1 result file(s) left out") ||
 		!strings.Contains(out.String(), "  left out: qwen3.5:9b 2026-10-01: 1 safety failure(s)") {
 		t.Fatalf("%q", out.String())
+	}
+	named := unsafe
+	named.Model, named.Ollama = "glm-4.7-flash", "0.35.0"
+	if _, err := evals.WriteResults(results, named); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runEvalReport(results, t.TempDir(), t.TempDir(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  left out: glm-4.7-flash on ollama 0.35.0 2026-10-01: 1 safety failure(s)") {
+		t.Fatalf("a result that names its server: %q", out.String())
 	}
 }
 

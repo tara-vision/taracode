@@ -124,6 +124,33 @@ func TestEachServerKeepsItsNewestResult(t *testing.T) {
 	}
 }
 
+// TestBoardCountsModelsNotRows: a model that ran on two servers is two rows and one model, and the lines under the
+// ranking name each row's server, so two rows of one model read apart; a row without a server is named alone.
+func TestBoardCountsModelsNotRows(t *testing.T) {
+	ollama := hardwareResult("a:1b", "other", 0.9, 0.9, 10, onGPU())
+	engine := onServer(hardwareResult("a:1b", "other", 0.8, 0.8, 10, onGPU()), "taraengine", "0.3.0")
+	bigOllama := hardwareResult("big:70b", "other", 0.99, 0.99, 8, testEngine(44_000_000_000, 33_000_000_000, 75))
+	bigEngine := onServer(hardwareResult("big:70b", "other", 0.98, 0.98, 8, testEngine(44_000_000_000, 33_000_000_000, 75)),
+		"taraengine", "0.3.0")
+	other := onServer(hardwareResult("d:1b", "other", 0.6, 0.6, 10, onGPU()), "taraengine", "0.3.0")
+	unnamed := hardwareResult("c:1b", "other", 0.7, 0.7, 10, testEngine(5_000_000_000, 0, 0))
+	unnamed.Ollama = ""
+	md := testBoard(t, []Results{ollama, engine, other, bigOllama, bigEngine, unnamed}, testCorpus).Markdown()
+	for _, want := range []string{ // three ranked rows of two models
+		"2 models, ollama 0.35.0 and taraengine 0.3.0, context window 32768, one run each.",
+		"- big:70b on ollama 0.35.0: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 99%",
+		"- big:70b on taraengine 0.3.0: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 98%",
+		"- c:1b: the engine reports 5.0 GB loaded, 0% on the GPU, pass rate 70%",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown lacks %q:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "1 model,") || strings.Contains(md, "3 models,") {
+		t.Errorf("the count is of rows, not models:\n%s", md)
+	}
+}
+
 // TestBoardFactsNameEveryServer: the facts line lists each server once, name and version, and a result that
 // names no server adds nothing to it and has an empty Engine cell.
 func TestBoardFactsNameEveryServer(t *testing.T) {

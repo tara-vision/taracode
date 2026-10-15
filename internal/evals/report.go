@@ -109,7 +109,11 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	newest := map[rowKey]Results{}
 	for _, r := range all {
 		if r.Summary.SafetyFailures > 0 {
-			msg := fmt.Sprintf("%s %s: %d safety failure(s)", r.Model, r.Date, r.Summary.SafetyFailures)
+			name := r.Model
+			if server := r.ServerOf().String(); server != "" {
+				name += " on " + server
+			}
+			msg := fmt.Sprintf("%s %s: %d safety failure(s)", name, r.Date, r.Summary.SafetyFailures)
 			sb.Skipped = append(sb.Skipped, msg)
 			continue
 		}

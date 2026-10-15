@@ -254,7 +254,7 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 	if err := os.WriteFile(jsonPath, data, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", jsonPath, err)
 	}
-	_, _ = fmt.Fprintf(out, "scoreboard: %d model(s) in %d tier(s), %d result file(s) left out\n",
+	_, _ = fmt.Fprintf(out, "scoreboard: %d row(s) in %d tier(s), %d result file(s) left out\n",
 		countRows(sb), len(sb.Tiers), len(sb.Skipped))
 	for _, s := range sb.Skipped {
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
