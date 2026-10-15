@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A session and an eval run wait for a taraengine that is still starting, and print what it is doing.
+- A tool call that the output limit cut is sent back to the model as a cut call, once per turn, instead of
+  ending the turn on the server's error.
+
 ### Changed
 - taraengine is taracode's native backend. taracode finds it at `http://127.0.0.1:8272` when no host is set, sets
   the context window when the model loads, maps `/think` to the engine's thinking switch and levels, and reads the
@@ -17,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evals run on taraengine. Results name their server, tier and default; results from 3.2.x stay readable, and the
   board keeps one row per model and engine.
 - Detection asks the engine's open `/api/health` first; `vendor: taraengine` skips detection.
+- The start and install hints name `taraengine service start`, the cask and `install.sh`; `taracode doctor`
+  reports an engine that is starting.
+- The board's lines name the server next to the model, its counts count models, and a run whose engine
+  measured the memory says so.
 
 ### Removed
 - The native Ollama client. Ollama keeps working on the generic OpenAI-compatible path, without window control,
