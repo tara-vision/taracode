@@ -199,6 +199,10 @@ func (r *Report) renderServer(b *strings.Builder) {
 // renderModels writes the models section, one row per model: size, native window, capabilities and, on an engine,
 // the model's state.
 func (r *Report) renderModels(b *strings.Builder) {
+	if r.Engine != nil && r.Engine.Starting != "" {
+		b.WriteString("Models    listed once the engine is ready\n")
+		return
+	}
 	if len(r.Models) == 0 {
 		return
 	}
@@ -258,6 +262,8 @@ func (r *Report) renderModelAndContext(b *strings.Builder) {
 func (r *Report) modelNote() string {
 	m, installed := r.installed(r.ConfiguredModel)
 	switch {
+	case r.Engine != nil && r.Engine.Starting != "": // the engine has not listed its models yet
+		return ""
 	case r.Engine != nil && !installed:
 		return fmt.Sprintf(" (not pulled: taraengine pull %s)", r.ConfiguredModel)
 	case m.CapabilitiesUnknown:

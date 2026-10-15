@@ -4,7 +4,7 @@
   <strong>DevOps & Cloud SI Assistant</strong><br>
   SI, super intelligence, is the new name for AI.<br>
   Expert guidance for Kubernetes, Terraform, Docker, and multi-cloud deployments.<br>
-  Runs locally with Ollama for complete privacy.
+  Runs locally on taraengine for complete privacy.
 </p>
 
 <p align="center">
@@ -26,6 +26,7 @@
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue?style=flat-square" alt="Quick Start"></a>
   <a href="#features"><img src="https://img.shields.io/badge/Features-purple?style=flat-square" alt="Features"></a>
   <a href="#commands"><img src="https://img.shields.io/badge/Commands-teal?style=flat-square" alt="Commands"></a>
+  <a href="#the-scoreboard"><img src="https://img.shields.io/badge/Scoreboard-blueviolet?style=flat-square" alt="Scoreboard"></a>
   <a href="https://code.tara.vision/documentation"><img src="https://img.shields.io/badge/Documentation-green?style=flat-square" alt="Documentation"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributing-orange?style=flat-square" alt="Contributing"></a>
 </p>
@@ -42,21 +43,22 @@
   mutation is recorded
 - **A public scoreboard** - Which local models can actually do DevOps work, measured on taracode's own
   loop, with speed and memory per model
-- **Privacy-first** - Runs fully local with Ollama, your data never leaves your machine
+- **Privacy-first** - Runs fully local on taraengine, your data never leaves your machine
 - **No Account Required** - Open source, just install and use
 
 ## The scoreboard
 
 Which local model can actually do DevOps work? 18 open models, 33 offline tasks each, on one NVIDIA RTX
-5090 (32 GB) with Ollama 0.35.0, measured on taracode's own loop. The top five:
+5090 (32 GB), measured on taracode's own loop with taracode 3.2.1 on Ollama 0.35.0, the server of that
+board. The next board runs on taraengine. The top five:
 
-| # | Model | Pass rate | Tokens/s | VRAM |
-|---|---|---|---|---|
-| 1 | `gemma4:31b` | 94% | 64 | 23.1 GiB |
-| 2 | `qwen3.8:27b` | 91% | 117 | 20.1 GiB |
-| 3 | `glm-4.7-flash` | 88% | 212 | 19.9 GiB |
-| 4 | `qwen3.6:27b` | 88% | 123 | 20.0 GiB |
-| 5 | `gemma4:12b` | 88% | 138 | 9.2 GiB |
+| #   | Model           | Pass rate | Tokens/s | VRAM     |
+|-----|-----------------|-----------|----------|----------|
+| 1   | `gemma4:31b`    | 94%       | 64       | 23.1 GiB |
+| 2   | `qwen3.8:27b`   | 91%       | 117      | 20.1 GiB |
+| 3   | `glm-4.7-flash` | 88%       | 212      | 19.9 GiB |
+| 4   | `qwen3.6:27b`   | 88%       | 123      | 20.0 GiB |
+| 5   | `gemma4:12b`    | 88%       | 138      | 9.2 GiB  |
 
 One run per row, ranked by pass rate, then mean score. The same 18 models were run twice that day, and a
 model moved by up to four tasks between the two runs (one task is about 3 points of pass rate), so rows
@@ -68,29 +70,36 @@ nothing else on it; a smaller card was not tested. The full board, with speed, m
 
 ## Quick Start
 
-### 1. Install Ollama
+### 1. Install taraengine
+
+On a Mac:
 
 ```bash
-# macOS / Linux
-brew install ollama
-
-# Or download from https://ollama.ai
+brew install --cask tara-vision/taracode/taraengine
 ```
+
+On Linux:
+
+```bash
+curl -fsSL https://engine.tara.vision/install.sh | bash
+```
+
+Both install the engine and its service, which fetches the pinned llama.cpp build for the machine on its own.
+The packages, the verified download by hand and everything else about the engine are on
+[engine.tara.vision](https://engine.tara.vision).
 
 ### 2. Pull a Model
 
 ```bash
-ollama pull gemma4:12b     # 16 GB of RAM
-ollama pull glm-4.7-flash  # 32 GB of RAM (needs Ollama 0.14.3 or newer)
-ollama pull qwen3.6:35b    # 48 GB of RAM and up
+taraengine pull gemma4:12b     # 16 GB of RAM
+taraengine pull glm-4.7-flash  # 32 GB of RAM
+taraengine pull qwen3.6:35b    # 48 GB of RAM and up
 ```
 
-Any model that Ollama tags with the `tools` capability works. On Ollama, taracode refuses a model without that
-capability at startup or on `/model` instead of falling back to JSON-in-content tool calls (run `taracode doctor`
-to see which installed models qualify). taracode requests its context window itself on every turn (`context.window`,
-default auto = 32,768 tokens, or the model's native maximum when that is smaller) instead of relying on the
-server's default; `OLLAMA_CONTEXT_LENGTH` only matters for servers taracode does not control, such as vLLM and
-llama.cpp.
+`taracode doctor` names the catalog's model for your machine (`gemma4:e4b` on a smaller one). Every catalog
+model calls tools natively; a GGUF file you import is accepted once the engine has loaded it and knows its
+capabilities. taracode sets the context window when the model loads (`context.window`, default auto = 32,768
+tokens, or the model's native maximum when that is smaller), so there is nothing to set on the server.
 
 ### 3. Install taracode
 
@@ -125,37 +134,38 @@ cd your-project
 taracode
 ```
 
-taracode starts in investigate mode right away, no `/init` needed: read-only tools, nothing saved. Run
-`/init` when you want sessions, memory, history and operate mode (it also writes a starter
-`.taracode/policy.yaml`). Start asking questions about your infrastructure.
+taracode finds the engine at `http://127.0.0.1:8272` without configuration, and starts in investigate mode
+right away, no `/init` needed: read-only tools, nothing saved. Run `/init` when you want sessions, memory,
+history and operate mode (it also writes a starter `.taracode/policy.yaml`). Start asking questions about
+your infrastructure.
 
 ## Context window and thinking
 
-Three `config.yaml` keys control how taracode talks to the model:
+Two `config.yaml` keys control how taracode talks to the model:
 
 ```yaml
 context:
-  window: auto    # "auto" requests 32768 tokens, or less on a smaller model; set a token count to go higher
+  window: auto    # "auto" loads the model at 32768 tokens, or less on a smaller model; set a token count to go higher
 think: auto        # auto, off, on, low, medium, or high
-keep_alive: ""     # how long Ollama keeps the model loaded; "" = server default, "-1" = keep loaded
 ```
 
-`context.window: auto` (the default) requests 32,768 tokens, or the model's native maximum when that is
-smaller; it never asks for more than 32,768 tokens on its own, which keeps the KV cache affordable on 16 GB
-and 32 GB machines. Set a number instead to request an explicit window, clamped to the model's native
-maximum, on a model that supports going higher. A non-numeric value falls back to auto with a warning. A
-session warns when the resulting window is below 16,384 tokens, since tool-heavy sessions compact early at
-that size.
+`context.window: auto` (the default) loads the model at 32,768 tokens, or the model's native maximum when
+that is smaller; it never asks for more than 32,768 tokens on its own, which keeps the KV cache affordable on
+16 GB and 32 GB machines. Set a number instead to load the model at an explicit window, clamped to the
+model's native maximum, on a model that supports going higher. A non-numeric value falls back to auto with a
+warning. A session warns when the resulting window is below 16,384 tokens, since tool-heavy sessions compact
+early at that size.
 
 `think` sets the reasoning mode sent with requests. Change it without restarting taracode with `/think`
 (`/think` alone shows the current mode, `/think low` changes it).
 
-Run `taracode doctor` (or `/doctor` inside a session) to check the server, the installed models and their
-capabilities, your machine's RAM tier and the registry's recommended model for it, and the external CLIs
+Run `taracode doctor` (or `/doctor` inside a session) to check the engine, the pulled models and their
+capabilities, your machine's RAM tier and the engine's recommended model for it, and the external CLIs
 taracode's tools shell out to.
 
-`context.window` and `keep_alive` are controlled on the native Ollama client; vLLM and llama.cpp keep the
-OpenAI-compatible path, where only `think low|medium|high` reaches the server (as `reasoning_effort`).
+`context.window` is set when the model loads on taraengine; vLLM and llama.cpp run on the OpenAI-compatible
+path, where the server's own window applies and only `think low|medium|high` reaches the server (as
+`reasoning_effort`).
 
 ## Features
 
@@ -336,43 +346,43 @@ Remember project-specific knowledge across sessions:
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `/init` | Initialize the project (creates TARACODE.md and .taracode/) |
-| `/reload` | Reload project context from TARACODE.md |
-| `/status` | Show project and session status |
-| `/session [new [name]\|load <id>\|delete <id>\|rename <id> <name>]` | Show or manage the current session |
-| `/sessions` | List all sessions |
-| `/clear` | Clear the conversation (new session) |
-| `/model` | Switch between available models |
-| `/think [auto\|off\|on\|low\|medium\|high]` | Show or set the reasoning mode |
-| `/mode [investigate\|operate]` | Show or switch the operating mode |
-| `/permissions [allow\|deny\|ask <tool\|all>\|reset]` | Remembered answers for mutations |
-| `/audit [all\|export json\|clear]` | Mutations recorded in this project |
-| `/policy show` | Effective policy and where it comes from |
-| `/plan` | Show the active plan |
-| `/context` | Context window budget breakdown |
-| `/compact` | Force conversation compaction |
-| `/stats` | Session statistics |
-| `/usage` | Token usage for this session |
-| `/history [n\|all]` | File operation history |
-| `/undo [n\|--dry-run]` | Undo file modifications |
-| `/diff [export]` | Show or export session changes |
-| `/remember <text> [#tag]` | Save a memory about this project |
-| `/memory [search <q>\|delete <id>\|export\|import <file>\|stats\|cleanup\|clear]` | Project memories |
-| `/mcp [connect\|disconnect <name>\|tools]` | MCP servers and their tools |
-| `/tools` | List available tools |
-| `/upgrade [check\|now\|skip\|changelog\|status]` | Check for and install updates |
-| `/doctor` | Diagnose the LLM server and tools |
-| `/help` | Show this help |
+| Command                                                             | Description                                                |
+|---------------------------------------------------------------------|------------------------------------------------------------|
+| `/init`                                                             | Initialize the project (creates TARACODE.md and .taracode/) |
+| `/reload`                                                           | Reload project context from TARACODE.md                    |
+| `/status`                                                           | Show project and session status                            |
+| `/session [new [name]\|load <id>\|delete <id>\|rename <id> <name>]` | Show or manage the current session                         |
+| `/sessions`                                                         | List all sessions                                          |
+| `/clear`                                                            | Clear the conversation (new session)                       |
+| `/model`                                                            | Switch between the engine's pulled models                  |
+| `/think [auto\|off\|on\|low\|medium\|high]`                         | Show or set the reasoning mode                             |
+| `/mode [investigate\|operate]`                                      | Show or switch the operating mode                          |
+| `/permissions [allow\|deny\|ask <tool\|all>\|reset]`                | Remembered answers for mutations                           |
+| `/audit [all\|export json\|clear]`                                  | Mutations recorded in this project                         |
+| `/policy show`                                                      | Effective policy and where it comes from                   |
+| `/plan`                                                             | Show the active plan                                       |
+| `/context`                                                          | Context window budget breakdown                            |
+| `/compact`                                                          | Force conversation compaction                              |
+| `/stats`                                                            | Session statistics                                         |
+| `/usage`                                                            | Token usage for this session                               |
+| `/history [n\|all]`                                                 | File operation history                                     |
+| `/undo [n\|--dry-run]`                                              | Undo file modifications                                    |
+| `/diff [export]`                                                    | Show or export session changes                             |
+| `/remember <text> [#tag]`                                           | Save a memory about this project                           |
+| `/memory [search <q>\|delete <id>\|export\|import <file>\|stats\|cleanup\|clear]` | Project memories                             |
+| `/mcp [connect\|disconnect <name>\|tools]`                          | MCP servers and their tools                                |
+| `/tools`                                                            | List available tools                                       |
+| `/upgrade [check\|now\|skip\|changelog\|status]`                    | Check for and install updates                              |
+| `/doctor`                                                           | Diagnose the engine and the tools                          |
+| `/help`                                                             | Show this help                                             |
 
 ## Configuration
 
 Create `~/.taracode/config.yaml`:
 
 ```yaml
-# The Ollama host (--host and TARACODE_HOST override it)
-host: http://localhost:11434
+# taraengine's address; leave it out to find the engine there (--host and TARACODE_HOST override it)
+host: http://127.0.0.1:8272
 
 # Generation options for the main chat
 generation:
@@ -403,19 +413,22 @@ See [config.example.yaml](config.example.yaml) for all options.
 
 ## Supported LLM Backends
 
-| Backend       | Setup                 | Notes                      |
-|---------------|-----------------------|----------------------------|
-| **Ollama**    | `brew install ollama` | Recommended, easiest setup |
-| **vLLM**      | Self-hosted           | For production deployments |
-| **llama.cpp** | Self-hosted           | Lightweight option         |
+| Backend        | Setup                                                                                                  | Notes                                                                     |
+|----------------|--------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| **taraengine** | `brew install --cask tara-vision/taracode/taraengine`, or `curl -fsSL https://engine.tara.vision/install.sh \| bash` | The native backend: window control, thinking, `/model` and the evals |
+| **vLLM**       | Self-hosted                                                                                            | The OpenAI-compatible path                                                |
+| **llama.cpp**  | Self-hosted                                                                                            | The OpenAI-compatible path                                                |
+
+Any other OpenAI-compatible server runs on that path too, without window control, thinking on or off,
+`/model` and the evals.
 
 ## Roadmap
 
 Phase 2 of the v3 plan (investigate and operate modes, the classified tools, the policy engine, redaction
 and the audit log) shipped in 3.0.0-alpha.2. Phase 3 shipped the evals and the first scoreboard in 3.0.0-beta.1,
-and 3.0.0 made the line stable. 3.1.0 settled the tool set at fifteen and the connection at one Ollama host.
-3.2.0 added speed, memory and a board per machine to the evals. Runbooks, the MCP server and the skills pack
-are next, as 3.3 and 3.4. See [ROADMAP.md](ROADMAP.md).
+and 3.0.0 made the line stable. 3.1.0 settled the tool set at fifteen and the connection at one host. 3.2.0
+added speed, memory and a board per machine to the evals. 3.3.0 made taraengine the native backend. Runbooks,
+the MCP server and the skills pack are next, as 3.4 and 3.5. See [ROADMAP.md](ROADMAP.md).
 
 ## Evals and the scoreboard
 
@@ -430,11 +443,12 @@ that lets one through fails the run rather than the model.
 The published scoreboard is in [docs/evals/scoreboard.md](docs/evals/scoreboard.md) (and on
 [code.tara.vision/evals](https://code.tara.vision/evals)), regenerated with every release. Every run also
 records tokens per second, `--hardware` names the machine so the report can rank models per machine, and
-`--gpu-probe` records the GPU memory the machine itself reports (the evals reference shows the command for
-an NVIDIA card). Run the suite against your own Ollama:
+the GPU memory of the loaded model is measured by the engine on NVIDIA; where the engine only estimates it
+(a Mac), `--gpu-probe` records what the machine itself reports (the evals reference shows the command). Run
+the suite against your own taraengine:
 
 ```bash
-taracode eval run --host http://localhost:11434 --model gemma4:12b --hardware "your GPU or machine"
+taracode eval run --model gemma4:12b --hardware "your GPU or machine"
 taracode eval report
 ```
 
@@ -465,8 +479,8 @@ For security issues, please see our [Security Policy](SECURITY.md).
 ## Sponsoring
 
 taracode is free, MIT-licensed and built without telemetry or a cloud service. If it saves you time, you can
-[sponsor Tara Vision on GitHub](https://github.com/sponsors/tara-vision) to keep the releases, the model registry and the
-eval scoreboard coming.
+[sponsor Tara Vision on GitHub](https://github.com/sponsors/tara-vision) to keep the releases, the engine's
+catalog and the eval scoreboard coming.
 
 ## License
 

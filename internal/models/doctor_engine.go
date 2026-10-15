@@ -18,6 +18,7 @@ type EngineReport struct {
 	Runtime     string // the llama.cpp build the engine runs
 	Platform    string
 	Degraded    string // the health detail when the engine reports degraded, "" when it is ok
+	Starting    string // the health detail while the engine is still getting ready, "" once it is
 	Machine     api.Machine
 	RuntimeNote string       // what is wrong with the runtime, "" when it is installed and verified
 	Recommended string       // the engine's recommendation for the machine's tier, "" when it has none
@@ -40,6 +41,10 @@ func (r *Report) diagnoseEngine(ctx context.Context, eng *taraengine.Engine) {
 	rep, err := engineReport(ctx, eng)
 	if err != nil {
 		r.fail(err)
+		return
+	}
+	if rep.Starting != "" { // the engine lists nothing while it starts; doctor reports the step and does not wait
+		r.ServerOK, r.Engine = true, rep
 		return
 	}
 	list, err := eng.Models(ctx)
@@ -65,7 +70,12 @@ func engineReport(ctx context.Context, eng *taraengine.Engine) (*EngineReport, e
 	}
 	rep := &EngineReport{Version: llm.Printable(v.Version), Runtime: llm.Printable(v.Runtime.Build),
 		Platform: llm.Printable(v.Platform)}
-	if health.Status != "ok" {
+	switch health.Status {
+	case api.HealthOK:
+	case api.HealthStarting:
+		rep.Starting = llm.Printable(health.Detail)
+		return rep, nil // every other route answers 503 while the daemon starts; doctor does not wait for it
+	default:
 		rep.Degraded = llm.Printable(health.Detail)
 	}
 	if d, err := eng.Doctor(ctx); err == nil {
@@ -135,6 +145,9 @@ func (e *EngineReport) renderServer(b *strings.Builder) {
 	fmt.Fprintf(b, "          taraengine %s (runtime %s, %s)\n", e.Version, e.Runtime, e.Platform)
 	if e.Degraded != "" {
 		fmt.Fprintf(b, "          degraded: %s\n", e.Degraded)
+	}
+	if e.Starting != "" {
+		fmt.Fprintf(b, "          starting: %s\n", e.Starting)
 	}
 	if versionBefore(e.Version, taraengine.MinVersion) {
 		fmt.Fprintf(b, "          taracode supports taraengine %s or newer; update the engine\n", taraengine.MinVersion)

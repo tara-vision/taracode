@@ -181,7 +181,7 @@ func TestRunRecordsTheEnginesMeasurementWithoutAProbe(t *testing.T) {
 	if _, statErr := os.Stat(marker); statErr == nil {
 		t.Fatal("the probe ran although the engine measured the model")
 	}
-	if want := ", 8.7 GiB on the GPU (engine reports 9.3 GB, 100% GPU)"; !strings.Contains(out.String(), want) {
+	if want := ", 8.7 GiB on the GPU, measured by the engine"; !strings.Contains(out.String(), want) {
 		t.Fatalf("the last line lacks %q: %q", want, out.String())
 	}
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tara-vision/taraengine/pkg/api"
+
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
@@ -192,5 +194,146 @@ func TestSleepCtxWaitsOrStops(t *testing.T) {
 	cancel()
 	if err := sleepCtx(ctx, time.Hour); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled context: %v", err)
+	}
+}
+
+// healthCalls counts the fake's /api/health requests.
+func healthCalls(srv *taraenginetest.Server) int {
+	n := 0
+	for _, r := range srv.Requests {
+		if r.Path == "/api/health" {
+			n++
+		}
+	}
+	return n
+}
+
+// shortWaits lowers the wait bounds for a test and restores them after it.
+func shortWaits(t *testing.T, wait, grace time.Duration) {
+	t.Helper()
+	oldWait, oldGrace := startWait, refusedGrace
+	startWait, refusedGrace = wait, grace
+	t.Cleanup(func() { startWait, refusedGrace = oldWait, oldGrace })
+}
+
+// TestAwaitReadyFollowsAStartingEngineToTheEnd: each step of the start reaches progress once, a step the engine
+// repeats is not repeated, the polls wait pollEvery between them, and the wait ends at the first answer that is not
+// starting.
+func TestAwaitReadyFollowsAStartingEngineToTheEnd(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Starting = []string{"installing runtime b11514 (10%)", "installing runtime b11514 (10%)",
+		"installing runtime b11514 (65%)", "starting llama-server\x1b[2J"}
+	eng := New(srv.URL, "", nil).Engine()
+	waits := noWait(eng)
+	var steps []string
+	if err := eng.AwaitReady(context.Background(), func(step string) { steps = append(steps, step) }); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"installing runtime b11514 (10%)", "installing runtime b11514 (65%)", "starting llama-server[2J"}
+	if strings.Join(steps, "|") != strings.Join(want, "|") || *waits != 4 || healthCalls(srv) != 5 {
+		t.Fatalf("steps %q, waits %d, health calls %d", steps, *waits, healthCalls(srv))
+	}
+}
+
+// TestAwaitReadyReturnsAtOnceForAnEngineThatAnswers: an engine that is ok or degraded is not waited for, and progress
+// hears nothing.
+func TestAwaitReadyReturnsAtOnceForAnEngineThatAnswers(t *testing.T) {
+	for _, status := range []string{"ok", "degraded"} {
+		srv := taraenginetest.New(t)
+		srv.Health = api.Health{Status: status, Backend: "llama.cpp", Detail: "x"}
+		eng := New(srv.URL, "", nil).Engine()
+		waits := noWait(eng)
+		called := false
+		if err := eng.AwaitReady(context.Background(), func(string) { called = true }); err != nil || called ||
+			*waits != 0 || healthCalls(srv) != 1 {
+			t.Fatalf("%s: %v, progress called %v, waits %d, health calls %d", status, err, called, *waits,
+				healthCalls(srv))
+		}
+	}
+}
+
+// TestAwaitReadyGivesUpAtTheDeadline: an engine still starting when startWait is over ends the wait with the engine's
+// own wording, and the host's password stays off the message.
+func TestAwaitReadyGivesUpAtTheDeadline(t *testing.T) {
+	shortWaits(t, 0, time.Minute)
+	srv := taraenginetest.New(t)
+	srv.Starting = []string{"installing runtime b11514 (10%)", "installing runtime b11514 (20%)"}
+	host := strings.Replace(srv.URL, "http://", "http://user:secret@", 1)
+	eng := New(host, "", nil).Engine()
+	noWait(eng)
+	err := eng.AwaitReady(context.Background(), func(string) {})
+	want := "taraengine did not get ready within 0s at " + strings.Replace(srv.URL, "http://", "http://user:xxxxx@", 1) +
+		"; `taraengine service status` shows why"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err %v, want %q", err, want)
+	}
+}
+
+// TestAwaitReadyReportsAnEngineThatNeverAnsweredAtOnce: nothing answering the first health call is the unreachable
+// error at once, not a wait: the session and the eval run then stop with it, as they do for any other first call.
+func TestAwaitReadyReportsAnEngineThatNeverAnsweredAtOnce(t *testing.T) {
+	eng := New("http://127.0.0.1:1", "", nil).Engine()
+	waits := noWait(eng)
+	err := eng.AwaitReady(context.Background(), func(string) {})
+	var unreachable *llm.UnreachableError
+	if !errors.As(err, &unreachable) || unreachable.Host != "http://127.0.0.1:1" || *waits != 0 {
+		t.Fatalf("err %#v, waits %d", err, *waits)
+	}
+}
+
+// TestAwaitReadyGivesUpWhenAStartingEngineStopsAnswering: a starting engine whose health calls reach nothing for
+// refusedGrace ends the wait with the engine's own wording.
+func TestAwaitReadyGivesUpWhenAStartingEngineStopsAnswering(t *testing.T) {
+	shortWaits(t, time.Minute, 0)
+	starting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"starting","backend":"llama.cpp","detail":"installing runtime b11514 (10%)"}`))
+	}))
+	t.Cleanup(starting.Close)
+	eng := New(starting.URL, "", nil).Engine()
+	eng.sleep = func(context.Context, time.Duration) error { starting.Close(); return nil } // gone after the first answer
+	err := eng.AwaitReady(context.Background(), func(string) {})
+	want := "taraengine stopped answering at " + starting.URL + "; `taraengine service status` shows why"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err %v, want %q", err, want)
+	}
+}
+
+// TestAwaitReadyPassesARefusalOn: a health call the server refuses is that refusal, not a wait.
+func TestAwaitReadyPassesARefusalOn(t *testing.T) {
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"message":"host not allowed","hint":"use the listen address"}}`))
+	}))
+	t.Cleanup(refusing.Close)
+	eng := New(refusing.URL, "", nil).Engine()
+	noWait(eng)
+	err := eng.AwaitReady(context.Background(), func(string) {})
+	var refused *llm.ServerError
+	if !errors.As(err, &refused) || refused.Status != http.StatusForbidden || refused.Hint != "use the listen address" {
+		t.Fatalf("err %#v", err)
+	}
+}
+
+// TestAwaitReadyEndsWithItsContext: a context that ends during the wait ends it with the context's error.
+func TestAwaitReadyEndsWithItsContext(t *testing.T) {
+	srv := taraenginetest.New(t)
+	srv.Starting = []string{"installing runtime b11514 (10%)", "installing runtime b11514 (20%)"}
+	eng := New(srv.URL, "", nil).Engine()
+	ctx, cancel := context.WithCancel(context.Background())
+	eng.sleep = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
+	if err := eng.AwaitReady(ctx, func(string) {}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+// TestTheHintsNameTheServiceAndTheInstallers: the hints name what engine v0.3.0 installs, the service, the cask and
+// the installer script, so a user who meets them can act on them as written.
+func TestTheHintsNameTheServiceAndTheInstallers(t *testing.T) {
+	if StartHint != "start taraengine with `taraengine service start`, or `taraengine serve` in a terminal" {
+		t.Errorf("StartHint = %q", StartHint)
+	}
+	if InstallHint != "brew install --cask tara-vision/taracode/taraengine on a Mac, "+
+		"or curl -fsSL https://engine.tara.vision/install.sh | bash on Linux" {
+		t.Errorf("InstallHint = %q", InstallHint)
 	}
 }

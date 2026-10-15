@@ -2,8 +2,11 @@ package llm
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
+
+	openai "github.com/sashabaranov/go-openai"
 )
 
 func TestServerErrorReadsLikeTheEngine(t *testing.T) {
@@ -69,5 +72,39 @@ func TestPrintableDropsControlCharactersButTabAndNewline(t *testing.T) {
 	}
 	if got := Printable("plain text, ok"); got != "plain text, ok" {
 		t.Fatalf("plain text changed: %q", got)
+	}
+}
+
+// TestIsCutToolCallKnowsBothServersWording: the refusal of a tool call that the output limit cut is recognized in
+// llama-server's wording (through the engine) and in Ollama's, in the engine's refusal and in go-openai's error (the
+// generic path's), wrapped or not and whatever the case; a stream cut, a refusal about something else and a plain
+// error are not one.
+func TestIsCutToolCallKnowsBothServersWording(t *testing.T) {
+	cut := []error{
+		&ServerError{Status: 500, Message: "Failed to parse tool call arguments as JSON: syntax error at line 1, " +
+			"column 10764: missing closing quote"},
+		fmt.Errorf("chat: %w", &ServerError{Status: 500, Message: "500: incomplete GLM tool call"}),
+		&ServerError{Status: 500, Message: "FAILED TO PARSE TOOL CALL ARGUMENTS as JSON"},
+		fmt.Errorf("openai: %w", &openai.APIError{HTTPStatusCode: 500, Message: "500: incomplete GLM tool call"}),
+		&openai.APIError{HTTPStatusCode: 500, Message: "Failed to parse tool call arguments as JSON: unexpected end"},
+	}
+	for _, err := range cut {
+		if !IsCutToolCall(err) {
+			t.Errorf("%v: not read as a cut tool call", err)
+		}
+	}
+	whole := []error{
+		&ServerError{Status: 404, Message: "unknown model: x"},
+		&ServerError{Status: 500, Message: "catalog unreadable"},
+		&ServerError{Status: 500, Message: "the tool call was incomplete"},
+		ErrStreamCut,
+		errors.New("failed to parse tool call arguments as JSON"),
+		fmt.Errorf("openai: %w", &openai.APIError{HTTPStatusCode: 404, Message: "model not found"}),
+		nil,
+	}
+	for _, err := range whole {
+		if IsCutToolCall(err) {
+			t.Errorf("%v: read as a cut tool call", err)
+		}
 	}
 }

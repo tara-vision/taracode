@@ -183,6 +183,8 @@ func speedAndMemory(res Results) string {
 	}
 	e := res.Engine
 	switch {
+	case res.GPUMemoryMiB > 0 && e != nil && e.Measured: // one figure, and whose it is
+		out += fmt.Sprintf(", %.1f GiB on the GPU, measured by the engine", gib(res.GPUMemoryMiB))
 	case res.GPUMemoryMiB > 0 && e != nil:
 		out += fmt.Sprintf(", %.1f GiB on the GPU (engine reports %.1f GB, %d%% GPU)",
 			gib(res.GPUMemoryMiB), float64(e.SizeBytes)/1e9, e.GPUPercent)

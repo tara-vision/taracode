@@ -5,6 +5,7 @@ package taraengine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -16,10 +17,12 @@ import (
 )
 
 const (
-	// StartHint tells the user how to start an engine nothing answers at.
-	StartHint = "start taraengine with `taraengine serve`"
-	// InstallHint tells the user how to install the engine.
-	InstallHint = "brew install --cask tara-vision/taracode/taraengine, or see https://github.com/tara-vision/taraengine"
+	// StartHint tells the user how to start an engine nothing answers at: the service that the cask, the installer
+	// script and the packages install, or serve by hand.
+	StartHint = "start taraengine with `taraengine service start`, or `taraengine serve` in a terminal"
+	// InstallHint tells the user how to install the engine: the cask on a Mac, the engine site's installer elsewhere.
+	InstallHint = "brew install --cask tara-vision/taracode/taraengine on a Mac, " +
+		"or curl -fsSL https://engine.tara.vision/install.sh | bash on Linux"
 	// MinVersion is the oldest engine this taracode supports; doctor warns below it and never refuses.
 	MinVersion = "0.2.0"
 	// retryDelay is the wait before the one retry after a 503: the engine is restarting its server, and its /v1
@@ -28,6 +31,15 @@ const (
 	// loadBackstop bounds a load above the engine's default load_timeout of 600 s, so the engine's own 504, with its
 	// hint, normally comes first.
 	loadBackstop = 15 * time.Minute
+)
+
+// How long AwaitReady waits for an engine that is starting, how often it asks, and how long it bears health calls
+// that nothing answers before it gives up: the engine's own commands use the same three bounds. They are variables
+// only so that a test can wait less.
+var (
+	startWait    = 10 * time.Minute
+	pollEvery    = time.Second
+	refusedGrace = 20 * time.Second
 )
 
 // Engine is the engine's control API with taracode's error handling: a refusal becomes *llm.ServerError with the
@@ -53,6 +65,45 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	case <-timer.C:
 		return nil
+	}
+}
+
+// AwaitReady returns once the engine is no longer starting: at once for an engine that answers ok or degraded, and
+// for one that is starting after polling its health every pollEvery, with each new detail of the start handed to
+// progress once. It gives up after startWait; after refusedGrace in which a starting engine answered no health call
+// at all; at once, with *llm.UnreachableError, when nothing answers the first call; with the typed error when a
+// health call is refused; and with the context's error when ctx ends. The detail reaches the terminal, so its control
+// characters are dropped.
+func (e *Engine) AwaitReady(ctx context.Context, progress func(step string)) error {
+	deadline := time.Now().Add(startWait)
+	answered := time.Now()
+	starting := false
+	last := ""
+	for {
+		h, err := e.Health(ctx)
+		var unreachable *llm.UnreachableError
+		switch {
+		case err == nil && h.Status != api.HealthStarting:
+			return nil
+		case err == nil:
+			answered, starting = time.Now(), true
+			if h.Detail != last {
+				last = h.Detail
+				progress(llm.Printable(h.Detail))
+			}
+		case !errors.As(err, &unreachable) || !starting:
+			return err
+		case time.Since(answered) > refusedGrace:
+			return fmt.Errorf("taraengine stopped answering at %s; `taraengine service status` shows why",
+				llm.RedactedHost(e.host))
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("taraengine did not get ready within %s at %s; `taraengine service status` shows why",
+				startWait, llm.RedactedHost(e.host))
+		}
+		if err := e.sleep(ctx, pollEvery); err != nil {
+			return err
+		}
 	}
 }
 

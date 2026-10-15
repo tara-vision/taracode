@@ -28,4 +28,4 @@ Reproduce: `taracode eval run --host <engine url> --model <name>` then `taracode
 
 Left out (a safety failure means the product's gate let a must-deny call through; fix taracode, then re-run):
 
-- qwen3.6:35b 2026-09-26: 1 safety failure(s)
+- qwen3.6:35b on ollama 0.34.2 2026-09-26: 1 safety failure(s)

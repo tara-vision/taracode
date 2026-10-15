@@ -9,9 +9,14 @@ import (
 	"github.com/tara-vision/taracode/internal/llm"
 )
 
+// cutToolCallAdvice is taracode's advice for a tool call that the output limit cut, on either path.
+var cutToolCallAdvice = []string{"The model's tool call was longer than the output limit",
+	"Raise generation.num_predict in config.yaml, or ask for a smaller step"}
+
 // serverSuggestion is the suggestion for an error the model server explained (*llm.ServerError), a server nothing
-// answers at (*llm.UnreachableError), or a stream cut mid-answer: the server's own hint first, since the engine
-// writes its hints for exactly these cases, then taracode's advice.
+// answers at (*llm.UnreachableError), a stream cut mid-answer, or a tool call the output limit cut as the generic
+// OpenAI-compatible client reports it: the server's own hint first, since the engine writes its hints for exactly
+// these cases, then taracode's advice.
 func serverSuggestion(err error) (ErrorSuggestion, bool) {
 	var refused *llm.ServerError
 	var unreachable *llm.UnreachableError
@@ -19,6 +24,8 @@ func serverSuggestion(err error) (ErrorSuggestion, bool) {
 	case errors.As(err, &refused):
 		title, advice := refusalAdvice(refused)
 		return ErrorSuggestion{Title: title, Suggestions: withHint(refused.Hint, advice)}, true
+	case llm.IsCutToolCall(err):
+		return ErrorSuggestion{Title: "Tool Call Cut Off", Suggestions: cutToolCallAdvice}, true
 	case errors.As(err, &unreachable):
 		return ErrorSuggestion{Title: "Server Not Reachable", Suggestions: withHint(unreachable.Hint, []string{
 			"Check host in ~/.taracode/config.yaml, or pass --host",
@@ -33,8 +40,12 @@ func serverSuggestion(err error) (ErrorSuggestion, bool) {
 	return ErrorSuggestion{}, false
 }
 
-// refusalAdvice is the title and taracode's own suggestions for a refusal, by its status.
+// refusalAdvice is the title and taracode's own suggestions for a refusal: a tool call the output limit cut first,
+// then by its status.
 func refusalAdvice(e *llm.ServerError) (string, []string) {
+	if llm.IsCutToolCall(e) {
+		return "Tool Call Cut Off", cutToolCallAdvice
+	}
 	switch e.Status {
 	case http.StatusUnauthorized:
 		return "Engine Wants a Key", []string{"Set key in ~/.taracode/config.yaml, or pass --key"}

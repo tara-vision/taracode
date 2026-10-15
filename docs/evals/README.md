@@ -1,7 +1,7 @@
 # taracode evals
 
 This is the reference for the offline eval suite: what it measures, the task format, how scoring works,
-how to run it against your own Ollama, how to add a task, what recording a task requires, and the
+how to run it against your own taraengine, how to add a task, what recording a task requires, and the
 reproducibility rules the numbers depend on.
 
 ## What this suite measures
@@ -22,8 +22,9 @@ docker, three secrets, three cloud and six refusal. Twenty-five are `provenance:
 sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
 scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates, speed and
 memory per model are published in [scoreboard.md](scoreboard.md). The current board was measured on one
-NVIDIA RTX 5090 (32 GB) with taracode 3.2.1 and Ollama 0.35.0: 18 models, one run each, 594 task runs and
-zero safety failures (no `must_deny` call was ever allowed by the gate). The top five:
+NVIDIA RTX 5090 (32 GB) with taracode 3.2.1 on Ollama 0.35.0, the server of that board: 18 models, one run
+each, 594 task runs and zero safety failures (no `must_deny` call was ever allowed by the gate). The next
+board runs on taraengine. The top five:
 
 | # | Model | Pass rate | Tokens/s | VRAM |
 |---|---|---|---|---|
@@ -34,7 +35,7 @@ zero safety failures (no `must_deny` call was ever allowed by the gate). The top
 | 5 | `gemma4:12b` | 88% | 138 | 9.2 GiB |
 
 `eval report --check-defaults` ranks a tier by mean score and printed three lines. A "differs" line is
-evidence for the maintainer, not a change by itself: a registry default does not move without a decision.
+evidence for the maintainer, not a change by itself: a catalog default does not move without a decision.
 
 - `16: default gemma4:12b, top scorer gemma4:12b`: the default is the tier's top row, one task ahead of
   qwen3.5:9b (29 against 28, mean score 0.92 for both), which is inside the run-to-run spread; in the first
@@ -121,7 +122,7 @@ evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
 docs/evals/README.md              writing, recording and running tasks
-docs/evals/results/<model>-<date>.json
+docs/evals/results/<model>-<server>-<date>.json
 docs/evals/scoreboard.md, scoreboard.json
 ```
 
@@ -194,18 +195,18 @@ clock timeout scores 0.
 writes the results, and exits non-zero once the model's run finishes. A scoreboard is never generated from a
 results file that carries a safety failure.
 
-## Running against your own Ollama
+## Running against your own taraengine
 
 ```bash
-taracode eval run --host http://localhost:11434 --model gemma4:12b
+taracode eval run --model gemma4:12b
 ```
 
-Add `--tasks <glob>` to run a subset of the corpus, `--think <mode>` to override the default think level,
-`--runs N` to repeat each task and average its scores, and `--hardware "<label>"` to name the machine the
-engine runs on. Results are written to
-`docs/evals/results/<model slug>-<date>.json`; the full transcript of each task (the conversation, every tool
-decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which is
-git-ignored.
+Add `--host` for an engine at another address, `--tasks <glob>` to run a subset of the corpus, `--think <mode>`
+to override the default think level, `--runs N` to repeat each task and average its scores, and
+`--hardware "<label>"` to name the machine the engine runs on. Results are written to
+`docs/evals/results/<model slug>-<server>-<date>.json`; the full transcript of each task (the conversation,
+every tool decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which
+is git-ignored.
 
 ## Speed, memory and the hardware board
 
@@ -214,13 +215,15 @@ and a results file can say which machine it ran on. Since 3.2.1 the memory can b
 itself, which is the figure a board shows.
 
 - **Tokens per second** (`summary.tokens_per_s`) is the completion tokens of every task divided by the
-  generation time of every task, both as the engine reports them (`eval_count` and `eval_duration` on
-  Ollama). It is the engine's own generation rate, thinking tokens included, with no network time and no
+  generation time of every task, both as the engine reports them (the `timings` of taraengine's answers).
+  It is the engine's own generation rate, thinking tokens included, with no network time and no
   tool time in it. Each task keeps its raw `eval_ms` and `prompt_eval_ms`. There is no summary rate for
   prompt processing: prompt caching makes it swing from task to task. A task the engine timed nothing for
-  is left out of the rate, and a run with no timings at all gets no rate. (`eval run` needs Ollama in any
-  case: it asks the engine for the model's capabilities first, which vLLM and llama.cpp cannot answer.)
-- **Measured memory** (`gpu_memory_mib`) comes from the machine. With `--gpu-probe "<command>"` taracode
+  is left out of the rate, and a run with no timings at all gets no rate. (`eval run` needs taraengine: it
+  asks the engine for the model's capabilities first, which vLLM and llama.cpp cannot answer.)
+- **Measured memory** (`gpu_memory_mib`) comes from the machine. On taraengine with an NVIDIA GPU the engine
+  measures it itself, as the GPU memory of the model's process, and the run records that figure. Where the
+  engine only estimates it (a Mac), `--gpu-probe "<command>"` measures it for the run: taracode
   runs your command once, right after the warm-up has loaded the model at the context window it asked for
   (32,768 tokens by default), and records the number it prints: the GPU memory in use, in MiB. For an
   NVIDIA card that is `nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits` (one line
@@ -238,9 +241,9 @@ itself, which is the figure a board shows.
 - **Reported memory** (`engine`) is what the engine says about the loaded model, read once at the same
   moment: its size, the bytes of it on the GPU, and that share as `gpu_percent`. It reads 100 only when
   the engine places the whole model on the GPU; anything less is rounded down, and that is what decides
-  "did not fit". The sizes themselves are the engine's own estimate, not a measurement: on Ollama 0.35 the
-  estimate is often gigabytes below what the GPU holds, and for some models it is not usable at all. Never
-  answer "does it fit my card" from it. The block also names the quantization, the parameter size and the
+  "did not fit". Where the engine estimates rather than measures, the sizes are its estimate, not a
+  measurement, and can be gigabytes below what the GPU holds; never answer "does it fit my card" from an
+  estimate. The block also names the quantization, the parameter size and the
   first twelve characters of the model digest, so a row says which weights it measured. If the engine does
   not list the model as loaded, the run prints a warning and goes on without the block.
 - **Hardware** (`hardware`) is a label you declare with `--hardware`, for example
@@ -256,25 +259,24 @@ such as a `--tasks` subset. A result with no `engine` block stays ranked, since 
 fit, and the report says how many rows that is ("without engine data"). The VRAM column is in GiB, the
 unit a card's size is given in (a 24 GB card holds 24 GiB): the measured figure where the run has one,
 otherwise the engine's estimate marked with `~`. The "did not fit" lines keep the engine's own figures,
-named as such, in decimal gigabytes, the unit `ollama ps` prints.
+named as such, in decimal gigabytes.
 
-One model has one row: its newest results. Boards from several machines for the same model are not
-supported yet, so a results file from another machine would replace the published row.
+One model has one row per server: its newest results there. Boards from several machines for the same model
+are not supported yet, so a results file from another machine would replace the published row.
 
 ## Run it on your hardware
 
 ```bash
-ollama pull glm-4.7-flash
-taracode eval run --host http://localhost:11434 --model glm-4.7-flash --hardware "your GPU or machine" \
-  --gpu-probe "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits"
+taraengine pull glm-4.7-flash
+taracode eval run --model glm-4.7-flash --hardware "your GPU or machine"
 taracode eval report --out-dir /tmp/board
 ```
 
 Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. No task runs
-anything for real and nothing leaves the machine; the one command a run executes is your own
-`--gpu-probe`. Leave it out on a machine without `nvidia-smi` (or give it a command that prints the GPU
-memory in use in MiB): the board then shows the engine's estimate, marked with `~`. A model takes two to
-fifteen minutes on a current GPU. Share the
+anything for real and nothing leaves the machine. On taraengine with an NVIDIA GPU the engine measures the
+memory itself. On a Mac, where it estimates, add `--gpu-probe "<command>"` with a command that prints the
+GPU memory in use in MiB (the one command a run then executes is your own), or leave it out: the board then
+shows the engine's estimate, marked with `~`. A model takes two to fifteen minutes on a current GPU. Share the
 results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
 `docs/evals/results/` wait until the report can hold one model on several machines.
 
@@ -331,7 +333,7 @@ Recording never runs a model; it executes the `record.calls` entries for real ag
 the output, and saves it as fixtures. It needs three things in place: a running kind cluster
 (`evals/scenarios/kind/up.sh`, left running between recording sessions rather than recreated per task), the
 sandbox CLIs on that same host (kind, kubectl, helm, terraform, trivy and gitleaks, installed by the ansible
-playbook that sits next to the Ollama one), and `RECORD_HOST` set to that sandbox host so `make record` knows
+playbook of the lab), and `RECORD_HOST` set to that sandbox host so `make record` knows
 where to sync the corpus and run `taracode eval record` over SSH.
 
 The recorder refuses to write a fixture whose text or signature carries a private name of the lab host. It

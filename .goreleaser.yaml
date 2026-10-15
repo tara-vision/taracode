@@ -50,7 +50,7 @@ nfpms:
     vendor: Tara Vision, LLC
     homepage: https://github.com/tara-vision/taracode
     maintainer: "Tara Vision, LLC <contact@tara.vision>"
-    description: DevOps and Cloud SI (AI) assistant for Kubernetes, Terraform, Docker and multi-cloud, running locally with Ollama
+    description: DevOps and Cloud SI (AI) assistant for Kubernetes, Terraform, Docker and multi-cloud, running locally on taraengine
     license: MIT
     formats:
       - deb
@@ -66,16 +66,16 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: https://github.com/tara-vision/taracode
-    description: DevOps and Cloud SI (AI) assistant that runs locally with Ollama
+    description: DevOps and Cloud SI (AI) assistant that runs locally on taraengine
     license: MIT
     binaries:
       - taracode
     caveats: |
-      taracode needs Ollama and a tool-capable model:
+      taracode runs on taraengine, with a tool-capable model:
 
-        brew install ollama
-        ollama pull gemma4:12b      # 16 GB machines
-        ollama pull glm-4.7-flash   # 32 GB machines (Ollama 0.14.3 or newer)
+        brew install --cask tara-vision/taracode/taraengine
+        taraengine pull gemma4:12b      # 16 GB machines
+        taraengine pull glm-4.7-flash   # 32 GB machines
 
       Then run `taracode` inside a project directory.
     hooks:

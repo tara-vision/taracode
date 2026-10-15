@@ -326,7 +326,7 @@ func TestUnreachableReportPrintsTheInstallLine(t *testing.T) {
 	hinted := &llm.UnreachableError{Host: "http://127.0.0.1:8272", Hint: taraengine.StartHint}
 	out := UnreachableReport("http://127.0.0.1:8272", hinted, "gemma4:12b", noLookup).Render()
 	for _, want := range []string{
-		"unreachable: nothing answers at http://127.0.0.1:8272: start taraengine with `taraengine serve`",
+		"unreachable: nothing answers at http://127.0.0.1:8272: " + taraengine.StartHint,
 		"install it: " + taraengine.InstallHint, "Model     gemma4:12b\n", "kubectl: not found",
 	} {
 		if !strings.Contains(out, want) {
@@ -382,5 +382,41 @@ func TestRenderShowsThePolicyNote(t *testing.T) {
 	rep := Report{Host: "h", ServerOK: true, Tools: map[string]string{}, PolicyNote: "ok (built-in)"}
 	if !strings.Contains(rep.Render(), "Policy    ok (built-in)") {
 		t.Fatalf("render lacks the policy line:\n%s", rep.Render())
+	}
+}
+
+// TestDiagnoseReportsAStartingEngineWithoutWaiting: an engine that is still getting ready is reported as it is, with
+// the step it is on; the models are not listed, since the engine answers nothing about them yet, and doctor asks its
+// health once instead of waiting.
+func TestDiagnoseReportsAStartingEngineWithoutWaiting(t *testing.T) {
+	srv := engineWithModels(t)
+	srv.Starting = []string{"installing runtime b11514 (65%)\x1b[2J", "installing runtime b11514 (70%)"}
+	rep := diagnose(srv, "", "gemma4:12b", false)
+	out := rep.Render()
+	for _, want := range []string{
+		"          taraengine 0.2.0 (runtime b11514, linux/amd64/cuda12)\n",
+		"          starting: installing runtime b11514 (65%)[2J\n",
+		"Models    listed once the engine is ready\n",
+		"Model     gemma4:12b\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+	if !rep.ServerOK || rep.Engine.Degraded != "" || strings.Contains(out, "degraded") || len(rep.Models) != 0 {
+		t.Errorf("report %+v:\n%s", rep, out)
+	}
+	health, doctor := 0, 0
+	for _, r := range srv.Requests {
+		switch r.Path {
+		case "/api/health":
+			health++
+		case "/api/doctor":
+			doctor++
+		}
+	}
+	if health != 1 || doctor != 0 {
+		t.Errorf("health asked %d times, want once; doctor asked %d times, want none (it answers 503 and is retried)",
+			health, doctor)
 	}
 }

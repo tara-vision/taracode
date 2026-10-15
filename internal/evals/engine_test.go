@@ -137,9 +137,8 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 			}
 			if c.want != nil { // the run's last line says what the model takes and where it sits
 				memory := fmt.Sprintf(", %.1f GB (%d%% GPU)", float64(c.want.SizeBytes)/1e9, c.want.GPUPercent)
-				if c.want.Measured { // the run records the engine's measurement, and the line names it
-					memory = fmt.Sprintf(", %.1f GiB on the GPU (engine reports %.1f GB, %d%% GPU)",
-						gib(c.want.VRAMBytes>>20), float64(c.want.SizeBytes)/1e9, c.want.GPUPercent)
+				if c.want.Measured { // the run records the engine's measurement, and the line names it as such
+					memory = fmt.Sprintf(", %.1f GiB on the GPU, measured by the engine", gib(c.want.VRAMBytes>>20))
 				}
 				if !strings.Contains(out.String(), memory) {
 					t.Fatalf("the last line lacks %q: %q", memory, out.String())

@@ -107,16 +107,25 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 				pct = *r.GPUPercent
 			}
 			fmt.Fprintf(&b, "- %s: the engine reports %.1f GB loaded, %d%% on the GPU, pass rate %.0f%%\n",
-				mdText(r.Model), r.SizeGB, pct, r.PassRate*100)
+				rowName(r), r.SizeGB, pct, r.PassRate*100)
 		}
 	}
 	if len(h.Partial) > 0 {
 		b.WriteString("\nNot ranked, ran only part of the corpus:\n\n")
 		for _, r := range h.Partial {
-			fmt.Fprintf(&b, "- %s: %d of %d tasks\n", mdText(r.Model), r.Tasks, corpusTasks)
+			fmt.Fprintf(&b, "- %s: %d of %d tasks\n", rowName(r), r.Tasks, corpusTasks)
 		}
 	}
 	return b.String()
+}
+
+// rowName is a row's model on its server, as the lines under the ranking name it, so two rows of one model read
+// apart; a row that names no server is the model alone.
+func rowName(r Row) string {
+	if server := r.Server.String(); server != "" {
+		return mdText(r.Model) + " on " + mdText(server)
+	}
+	return mdText(r.Model)
 }
 
 // vram is a row's memory cell, in GiB, the unit a card's size is given in: the figure the operator's
@@ -158,12 +167,13 @@ func (h HardwareBoard) memoryNote() string {
 	return "No run on this board measured or reported its memory."
 }
 
-// facts is the board's one-line summary: how many models are ranked, which servers (name and version)
-// and context windows their runs used, and whether every row is a single run.
+// facts is the board's one-line summary: how many models are ranked (a model on two servers counts once), which
+// servers (name and version) and context windows their runs used, and whether every row is a single run.
 func (h HardwareBoard) facts() string {
-	servers, windows := map[string]bool{}, map[int]bool{}
+	models, servers, windows := map[string]bool{}, map[string]bool{}, map[int]bool{}
 	single := true
 	for _, r := range h.Rows {
+		models[r.Model] = true
 		if server := r.Server.String(); server != "" {
 			servers[server] = true
 		}
@@ -175,10 +185,10 @@ func (h HardwareBoard) facts() string {
 		}
 	}
 	noun := "models"
-	if len(h.Rows) == 1 {
+	if len(models) == 1 {
 		noun = "model"
 	}
-	parts := []string{fmt.Sprintf("%d %s", len(h.Rows), noun)}
+	parts := []string{fmt.Sprintf("%d %s", len(models), noun)}
 	if len(servers) > 0 {
 		names := make([]string, 0, len(servers))
 		for server := range servers {
