@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -26,6 +27,22 @@ func (e *ServerError) Error() string {
 		return fmt.Sprintf("%s (%s)", e.Message, e.Hint)
 	}
 	return e.Message
+}
+
+// cutToolCall is Ollama's wording for a tool call that its output limit cut ("500: incomplete GLM tool call").
+var cutToolCall = regexp.MustCompile(`incomplete [^ ]* ?tool call`)
+
+// IsCutToolCall reports a server's refusal of a tool call that its output limit cut, which the server could then not
+// parse: llama-server answers "Failed to parse tool call arguments as JSON ..." (through the engine's /v1, in the
+// stream or as a 500), Ollama "500: incomplete GLM tool call" on the generic path. The agent sends the model back for
+// a shorter call once per turn on it. Any other error, a cut stream included, is not one.
+func IsCutToolCall(err error) bool {
+	var refused *ServerError
+	if !errors.As(err, &refused) {
+		return false
+	}
+	msg := strings.ToLower(refused.Message)
+	return strings.Contains(msg, "failed to parse tool call arguments") || cutToolCall.MatchString(msg)
 }
 
 // UnreachableError is a server nothing answered at. Hint, when set, says how to start it.
