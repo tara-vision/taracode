@@ -406,13 +406,17 @@ func TestDiagnoseReportsAStartingEngineWithoutWaiting(t *testing.T) {
 	if !rep.ServerOK || rep.Engine.Degraded != "" || strings.Contains(out, "degraded") || len(rep.Models) != 0 {
 		t.Errorf("report %+v:\n%s", rep, out)
 	}
-	health := 0
+	health, doctor := 0, 0
 	for _, r := range srv.Requests {
-		if r.Path == "/api/health" {
+		switch r.Path {
+		case "/api/health":
 			health++
+		case "/api/doctor":
+			doctor++
 		}
 	}
-	if health != 1 {
-		t.Errorf("health asked %d times, want once", health)
+	if health != 1 || doctor != 0 {
+		t.Errorf("health asked %d times, want once; doctor asked %d times, want none (it answers 503 and is retried)",
+			health, doctor)
 	}
 }

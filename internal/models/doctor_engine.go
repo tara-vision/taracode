@@ -74,6 +74,7 @@ func engineReport(ctx context.Context, eng *taraengine.Engine) (*EngineReport, e
 	case api.HealthOK:
 	case api.HealthStarting:
 		rep.Starting = llm.Printable(health.Detail)
+		return rep, nil // every other route answers 503 while the daemon starts; doctor does not wait for it
 	default:
 		rep.Degraded = llm.Printable(health.Detail)
 	}
