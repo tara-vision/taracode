@@ -33,8 +33,13 @@ func serverSuggestion(err error) (ErrorSuggestion, bool) {
 	return ErrorSuggestion{}, false
 }
 
-// refusalAdvice is the title and taracode's own suggestions for a refusal, by its status.
+// refusalAdvice is the title and taracode's own suggestions for a refusal: a tool call the output limit cut first,
+// then by its status.
 func refusalAdvice(e *llm.ServerError) (string, []string) {
+	if llm.IsCutToolCall(e) {
+		return "Tool Call Cut Off", []string{"The model's tool call was longer than the output limit",
+			"Raise generation.num_predict in config.yaml, or ask for a smaller step"}
+	}
 	switch e.Status {
 	case http.StatusUnauthorized:
 		return "Engine Wants a Key", []string{"Set key in ~/.taracode/config.yaml, or pass --key"}

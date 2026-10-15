@@ -39,6 +39,11 @@ func TestEnhanceErrorPutsTheEngineHintFirst(t *testing.T) {
 				"taracode doctor shows the model's state"}},
 		{&llm.ServerError{Status: 400, Message: "context 256 is out of bounds"}, "Server Refused the Request",
 			"context 256 is out of bounds", []string{"Run taracode doctor"}},
+		{&llm.ServerError{Status: 500, Message: "Failed to parse tool call arguments as JSON: syntax error at line 1, " +
+			"column 10764: missing closing quote"}, "Tool Call Cut Off",
+			"Failed to parse tool call arguments as JSON: syntax error at line 1, column 10764: missing closing quote",
+			[]string{"The model's tool call was longer than the output limit",
+				"Raise generation.num_predict in config.yaml, or ask for a smaller step"}},
 		{fmt.Errorf("loading x: %w", &llm.ServerError{Status: 404, Message: "unknown model: x",
 			Hint: "taraengine list shows the catalog"}), "Model Not Pulled", "loading x: unknown model: x",
 			[]string{"taraengine list shows the catalog", "taraengine pull <model>"}},
