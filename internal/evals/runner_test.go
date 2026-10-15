@@ -3,13 +3,17 @@ package evals
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
@@ -51,7 +55,11 @@ func call(name string, args map[string]any) taraenginetest.Turn {
 }
 
 func runOptions(srv *taraenginetest.Server, runsDir string) RunOptions {
-	return RunOptions{Host: srv.URL, Model: "gemma4:12b", Timeout: 30 * time.Second, RunsDir: runsDir, Version: "test",
+	host := ""
+	if srv != nil {
+		host = srv.URL
+	}
+	return RunOptions{Host: host, Model: "gemma4:12b", Timeout: 30 * time.Second, RunsDir: runsDir, Version: "test",
 		Now: func() time.Time { return time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC) }}
 }
 
@@ -596,5 +604,43 @@ func TestRunnerLogsTheSignatureADryRunMissed(t *testing.T) {
 	}
 	if notes := strings.Join(res.Tasks[0].Notes, "\n"); !strings.Contains(notes, "fixture miss: "+DryRunSignature("helm", upgrade)) {
 		t.Fatalf("notes %q", res.Tasks[0].Notes)
+	}
+}
+
+// TestRunWaitsForAStartingEngine: a run started while the engine fetches its runtime prints the engine's steps, once
+// each, and goes on once the engine is ready.
+func TestRunWaitsForAStartingEngine(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "The container was OOMKilled."})
+	srv.Starting = []string{"installing runtime b11514 (65%)", "installing runtime b11514 (65%)", "starting llama-server"}
+	var out bytes.Buffer
+	opts := runOptions(srv, "")
+	opts.Out = &out
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Count(text, "taraengine is starting: installing runtime b11514 (65%)\n") != 1 ||
+		strings.Count(text, "taraengine is starting: starting llama-server\n") != 1 ||
+		strings.Index(text, "starting llama-server") > strings.Index(text, "model gemma4:12b (tier 16)") {
+		t.Fatalf("the engine's steps, once each, before the run's header: %q", text)
+	}
+}
+
+// TestRunStopsWhenTheEngineRefusesItsHealth: the wait for a starting engine passes a refusal on, so a run against an
+// engine that refuses its health call (a host guard, say) stops with that refusal before the first task.
+func TestRunStopsWhenTheEngineRefusesItsHealth(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"message":"host not allowed","hint":"use the listen address"}}`))
+	}))
+	t.Cleanup(refusing.Close)
+	opts := runOptions(nil, "")
+	opts.Host, opts.Vendor = refusing.URL, "taraengine"
+	_, err := Run(context.Background(), tasks, opts)
+	var refused *llm.ServerError
+	if !errors.As(err, &refused) || refused.Status != http.StatusForbidden || refused.Hint != "use the listen address" {
+		t.Fatalf("err %#v", err)
 	}
 }

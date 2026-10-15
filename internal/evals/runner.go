@@ -156,6 +156,13 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	if !ok {
 		return Results{}, fmt.Errorf("evals run on taraengine; %s is %s", llm.RedactedHost(opts.Host), prov.Info().Name)
 	}
+	// An engine that is still starting (fetching its runtime, say) is waited for, with its steps on the terminal.
+	err = client.Engine().AwaitReady(ctx, func(step string) {
+		_, _ = fmt.Fprintf(opts.Out, "taraengine is starting: %s\n", step)
+	})
+	if err != nil {
+		return Results{}, err
+	}
 	callCtx, cancel := context.WithTimeout(ctx, engineCallTimeout)
 	defer cancel()
 	details, err := client.Show(callCtx, opts.Model)
