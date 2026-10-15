@@ -132,6 +132,9 @@ func New(opts Options) (*Assistant, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
+	if err := awaitEngine(prov.LLM(), out); err != nil {
+		return nil, err
+	}
 
 	workingDir := opts.WorkingDir
 	if workingDir == "" {
