@@ -216,3 +216,40 @@ func TestUnreadableBodiesAreRecordedEmpty(t *testing.T) {
 		t.Fatalf("a body that is not JSON: %+v %q", srv.Requests[0], srv.Unloaded)
 	}
 }
+
+// TestAStartingFakeAnswersLikeTheEngine: while Starting holds steps, health answers starting with the next step, one
+// per call, /api/version answers as always, and every other route is a 503 with Retry-After and the engine's wording,
+// behind the key check; the first health call after the last step answers as configured, and the routes answer again.
+func TestAStartingFakeAnswersLikeTheEngine(t *testing.T) {
+	srv := New(t)
+	srv.Key = "k"
+	steps := []string{"installing runtime b11514 (65%)", "starting llama-server"}
+	srv.Starting = append([]string(nil), steps...)
+	status, headers, data := call(t, srv, http.MethodGet, "/api/models", "Bearer k", "")
+	refusal := decode[map[string]map[string]any](t, data)
+	if status != http.StatusServiceUnavailable || headers.Get("Retry-After") != "5" ||
+		refusal["error"]["message"] != "taraengine is starting: installing runtime b11514 (65%)" ||
+		refusal["error"]["hint"] != "it answers once it is ready; GET /api/health says what it is doing" {
+		t.Fatalf("a route while starting: %d %v %s", status, headers, data)
+	}
+	if status, _, _ = call(t, srv, http.MethodGet, "/api/models", "", ""); status != http.StatusUnauthorized {
+		t.Fatalf("the key check comes first: %d", status)
+	}
+	if status, _, data = call(t, srv, http.MethodGet, "/api/version", "Bearer k", ""); status != http.StatusOK ||
+		decode[api.Version](t, data).Version != DefaultVersion {
+		t.Fatalf("version while starting: %d %s", status, data)
+	}
+	for _, step := range steps {
+		status, _, data := call(t, srv, http.MethodGet, "/api/health", "", "")
+		h := decode[api.Health](t, data)
+		if status != http.StatusOK || h.Status != api.HealthStarting || h.Backend != "llama.cpp" || h.Detail != step {
+			t.Fatalf("health while starting: %d %+v, want the step %q", status, h, step)
+		}
+	}
+	if _, _, data := call(t, srv, http.MethodGet, "/api/health", "", ""); decode[api.Health](t, data).Status != "ok" {
+		t.Fatalf("health after the last step: %s", data)
+	}
+	if status, _, _ := call(t, srv, http.MethodGet, "/api/models", "Bearer k", ""); status != http.StatusOK {
+		t.Fatalf("a route after the last step: %d", status)
+	}
+}

@@ -107,7 +107,12 @@ type Server struct {
 	Version  string
 	Runtime  string
 	Platform string
-	Health   api.Health          // the /api/health answer; an empty Status answers ok with the backend llama.cpp
+	Health   api.Health // the /api/health answer; an empty Status answers ok with the backend llama.cpp
+	// Starting scripts a daemon that is getting ready, as the engine serves it since v0.3.0: while it holds steps,
+	// each /api/health call takes the first one off and answers starting with it, /api/version answers as always, and
+	// every other route answers 503 with Retry-After behind the key check; once it is empty the fake answers as
+	// configured.
+	Starting []string
 	Doctor   api.Doctor          // the /api/doctor answer
 	Failures map[string]*Failure // keyed by "METHOD /path", for example "POST /api/load"
 	Requests []RecordedRequest
@@ -149,6 +154,12 @@ func defaultDoctor() api.Doctor {
 	}
 }
 
+// The engine's wording for a route it refuses while it starts (internal/api/starting.go in the engine).
+const (
+	startingPrefix = "taraengine is starting: "
+	startingHint   = "it answers once it is ready; GET /api/health says what it is doing"
+)
+
 // handler is a route behind guard; body is the request's JSON, nil when there is none.
 type handler func(w http.ResponseWriter, r *http.Request, body map[string]any)
 
@@ -158,6 +169,11 @@ func (s *Server) guard(next handler) http.HandlerFunc {
 		body := s.record(r)
 		if s.Key != "" && r.Header.Get("Authorization") != "Bearer "+s.Key {
 			writeError(w, http.StatusUnauthorized, "missing or wrong API key", "send Authorization: Bearer <api_key>")
+			return
+		}
+		if step, starting := s.startingStep(false); starting && r.URL.Path != "/api/version" {
+			w.Header().Set("Retry-After", "5")
+			writeError(w, http.StatusServiceUnavailable, startingPrefix+step, startingHint)
 			return
 		}
 		if f := s.failure(r.Method + " " + r.URL.Path); f != nil {
@@ -194,8 +210,27 @@ func (s *Server) failure(key string) *Failure {
 	return f
 }
 
+// startingStep is the step of a starting fake, when it has one; with consume, the step is taken off the script, as a
+// health call takes it.
+func (s *Server) startingStep(consume bool) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.Starting) == 0 {
+		return "", false
+	}
+	step := s.Starting[0]
+	if consume {
+		s.Starting = s.Starting[1:]
+	}
+	return step, true
+}
+
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	s.record(r)
+	if step, starting := s.startingStep(true); starting {
+		writeJSON(w, http.StatusOK, api.Health{Status: api.HealthStarting, Backend: "llama.cpp", Detail: step})
+		return
+	}
 	h := s.Health
 	if h.Status == "" {
 		h = api.Health{Status: "ok", Backend: "llama.cpp"}
