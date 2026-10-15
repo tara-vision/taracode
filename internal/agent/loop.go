@@ -69,7 +69,7 @@ func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string,
 	defer cancel()
 
 	a.lastResponse = ""
-	nudged := false
+	nudged, cutNudged := false, false
 	for i := 0; i < a.maxIterations; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -78,6 +78,13 @@ func (a *Assistant) processTurn(callerCtx gocontext.Context, userMessage string,
 
 		res, err := a.complete(ctx)
 		if err != nil {
+			if llm.IsCutToolCall(err) && !cutNudged {
+				// A tool call the output limit cut comes back as the server's refusal: the model is told once per
+				// turn and asked for a shorter call; a second cut ends the turn like any other refusal.
+				cutNudged = true
+				a.nudgeAfterCutCall()
+				continue
+			}
 			return err
 		}
 
@@ -214,6 +221,25 @@ func buildUserMessage(text string, images []*ImageData) openai.ChatCompletionMes
 
 // emptyReplyNudge is sent once when the model answers with nothing at all (v2.0.4).
 const emptyReplyNudge = "Please answer the question directly."
+
+// cutCallNudge is sent once per turn when the server refused a tool call that the output limit cut (3.3.0): the
+// model hears what happened and is asked for a shorter call, instead of the turn ending on the server's error.
+const cutCallNudge = "Your last tool call was cut off at the output limit before its arguments were complete. Call " +
+	"the tool again with shorter arguments, or split the work into smaller calls."
+
+// nudgeAfterCutCall says on the terminal which limit cut the call and appends the nudge to the conversation, as the
+// empty-reply nudge is appended: in the conversation, not in the session file. Nothing of the cut call is kept,
+// since the server returned no result for it.
+func (a *Assistant) nudgeAfterCutCall() {
+	limit := "the model's own output limit"
+	if _, _, numPredict := a.modelOptions.LLMValues(); numPredict > 0 {
+		limit = fmt.Sprintf("generation.num_predict %d", numPredict)
+	}
+	_, _ = fmt.Fprintln(a.out, a.renderer.WarningMessage(fmt.Sprintf("The model's tool call was cut at the output "+
+		"limit (%s); asking it to call again with shorter arguments", limit)))
+	a.conversation = append(a.conversation, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser,
+		Content: cutCallNudge})
+}
 
 // requestOptions builds the per-request options from the assistant's configuration.
 func (a *Assistant) requestOptions() llm.Options {
