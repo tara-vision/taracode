@@ -28,7 +28,7 @@ recommendations, and a warning when the server's context window is smaller than 
    in `docs/evals/scoreboard.md` and on code.tara.vision, refreshed every release. Carries two Phase 2 safety
    follow-ups forward: the shell-classifier differential harness (`make classify-diff`) and the MCP trust
    switch (`policy.mcp`).
-4. **Runbooks, MCP server and skills pack** (3.3 and 3.4) - ten built-in runbooks on the existing checkpoint engine,
+4. **Runbooks, MCP server and skills pack** (3.4 and 3.5) - ten built-in runbooks on the existing checkpoint engine,
    `taracode mcp serve` for Claude Code, OpenCode, Codex and Pi users, and skills in the Agent Skills format.
 5. **Removed in 3.0** - the seven-agent orchestration system, `/watch`, the security mode and the JSON-in-content
    tool fallback. Their jobs move to modes, policy and runbooks.
@@ -39,7 +39,7 @@ Fifteen tools and one host. `get_datetime` retired: `date` is on the shell tool'
 system prompt carries today's date. The v2 multi-host pool, its `hosts:` config and `/hosts` are gone: taracode
 talks to the one Ollama host in `host:`. 3.1.1 taught the cloud tool the three CLIs' command shapes; 3.1.2
 re-ran the scoreboard on the line. 3.1.2 stays the stable release while the line is used and tested in depth.
-Runbooks, the MCP server and the skills pack move to 3.3 and 3.4.
+Runbooks, the MCP server and the skills pack move to 3.4 and 3.5.
 
 ## v3.2 (2026-10-01, the hardware board)
 
@@ -48,6 +48,15 @@ timings, and the loaded model's size with the share of it on the GPU. A run can 
 measured on, and the report ranks every model per machine above the RAM-tier tables. 3.2.1 measures the
 GPU memory on the machine itself (`--gpu-probe`), after the engine's own figure turned out to be an
 estimate that can be far off.
+
+## v3.3 (2026-10-15, the engine)
+
+taraengine is the native backend: taracode finds it at its default address without configuration, loads the
+model at the window it asks for, maps `/think` to the engine's thinking switch and levels, reads the engine's
+catalog and recommendation in `doctor`, and runs the evals on it with the server named in every result. A
+session waits for an engine that is still starting, and a tool call that the output limit cut is sent back to
+the model for a shorter one. Any OpenAI-compatible server keeps the generic path, without window control,
+thinking on or off, `/model` and the evals.
 
 ## Later
 

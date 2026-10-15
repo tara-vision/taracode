@@ -38,17 +38,17 @@ make test
 taracode's native backend is taraengine, which serves the models on this machine:
 
 ```bash
-# Install taraengine and its runtime, start it, and pull the model taracode doctor recommends for this machine
-go install github.com/tara-vision/taraengine/cmd/taraengine@latest
-taraengine runtime install
-taraengine serve &
+# Install taraengine (the cask on a Mac; on Linux, curl -fsSL https://engine.tara.vision/install.sh | bash)
+# and pull the model taracode doctor recommends for this machine
+brew install --cask tara-vision/taracode/taraengine
 taraengine pull glm-4.7-flash   # gemma4:12b on 16 GB machines
 
 # Run taracode (it finds the engine at http://127.0.0.1:8272)
 ./taracode
 ```
 
-The release brings `brew install --cask tara-vision/taracode/taraengine`; until then the engine installs with Go.
+To run the engine from a Go install instead: `go install github.com/tara-vision/taraengine/cmd/taraengine@latest`,
+`taraengine runtime install`, then `taraengine serve` in a terminal.
 
 Any OpenAI-compatible server works too (`--host`), without window control, thinking on or off, or evals.
 
@@ -142,7 +142,7 @@ taracode/
 │   ├── history/               # Operation history and undo
 │   ├── mcp/                   # Model Context Protocol
 │   ├── memory/                # Project memory
-│   ├── provider/              # LLM providers (taraengine, vLLM, llama.cpp, Ollama)
+│   ├── provider/              # LLM providers (taraengine, vLLM, llama.cpp and the generic path)
 │   ├── search/                # Web search providers
 │   ├── storage/               # Session persistence and the audit log
 │   ├── upgrade/               # Auto-upgrade
