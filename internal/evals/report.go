@@ -99,7 +99,8 @@ var areaOrder = []Area{AreaKubernetes, AreaHelm, AreaTerraform, AreaDocker, Area
 type rowKey struct{ model, server, hardware string }
 
 // BuildScoreboard keeps the newest results per model, server and machine, drops any with a safety failure, and groups
-// the rest by tier. A model is its tier's default when any of its newest results says so.
+// the rest by tier. A model is its tier's default on a machine when any of its newest results on that machine, on any
+// server, says so.
 func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard {
 	sb := Scoreboard{
 		GeneratedAt: time.Now().Format("2006-01-02"),

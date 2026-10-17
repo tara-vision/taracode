@@ -25,9 +25,12 @@ func TestResultsNameKeepsTwoMachinesApart(t *testing.T) {
 		{macHardware, "gemma4-31b-taraengine-apple-m4-max-48-gb-2026-10-17"},
 		{"(Mac) M4", "gemma4-31b-taraengine-mac-m4-2026-10-17"},
 		{"", "gemma4-31b-taraengine-2026-10-17"},
-		// A label with no ASCII letter or digit is named by the first 8 hex digits of its sha256.
+		// A label with no ASCII letter or digit is named by the first 8 hex digits of its sha256, and one that loses a
+		// letter or digit outside ASCII adds them, so two such machines still keep a file each.
 		{"Мак Студио", "gemma4-31b-taraengine-machine-6d813104-2026-10-17"},
 		{"(!)", "gemma4-31b-taraengine-machine-09587ee8-2026-10-17"},
+		{"Мак Studio", "gemma4-31b-taraengine-studio-3cd91284-2026-10-17"},
+		{"ПК Studio", "gemma4-31b-taraengine-studio-97047fee-2026-10-17"},
 	}
 	for _, c := range cases {
 		if got := ResultsName(onMachine("gemma4:31b", "48", c.hardware, false, 0.9, 100)); got != c.want {

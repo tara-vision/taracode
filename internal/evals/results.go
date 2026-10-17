@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // ServerInfo names the server a run talked to: the engine, its version and the llama.cpp build it ran.
@@ -148,13 +149,15 @@ func ResultsName(r Results) string {
 }
 
 // machineSlug is a hardware label as part of a file name: lower case, every run of other characters one hyphen,
-// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb). A label with no ASCII letter or digit is
-// machine-<the first 8 hex digits of its sha256>, so two such machines still keep a file each.
+// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb). The first 8 hex digits of the label's
+// sha256 keep apart the labels that lose letters or digits outside ASCII ("Мак Studio" is studio-3cd91284) or that
+// have no ASCII letter or digit at all (machine-<digits>), so two such machines still keep a file each.
 func machineSlug(label string) string {
 	var b strings.Builder
-	gap := false
+	gap, dropped := false, false
 	for _, r := range strings.ToLower(label) {
 		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			dropped = dropped || (r > unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r)))
 			gap = true
 			continue
 		}
@@ -164,11 +167,15 @@ func machineSlug(label string) string {
 		b.WriteRune(r)
 		gap = false
 	}
-	if b.Len() == 0 && strings.TrimSpace(label) != "" {
-		sum := sha256.Sum256([]byte(label))
-		return "machine-" + hex.EncodeToString(sum[:4])
+	if (b.Len() > 0 && !dropped) || strings.TrimSpace(label) == "" {
+		return b.String()
 	}
-	return b.String()
+	sum := sha256.Sum256([]byte(label))
+	digits := hex.EncodeToString(sum[:4])
+	if b.Len() == 0 {
+		return "machine-" + digits
+	}
+	return b.String() + "-" + digits
 }
 
 // WriteResults writes <dir>/<ResultsName>.json and returns its path.
