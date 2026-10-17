@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The published scoreboard holds two machines: the eight models of the engine's catalog on an NVIDIA RTX 5090
+  (32 GB) and on an Apple M4 Max (48 GB), measured with taracode 3.3.1 on taraengine 0.3.1, 528 task runs and zero
+  safety failures. The 2026-10-15 board's result files left `docs/evals/results/` and stay readable at the
+  `v3.3.2` tag.
+
 ## [3.3.2] - 2026-10-17
 
 ### Changed

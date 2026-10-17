@@ -48,23 +48,35 @@
 ## The scoreboard
 
 Which local model can actually do DevOps work? The eight models of taraengine's catalog, 33 offline tasks
-each, on one NVIDIA RTX 5090 (32 GB), measured on taracode's own loop with taracode 3.3.0 on taraengine
-0.3.0. The top five:
+each, on two machines, measured on taracode's own loop with taracode 3.3.1 on taraengine 0.3.1. The top five
+on each:
+
+On one NVIDIA RTX 5090 (32 GB):
 
 | #   | Model           | Pass rate | Tokens/s | VRAM     |
 |-----|-----------------|-----------|----------|----------|
-| 1   | `qwen3.8:27b`   | 94%       | 127      | 23.2 GiB |
-| 2   | `glm-4.7-flash` | 94%       | 208      | 18.4 GiB |
+| 1   | `qwen3.8:27b`   | 97%       | 126      | 23.2 GiB |
+| 2   | `glm-4.7-flash` | 91%       | 209      | 18.4 GiB |
 | 3   | `gemma4:31b`    | 91%       | 164      | 24.8 GiB |
-| 4   | `gemma4:12b`    | 88%       | 311      | 10.0 GiB |
-| 5   | `qwen3.6:27b`   | 82%       | 128      | 23.3 GiB |
+| 4   | `gemma4:12b`    | 88%       | 308      | 10.0 GiB |
+| 5   | `qwen3.6:27b`   | 85%       | 127      | 23.3 GiB |
 
-One run per row, ranked by pass rate, then mean score. A model moves by up to four tasks between two runs
+On one Apple M4 Max (48 GB):
+
+| #   | Model           | Pass rate | Tokens/s | Memory     |
+|-----|-----------------|-----------|----------|------------|
+| 1   | `qwen3.8:27b`   | 94%       | 39       | ~23.4 GiB  |
+| 2   | `glm-4.7-flash` | 91%       | 48       | ~17.8 GiB  |
+| 3   | `gemma4:31b`    | 88%       | 42       | ~23.9 GiB  |
+| 4   | `gemma4:12b`    | 88%       | 83       | ~9.6 GiB   |
+| 5   | `qwen3.6:35b`   | 88%       | 124      | ~22.0 GiB  |
+
+One run per row, ranked by pass rate, then mean score, then tokens per second. A model moves by up to four tasks between two runs
 of the same board (one task is about 3 points of pass rate; the 2026-10-01 board was run twice to measure
-it), so rows within four tasks of each other are a tie: all five above. VRAM is the GPU memory the engine
-measured with the model loaded at a 32,768-token context window, on this 32 GB card with nothing else on
-it; a smaller card was not tested. The full board, with speed, memory and the method, is on
-[code.tara.vision/evals](https://code.tara.vision/evals) and in
+it), so rows within four tasks of each other are a tie: all five on each machine. VRAM is the GPU memory the
+engine measured with the model loaded at a 32,768-token context window, on the 32 GB card with nothing else
+on it; on the Mac the engine estimates the memory (~). The full boards, with speed, memory and the method,
+are on [code.tara.vision/evals](https://code.tara.vision/evals) and in
 [docs/evals/scoreboard.md](docs/evals/scoreboard.md).
 
 ## Quick Start
