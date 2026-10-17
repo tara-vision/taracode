@@ -32,6 +32,23 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# The macOS binaries are signed with the Developer ID certificate and notarized, so Gatekeeper accepts the quarantined
+# download a cask install makes. The release workflow stops before this when a secret is missing
+# (scripts/require-signing.sh); a snapshot or `goreleaser check` without the secrets skips it.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids: [taracode]
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 signs:
   # cosign 3.x writes a Sigstore bundle (signature + certificate + log entry in one file).
   - cmd: cosign
@@ -71,21 +88,15 @@ homebrew_casks:
     binaries:
       - taracode
     caveats: |
-      taracode runs on taraengine, with a tool-capable model:
+      taracode runs on taraengine, with a tool-capable model. On an Apple Silicon Mac:
 
         brew install --cask tara-vision/taracode/taraengine
-        taraengine pull gemma4:12b      # 16 GB machines
-        taraengine pull glm-4.7-flash   # 32 GB machines
+        taraengine pull gemma4:12b      # 16 GB of RAM
+        taraengine pull glm-4.7-flash   # 32 GB of RAM
+        taraengine pull gemma4:31b      # 48 GB of RAM and up
 
+      On an Intel Mac, point taracode at another OpenAI-compatible server with --host.
       Then run `taracode` inside a project directory.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            Dir["#{staged_path}/taracode-darwin-*"].each do |bin|
-              system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", bin]
-            end
-          end
     commit_author:
       name: github-actions[bot]
       email: github-actions[bot]@users.noreply.github.com
