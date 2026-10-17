@@ -2,6 +2,8 @@ package evals
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // ServerInfo names the server a run talked to: the engine, its version and the llama.cpp build it ran.
@@ -131,13 +134,48 @@ func (r Results) ServerOf() ServerInfo {
 	return ServerInfo{}
 }
 
-// ResultsName is a result's file name without its extension: <model>-<server>-<date>, or <model>-<date> for a
-// result that names no server (3.2.x). The server keeps a same-day run on another engine from overwriting it.
+// ResultsName is a result's file name without its extension: <model>-<server>-<machine>-<date> for a run that names
+// its machine, <model>-<server>-<date> for one that does not, or <model>-<date> for a result that names no server
+// (3.2.x). The server and the machine keep a same-day run on another engine or another machine from overwriting it.
 func ResultsName(r Results) string {
 	if r.Server != nil && r.Server.Name != "" {
-		return ModelSlug(r.Model) + "-" + ModelSlug(r.Server.Name) + "-" + r.Date
+		name := ModelSlug(r.Model) + "-" + ModelSlug(r.Server.Name)
+		if machine := machineSlug(r.Hardware); machine != "" {
+			name += "-" + machine
+		}
+		return name + "-" + r.Date
 	}
 	return ModelSlug(r.Model) + "-" + r.Date
+}
+
+// machineSlug is a hardware label as part of a file name: lower case, every run of other characters one hyphen,
+// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb). The first 8 hex digits of the label's
+// sha256 keep apart the labels that lose letters or digits outside ASCII ("Мак Studio" is studio-3cd91284) or that
+// have no ASCII letter or digit at all (machine-<digits>), so two such machines still keep a file each.
+func machineSlug(label string) string {
+	var b strings.Builder
+	gap, dropped := false, false
+	for _, r := range strings.ToLower(label) {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			dropped = dropped || (r > unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r)))
+			gap = true
+			continue
+		}
+		if gap && b.Len() > 0 {
+			b.WriteByte('-')
+		}
+		b.WriteRune(r)
+		gap = false
+	}
+	if (b.Len() > 0 && !dropped) || strings.TrimSpace(label) == "" {
+		return b.String()
+	}
+	sum := sha256.Sum256([]byte(label))
+	digits := hex.EncodeToString(sum[:4])
+	if b.Len() == 0 {
+		return "machine-" + digits
+	}
+	return b.String() + "-" + digits
 }
 
 // WriteResults writes <dir>/<ResultsName>.json and returns its path.

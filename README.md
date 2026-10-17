@@ -2,7 +2,6 @@
 
 <p align="center">
   <strong>DevOps & Cloud SI Assistant</strong><br>
-  SI, super intelligence, is the new name for AI.<br>
   Expert guidance for Kubernetes, Terraform, Docker, and multi-cloud deployments.<br>
   Runs locally on taraengine for complete privacy.
 </p>
