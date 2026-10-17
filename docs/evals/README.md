@@ -21,31 +21,60 @@ The corpus currently has 33 tasks across seven areas: nine kubernetes, three hel
 docker, three secrets, three cloud and six refusal. Twenty-five are `provenance: recorded` against the live
 sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
 scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates, speed and
-memory per model are published in [scoreboard.md](scoreboard.md). The current board was measured on one
-NVIDIA RTX 5090 (32 GB) with taracode 3.3.0 on taraengine 0.3.0: the eight models of the engine's
-catalog, one run each, 264 task runs and zero safety failures (no `must_deny` call was ever allowed by the
-gate). The top five:
+memory per model are published in [scoreboard.md](scoreboard.md). The current boards were measured on two
+machines, an NVIDIA RTX 5090 (32 GB) and an Apple M4 Max (48 GB), with taracode 3.3.1 on taraengine 0.3.1: the
+eight models of the engine's catalog on each, one run each, 528 task runs and zero safety failures (no
+`must_deny` call was ever allowed by the gate). The top five on each:
+
+On the RTX 5090:
 
 | # | Model | Pass rate | Tokens/s | VRAM |
 |---|---|---|---|---|
-| 1 | `qwen3.8:27b` | 94% | 127 | 23.2 GiB |
-| 2 | `glm-4.7-flash` | 94% | 208 | 18.4 GiB |
+| 1 | `qwen3.8:27b` | 97% | 126 | 23.2 GiB |
+| 2 | `glm-4.7-flash` | 91% | 209 | 18.4 GiB |
 | 3 | `gemma4:31b` | 91% | 164 | 24.8 GiB |
-| 4 | `gemma4:12b` | 88% | 311 | 10.0 GiB |
-| 5 | `qwen3.6:27b` | 82% | 128 | 23.3 GiB |
+| 4 | `gemma4:12b` | 88% | 308 | 10.0 GiB |
+| 5 | `qwen3.6:27b` | 85% | 127 | 23.3 GiB |
 
-`eval report --check-defaults` ranks a tier by mean score and printed three lines. A "differs" line is
-evidence for the maintainer, not a change by itself: a catalog default does not move without a decision.
+On the M4 Max:
 
-- `16: default gemma4:12b, top scorer gemma4:12b`: the default is the tier's only catalog model; its 29
-  tasks match its 2026-10-01 row.
-- `32: default glm-4.7-flash, top scorer qwen3.8:27b (differs)`: both passed 31 of 33 and the line ranks
-  by mean score (0.96 against 0.92); the default answers a task in 6 s against 18 s and loads 4.8 GiB
-  lighter. The same two models were one task apart on the 2026-10-01 board.
-- `48: default qwen3.6:35b, top scorer gemma4:31b (differs)`: 30 tasks against 25; gemma4:31b led the
-  default on the two boards before as well (31 against 26 on 2026-10-01, 85% against 73% on 2026-09-25).
-  Of the three lines, this is the one outside the spread; on this evidence the catalog default moved to
-  gemma4:31b in taraengine 0.3.1.
+| # | Model | Pass rate | Tokens/s | Memory |
+|---|---|---|---|---|
+| 1 | `qwen3.8:27b` | 94% | 39 | ~23.4 GiB |
+| 2 | `glm-4.7-flash` | 91% | 48 | ~17.8 GiB |
+| 3 | `gemma4:31b` | 88% | 42 | ~23.9 GiB |
+| 4 | `gemma4:12b` | 88% | 83 | ~9.6 GiB |
+| 5 | `qwen3.6:35b` | 88% | 124 | ~22.0 GiB |
+
+`eval report --check-defaults` ranks each tier by mean score on each machine and printed six lines. A
+"differs" line is evidence for the maintainer, not a change by itself: a catalog default does not move without
+a decision.
+
+- `16 on <machine>: default gemma4:12b, top scorer gemma4:12b`, on both machines: the default is the tier's only
+  catalog model.
+- `32 on <machine>: default glm-4.7-flash, top scorer qwen3.8:27b (differs)`, on both machines: qwen3.8:27b
+  passed 32 of 33 against 30 on the RTX 5090 and 31 against 30 on the M4 Max, inside the tie rule on both; the
+  default answers a task in 6 s against 18 s on the RTX 5090 (28 s against 72 s on the Mac) and loads lighter.
+- `48 on <machine>: default gemma4:31b, top scorer gemma4:31b`, on both machines: the default since taraengine
+  0.3.1 leads its tier on the Mac too.
+
+Notes on the 3.3.1 run (2026-10-17, taracode 3.3.1, taraengine 0.3.1):
+
+- Two machines, the same eight catalog models, the same engine release and presets. Since taracode 3.3.2 a
+  results file names its machine (`<model>-taraengine-<machine>-2026-10-17.json`) and the board keeps a row
+  per machine; the 2026-10-15 board's files left `docs/evals/results/` and stay readable at the `v3.3.2` tag.
+- The RTX 5090 board repeats the 2026-10-15 board two days later: every model's tokens per second within
+  about 1% (gemma4:31b 164 against 164, gemma4:12b 308 against 311, qwen3.6:35b 388 against 386), and every
+  pass rate within two tasks: qwen3.6:35b two up, qwen3.8:27b and qwen3.6:27b one up, gemma4:31b, gemma4:12b
+  and gemma4:e4b level, glm-4.7-flash one down, gemma4:26b two down.
+- On the same engine and catalog, every M4 Max row sits within two tasks of the same model's RTX 5090 row.
+- Speed on the Mac follows memory bandwidth: the mixture-of-experts models lead (gemma4:26b 133 and
+  qwen3.6:35b 124 tokens per second), the dense 27B to 31B models run at 39 to 42. In the 48 GB tier
+  qwen3.6:35b ties gemma4:31b at 29 tasks on the Mac and answers a task in 11 s against 46 s.
+- Memory on the Mac is the engine's own estimate, marked ~ on the board; the engine measures memory on NVIDIA.
+- Four Mac rows (gemma4:26b, gemma4:31b, glm-4.7-flash, qwen3.6:27b) are second runs. Their first runs shared
+  the machine with builds and test suites and ran 0% to 5.5% slower; the published rows are the runs on an
+  idle machine. The pass rates matched, except gemma4:31b, one task apart.
 
 Notes on the 3.3 run (2026-10-15, taracode 3.3.0, taraengine 0.3.0):
 
