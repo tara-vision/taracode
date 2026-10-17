@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/evals/results/` and stay readable at the `v3.2.6` tag.
 - The install snippet pulls `gemma4:31b` for 48 GB and up, the engine's default for the tier since taraengine
   0.3.1.
+- The macOS binaries are signed with the Tara Vision Developer ID and notarized by Apple, so Gatekeeper accepts the
+  quarantined download and the cask needs no install step of its own: Homebrew 7 installs it without a deprecation
+  warning.
+- The cask's caveats, the installer's next steps and the README say the engine's cask is for Apple Silicon Macs,
+  name `gemma4:31b` for 48 GB of RAM and up, and point an Intel Mac at another OpenAI-compatible server with
+  `--host`.
+- The CI and release workflows pin every action to the commit of its release, the release pins goreleaser
+  (v2.18.2), and CI checks the goreleaser configuration. The release job asks only for the permissions it needs
+  and restores no build cache.
+
+### Fixed
+- Redaction catches credentials whose label is quoted, as JSON and Python print them: `"password": "..."`,
+  `SecretAccessKey` and `SessionToken` from `aws sts get-session-token`, the escaped JSON inside `SecretString`
+  from `aws secretsmanager get-secret-value`, and the data of `kubectl get secret -o json`.
+- The board rounds the mean score once: a run's summary keeps the unrounded mean, so a mean of 0.93467 prints
+  0.93.
 
 ## [3.3.0] - 2026-10-15
 
