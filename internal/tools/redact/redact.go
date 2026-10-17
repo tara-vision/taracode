@@ -35,9 +35,12 @@ type envValue struct {
 
 // credentialValue matches "label: value" / "label=value" pairs for common credential-shaped labels
 // (password, token, api key, and similar); only the value becomes [redacted:credential], the label
-// and separator are kept. A trailing quote, if the value was quoted, is consumed and dropped.
+// and separator are kept. A quote, escaped or not, may close the label and open the value, as JSON
+// and Python print them ("password": "v", \"password\":\"v\"). A trailing quote, if the value was
+// quoted, is consumed and dropped.
 var credentialValue = regexp.MustCompile(`(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|` +
-	`access[_-]?key|auth[_-]?token|client[_-]?secret|(?:client-)?key-data)\s*[=:]\s*["']?)([^\s"',;]{4,})["']?`)
+	`access[_-]?key|auth[_-]?token|client[_-]?secret|(?:client-)?key-data)` +
+	`\\?["']?\s*[=:]\s*\\?["']?)([^\s"',;]{4,})["']?`)
 
 var builtin = []pattern{
 	{

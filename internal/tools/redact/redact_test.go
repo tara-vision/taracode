@@ -40,6 +40,44 @@ func TestBuiltInPatterns(t *testing.T) {
 	}
 }
 
+// TestCredentialLabelsInJSONOutput: JSON and Python output quote the label, so a quote sits between the
+// label and the separator, as in aws sts get-session-token, kubectl get secret -o json and a boto3 dict;
+// aws secretsmanager get-secret-value escapes the quotes of the JSON inside SecretString.
+func TestCredentialLabelsInJSONOutput(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ in, want string }{
+		{`"password": "hunter22",`, `"password": "[redacted:credential],`},
+		{
+			`"SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",`,
+			`"SecretAccessKey": "[redacted:credential],`,
+		},
+		{
+			`"SessionToken": "AQoEXAMPLEH4aoAH0gNCAPyJxz4BlCFFxWNE1OPTgk5TthT+FvwqnKwRcOIfrRh3c/LTo6UDdyJwOOvEVPvLXCrrrUtdnniCEXAMPLE/IvU1dYUg2RVAJBanLiHb4IgRmpRV3zrkuWJOgQs8IZZaIv2BXIa2R4OlgkBN9bkUDNCJiBeb/AXlzBBko7b15fjrBs2+cTQtpZ3CYWFXG8C5zqx37wnOE49mRl/+OtkIKGO7fAE"`,
+			`"SessionToken": "[redacted:credential]`,
+		},
+		{
+			`"SecretString": "{\"user\":\"diegor\",\"password\":\"PREVIEW-EXAMPLE-PASSWORD\"}",`,
+			`"SecretString": "{\"user\":\"diegor\",\"password\":\"[redacted:credential]}",`,
+		},
+		{`        "password": "aHVudGVyMjI=",`, `        "password": "[redacted:credential],`},
+		{`{'password': 'hunter22'}`, `{'password': '[redacted:credential]}`},
+		{`"prompt_tokens": 1234, "max_tokens": 4096`, `"prompt_tokens": 1234, "max_tokens": 4096`},
+		{`"password_policy": "strict"`, `"password_policy": "strict"`},
+		{`"token": "abc"`, `"token": "abc"`},
+	}
+	for _, c := range cases {
+		if got := r.Redact(c.in); got != c.want {
+			t.Errorf("Redact(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+	if kind, found := ContainsSecret(`{"password": "hunter22"}`); !found || kind != "credential" {
+		t.Errorf("ContainsSecret on a JSON-labelled password = (%q, %v), want (credential, true)", kind, found)
+	}
+}
+
 func TestEnvironmentValuesAndExtraPatterns(t *testing.T) {
 	r, err := New(Options{
 		ExtraPatterns: []string{`ACME-[0-9]{6}`},
