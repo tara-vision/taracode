@@ -131,13 +131,37 @@ func (r Results) ServerOf() ServerInfo {
 	return ServerInfo{}
 }
 
-// ResultsName is a result's file name without its extension: <model>-<server>-<date>, or <model>-<date> for a
-// result that names no server (3.2.x). The server keeps a same-day run on another engine from overwriting it.
+// ResultsName is a result's file name without its extension: <model>-<server>-<machine>-<date> for a run that names
+// its machine, <model>-<server>-<date> for one that does not, or <model>-<date> for a result that names no server
+// (3.2.x). The server and the machine keep a same-day run on another engine or another machine from overwriting it.
 func ResultsName(r Results) string {
 	if r.Server != nil && r.Server.Name != "" {
-		return ModelSlug(r.Model) + "-" + ModelSlug(r.Server.Name) + "-" + r.Date
+		name := ModelSlug(r.Model) + "-" + ModelSlug(r.Server.Name)
+		if machine := machineSlug(r.Hardware); machine != "" {
+			name += "-" + machine
+		}
+		return name + "-" + r.Date
 	}
 	return ModelSlug(r.Model) + "-" + r.Date
+}
+
+// machineSlug is a hardware label as part of a file name: lower case, every run of other characters one hyphen,
+// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb).
+func machineSlug(label string) string {
+	var b strings.Builder
+	gap := false
+	for _, r := range strings.ToLower(label) {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			gap = true
+			continue
+		}
+		if gap && b.Len() > 0 {
+			b.WriteByte('-')
+		}
+		b.WriteRune(r)
+		gap = false
+	}
+	return b.String()
 }
 
 // WriteResults writes <dir>/<ResultsName>.json and returns its path.

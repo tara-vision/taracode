@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -94,11 +95,11 @@ var tierOrder = map[string]int{"16": 0, "32": 1, "48": 2, "small": 3, "other": 4
 // areaOrder is the column order of the Markdown table.
 var areaOrder = []Area{AreaKubernetes, AreaHelm, AreaTerraform, AreaDocker, AreaSecrets, AreaCloud, AreaRefusal}
 
-// rowKey is what makes a row: a model on one server.
-type rowKey struct{ model, server string }
+// rowKey is what makes a row: a model on one server on one machine.
+type rowKey struct{ model, server, hardware string }
 
-// BuildScoreboard keeps the newest results per model and server, drops any with a safety failure, and groups the
-// rest by tier. A model is its tier's default when any of its newest results says so.
+// BuildScoreboard keeps the newest results per model, server and machine, drops any with a safety failure, and groups
+// the rest by tier. A model is its tier's default when any of its newest results says so.
 func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard {
 	sb := Scoreboard{
 		GeneratedAt: time.Now().Format("2006-01-02"),
@@ -117,11 +118,12 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			sb.Skipped = append(sb.Skipped, msg)
 			continue
 		}
-		key := rowKey{r.Model, r.ServerOf().Name}
+		key := rowKey{r.Model, r.ServerOf().Name, r.Hardware}
 		if cur, ok := newest[key]; !ok || r.Date > cur.Date {
 			newest[key] = r
 		}
 	}
+	newest = newestDecides(newest)
 	defaults := map[string]bool{}
 	for _, r := range newest {
 		defaults[r.Model] = defaults[r.Model] || r.Default
@@ -146,7 +148,10 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			if rows[i].Model != rows[j].Model {
 				return rows[i].Model < rows[j].Model
 			}
-			return rows[i].Server.Name < rows[j].Server.Name
+			if rows[i].Server.Name != rows[j].Server.Name {
+				return rows[i].Server.Name < rows[j].Server.Name
+			}
+			return rows[i].Hardware < rows[j].Hardware
 		})
 		sb.Tiers = append(sb.Tiers, TierBoard{Tier: tier, Rows: rows})
 	}
@@ -159,6 +164,28 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	})
 	sort.Strings(sb.Skipped)
 	return sb
+}
+
+// newestDecides keeps the rows that a model's newest result on a server allows. When that result names no machine, it
+// is the model's only row, so a newer unlabelled run takes the model off the boards instead of leaving a stale row;
+// when it names one, every machine keeps its own newest result and the unlabelled ones drop out. On the same date a
+// labelled result counts as the newer.
+func newestDecides(rows map[rowKey]Results) map[rowKey]Results {
+	latest := map[rowKey]Results{}
+	for k, r := range rows {
+		m := rowKey{k.model, k.server, ""}
+		cur, ok := latest[m]
+		if !ok || r.Date > cur.Date || (r.Date == cur.Date && cur.Hardware == "" && r.Hardware != "") {
+			latest[m] = r
+		}
+	}
+	out := map[rowKey]Results{}
+	for k, r := range rows {
+		if (latest[rowKey{k.model, k.server, ""}].Hardware == "") == (k.hardware == "") {
+			out[k] = r
+		}
+	}
+	return out
 }
 
 func tierRank(t string) int {
@@ -207,30 +234,9 @@ func (s Scoreboard) Markdown() string {
 	for _, board := range s.Boards {
 		b.WriteString(board.markdown(s.CorpusTasks))
 	}
+	manyMachines := len(s.machines()) > 1
 	for _, tier := range s.Tiers {
-		fmt.Fprintf(&b, "\n## %s\n\n", tierTitle(tier.Tier))
-		b.WriteString("| Model | Pass rate | Mean score |")
-		for _, a := range areaOrder {
-			b.WriteString(" " + string(a) + " |")
-		}
-		b.WriteString(" Mean iterations | Mean wall | Misses | Engine | Date |\n")
-		b.WriteString("|---|---|---|" + strings.Repeat("---|", len(areaOrder)) + "---|---|---|---|---|\n")
-		for _, r := range tier.Rows {
-			name := mdText(r.Model)
-			if r.Default {
-				name += " (default)"
-			}
-			fmt.Fprintf(&b, "| %s | %.0f%% | %.2f |", name, r.PassRate*100, r.MeanScore)
-			for _, a := range areaOrder {
-				if v, ok := r.ByArea[string(a)]; ok && v.Tasks > 0 {
-					fmt.Fprintf(&b, " %d/%d |", v.Passed, v.Tasks)
-				} else {
-					b.WriteString(" - |")
-				}
-			}
-			fmt.Fprintf(&b, " %.1f | %.0f s | %.0f%% | %s | %s |\n",
-				r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, mdText(r.Server.String()), r.Date)
-		}
+		b.WriteString(tier.markdown(manyMachines))
 	}
 	if len(s.Skipped) > 0 {
 		msg := "\nLeft out (a safety failure means the product's gate let a must-deny call through; " +
@@ -243,26 +249,108 @@ func (s Scoreboard) Markdown() string {
 	return b.String()
 }
 
-// CheckDefaults reports, per sized tier, the board's default and the top scorer.
+// markdown renders a tier table. With runs from more than one machine on the board, a Machine column names each
+// row's machine, as the same model can sit in the table once per machine.
+func (t TierBoard) markdown(manyMachines bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n## %s\n\n", tierTitle(t.Tier))
+	b.WriteString("| Model |")
+	if manyMachines {
+		b.WriteString(" Machine |")
+	}
+	b.WriteString(" Pass rate | Mean score |")
+	for _, a := range areaOrder {
+		b.WriteString(" " + string(a) + " |")
+	}
+	b.WriteString(" Mean iterations | Mean wall | Misses | Engine | Date |\n")
+	columns := 3 + len(areaOrder) + 5
+	if manyMachines {
+		columns++
+	}
+	b.WriteString("|" + strings.Repeat("---|", columns) + "\n")
+	for _, r := range t.Rows {
+		name := mdText(r.Model)
+		if r.Default {
+			name += " (default)"
+		}
+		b.WriteString("| " + name + " |")
+		if manyMachines {
+			b.WriteString(" " + textOrDash(mdText(r.Hardware)) + " |")
+		}
+		fmt.Fprintf(&b, " %.0f%% | %.2f |", r.PassRate*100, r.MeanScore)
+		for _, a := range areaOrder {
+			if v, ok := r.ByArea[string(a)]; ok && v.Tasks > 0 {
+				fmt.Fprintf(&b, " %d/%d |", v.Passed, v.Tasks)
+			} else {
+				b.WriteString(" - |")
+			}
+		}
+		fmt.Fprintf(&b, " %.1f | %.0f s | %.0f%% | %s | %s |\n",
+			r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, mdText(r.Server.String()), r.Date)
+	}
+	return b.String()
+}
+
+// machines are the machine labels of the tier tables' rows, sorted; a row without a label names none.
+func (s Scoreboard) machines() []string {
+	var out []string
+	for _, tier := range s.Tiers {
+		for _, r := range tier.Rows {
+			if r.Hardware != "" && !slices.Contains(out, r.Hardware) {
+				out = append(out, r.Hardware)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// CheckDefaults reports, per sized tier, the board's default and the top scorer. With runs from more than one machine,
+// it reports each machine's top scorer on a line of its own, naming the machine; a row without a label is left out.
 func (s Scoreboard) CheckDefaults() []string {
+	machines := s.machines()
+	if len(machines) < 2 {
+		machines = []string{""}
+	}
 	var out []string
 	for _, tier := range s.Tiers {
 		if len(tier.Rows) == 0 || tierRank(tier.Tier) > 2 {
 			continue
 		}
-		def := "none"
-		for _, r := range tier.Rows {
-			if r.Default {
-				def = r.Model
-				break
+		for _, machine := range machines {
+			if line, ok := tier.checkDefault(machine); ok {
+				out = append(out, line)
 			}
 		}
-		top := tier.Rows[0].Model
-		line := fmt.Sprintf("%s: default %s, top scorer %s", tier.Tier, def, top)
-		if def != top {
-			line += " (differs)"
-		}
-		out = append(out, line)
 	}
 	return out
+}
+
+// checkDefault is a tier's default against its top scorer: among every row when machine is empty, else among the
+// rows of that machine, whose name the line then carries. ok is false when the machine has no row in the tier.
+func (t TierBoard) checkDefault(machine string) (string, bool) {
+	def, top := "none", ""
+	for _, r := range t.Rows {
+		if machine != "" && r.Hardware != machine {
+			continue
+		}
+		if top == "" {
+			top = r.Model
+		}
+		if r.Default && def == "none" {
+			def = r.Model
+		}
+	}
+	if top == "" {
+		return "", false
+	}
+	label := t.Tier
+	if machine != "" {
+		label += " on " + machine
+	}
+	line := fmt.Sprintf("%s: default %s, top scorer %s", label, def, top)
+	if def != top {
+		line += " (differs)"
+	}
+	return line, true
 }

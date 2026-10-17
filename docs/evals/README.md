@@ -154,7 +154,7 @@ evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
 docs/evals/README.md              writing, recording and running tasks
-docs/evals/results/<model>-<server>-<date>.json
+docs/evals/results/<model>-<server>-<machine>-<date>.json
 docs/evals/scoreboard.md, scoreboard.json
 ```
 
@@ -236,7 +236,8 @@ taracode eval run --model gemma4:12b
 Add `--host` for an engine at another address, `--tasks <glob>` to run a subset of the corpus, `--think <mode>`
 to override the default think level, `--runs N` to repeat each task and average its scores, and
 `--hardware "<label>"` to name the machine the engine runs on. Results are written to
-`docs/evals/results/<model slug>-<server>-<date>.json`; the full transcript of each task (the conversation,
+`docs/evals/results/<model slug>-<server>-<machine>-<date>.json` (the machine part, from the label, only when
+there is one); the full transcript of each task (the conversation,
 every tool decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which
 is git-ignored.
 
@@ -293,8 +294,9 @@ unit a card's size is given in (a 24 GB card holds 24 GiB): the measured figure 
 otherwise the engine's estimate marked with `~`. The "did not fit" lines keep the engine's own figures,
 named as such, in decimal gigabytes.
 
-One model has one row per server: its newest results there. Boards from several machines for the same model
-are not supported yet, so a results file from another machine would replace the published row.
+One model has one row per server and machine: its newest results there, so the same model can sit on the boards
+of several machines, and the RAM-tier tables then name each row's machine in a Machine column. When a model's
+newest result on a server names no machine, it is that model's only row and the model leaves the boards.
 
 ## Run it on your hardware
 
