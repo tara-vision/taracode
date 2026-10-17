@@ -29,9 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Redaction catches credentials whose label is quoted, as JSON and Python print them: `"password": "..."`,
   `SecretAccessKey` and `SessionToken` from `aws sts get-session-token`, `SecretString` from
-  `aws secretsmanager get-secret-value` (a plain string, or the escaped JSON inside it), and credential-named
-  keys in `kubectl get secret -o json`. A credential-shaped label with a `true`, `false`, `null` or `None` value
-  stays readable, so `automountServiceAccountToken: false` is no longer hidden.
+  `aws secretsmanager get-secret-value` (a plain string, or the credential-named keys of the escaped JSON inside
+  it), and credential-named keys in `kubectl get secret -o json`. A credential-shaped label with a `true`,
+  `false`, `null` or `None` value, or terraform's `(sensitive value)`, stays readable, so
+  `automountServiceAccountToken: false` is no longer hidden.
 - A run's summary keeps the mean score unrounded, so a board built from runs of this release rounds it once, to
   the two places it prints (a mean of 0.93467 prints 0.93); the ranking still compares the mean at three places.
 

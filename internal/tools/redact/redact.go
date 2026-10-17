@@ -17,9 +17,10 @@ type Options struct {
 }
 
 type pattern struct {
-	kind string
-	re   *regexp.Regexp
-	keep bool // replace only the second capture group, keep the first
+	kind     string
+	re       *regexp.Regexp
+	keep     bool // replace only the second capture group, keep the first
+	literals bool // a literal value (literal) is no secret and stays
 }
 
 // Redactor applies the built-in patterns, the extra patterns and the environment values.
@@ -37,7 +38,8 @@ type envValue struct {
 // (password, token, api key, and similar); only the value becomes [redacted:credential], the label
 // and separator are kept. A quote, escaped or not, may close the label and open the value, as JSON
 // and Python print them ("password": "v", \"password\":\"v\"). A trailing quote, if the value was
-// quoted, is consumed and dropped. A literal value (true, false, null) is no secret and stays.
+// quoted, is consumed and dropped. A literal value (true, false, null, terraform's (sensitive value))
+// is no secret and stays.
 var credentialValue = regexp.MustCompile(`(?i)((?:password|passwd|pwd|secret[_-]?string|secret|token|api[_-]?key|` +
 	`access[_-]?key|auth[_-]?token|client[_-]?secret|(?:client-)?key-data)` +
 	`\\?["']?\s*[=:]\s*\\?["']?)([^\s"',;]{4,})["']?`)
@@ -63,16 +65,17 @@ var builtin = []pattern{
 		keep: true,
 		re:   regexp.MustCompile(`(?i)(authorization:\s*(?:bearer|basic)\s+)([A-Za-z0-9._~+/=-]{8,})`),
 	},
-	{kind: "credential", keep: true, re: credentialValue},
+	{kind: "credential", keep: true, literals: true, re: credentialValue},
 }
 
 var sensitiveName = regexp.MustCompile(`(?i)KEY|TOKEN|SECRET|PASSWORD`)
 
-// literal reports whether the value a keep pattern captured is a JSON, YAML or Python literal, which
-// carries no secret: automountServiceAccountToken: false, "token": null, {'token': None}.
+// literal reports whether the value the credential pattern captured is a JSON, YAML or Python literal
+// or terraform's placeholder, which carry no secret: automountServiceAccountToken: false, "token": null,
+// {'token': None}, password = (sensitive value).
 func literal(value string) bool {
-	switch strings.ToLower(strings.TrimRight(value, "}])")) {
-	case "true", "false", "null", "none":
+	switch strings.ToLower(strings.TrimRight(value, `}])\`)) {
+	case "true", "false", "null", "none", "(sensitive":
 		return true
 	}
 	return false
@@ -110,7 +113,7 @@ func ContainsSecret(s string) (pattern string, found bool) {
 			if !p.keep {
 				return p.kind, true
 			}
-			if strings.HasPrefix(groups[2], "[redacted:") || literal(groups[2]) {
+			if strings.HasPrefix(groups[2], "[redacted:") || (p.literals && literal(groups[2])) {
 				continue
 			}
 			return p.kind, true
@@ -146,7 +149,7 @@ func (r *Redactor) redact(s string, count bool) string {
 			if strings.HasPrefix(groups[2], "[redacted:") {
 				return match // already redacted by an earlier, more specific pattern
 			}
-			if literal(groups[2]) {
+			if p.literals && literal(groups[2]) {
 				return match
 			}
 			add(1)

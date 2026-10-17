@@ -93,6 +93,8 @@ func TestCredentialLabelsKeepLiteralValues(t *testing.T) {
 		`"AllowUsersToChangePassword": true,`,
 		`"token": null`,
 		`{'token': None}`,
+		`\"token\":\"null\"`,
+		`      + password = (sensitive value)`,
 	} {
 		if got := r.Redact(in); got != in {
 			t.Errorf("Redact(%q) = %q, want it unchanged", in, got)
@@ -103,6 +105,10 @@ func TestCredentialLabelsKeepLiteralValues(t *testing.T) {
 	}
 	if r.Count() != 0 {
 		t.Errorf("count = %d, want 0", r.Count())
+	}
+	// Only the label pattern keeps literals: a URL password is a password, whatever its text.
+	if got := r.Redact("postgres://admin:null@db:5432/x"); got != "postgres://admin:[redacted:url-password]@db:5432/x" {
+		t.Errorf("a URL password spelled null must be redacted: %q", got)
 	}
 }
 
