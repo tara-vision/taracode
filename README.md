@@ -71,7 +71,7 @@ On one Apple M4 Max (48 GB):
 | 4   | `gemma4:12b`    | 88%       | 83       | ~9.6 GiB   |
 | 5   | `qwen3.6:35b`   | 88%       | 124      | ~22.0 GiB  |
 
-One run per row, ranked by pass rate, then mean score. A model moves by up to four tasks between two runs
+One run per row, ranked by pass rate, then mean score, then tokens per second. A model moves by up to four tasks between two runs
 of the same board (one task is about 3 points of pass rate; the 2026-10-01 board was run twice to measure
 it), so rows within four tasks of each other are a tie: all five on each machine. VRAM is the GPU memory the
 engine measured with the model loaded at a 32,768-token context window, on the 32 GB card with nothing else

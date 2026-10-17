@@ -56,25 +56,26 @@ a decision.
   passed 32 of 33 against 30 on the RTX 5090 and 31 against 30 on the M4 Max, inside the tie rule on both; the
   default answers a task in 6 s against 18 s on the RTX 5090 (28 s against 72 s on the Mac) and loads lighter.
 - `48 on <machine>: default gemma4:31b, top scorer gemma4:31b`, on both machines: the default since taraengine
-  0.3.1 leads its tier on the Mac too.
+  0.3.1 leads its tier on the Mac too, on mean score (0.93 against 0.91, 29 tasks each).
 
 Notes on the 3.3.1 run (2026-10-17, taracode 3.3.1, taraengine 0.3.1):
 
 - Two machines, the same eight catalog models, the same engine release and presets. Since taracode 3.3.2 a
   results file names its machine (`<model>-taraengine-<machine>-2026-10-17.json`) and the board keeps a row
-  per machine; the 2026-10-15 board's files left `docs/evals/results/` and stay readable at the `v3.3.2` tag.
+  per machine; these files were written by taracode 3.3.1 and carry the 3.3.2 name, their content unchanged; the 2026-10-15 board's files left `docs/evals/results/` and stay readable at the `v3.3.2` tag.
 - The RTX 5090 board repeats the 2026-10-15 board two days later: every model's tokens per second within
   about 1% (gemma4:31b 164 against 164, gemma4:12b 308 against 311, qwen3.6:35b 388 against 386), and every
   pass rate within two tasks: qwen3.6:35b two up, qwen3.8:27b and qwen3.6:27b one up, gemma4:31b, gemma4:12b
   and gemma4:e4b level, glm-4.7-flash one down, gemma4:26b two down.
 - On the same engine and catalog, every M4 Max row sits within two tasks of the same model's RTX 5090 row.
-- Speed on the Mac follows memory bandwidth: the mixture-of-experts models lead (gemma4:26b 133 and
-  qwen3.6:35b 124 tokens per second), the dense 27B to 31B models run at 39 to 42. In the 48 GB tier
-  qwen3.6:35b ties gemma4:31b at 29 tasks on the Mac and answers a task in 11 s against 46 s.
+- Speed on the Mac is 3.0 to 4.4 times below the RTX 5090's, in the same order: gemma4:26b (133 tokens per
+  second) and qwen3.6:35b (124), mixture-of-experts models with a draft, lead; glm-4.7-flash, mixture-of-experts
+  without one, runs at 48; the dense 27B to 31B models at 39 to 42. In the 48 GB tier qwen3.6:35b ties
+  gemma4:31b at 29 tasks on the Mac and answers a task in 11 s against 46 s.
 - Memory on the Mac is the engine's own estimate, marked ~ on the board; the engine measures memory on NVIDIA.
 - Four Mac rows (gemma4:26b, gemma4:31b, glm-4.7-flash, qwen3.6:27b) are second runs. Their first runs shared
-  the machine with builds and test suites and ran 0% to 5.5% slower; the published rows are the runs on an
-  idle machine. The pass rates matched, except gemma4:31b, one task apart.
+  the machine with builds and test suites and generated 0% to 5.2% fewer tokens per second; the published rows
+  are the runs on an idle machine. The pass rates matched, except gemma4:31b, one task apart.
 
 Notes on the 3.3 run (2026-10-15, taracode 3.3.0, taraengine 0.3.0):
 
