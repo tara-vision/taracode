@@ -64,14 +64,18 @@ func buildBoards(rows []Row, corpusTasks int) []HardwareBoard {
 	return boards
 }
 
+// rankScore is the mean score a ranking compares: rounded to three places, so two runs with the same
+// task scores tie although their sums differ in the last bit, and the next key decides.
+func rankScore(r Row) float64 { return round3(r.MeanScore) }
+
 // rankLess orders a board: pass rate, then mean score, then tokens per second, each descending, then
 // the model name and the server's name.
 func rankLess(a, b Row) bool {
 	switch {
 	case a.PassRate != b.PassRate:
 		return a.PassRate > b.PassRate
-	case a.MeanScore != b.MeanScore:
-		return a.MeanScore > b.MeanScore
+	case rankScore(a) != rankScore(b):
+		return rankScore(a) > rankScore(b)
 	case a.TokensPerS != b.TokensPerS:
 		return a.TokensPerS > b.TokensPerS
 	}
