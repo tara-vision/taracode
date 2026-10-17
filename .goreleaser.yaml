@@ -95,6 +95,7 @@ homebrew_casks:
         taraengine pull glm-4.7-flash   # 32 GB of RAM
         taraengine pull gemma4:31b      # 48 GB of RAM and up
 
+      On Linux: curl -fsSL https://engine.tara.vision/install.sh | bash
       On an Intel Mac, point taracode at another OpenAI-compatible server with --host.
       Then run `taracode` inside a project directory.
     commit_author:
