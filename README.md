@@ -72,7 +72,7 @@ it; a smaller card was not tested. The full board, with speed, memory and the me
 
 ### 1. Install taraengine
 
-On a Mac:
+On an Apple Silicon Mac:
 
 ```bash
 brew install --cask tara-vision/taracode/taraengine
@@ -86,7 +86,8 @@ curl -fsSL https://engine.tara.vision/install.sh | bash
 
 Both install the engine and its service, which fetches the pinned llama.cpp build for the machine on its own.
 The packages, the verified download by hand and everything else about the engine are on
-[engine.tara.vision](https://engine.tara.vision).
+[engine.tara.vision](https://engine.tara.vision). On an Intel Mac, point taracode at another OpenAI-compatible
+server with `--host`.
 
 ### 2. Pull a Model
 

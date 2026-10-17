@@ -140,8 +140,8 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	sb.Boards = buildBoards(allRows, corpusTasks)
 	for tier, rows := range byTier {
 		sort.Slice(rows, func(i, j int) bool {
-			if rows[i].MeanScore != rows[j].MeanScore {
-				return rows[i].MeanScore > rows[j].MeanScore
+			if a, b := rankScore(rows[i]), rankScore(rows[j]); a != b {
+				return a > b
 			}
 			if rows[i].Model != rows[j].Model {
 				return rows[i].Model < rows[j].Model

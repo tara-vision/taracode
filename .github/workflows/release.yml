@@ -5,27 +5,33 @@ on:
     tags:
       - "v*"
 
+# Nothing is granted to every job; each job asks for what it needs. Every action is pinned to the full commit of its
+# release, with the tag kept as a comment. Dependabot moves both.
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   goreleaser:
     name: Build and publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # creates the release and uploads its files
+      id-token: write # the keyless cosign signature
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-go@v7
+      # This job signs and publishes, so it restores no build cache that another run could have written.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
-      - uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Release notes from CHANGELOG
         run: |
@@ -33,15 +39,32 @@ jobs:
           awk -v v="$v" '/^## \[/{p = index($0, "[" v "]") > 0} p' CHANGELOG.md | sed '1d' > /tmp/release-notes.md
           test -s /tmp/release-notes.md
 
+      # A missing secret would make goreleaser skip notarization and publish unsigned macOS binaries.
+      - name: Require the signing secrets
+        run: bash scripts/require-signing.sh
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+      # The CI workflow's goreleaser check pins the same version; Dependabot does not read it, so both move by hand.
       - name: goreleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version: v2.18.2
           args: release --clean --release-notes=/tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # The Developer ID certificate and the App Store Connect key that sign and notarize the macOS binaries.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
       - name: Collect subject hashes for provenance
         id: hash
@@ -54,6 +77,7 @@ jobs:
       actions: read
       id-token: write
       contents: write
+    # The generator is a reusable workflow, which its verifier resolves by release tag, so it stays on the tag.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.goreleaser.outputs.hashes }}
@@ -64,9 +88,11 @@ jobs:
     needs: [goreleaser, provenance]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # edits the release
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # goreleaser receives --release-notes above, yet the published body has come out empty on every
       # release so far (v2.1.0, 3.0.0-alpha.1, 3.0.0-alpha.2 were filled by hand). This job runs last,
@@ -74,6 +100,7 @@ jobs:
       - name: Attach the CHANGELOG section as the release notes
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           v="${GITHUB_REF_NAME#v}"
           awk -v v="$v" '/^## \[/{p = index($0, "[" v "]") > 0} p' CHANGELOG.md | sed '1d' > /tmp/release-notes.md

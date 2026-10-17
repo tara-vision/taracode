@@ -38,10 +38,10 @@ make test
 taracode's native backend is taraengine, which serves the models on this machine:
 
 ```bash
-# Install taraengine (the cask on a Mac; on Linux, curl -fsSL https://engine.tara.vision/install.sh | bash)
+# Install taraengine (the cask on an Apple Silicon Mac; on Linux, curl -fsSL https://engine.tara.vision/install.sh | bash)
 # and pull the model taracode doctor recommends for this machine
 brew install --cask tara-vision/taracode/taraengine
-taraengine pull glm-4.7-flash   # gemma4:12b on 16 GB machines
+taraengine pull glm-4.7-flash   # 32 GB of RAM; gemma4:12b for 16 GB, gemma4:31b for 48 GB and up
 
 # Run taracode (it finds the engine at http://127.0.0.1:8272)
 ./taracode

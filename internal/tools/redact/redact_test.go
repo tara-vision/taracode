@@ -40,6 +40,81 @@ func TestBuiltInPatterns(t *testing.T) {
 	}
 }
 
+// TestCredentialLabelsInJSONOutput: JSON and Python output quote the label, so a quote sits between the
+// label and the separator, as in aws sts get-session-token, kubectl get secret -o json and a boto3 dict;
+// aws secretsmanager get-secret-value escapes the quotes of the JSON inside SecretString.
+func TestCredentialLabelsInJSONOutput(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ in, want string }{
+		{`"password": "hunter22",`, `"password": "[redacted:credential],`},
+		{
+			`"SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",`,
+			`"SecretAccessKey": "[redacted:credential],`,
+		},
+		{
+			`"SessionToken": "AQoEXAMPLEH4aoAH0gNCAPyJxz4BlCFFxWNE1OPTgk5TthT+FvwqnKwRcOIfrRh3c/LTo6UDdyJwOOvEVPvLXCrrrUtdnniCEXAMPLE/IvU1dYUg2RVAJBanLiHb4IgRmpRV3zrkuWJOgQs8IZZaIv2BXIa2R4OlgkBN9bkUDNCJiBeb/AXlzBBko7b15fjrBs2+cTQtpZ3CYWFXG8C5zqx37wnOE49mRl/+OtkIKGO7fAE"`,
+			`"SessionToken": "[redacted:credential]`,
+		},
+		{
+			`"SecretString": "{\"user\":\"diegor\",\"password\":\"PREVIEW-EXAMPLE-PASSWORD\"}",`,
+			`"SecretString": "{\"user\":\"diegor\",\"password\":\"[redacted:credential]}",`,
+		},
+		{`        "password": "aHVudGVyMjI=",`, `        "password": "[redacted:credential],`},
+		{`{'password': 'hunter22'}`, `{'password': '[redacted:credential]}`},
+		{`"prompt_tokens": 1234, "max_tokens": 4096`, `"prompt_tokens": 1234, "max_tokens": 4096`},
+		{`"password_policy": "strict"`, `"password_policy": "strict"`},
+		{`"token": "abc"`, `"token": "abc"`},
+		{`"SecretString": "hunter22-plain-api-key",`, `"SecretString": "[redacted:credential],`},
+	}
+	for _, c := range cases {
+		if got := r.Redact(c.in); got != c.want {
+			t.Errorf("Redact(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+	if kind, found := ContainsSecret(`{"password": "hunter22"}`); !found || kind != "credential" {
+		t.Errorf("ContainsSecret on a JSON-labelled password = (%q, %v), want (credential, true)", kind, found)
+	}
+}
+
+// TestCredentialLabelsKeepLiteralValues: a credential-shaped label whose value is a JSON, YAML or Python
+// literal carries no secret, and audits need it: kubectl's automountServiceAccountToken, IAM's password
+// policy, a null token.
+func TestCredentialLabelsKeepLiteralValues(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []string{
+		`"automountServiceAccountToken": false,`,
+		`automountServiceAccountToken: false`,
+		`"AllowUsersToChangePassword": true,`,
+		`"token": null`,
+		`{'token': None}`,
+		`\"token\":\"null\"`,
+		`      + password = (sensitive value)`,
+	} {
+		if got := r.Redact(in); got != in {
+			t.Errorf("Redact(%q) = %q, want it unchanged", in, got)
+		}
+		if kind, found := ContainsSecret(in); found {
+			t.Errorf("ContainsSecret(%q) = %q, want none", in, kind)
+		}
+	}
+	if r.Count() != 0 {
+		t.Errorf("count = %d, want 0", r.Count())
+	}
+	// Only the label pattern keeps literals: a URL password is a password, whatever its text.
+	if got := r.Redact("postgres://admin:null@db:5432/x"); got != "postgres://admin:[redacted:url-password]@db:5432/x" {
+		t.Errorf("a URL password spelled null must be redacted: %q", got)
+	}
+	if kind, found := ContainsSecret("postgres://admin:null@db:5432/x"); !found || kind != "url-password" {
+		t.Errorf("ContainsSecret on a URL password spelled null = (%q, %v), want (url-password, true)", kind, found)
+	}
+}
+
 func TestEnvironmentValuesAndExtraPatterns(t *testing.T) {
 	r, err := New(Options{
 		ExtraPatterns: []string{`ACME-[0-9]{6}`},

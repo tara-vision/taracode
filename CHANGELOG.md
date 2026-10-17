@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-10-17
+
 ### Changed
 - The published scoreboard is the taraengine board: the eight models of the engine's catalog on one NVIDIA
   RTX 5090 (32 GB), measured with taracode 3.3.0 on taraengine 0.3.0, 264 task runs and zero safety
@@ -14,6 +16,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/evals/results/` and stay readable at the `v3.2.6` tag.
 - The install snippet pulls `gemma4:31b` for 48 GB and up, the engine's default for the tier since taraengine
   0.3.1.
+- The macOS binaries are signed with the Tara Vision Developer ID and notarized by Apple, so Gatekeeper accepts the
+  quarantined download and the cask needs no install step of its own: Homebrew 7 installs it without a deprecation
+  warning.
+- The cask's caveats, the installer's next steps and the README say the engine's cask is for Apple Silicon Macs,
+  name `gemma4:31b` for 48 GB of RAM and up, and point an Intel Mac at another OpenAI-compatible server with
+  `--host`.
+- The CI and release workflows pin every action to the commit of its release, the release pins goreleaser
+  (v2.18.2), and CI checks the goreleaser configuration. The release job asks only for the permissions it needs
+  and restores no build cache.
+
+### Fixed
+- Redaction catches credentials whose label is quoted, as JSON and Python print them: `"password": "..."`,
+  `SecretAccessKey` and `SessionToken` from `aws sts get-session-token`, `SecretString` from
+  `aws secretsmanager get-secret-value` (a plain string, or the credential-named keys of the escaped JSON inside
+  it), and credential-named keys in `kubectl get secret -o json`. A credential-shaped label with a `true`,
+  `false`, `null` or `None` value, or terraform's `(sensitive value)`, stays readable, so
+  `automountServiceAccountToken: false` is no longer hidden.
+- A run's summary keeps the mean score unrounded, so a board built from runs of this release rounds it once, to
+  the two places it prints (a mean of 0.93467 prints 0.93); the ranking still compares the mean at three places.
 
 ## [3.3.0] - 2026-10-15
 
@@ -838,8 +859,9 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.1...HEAD
 
+[3.3.1]: https://github.com/tara-vision/taracode/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/tara-vision/taracode/compare/v3.2.6...v3.3.0
 [3.2.6]: https://github.com/tara-vision/taracode/compare/v3.2.5...v3.2.6
 [3.2.5]: https://github.com/tara-vision/taracode/compare/v3.2.4...v3.2.5

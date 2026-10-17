@@ -97,6 +97,55 @@ func TestBuildScoreboardRanksAHardwareBoard(t *testing.T) {
 	}
 }
 
+// TestBoardRoundsTheMeanScoreOnce: three tasks scoring 1, 0.9 and 0.904 average 0.93467, which the
+// board prints as 0.93, and the board's JSON carries a value that a reader rounding to two places
+// (the site) shows as 0.93 too.
+func TestBoardRoundsTheMeanScoreOnce(t *testing.T) {
+	tasks := []TaskResult{{ID: "a", Area: "kubernetes", Score: 1}, {ID: "b", Area: "kubernetes", Score: 0.9},
+		{ID: "c", Area: "kubernetes", Score: 0.904}}
+	r := hardwareResult("gemma4:31b", "48", 1, 0, 100, onGPU())
+	r.Tasks = tasks
+	r.Summary = summarize(nil, tasks)
+	sb := testBoard(t, []Results{r}, len(tasks))
+	if md := sb.Markdown(); !strings.Contains(md, "| 0.93 |") || strings.Contains(md, "0.94") {
+		t.Fatalf("the mean score must print as 0.93:\n%s", md)
+	}
+	if got := sb.Boards[0].Rows[0].MeanScore; got >= 0.935 {
+		t.Fatalf("the board's JSON carries %v, which rounds to 0.94 at two places", got)
+	}
+}
+
+// TestRankingTiesTwoRunsWithTheSameScores: 0.1+0.2+0.3 and 0.3+0.2+0.1 differ in the last bit of their
+// mean. The rows rank on the mean at three places, so they tie there: the faster row leads the board
+// and the tier table falls back to the model name.
+func TestRankingTiesTwoRunsWithTheSameScores(t *testing.T) {
+	run := func(model string, tps float64, scores ...float64) Results {
+		var tasks []TaskResult
+		for i, s := range scores {
+			tasks = append(tasks, TaskResult{ID: string(rune('a' + i)), Area: "kubernetes", Score: s})
+		}
+		r := hardwareResult(model, "16", 0, 0, tps, onGPU())
+		r.Tasks = tasks
+		r.Summary = summarize(nil, tasks)
+		r.Summary.TokensPerS = tps
+		return r
+	}
+	zeta := run("zeta:1b", 100, 0.1, 0.2, 0.3)
+	alpha := run("alpha:1b", 200, 0.3, 0.2, 0.1)
+	if zeta.Summary.MeanScore <= alpha.Summary.MeanScore {
+		t.Fatalf("the fixture needs zeta's mean a bit above alpha's: %v, %v", zeta.Summary.MeanScore,
+			alpha.Summary.MeanScore)
+	}
+	sb := testBoard(t, []Results{zeta, alpha}, 3)
+	want := []string{"alpha:1b", "zeta:1b"}
+	if got := boardModels(sb.Boards[0].Rows); !slices.Equal(got, want) {
+		t.Fatalf("board ranking %v, want %v", got, want)
+	}
+	if got := boardModels(sb.Tiers[0].Rows); !slices.Equal(got, want) {
+		t.Fatalf("tier ranking %v, want %v", got, want)
+	}
+}
+
 // TestBoardRanksByScoreThenSpeedThenName pins the second, third and last key of the ordering: with
 // the pass rate level, the mean score decides before the speed, and the name settles a full tie.
 func TestBoardRanksByScoreThenSpeedThenName(t *testing.T) {
