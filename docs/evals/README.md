@@ -154,7 +154,7 @@ evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
 docs/evals/README.md              writing, recording and running tasks
-docs/evals/results/<model>-<server>-<machine>-<date>.json
+docs/evals/results/<model>-<server>[-<machine>]-<date>.json
 docs/evals/scoreboard.md, scoreboard.json
 ```
 

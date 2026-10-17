@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// Scoreboard is the report (spec 10): the newest results per model and server, ranked per hardware label and
-// grouped by tier.
+// Scoreboard is the report (spec 10): the newest results per model, server and machine, ranked per hardware label
+// and grouped by tier.
 type Scoreboard struct {
 	GeneratedAt string          `json:"generated_at"`
 	Taracode    string          `json:"taracode"`
@@ -27,7 +27,7 @@ type TierBoard struct {
 	Rows []Row  `json:"rows"`
 }
 
-// Row is one model's line on one server. Tier, Runs, Tasks, SuiteWallS and Server are set for every result,
+// Row is one model's line on one server and machine. Tier, Runs, Tasks, SuiteWallS and Server are set for every result,
 // so the JSON of a board built from older results gains those keys too (readers pick keys by name). Hardware,
 // the rate and the memory fields are empty for a result that has no label, no timings or no engine block,
 // and are then left out of the JSON.
@@ -114,6 +114,9 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			if server := r.ServerOf().String(); server != "" {
 				name += " on " + server
 			}
+			if r.Hardware != "" {
+				name += ", " + r.Hardware
+			}
 			msg := fmt.Sprintf("%s %s: %d safety failure(s)", name, r.Date, r.Summary.SafetyFailures)
 			sb.Skipped = append(sb.Skipped, msg)
 			continue
@@ -124,9 +127,13 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 		}
 	}
 	newest = newestDecides(newest)
-	defaults := map[string]bool{}
+	// The default flag is what the engine's catalog said when the run was made, so it is shared across servers but
+	// kept per machine: a machine run before a catalog change keeps the default it had.
+	type machineModel struct{ model, hardware string }
+	defaults := map[machineModel]bool{}
 	for _, r := range newest {
-		defaults[r.Model] = defaults[r.Model] || r.Default
+		k := machineModel{r.Model, r.Hardware}
+		defaults[k] = defaults[k] || r.Default
 	}
 	byTier := map[string][]Row{}
 	var allRows []Row
@@ -135,7 +142,7 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 		if tier == "" {
 			tier = "other"
 		}
-		row := newRow(r, tier, defaults[r.Model])
+		row := newRow(r, tier, defaults[machineModel{r.Model, r.Hardware}])
 		byTier[tier] = append(byTier[tier], row)
 		allRows = append(allRows, row)
 	}
@@ -306,10 +313,14 @@ func (s Scoreboard) machines() []string {
 }
 
 // CheckDefaults reports, per sized tier, the board's default and the top scorer. With runs from more than one machine,
-// it reports each machine's top scorer on a line of its own, naming the machine; a row without a label is left out.
+// it reports each machine's top scorer on a line of its own, naming the machine, and the rows without a label on one
+// more line.
 func (s Scoreboard) CheckDefaults() []string {
 	machines := s.machines()
-	if len(machines) < 2 {
+	perMachine := len(machines) > 1
+	if perMachine {
+		machines = append(machines, "")
+	} else {
 		machines = []string{""}
 	}
 	var out []string
@@ -318,7 +329,7 @@ func (s Scoreboard) CheckDefaults() []string {
 			continue
 		}
 		for _, machine := range machines {
-			if line, ok := tier.checkDefault(machine); ok {
+			if line, ok := tier.checkDefault(machine, perMachine); ok {
 				out = append(out, line)
 			}
 		}
@@ -326,12 +337,12 @@ func (s Scoreboard) CheckDefaults() []string {
 	return out
 }
 
-// checkDefault is a tier's default against its top scorer: among every row when machine is empty, else among the
-// rows of that machine, whose name the line then carries. ok is false when the machine has no row in the tier.
-func (t TierBoard) checkDefault(machine string) (string, bool) {
+// checkDefault is a tier's default against its top scorer: among every row, or with perMachine among the rows of that
+// machine (an empty one: the rows without a label), which the line then names. ok is false when no row matches.
+func (t TierBoard) checkDefault(machine string, perMachine bool) (string, bool) {
 	def, top := "none", ""
 	for _, r := range t.Rows {
-		if machine != "" && r.Hardware != machine {
+		if perMachine && r.Hardware != machine {
 			continue
 		}
 		if top == "" {
@@ -345,8 +356,11 @@ func (t TierBoard) checkDefault(machine string) (string, bool) {
 		return "", false
 	}
 	label := t.Tier
-	if machine != "" {
+	switch {
+	case perMachine && machine != "":
 		label += " on " + machine
+	case perMachine:
+		label += " without a machine label"
 	}
 	line := fmt.Sprintf("%s: default %s, top scorer %s", label, def, top)
 	if def != top {

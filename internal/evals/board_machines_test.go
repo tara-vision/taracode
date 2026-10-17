@@ -1,6 +1,7 @@
 package evals
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -22,8 +23,11 @@ func TestResultsNameKeepsTwoMachinesApart(t *testing.T) {
 	cases := []struct{ hardware, want string }{
 		{testHardware, "gemma4-31b-taraengine-nvidia-rtx-5090-32-gb-2026-10-17"},
 		{macHardware, "gemma4-31b-taraengine-apple-m4-max-48-gb-2026-10-17"},
+		{"(Mac) M4", "gemma4-31b-taraengine-mac-m4-2026-10-17"},
 		{"", "gemma4-31b-taraengine-2026-10-17"},
-		{"(!)", "gemma4-31b-taraengine-2026-10-17"},
+		// A label with no ASCII letter or digit is named by the first 8 hex digits of its sha256.
+		{"Мак Студио", "gemma4-31b-taraengine-machine-6d813104-2026-10-17"},
+		{"(!)", "gemma4-31b-taraengine-machine-09587ee8-2026-10-17"},
 	}
 	for _, c := range cases {
 		if got := ResultsName(onMachine("gemma4:31b", "48", c.hardware, false, 0.9, 100)); got != c.want {
@@ -42,12 +46,15 @@ func TestResultsNameKeepsTwoMachinesApart(t *testing.T) {
 }
 
 // TestScoreboardKeepsAModelOnEachMachine: the same model on the same server ranks on each machine's board, and the
-// tier table lists it once per machine, naming the machine.
+// tier table lists it once per machine, naming the machine (a dash for a run without a label). Rows that tie on
+// score fall back to the machine's name, on every build.
 func TestScoreboardKeepsAModelOnEachMachine(t *testing.T) {
-	sb := testBoard(t, []Results{
+	results := []Results{
 		onMachine("gemma4:12b", "16", testHardware, true, 0.88, 308),
 		onMachine("gemma4:12b", "16", macHardware, true, 0.88, 83),
-	}, testCorpus)
+		onMachine("qwen3.6:27b", "16", "", false, 0.5, 0),
+	}
+	sb := testBoard(t, results, testCorpus)
 	if len(sb.Boards) != 2 {
 		t.Fatalf("%d boards, want one per machine", len(sb.Boards))
 	}
@@ -56,19 +63,68 @@ func TestScoreboardKeepsAModelOnEachMachine(t *testing.T) {
 			t.Fatalf("%s ranks %v", b.Hardware, got)
 		}
 	}
-	if len(sb.Tiers) != 1 || len(sb.Tiers[0].Rows) != 2 || sb.Tiers[0].Rows[0].Hardware != macHardware ||
-		sb.Tiers[0].Rows[1].Hardware != testHardware {
-		t.Fatalf("tiers %+v", sb.Tiers)
+	for range 20 {
+		rows := testBoard(t, results, testCorpus).Tiers[0].Rows
+		if len(rows) != 3 || rows[0].Hardware != macHardware || rows[1].Hardware != testHardware || rows[2].Hardware != "" {
+			t.Fatalf("tier rows %+v", rows)
+		}
 	}
 	md := sb.Markdown()
 	for _, want := range []string{
-		"| Model | Machine | Pass rate | Mean score |",
-		"| gemma4:12b (default) | Apple M4 Max (48 GB) | 88% |",
-		"| gemma4:12b (default) | NVIDIA RTX 5090 (32 GB) | 88% |",
+		"\n| Model | Machine | Pass rate | Mean score | kubernetes | helm | terraform | docker | secrets | cloud | refusal | " +
+			"Mean iterations | Mean wall | Misses | Engine | Date |\n" + "|" + strings.Repeat("---|", 16) + "\n",
+		"\n| gemma4:12b (default) | Apple M4 Max (48 GB) | 88% |",
+		"\n| gemma4:12b (default) | NVIDIA RTX 5090 (32 GB) | 88% |",
+		"\n| qwen3.6:27b | - | 50% |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("the tier table lacks %q:\n%s", want, md)
 		}
+	}
+}
+
+// TestEachMachineKeepsItsOwnDefault: a run's default flag comes from the engine catalog of that run, so two machines
+// can disagree (one board run before a catalog change); every row carries its own machine's flag.
+func TestEachMachineKeepsItsOwnDefault(t *testing.T) {
+	sb := testBoard(t, []Results{
+		onMachine("qwen3.6:35b", "48", testHardware, true, 0.82, 388),
+		onMachine("gemma4:31b", "48", testHardware, false, 0.91, 164),
+		onMachine("qwen3.6:35b", "48", macHardware, false, 0.8, 60),
+		onMachine("gemma4:31b", "48", macHardware, true, 0.9, 20),
+	}, testCorpus)
+	var flags []string
+	for _, r := range sb.Tiers[0].Rows {
+		flags = append(flags, fmt.Sprintf("%s %s %v", r.Model, r.Hardware, r.Default))
+	}
+	want := []string{"gemma4:31b " + testHardware + " false", "gemma4:31b " + macHardware + " true",
+		"qwen3.6:35b " + testHardware + " true", "qwen3.6:35b " + macHardware + " false"}
+	if !slices.Equal(flags, want) {
+		t.Fatalf("default flags %q\nwant %q", flags, want)
+	}
+	checks := []string{
+		"48 on Apple M4 Max (48 GB): default gemma4:31b, top scorer gemma4:31b",
+		"48 on NVIDIA RTX 5090 (32 GB): default qwen3.6:35b, top scorer gemma4:31b (differs)",
+	}
+	if got := sb.CheckDefaults(); !slices.Equal(got, checks) {
+		t.Fatalf("checks %q\nwant %q", got, checks)
+	}
+}
+
+// TestSkippedNamesTheMachine: a run left out for a safety failure is named with its machine, so two machines' runs
+// of one model read apart.
+func TestSkippedNamesTheMachine(t *testing.T) {
+	failed := func(hw string) Results {
+		r := onMachine("gemma4:12b", "16", hw, true, 0.88, 100)
+		r.Summary.SafetyFailures = 1
+		return r
+	}
+	sb := testBoard(t, []Results{failed(testHardware), failed(macHardware)}, testCorpus)
+	want := []string{
+		"gemma4:12b on taraengine 0.3.1, Apple M4 Max (48 GB) 2026-10-17: 1 safety failure(s)",
+		"gemma4:12b on taraengine 0.3.1, NVIDIA RTX 5090 (32 GB) 2026-10-17: 1 safety failure(s)",
+	}
+	if !slices.Equal(sb.Skipped, want) {
+		t.Fatalf("skipped %q\nwant %q", sb.Skipped, want)
 	}
 }
 
@@ -94,21 +150,48 @@ func TestTheNewestLabelledRunKeepsEachMachinesRow(t *testing.T) {
 // TestOnTheSameDayTheLabelledRunCountsAsNewer: a labelled and an unlabelled run of one model on one day leave the
 // labelled row on its board.
 func TestOnTheSameDayTheLabelledRunCountsAsNewer(t *testing.T) {
-	sb := testBoard(t, []Results{
+	results := []Results{
 		onMachine("gemma4:12b", "16", "", true, 0.5, 0),
 		onMachine("gemma4:12b", "16", macHardware, true, 0.88, 83),
-	}, testCorpus)
-	if rows := sb.Tiers[0].Rows; len(rows) != 1 || rows[0].Hardware != macHardware || len(sb.Boards) != 1 {
-		t.Fatalf("rows %+v, %d boards", rows, len(sb.Boards))
+	}
+	for range 20 { // the rows sit in a map: every build has to agree
+		sb := testBoard(t, results, testCorpus)
+		if rows := sb.Tiers[0].Rows; len(rows) != 1 || rows[0].Hardware != macHardware || len(sb.Boards) != 1 {
+			t.Fatalf("rows %+v, %d boards", rows, len(sb.Boards))
+		}
 	}
 }
 
 // TestOneMachineTierTablesNameNoMachine: a board from one machine, with an unlabelled run beside it, keeps the tier
 // tables it had.
 func TestOneMachineTierTablesNameNoMachine(t *testing.T) {
-	md := testBoard(t, hardwareResults(), testCorpus).Markdown()
+	sb := testBoard(t, hardwareResults(), testCorpus)
+	md := sb.Markdown()
 	if strings.Contains(md, "Machine") || !strings.Contains(md, "| Model | Pass rate | Mean score |") {
 		t.Fatalf("a one-machine board changed its tier tables:\n%s", md)
+	}
+	for _, line := range sb.CheckDefaults() {
+		if strings.Contains(line, " on ") || strings.Contains(line, "machine") {
+			t.Errorf("a one-machine board's check names a machine: %q", line)
+		}
+	}
+}
+
+// TestCheckDefaultsChecksUnlabelledRowsOnAManyMachineBoard: with two machines on the board, a tier's rows that name
+// no machine get a line of their own.
+func TestCheckDefaultsChecksUnlabelledRowsOnAManyMachineBoard(t *testing.T) {
+	sb := testBoard(t, []Results{
+		onMachine("gemma4:12b", "16", testHardware, true, 0.88, 308),
+		onMachine("gemma4:12b", "16", macHardware, true, 0.88, 83),
+		onMachine("glm-4.7-flash", "32", "", false, 0.91, 0),
+	}, testCorpus)
+	want := []string{
+		"16 on Apple M4 Max (48 GB): default gemma4:12b, top scorer gemma4:12b",
+		"16 on NVIDIA RTX 5090 (32 GB): default gemma4:12b, top scorer gemma4:12b",
+		"32 without a machine label: default none, top scorer glm-4.7-flash (differs)",
+	}
+	if got := sb.CheckDefaults(); !slices.Equal(got, want) {
+		t.Fatalf("checks %q\nwant %q", got, want)
 	}
 }
 

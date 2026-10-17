@@ -2,6 +2,8 @@ package evals
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -146,7 +148,8 @@ func ResultsName(r Results) string {
 }
 
 // machineSlug is a hardware label as part of a file name: lower case, every run of other characters one hyphen,
-// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb).
+// none at either end ("NVIDIA RTX 5090 (32 GB)" is nvidia-rtx-5090-32-gb). A label with no ASCII letter or digit is
+// machine-<the first 8 hex digits of its sha256>, so two such machines still keep a file each.
 func machineSlug(label string) string {
 	var b strings.Builder
 	gap := false
@@ -160,6 +163,10 @@ func machineSlug(label string) string {
 		}
 		b.WriteRune(r)
 		gap = false
+	}
+	if b.Len() == 0 && strings.TrimSpace(label) != "" {
+		sum := sha256.Sum256([]byte(label))
+		return "machine-" + hex.EncodeToString(sum[:4])
 	}
 	return b.String()
 }

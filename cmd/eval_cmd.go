@@ -34,7 +34,7 @@ var evalCmd = &cobra.Command{
 
 var evalRunCmd = &cobra.Command{
 	Use:          "run",
-	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<server>-<machine>-<date>.json",
+	Short:        "Run the corpus against one model and write docs/evals/results/<model>-<server>[-<machine>]-<date>.json",
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -173,7 +173,7 @@ func reportStoppedRun(f evalRunFlags, tasks []evals.Task, res evals.Results, run
 }
 
 // writePartialResults writes a stopped run's partial task results as JSON to
-// <runsDir>/<model>-<server>-<machine>-<date>-partial.json (evals.ResultsName plus the marker), mirroring
+// <runsDir>/<model>-<server>[-<machine>]-<date>-partial.json (evals.ResultsName plus the marker), mirroring
 // evals.WriteResults' file shape.
 func writePartialResults(runsDir string, res evals.Results) (string, error) {
 	//nolint:gosec // runsDir is a git-ignored working directory (evals/runs by default)
