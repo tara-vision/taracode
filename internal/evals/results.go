@@ -184,7 +184,8 @@ func ReadResults(dir string) ([]Results, error) {
 // summarize computes the totals of a run from its task results and the tasks' weights. The mean
 // iterations and the fixture miss rate come from the rows' unrounded per-run values (perRun, ruling
 // P3-R56). Every task of a run has the same number of runs, so the per-run means pool exactly: the
-// miss rate is the misses of every run over the calls of every run.
+// miss rate is the misses of every run over the calls of every run. The mean score keeps every digit:
+// the board and the site round it once, to the two places they print.
 func summarize(tasks []Task, results []TaskResult) Summary {
 	s := Summary{ByArea: map[string]AreaSummary{}}
 	if len(results) == 0 {
@@ -225,7 +226,7 @@ func summarize(tasks []Task, results []TaskResult) Summary {
 	}
 	n := float64(len(results))
 	s.PassRate = round3(float64(passed) / n)
-	s.MeanScore = round3(scoreSum / weightSum)
+	s.MeanScore = scoreSum / weightSum
 	s.MeanIterations = round3(iterations / n)
 	s.MeanWallMs = round3(wall / n)
 	s.TokensPerS = generationRate(results)
