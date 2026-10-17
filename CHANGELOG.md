@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.3.2] - 2026-10-17
 
+### Changed
+- taracode says SI: the README no longer explains the word, and the deb, rpm and Homebrew descriptions read
+  "DevOps and Cloud SI assistant".
+
 ### Fixed
 - The board holds the same model on several machines. A run's results file names its machine
-  (`<model>-<server>-<machine>-<date>.json`, from the `--hardware` label), every machine keeps its own row on its
-  board, the RAM-tier tables name each row's machine in a Machine column once the board holds more than one machine,
-  and `taracode eval report --check-defaults` checks each tier on each machine. A model whose newest result on a
-  server names no machine still has that result as its only row.
+  (`<model>-<server>-<machine>-<date>.json`, from the `--hardware` label), every machine keeps its own row and its
+  own default flag on its board, the RAM-tier tables name each row's machine in a Machine column once the board holds
+  more than one machine, and `taracode eval report --check-defaults` checks each tier on each machine. A model whose
+  newest result on a server names no machine still has that result as its only row.
 
 ## [3.3.1] - 2026-10-17
 
