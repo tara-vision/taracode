@@ -110,6 +110,9 @@ func TestCredentialLabelsKeepLiteralValues(t *testing.T) {
 	if got := r.Redact("postgres://admin:null@db:5432/x"); got != "postgres://admin:[redacted:url-password]@db:5432/x" {
 		t.Errorf("a URL password spelled null must be redacted: %q", got)
 	}
+	if kind, found := ContainsSecret("postgres://admin:null@db:5432/x"); !found || kind != "url-password" {
+		t.Errorf("ContainsSecret on a URL password spelled null = (%q, %v), want (url-password, true)", kind, found)
+	}
 }
 
 func TestEnvironmentValuesAndExtraPatterns(t *testing.T) {
