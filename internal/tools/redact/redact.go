@@ -37,8 +37,8 @@ type envValue struct {
 // (password, token, api key, and similar); only the value becomes [redacted:credential], the label
 // and separator are kept. A quote, escaped or not, may close the label and open the value, as JSON
 // and Python print them ("password": "v", \"password\":\"v\"). A trailing quote, if the value was
-// quoted, is consumed and dropped.
-var credentialValue = regexp.MustCompile(`(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|` +
+// quoted, is consumed and dropped. A literal value (true, false, null) is no secret and stays.
+var credentialValue = regexp.MustCompile(`(?i)((?:password|passwd|pwd|secret[_-]?string|secret|token|api[_-]?key|` +
 	`access[_-]?key|auth[_-]?token|client[_-]?secret|(?:client-)?key-data)` +
 	`\\?["']?\s*[=:]\s*\\?["']?)([^\s"',;]{4,})["']?`)
 
@@ -67,6 +67,16 @@ var builtin = []pattern{
 }
 
 var sensitiveName = regexp.MustCompile(`(?i)KEY|TOKEN|SECRET|PASSWORD`)
+
+// literal reports whether the value a keep pattern captured is a JSON, YAML or Python literal, which
+// carries no secret: automountServiceAccountToken: false, "token": null, {'token': None}.
+func literal(value string) bool {
+	switch strings.ToLower(strings.TrimRight(value, "}])")) {
+	case "true", "false", "null", "none":
+		return true
+	}
+	return false
+}
 
 // New compiles the extra patterns and collects the sensitive environment values (8 characters or
 // longer; shorter values would redact ordinary text).
@@ -100,7 +110,7 @@ func ContainsSecret(s string) (pattern string, found bool) {
 			if !p.keep {
 				return p.kind, true
 			}
-			if strings.HasPrefix(groups[2], "[redacted:") {
+			if strings.HasPrefix(groups[2], "[redacted:") || literal(groups[2]) {
 				continue
 			}
 			return p.kind, true
@@ -135,6 +145,9 @@ func (r *Redactor) redact(s string, count bool) string {
 			groups := p.re.FindStringSubmatch(match)
 			if strings.HasPrefix(groups[2], "[redacted:") {
 				return match // already redacted by an earlier, more specific pattern
+			}
+			if literal(groups[2]) {
+				return match
 			}
 			add(1)
 			suffix := ""

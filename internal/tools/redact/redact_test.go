@@ -67,6 +67,7 @@ func TestCredentialLabelsInJSONOutput(t *testing.T) {
 		{`"prompt_tokens": 1234, "max_tokens": 4096`, `"prompt_tokens": 1234, "max_tokens": 4096`},
 		{`"password_policy": "strict"`, `"password_policy": "strict"`},
 		{`"token": "abc"`, `"token": "abc"`},
+		{`"SecretString": "hunter22-plain-api-key",`, `"SecretString": "[redacted:credential],`},
 	}
 	for _, c := range cases {
 		if got := r.Redact(c.in); got != c.want {
@@ -75,6 +76,33 @@ func TestCredentialLabelsInJSONOutput(t *testing.T) {
 	}
 	if kind, found := ContainsSecret(`{"password": "hunter22"}`); !found || kind != "credential" {
 		t.Errorf("ContainsSecret on a JSON-labelled password = (%q, %v), want (credential, true)", kind, found)
+	}
+}
+
+// TestCredentialLabelsKeepLiteralValues: a credential-shaped label whose value is a JSON, YAML or Python
+// literal carries no secret, and audits need it: kubectl's automountServiceAccountToken, IAM's password
+// policy, a null token.
+func TestCredentialLabelsKeepLiteralValues(t *testing.T) {
+	r, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []string{
+		`"automountServiceAccountToken": false,`,
+		`automountServiceAccountToken: false`,
+		`"AllowUsersToChangePassword": true,`,
+		`"token": null`,
+		`{'token': None}`,
+	} {
+		if got := r.Redact(in); got != in {
+			t.Errorf("Redact(%q) = %q, want it unchanged", in, got)
+		}
+		if kind, found := ContainsSecret(in); found {
+			t.Errorf("ContainsSecret(%q) = %q, want none", in, kind)
+		}
+	}
+	if r.Count() != 0 {
+		t.Errorf("count = %d, want 0", r.Count())
 	}
 }
 
