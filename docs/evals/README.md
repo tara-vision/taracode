@@ -393,13 +393,21 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   `xlink:href` that is not a `#fragment`. The page draws a logo as a mask in the text color, so only its shape counts:
   a logo whose marks differ only by color is prepared as one shape on a transparent background.
 - **Logo files.** A logo is UTF-8 and well-formed the way a strict XML parser, such as the site's and a browser's,
-  reads it, and every character in it, in comments too, is one that XML allows. A byte order mark may open the file.
-  An XML declaration is optional; when there is one, it comes first, with nothing before it but that mark (not even a
-  blank line), and reads `<?xml version="1.0"?>`, with `encoding="UTF-8"` and `standalone="yes"` or `"no"` after the
-  version if at all. Beside the declaration, only blank lines and comments stand before the root and after it. There
-  is no other processing instruction (an `<?xml-stylesheet?>` included), no attribute twice on one element, no
-  prefix that is not declared on its element or above it (an `xlink:href` needs `xmlns:xlink`), no prefix declared
-  with an empty namespace, and no name with a colon at either end.
+  reads it, and every character in it, in comments too, is one that XML allows. No character reference names a
+  surrogate (`&#xD800;` to `&#xDFFF;`, for which XML has no character), in a comment or a CDATA section either. A
+  byte order mark may open the file. An XML declaration is optional; when there is one, it comes first, with nothing
+  before it but that mark (not even a blank line), and reads `<?xml version="1.0"?>`, with `encoding="UTF-8"` and
+  `standalone="yes"` or `"no"` after the version if at all. Beside the declaration, only blank lines and comments
+  stand before the root and after it. There is no other processing instruction (an `<?xml-stylesheet?>` included).
+  White space (a space, a tab or a line break) stands before every attribute, also after the closing quote of the one
+  before, and no attribute stands twice on one element. A prefix is judged as it is written: an `xmlns:<prefix>` on
+  its element or above it must declare it (an `xlink:href` needs `xmlns:xlink`, and `xmlns:a="x"` does not cover an
+  `x:path`). The namespaces of `xml` and `xmlns` belong to those prefixes alone, so a prefix declared for either
+  (`xmlns:p="http://www.w3.org/XML/1998/namespace"`) is not declared, and no prefix is declared with an empty
+  namespace. No name has a colon at either end, and the part of a prefixed name after the colon starts with a letter
+  or an underscore (`a:b1`, not `a:1b`; `xmlns:b1`, not `xmlns:6link`). Elements nest at most 256 levels deep, the
+  root `<svg>` being level 1, and no element or attribute name is longer than 256 bytes, a prefix and its colon
+  counted; the site's parser reads more than both, so a logo that passes is one it serves.
 - **Lab log.** `month` is a month, each month has one entry, the entries run from the newest month down, and no month
   is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.

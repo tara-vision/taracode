@@ -100,10 +100,10 @@ func checkLogoDuplicateAttrs(label string, parts logoParts) []string {
 	return p
 }
 
-// checkLogoPrefixes: every prefix below the root names a namespace declared on its element or above it, and no prefix
-// is declared with an empty namespace. A browser that reads namespaces refuses a file with an unbound prefix, so the
-// logo would not show; xmlns:xlink taken out while an xlink:href stays is the usual case. The root's own prefix is
-// left to checkLogoNamespace.
+// checkLogoPrefixes: every prefix below the root is declared by an xmlns:<prefix> on its element or above it, judged as
+// the prefix is written and not by the namespace it stands for, and no prefix is declared with an empty namespace. A
+// browser that reads namespaces refuses a file with an unbound prefix, so the logo would not show; xmlns:xlink taken
+// out while an xlink:href stays is the usual case. The root's own prefix is left to checkLogoNamespace.
 func checkLogoPrefixes(label string, parts logoParts) []string {
 	var p findings
 	for _, u := range parts.unbound {
@@ -136,6 +136,89 @@ func checkLogoNames(label string, parts logoParts) []string {
 					label, a.Name.Local, e.Name.Local)
 			}
 		}
+	}
+	return p
+}
+
+// checkLogoSurrogates: no character reference names a surrogate, U+D800 to U+DFFF, for which XML has no character. The
+// decoder reads one as U+FFFD, which it allows, so the reference is found in the text as written. A strict parser
+// refuses it in text and in attribute values; here it is refused in comments and CDATA sections too.
+func checkLogoSurrogates(label string, parts logoParts) []string {
+	var p findings
+	if parts.surrogateRef != "" {
+		p.addf("%s: character reference %.40s names a surrogate (U+D800 to U+DFFF are no characters of XML)",
+			label, parts.surrogateRef)
+	}
+	return p
+}
+
+// checkLogoAttrSpacing: XML white space stands before every attribute. The decoder lets an attribute follow the closing
+// quote of the one before it with nothing between them (a="1"b="2"), which a strict parser refuses.
+func checkLogoAttrSpacing(label string, parts logoParts) []string {
+	var p findings
+	for _, tag := range parts.tags {
+		for _, a := range tag.attrs {
+			if !a.spaced {
+				p.addf("%s: no white space before the attribute %s on <%s> (separate attributes with a space, a tab or a "+
+					"line break)", label, a.name, tag.name)
+			}
+		}
+	}
+	return p
+}
+
+// checkLogoLocalNames: in a prefixed name, the part after the colon starts as a name does, with a letter, an underscore
+// or another character that XML lets a name start with. The decoder checks the first character of the whole name only,
+// so a:1b, a:.d and xmlns:6link pass it while a strict parser refuses them.
+func checkLogoLocalNames(label string, parts logoParts) []string {
+	var p findings
+	for _, tag := range parts.tags {
+		if badLocalPart(tag.name) {
+			p.addf("%s: malformed name <%s> (the part after the colon starts with a letter or an underscore)",
+				label, tag.name)
+		}
+		for _, a := range tag.attrs {
+			if badLocalPart(a.name) {
+				p.addf("%s: malformed name %s on <%s> (the part after the colon starts with a letter or an underscore)",
+					label, a.name, tag.name)
+			}
+		}
+	}
+	return p
+}
+
+// badLocalPart reports whether name, as written, has a prefix and a local part that does not start a name.
+func badLocalPart(name string) bool {
+	prefix, local := splitName(name)
+	return prefix != "" && !startsName(local)
+}
+
+// checkLogoNameLengths: no element or attribute name is longer than logoMaxName bytes as written, a prefix and its
+// colon counted. The decoder reads a name of any length, and libxml, which the site parses with, refuses one past
+// 50,000 bytes; a logo has no use for a name anywhere near that long.
+func checkLogoNameLengths(label string, parts logoParts) []string {
+	var p findings
+	for _, tag := range parts.tags {
+		if len(tag.name) > logoMaxName {
+			p.addf("%s: name longer than %d bytes: the element %.40q is %d bytes", label, logoMaxName, tag.name, len(tag.name))
+		}
+		for _, a := range tag.attrs {
+			if len(a.name) > logoMaxName {
+				p.addf("%s: name longer than %d bytes: the attribute %.40q of <%.40s> is %d bytes",
+					label, logoMaxName, a.name, tag.name, len(a.name))
+			}
+		}
+	}
+	return p
+}
+
+// checkLogoDepth: no element stands deeper than logoMaxDepth levels, the root svg being level 1. The decoder has no
+// limit, libxml refuses an element at level 258 and a browser caps nesting too; a logo is one small shape.
+func checkLogoDepth(label string, parts logoParts) []string {
+	var p findings
+	if parts.depth > logoMaxDepth {
+		p.addf("%s: nesting %d levels deep (an element may stand at most %d levels down, the root svg being level 1)",
+			label, parts.depth, logoMaxDepth)
 	}
 	return p
 }
