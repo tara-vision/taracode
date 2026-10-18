@@ -365,11 +365,12 @@ privately.
 
 The rules, all checked by `go test ./internal/evals/docscheck/`:
 
-- **Both files.** A file is one JSON document in UTF-8 without a byte order mark, and `schema` is 1. Every key named in
-  this section is present, spelled exactly as here (keys are case-sensitive), and no other key stands beside them. A
-  list is a JSON list, `[]` when it is empty, and an object is an object; `null` stands only for a sponsor's `until`
-  and a run's `by` and `url`. No text holds U+FFFD, the replacement character that a broken character or a lone
-  surrogate escape turns into, and every text keeps to plain hyphens and straight quotes.
+- **Both files.** A file is one JSON document in UTF-8 without a byte order mark, and `schema` is 1. `sponsors.json`
+  is at most 65,536 bytes and `lab-log.json` at most 262,144, the most the site reads of each. Every key named in this
+  section is present, spelled exactly as here (keys are case-sensitive), and no other key stands beside them. A list is
+  a JSON list, `[]` when it is empty, and an object is an object; `null` stands only for a sponsor's `until` and a
+  run's `by` and `url`. No text holds U+FFFD, the replacement character that a broken character or a lone surrogate
+  escape turns into, and every text keeps to plain hyphens and straight quotes.
 - **Sponsors.** `id` is a unique lowercase slug (`[a-z0-9-]+`), which also names the logo file; `tier` is `title`,
   `lab-sponsor`, `team`, `lab-hours` or `supporter`; `name` is not blank; `url` is an https link.
 - **Terms.** `since` and `until` are months (`YYYY-MM`); `until` is null while the sponsorship runs and never before

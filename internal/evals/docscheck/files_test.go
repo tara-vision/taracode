@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -213,8 +214,9 @@ func keyPath(at, key string) string {
 	return at + "." + key
 }
 
-// readJSON decodes the file at path into v with decodeStrict and fails the test when it cannot.
-func readJSON(t *testing.T, path string, v any) {
+// readJSON decodes the file at path into v with decodeStrict and fails the test when it cannot. It returns the bytes
+// it read, for the rules that weigh the file.
+func readJSON(t *testing.T, path string, v any) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -223,6 +225,18 @@ func readJSON(t *testing.T, path string, v any) {
 	if err := decodeStrict(data, v); err != nil {
 		t.Fatalf("%s: %v", path, err)
 	}
+	return data
+}
+
+// checkFileSize: a file is at most limit bytes, the most the site reads of it. A file over its cap is invalid to the
+// page, which then shows nothing of it, so CI refuses it first.
+func checkFileSize(name string, data []byte, limit int) []string {
+	var p findings
+	if len(data) > limit {
+		p.addf("%s: %d bytes, over the %d bytes the site reads (the page would take the file as invalid)",
+			name, len(data), limit)
+	}
+	return p
 }
 
 // boardFacts is what the boards show, the things a sponsor's marks and a lab-log entry's machines must point at.
@@ -511,6 +525,30 @@ func TestDecodeStrictHoldsTheFileToItsType(t *testing.T) {
 			"entries[0].runs: null, but the rules want a list"},
 		{"a null count in an entry", `"hours": 32`, `"hours": null`, "entries[0].hours: null, but the rules want a number"},
 	})
+}
+
+// TestCheckFileSizeKeepsToWhatTheSiteReads: sponsors.json may weigh 65,536 bytes and lab-log.json 262,144, the caps of
+// the site's readers; one byte more is one problem, since the page would take the file as invalid and show nothing
+// of it. The sizes are written out, so that the caps are pinned to the site's numbers.
+func TestCheckFileSizeKeepsToWhatTheSiteReads(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		size, limit int
+		over        bool
+	}{
+		{"sponsors.json", 65536, sponsorsMaxBytes, false},
+		{"sponsors.json", 65537, sponsorsMaxBytes, true},
+		{"lab-log.json", 262144, labLogMaxBytes, false},
+		{"lab-log.json", 262145, labLogMaxBytes, true},
+	} {
+		got := checkFileSize(c.name, make([]byte, c.size), c.limit)
+		switch {
+		case c.over && (len(got) != 1 || !strings.Contains(got[0], c.name+": "+strconv.Itoa(c.size)+" bytes, over the")):
+			t.Errorf("%s of %d bytes gave %q, want exactly one problem: over the cap", c.name, c.size, got)
+		case !c.over && len(got) != 0:
+			t.Errorf("%s of %d bytes gave %q, want none", c.name, c.size, got)
+		}
+	}
 }
 
 // TestTheKeyWalkRefusesAKindItCannotRead: the walk knows the kinds of field the file types hold; a map, say, makes it

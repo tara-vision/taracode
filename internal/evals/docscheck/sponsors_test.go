@@ -3,6 +3,7 @@ package docscheck
 import (
 	"cmp"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -379,12 +380,12 @@ const (
 	logosGlob    = docsDir + "sponsors/*.svg"
 )
 
-// TestSponsorsFileFollowsTheRules: the committed sponsors.json, with the logos that sit beside it and the committed
-// boards, passes every rule in the current month, so a pull request that breaks one fails in CI before the site reads
-// the file.
+// TestSponsorsFileFollowsTheRules: the committed sponsors.json, within the size the site reads, with the logos that sit
+// beside it and the committed boards, passes every rule in the current month, so a pull request that breaks one fails
+// in CI before the site reads the file.
 func TestSponsorsFileFollowsTheRules(t *testing.T) {
 	var doc sponsorsDoc
-	readJSON(t, sponsorsPath, &doc)
+	data := readJSON(t, sponsorsPath, &doc)
 	files, err := filepath.Glob(logosGlob)
 	if err != nil {
 		t.Fatal(err)
@@ -393,7 +394,9 @@ func TestSponsorsFileFollowsTheRules(t *testing.T) {
 	for _, file := range files {
 		logos[strings.TrimSuffix(filepath.Base(file), ".svg")] = true
 	}
-	for _, problem := range checkSponsors(doc, loadBoardFacts(t), logos, currentMonth()) {
+	problems := slices.Concat(checkFileSize(sponsorsPath, data, sponsorsMaxBytes),
+		checkSponsors(doc, loadBoardFacts(t), logos, currentMonth()))
+	for _, problem := range problems {
 		t.Error(problem)
 	}
 }

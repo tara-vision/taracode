@@ -70,6 +70,10 @@ var countWords = []string{"zero", "one", "two", "three", "four", "five", "six", 
 // sponsorsSchema is the one version of sponsors.json that the rules and the site read.
 const sponsorsSchema = 1
 
+// sponsorsMaxBytes is the most of sponsors.json that the site reads, the cap of its EvalSponsors (64 KB): over it, the
+// page takes the file as invalid and shows no mark, no credit and no Title line.
+const sponsorsMaxBytes = 64 * 1024
+
 // label names a sponsor in a message.
 func (s sponsor) label() string { return fmt.Sprintf("sponsor %q", s.ID) }
 

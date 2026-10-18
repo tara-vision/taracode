@@ -58,6 +58,9 @@ type entrySponsors struct {
 const (
 	// labLogSchema is the one version of lab-log.json that the rules and the site read.
 	labLogSchema = 1
+	// labLogMaxBytes is the most of lab-log.json that the site reads, the cap of its EvalLabLog (256 KB): over it, the
+	// page takes the file as invalid and shows the lab log's invitation instead of its entries.
+	labLogMaxBytes = 256 * 1024
 	// dateLayout is a day written YYYY-MM-DD, in the reference time of the time package.
 	dateLayout = "2006-01-02"
 )

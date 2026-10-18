@@ -465,15 +465,17 @@ func TestLabLogSchemaOfAFileIsChecked(t *testing.T) {
 // The committed lab log.
 const labLogPath = docsDir + "lab-log.json"
 
-// TestLabLogFileFollowsTheRules: the committed lab-log.json, with the committed sponsors.json its ids point at and the
-// committed boards its machines are on, passes every rule in the current month, so a pull request that breaks one fails
-// in CI before the site reads the file.
+// TestLabLogFileFollowsTheRules: the committed lab-log.json, within the size the site reads, with the committed
+// sponsors.json its ids point at and the committed boards its machines are on, passes every rule in the current month,
+// so a pull request that breaks one fails in CI before the site reads the file.
 func TestLabLogFileFollowsTheRules(t *testing.T) {
 	var log labLogDoc
-	readJSON(t, labLogPath, &log)
+	data := readJSON(t, labLogPath, &log)
 	var sponsors sponsorsDoc
 	readJSON(t, sponsorsPath, &sponsors)
-	for _, problem := range checkLabLog(log, sponsors, loadBoardFacts(t), currentMonth()) {
+	problems := slices.Concat(checkFileSize(labLogPath, data, labLogMaxBytes),
+		checkLabLog(log, sponsors, loadBoardFacts(t), currentMonth()))
+	for _, problem := range problems {
 		t.Error(problem)
 	}
 }
