@@ -344,6 +344,68 @@ shows the engine's estimate, marked with `~`. A model takes two to fifteen minut
 results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
 `docs/evals/results/` wait until the report can hold one model on several machines.
 
+## Lab log and sponsors
+
+Two files in this folder hold what [code.tara.vision/evals](https://code.tara.vision/evals) shows besides the boards:
+[sponsors.json](sponsors.json), the credited sponsors and the paid runs of named models (the logos of the Title, Lab
+sponsor and Team tiers are in `sponsors/<id>.svg`), and [lab-log.json](lab-log.json), one public entry per month: the
+lab hours, the models measured and the releases and what they changed for the boards, the month's sponsors and its
+GitHub Sponsors total, and what comes next. They are reviewed data, versioned like the board, and the site reads them
+from the `main` branch of this repository.
+
+`sponsors.json` has `schema`, `sponsors` and `runs`; `lab-log.json` has `schema` and `entries`. A sponsor has `id`,
+`name`, `tier`, `url`, `since`, `until` and `marks`. A paid run has `id`, `model`, `month`, `by` and `url`. A lab-log
+entry has `month`, `published`, `hours`, `board_runs`, `task_runs`, `models`, `releases`, `sponsors`, `runs`,
+`github_total_usd` and `next`. There is no amount per sponsor: the only amount in either file is an entry's
+`github_total_usd`, the GitHub Sponsors money of its month.
+
+Any money from a company whose products appear on the boards is disclosed, whatever the amount: it is listed with its
+marks (at the Supporter tier too), marked on its rows and named in the lab log, so a board company cannot sponsor
+privately.
+
+The rules, all checked by `go test ./internal/evals/docscheck/`:
+
+- **Both files.** `schema` is 1 (a missing key counts as 0), a file holds no key beyond the ones named in this section,
+  and every text keeps to plain hyphens and straight quotes.
+- **Sponsors.** `id` is a unique lowercase slug (`[a-z0-9-]+`), which also names the logo file; `tier` is `title`,
+  `lab-sponsor`, `team`, `lab-hours` or `supporter`; `name` is not blank; `url` is an https link.
+- **Terms.** `since` and `until` are months (`YYYY-MM`); `until` is null while the sponsorship runs and never before
+  `since`; both months count, so a sponsor is current from `since` through `until`. At most one `title` sponsor and
+  three `lab-sponsor` sponsors are current in any month.
+- **Marks.** `marks` has `models` and `engines`, name prefixes compared without regard to case, and `machines`, board
+  hardware labels written exactly as in `scoreboard.json`. Every prefix must match at least one row of the boards, so a
+  typo cannot drop a disclosure. A sponsor with marks never holds `title`, and a `supporter` entry has marks, since
+  Supporter is for a company on the boards only.
+- **Paid runs.** `id` is a unique slug, `model` is not blank, `month` is a month, and `by` is null for a buyer who stays
+  unnamed and the buyer's name otherwise, never blank. A run's `url`, when it has one, is an https link, and a run that
+  names its buyer has one.
+- **Logos.** A `title`, `lab-sponsor` or `team` sponsor has a logo; the other tiers have none, and a logo that belongs
+  to no sponsor of those tiers fails the check. A logo is an SVG of at most 50 KB with one root `<svg>` that has a
+  `viewBox`. It has no DOCTYPE, no `<script>`, `<foreignObject>`, `<image>` or `<iframe>`, no `<style>` that holds
+  `@import` or `url(`, no `on*` attribute, and no `href` or `xlink:href` that is not a `#fragment`. The page draws a
+  logo as a mask in the text color, so only its shape counts: a logo whose marks differ only by color is prepared as
+  one shape on a transparent background.
+- **Lab log.** `month` is a month, each month has one entry, and the entries run from the newest month down.
+  `published` and a release's `date` are real days (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and
+  `sponsors.supporters` are whole numbers, not below zero. `github_total_usd` is not below zero.
+- **Models and releases.** A change in `models` has `model`, `change` (`added` or `re-measured`) and `machines`, board
+  hardware labels written exactly as in `scoreboard.json`. A release has `project` (`taraengine` or `taracode`),
+  `version`, `date` and `effect`. `next` is not blank.
+- **Sponsors of a month.** `sponsors` lists sponsor ids under `title`, `lab-sponsor`, `team`, `lab-hours` and
+  `supporter`, and counts the other Supporters in `supporters`. Each id is a sponsor of `sponsors.json`, listed under
+  its own tier and current in the entry's month; each id in `runs` is a paid run bought in that month.
+- **Completeness.** The other way round too: every sponsor of `sponsors.json` that is current in an entry's month is
+  listed under its tier in that entry, and every paid run bought in that month is in its `runs`. So a sponsor, a board
+  company or a paid run has to be named in the lab log of each month it covers, and adding one with an earlier month
+  later means amending the old entry.
+
+Each change goes in through a pull request that edits these files: a new sponsor (with the logo, for a Title, Lab
+sponsor or Team sponsor), an ended credit (`until` set to the last credited month) or a month's entry, which goes in at
+the end of that month. `go test ./internal/evals/docscheck/` runs in CI and fails the pull request on any rule above.
+The site keeps the files for an hour, so a merged change is live on /evals within the hour, and sooner with a cache
+clear on the site, run once raw.githubusercontent.com serves the new file (it caches for about five minutes, and a
+clear before that keeps the old file for another hour).
+
 ## Environment isolation
 
 Every `eval run` builds the assistant with an isolated environment, not the operator's own: `KUBECONFIG`
