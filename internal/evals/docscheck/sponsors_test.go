@@ -69,6 +69,9 @@ var slugPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 // countWords spell the small counts a message gives.
 var countWords = []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
 
+// sponsorsSchema is the one version of sponsors.json that the rules and the site read.
+const sponsorsSchema = 1
+
 // label names a sponsor in a message.
 func (s sponsor) label() string { return fmt.Sprintf("sponsor %q", s.ID) }
 
@@ -119,16 +122,30 @@ func countWord(n int) string {
 // own.
 func checkSponsors(doc sponsorsDoc, f boardFacts, logos map[string]bool) []string {
 	return slices.Concat(
+		checkSponsorSchema(doc.Schema),
 		checkSponsorIDs(doc.Sponsors),
 		checkSponsorTiers(doc.Sponsors),
+		checkSponsorNames(doc.Sponsors),
 		checkSponsorURLs(doc.Sponsors),
 		checkSponsorMonths(doc.Sponsors),
 		checkTierCaps(doc.Sponsors),
 		checkMarks(doc.Sponsors, f),
 		checkLogoPresence(doc.Sponsors, logos),
 		checkPaidRuns(doc.Runs),
+		checkRunModels(doc.Runs),
+		checkRunBuyers(doc.Runs),
 		checkSponsorsText(doc),
 	)
+}
+
+// checkSponsorSchema: the file declares the schema the site reads. The site takes any other value, and a missing key
+// (which reads as 0), as an invalid file and then shows no mark, no credit and no Title line.
+func checkSponsorSchema(schema int) []string {
+	var p findings
+	if schema != sponsorsSchema {
+		p.addf("schema is %d, but the site reads only schema %d (a missing schema key reads as 0)", schema, sponsorsSchema)
+	}
+	return p
 }
 
 // checkSponsorIDs: an id is a slug, since it names the logo file, and belongs to one sponsor.
@@ -153,6 +170,17 @@ func checkSponsorTiers(sponsors []sponsor) []string {
 	for _, s := range sponsors {
 		if !slices.Contains(knownTiers, s.Tier) {
 			p.addf("%s: unknown tier %q", s.label(), s.Tier)
+		}
+	}
+	return p
+}
+
+// checkSponsorNames: a credit shows the sponsor's name, so the name is not empty.
+func checkSponsorNames(sponsors []sponsor) []string {
+	var p findings
+	for _, s := range sponsors {
+		if strings.TrimSpace(s.Name) == "" {
+			p.addf("%s: empty name (a credit shows the sponsor's name)", s.label())
 		}
 	}
 	return p
@@ -290,6 +318,29 @@ func checkPaidRuns(runs []run) []string {
 	return p
 }
 
+// checkRunModels: a run names the model that was bought, so the model is not empty. It is not matched against the
+// boards: a model may be bought before its rows exist.
+func checkRunModels(runs []run) []string {
+	var p findings
+	for _, r := range runs {
+		if strings.TrimSpace(r.Model) == "" {
+			p.addf("%s: empty run model (name the model exactly as the boards do)", r.label())
+		}
+	}
+	return p
+}
+
+// checkRunBuyers: by is null for a buyer who stays unnamed and the buyer's name otherwise, never an empty string.
+func checkRunBuyers(runs []run) []string {
+	var p findings
+	for _, r := range runs {
+		if r.By != nil && strings.TrimSpace(*r.By) == "" {
+			p.addf("%s: empty buyer (by is set but empty; use null for an unnamed buyer)", r.label())
+		}
+	}
+	return p
+}
+
 // checkSponsorsText: plain hyphens and straight quotes in every text of the sponsors and the runs.
 func checkSponsorsText(doc sponsorsDoc) []string {
 	var p findings
@@ -384,6 +435,12 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		edit   func(d *sponsorsDoc)
 	}{
 		{name: "a clean file"},
+		{name: "a schema the site does not read", want: "schema", edit: func(d *sponsorsDoc) {
+			d.Schema = 2
+		}},
+		{name: "a missing schema key, which reads as 0", want: "schema", edit: func(d *sponsorsDoc) {
+			d.Schema = 0
+		}},
 		{name: "a repeated sponsor id", want: "duplicate id", edit: func(d *sponsorsDoc) {
 			d.Sponsors = append(d.Sponsors, d.Sponsors[hoursCo])
 		}},
@@ -392,6 +449,12 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		}},
 		{name: "an unknown tier", want: "unknown tier", edit: func(d *sponsorsDoc) {
 			d.Sponsors[hoursCo].Tier = "gold"
+		}},
+		{name: "a sponsor without a name", want: "empty name", edit: func(d *sponsorsDoc) {
+			d.Sponsors[hoursCo].Name = ""
+		}},
+		{name: "a sponsor name of spaces", want: "empty name", edit: func(d *sponsorsDoc) {
+			d.Sponsors[hoursCo].Name = "  "
 		}},
 		{name: "a sponsor link that is not https", want: "not https", edit: func(d *sponsorsDoc) {
 			d.Sponsors[hoursCo].URL = "http://hours.example"
@@ -472,8 +535,23 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		{name: "a link without a buyer that is not https", want: "not https", edit: func(d *sponsorsDoc) {
 			d.Runs[1].URL = strPtr("http://nobody.example")
 		}},
+		{name: "a run without a model", want: "empty run model", edit: func(d *sponsorsDoc) {
+			d.Runs[1].Model = ""
+		}},
+		{name: "a run model of spaces", want: "empty run model", edit: func(d *sponsorsDoc) {
+			d.Runs[1].Model = "  "
+		}},
+		{name: "a buyer named by an empty string", want: "empty buyer", edit: func(d *sponsorsDoc) {
+			d.Runs[0].By = strPtr("")
+		}},
+		{name: "a buyer named by spaces", want: "empty buyer", edit: func(d *sponsorsDoc) {
+			d.Runs[0].By = strPtr("  ")
+		}},
 		{name: "a model bought again in a later month", edit: func(d *sponsorsDoc) {
 			d.Runs = append(d.Runs, run{ID: "run-three", Model: "qwen3.8:27b", Month: "2027-01"})
+		}},
+		{name: "a model bought before it is on any board", edit: func(d *sponsorsDoc) {
+			d.Runs = append(d.Runs, run{ID: "run-new", Model: "not-on-the-boards:7b", Month: "2027-01"})
 		}},
 		{name: "prefixes ignore case", edit: func(d *sponsorsDoc) {
 			d.Sponsors[labCo].Marks = marks{Models: []string{"Qwen"}, Engines: []string{"ollama"}}
@@ -493,6 +571,31 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 				t.Errorf("want exactly one problem containing %q, got %q", c.want, got)
 			}
 		})
+	}
+}
+
+// TestSchemaOfAFileIsChecked: a file that declares schema 2, or declares none (a missing key decodes to 0), is
+// refused, since the site takes it as invalid and then shows no mark, credit or Title line at all.
+func TestSchemaOfAFileIsChecked(t *testing.T) {
+	for _, c := range []struct {
+		name, data string
+		refused    bool
+	}{
+		{"schema 1", `{"schema": 1, "sponsors": [], "runs": []}`, false},
+		{"schema 2", `{"schema": 2, "sponsors": [], "runs": []}`, true},
+		{"no schema key", `{"sponsors": [], "runs": []}`, true},
+	} {
+		var doc sponsorsDoc
+		if err := decodeStrict([]byte(c.data), &doc); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		got := checkSponsors(doc, testFacts(), nil)
+		switch {
+		case c.refused && (len(got) != 1 || !strings.Contains(got[0], "schema")):
+			t.Errorf("%s: problems = %q, want exactly one about the schema", c.name, got)
+		case !c.refused && len(got) != 0:
+			t.Errorf("%s: problems = %q, want none", c.name, got)
+		}
 	}
 }
 
