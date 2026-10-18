@@ -29,8 +29,29 @@ var logoBannedElements = []struct{ name, why string }{
 // svgNamespace is the namespace of SVG. A browser draws a root svg only in this namespace.
 const svgNamespace = "http://www.w3.org/2000/svg"
 
-// xmlNamespace is the namespace of the xml prefix, which is bound without a declaration.
-const xmlNamespace = "http://www.w3.org/XML/1998/namespace"
+// xmlPrefix is the prefix of the xml namespace, which is bound without a declaration, and xmlnsPrefix the prefix of a
+// declaration: xmlns:<prefix> declares a prefix.
+const (
+	xmlPrefix   = "xml"
+	xmlnsPrefix = "xmlns"
+)
+
+// xmlNamespace and xmlnsNamespace are the namespaces of those two prefixes. Each belongs to its own prefix alone: no
+// other prefix is bound to either.
+const (
+	xmlNamespace   = "http://www.w3.org/XML/1998/namespace"
+	xmlnsNamespace = "http://www.w3.org/2000/xmlns/"
+)
+
+// The most a logo asks of a strict reader: elements nest at most logoMaxDepth levels deep, the root svg being level 1,
+// and a name is at most logoMaxName bytes long as written, a prefix and its colon counted. The site parses with libxml,
+// which reads 257 levels and names of 50,000 bytes (a browser caps nesting too). The name limit sits far inside that,
+// 256 against 50,000 bytes. The depth limit sits only one level inside it, 256 against 257, and on purpose:
+// logoMaxDepth must not be raised, so that CI stays the stricter side.
+const (
+	logoMaxDepth = 256
+	logoMaxName  = 256
+)
 
 // viewBoxName is the name of the viewBox attribute: spelled so, and in no namespace.
 var viewBoxName = xml.Name{Local: "viewBox"}
@@ -56,13 +77,17 @@ type logoParts struct {
 	instructions []string           // the target of every other processing instruction, in document order
 	textBefore   string             // the first text before the root that is not blank, as written
 	textAfter    string             // the first text after the root that is not blank, as written
-	unbound      []unboundPrefix    // every prefix that no namespace in scope binds, or that is bound to an empty one
+	tags         []startTag         // the start tag of every element as written, in the order of elements
+	unbound      []unboundPrefix    // every prefix that no xmlns:<prefix> in scope declares, or that is declared empty
+	maxDepth     int                // the deepest level an element stands at; the root is level 1
+	surrogateRef string             // the first character reference to a surrogate, as written; "" when none
 	badChar      string             // where the file holds a character XML does not allow; "" when it holds none
 	err          error              // why the walk stopped before the end of the file: it is not well-formed XML
 }
 
-// unboundPrefix is a prefix that no namespace in scope binds, with the element it stands on and, for an attribute, the
-// attribute's local name; or, when empty is set, a prefix that the element declares with an empty namespace.
+// unboundPrefix is a prefix, as written, that no xmlns:<prefix> on its element or above declares, with the element it
+// stands on and, for an attribute, the attribute's local name; or, when empty is set, a prefix that the element
+// declares with an empty namespace.
 type unboundPrefix struct {
 	prefix, element, attr string
 	empty                 bool
@@ -131,7 +156,7 @@ func (p logoParts) attrs() []logoAttr {
 }
 
 // blank reports whether s holds nothing but the white space of XML: spaces, tabs, carriage returns and line feeds.
-func blank(s string) bool { return strings.Trim(s, " \t\r\n") == "" }
+func blank(s string) bool { return strings.Trim(s, xmlSpace) == "" }
 
 // logoWalk is the state of the one walk over the tokens of a logo: what it has collected, how deep it is among the
 // elements, and the style element it is in.
@@ -140,16 +165,17 @@ type logoWalk struct {
 	css        strings.Builder // the text of the style element being read
 	depth      int             // how deep the walk is
 	styleDepth int             // the depth of the outermost style element the walk is in; 0 when it is in none
-	scopes     [][]string      // the namespaces that each open element declares, the innermost last
+	scopes     [][]string      // the prefixes that each open element declares, the innermost last
 }
 
 // readLogo reads a logo: it finds the first character that XML does not allow, reads past a byte order mark that opens
 // the file, and walks the XML tokens once. The walk stops at the first syntax error and keeps what it read before it,
 // and the rules judge only what they find. A CDATA section arrives as text, so the style rules read it like any
 // other text, and the text nodes of a style element are joined with the comments left out, the way a browser reads its
-// CSS. Each token is also taken as written in the file, so that a declaration is known to open the file or not, and so
-// that text outside the root is judged by its bytes: a CDATA section or a character reference there is text, even
-// when it stands for a space.
+// CSS. Each token is also taken as written in the file, so that a declaration is known to open the file or not, so
+// that text outside the root is judged by its bytes (a CDATA section or a character reference there is text, even when
+// it stands for a space), and so that a start tag is judged by its names, its spacing and its references as written,
+// which the decoder has translated, let pass or replaced.
 func readLogo(file []byte) logoParts {
 	var w logoWalk
 	w.parts.badChar = badCharIn(file)
@@ -169,11 +195,15 @@ func readLogo(file []byte) logoParts {
 	}
 }
 
-// take files one token. raw is the token as written, and first says whether it opens the file.
+// take files one token. raw is the token as written, and first says whether it opens the file. A character reference to
+// a surrogate is looked for in the text as written, in every kind of token, where the decoder has already replaced it.
 func (w *logoWalk) take(tok xml.Token, raw string, first bool) {
+	if w.parts.surrogateRef == "" {
+		w.parts.surrogateRef = surrogateRefIn(raw)
+	}
 	switch t := tok.(type) {
 	case xml.StartElement:
-		w.open(t)
+		w.open(t, readStartTag(raw))
 	case xml.EndElement:
 		w.close()
 	case xml.CharData:
@@ -185,13 +215,16 @@ func (w *logoWalk) take(tok xml.Token, raw string, first bool) {
 	}
 }
 
-// open files an element, counts it as a root when it stands at the top, notes a style element the walk enters, and
-// takes the namespaces the element declares into scope before it looks for unbound prefixes.
-func (w *logoWalk) open(t xml.StartElement) {
+// open files an element with its start tag as written, counts it as a root when it stands at the top, notes how deep
+// the walk gets and a style element it enters, and takes the prefixes the element declares into scope before it looks
+// for unbound ones.
+func (w *logoWalk) open(t xml.StartElement, tag startTag) {
 	w.depth++
+	w.parts.maxDepth = max(w.parts.maxDepth, w.depth)
 	w.parts.elements = append(w.parts.elements, t)
-	w.scopes = append(w.scopes, declaredNamespaces(t))
-	w.parts.unbound = append(w.parts.unbound, w.unboundIn(t)...)
+	w.parts.tags = append(w.parts.tags, tag)
+	w.scopes = append(w.scopes, declaredPrefixes(t))
+	w.parts.unbound = append(w.parts.unbound, w.unboundIn(tag)...)
 	if w.depth == 1 {
 		w.parts.roots++
 	}
@@ -200,8 +233,8 @@ func (w *logoWalk) open(t xml.StartElement) {
 	}
 }
 
-// close ends an element, takes its namespaces out of scope, and with the outermost style element files the text of
-// that style.
+// close ends an element, takes its prefixes out of scope, and with the outermost style element files the text of that
+// style.
 func (w *logoWalk) close() {
 	if w.depth == w.styleDepth {
 		w.parts.styles = append(w.parts.styles, w.css.String())
@@ -212,43 +245,49 @@ func (w *logoWalk) close() {
 	w.depth--
 }
 
-// declaredNamespaces are the namespaces an element declares, with xmlns or with xmlns:<prefix>.
-func declaredNamespaces(t xml.StartElement) []string {
+// declaredPrefixes lists the prefixes an element declares with xmlns:<prefix>, as written. A declaration binds its
+// prefix unless libxml drops it, which the value decides, as the decoder has read it: the xml namespace and the xmlns
+// namespace belong to the prefixes xml and xmlns alone, so a prefix declared for either stays unbound, and the prefix
+// xmlns cannot be declared at all. A declaration with an empty namespace is listed, as it is refused by a rule of its
+// own.
+func declaredPrefixes(t xml.StartElement) []string {
 	var out []string
 	for _, a := range t.Attr {
-		if a.Name.Space == "xmlns" || a.Name == (xml.Name{Local: "xmlns"}) {
-			out = append(out, a.Value)
+		if a.Name.Space == xmlnsPrefix && a.Name.Local != xmlnsPrefix && a.Value != xmlNamespace &&
+			a.Value != xmlnsNamespace {
+			out = append(out, a.Name.Local)
 		}
 	}
 	return out
 }
 
-// unboundIn lists the prefixes of an element and of its attributes that no namespace in scope binds. The decoder puts
-// a bound prefix's namespace in a name and leaves an unbound prefix as it is, so a name whose space is no namespace in
-// scope has an unbound prefix. The root's own name is left to checkLogoNamespace. A declaration is no prefix, but one
-// that binds a prefix to an empty namespace (xmlns:x="", which XML forbids while it allows xmlns="") is listed too:
-// the decoder then reads x:path as a name without a prefix.
-func (w *logoWalk) unboundIn(t xml.StartElement) []unboundPrefix {
+// unboundIn lists the prefixes of an element and of its attributes that no xmlns:<prefix> declares on the element or
+// above it. A prefix is judged as written: the decoder puts the namespace of a bound prefix in a name and leaves an
+// unbound prefix as it is, so a name's namespace cannot tell a bound prefix from an unbound one that is spelled like a
+// namespace in scope. The root's own name is left to checkLogoNamespace. A declaration is no prefix, but one that
+// declares a prefix with an empty namespace (xmlns:x="", which XML forbids while it allows xmlns="") is listed too.
+func (w *logoWalk) unboundIn(tag startTag) []unboundPrefix {
 	var out []unboundPrefix
-	if w.depth > 1 && !w.bound(t.Name.Space) {
-		out = append(out, unboundPrefix{prefix: t.Name.Space, element: t.Name.Local})
+	prefix, element := splitName(tag.name)
+	if w.depth > 1 && !w.bound(prefix) {
+		out = append(out, unboundPrefix{prefix: prefix, element: element})
 	}
-	for _, a := range t.Attr {
+	for _, a := range tag.attrs {
+		prefix, local := splitName(a.name)
 		switch {
-		case a.Name.Space == "xmlns" && a.Value == "":
-			out = append(out, unboundPrefix{prefix: a.Name.Local, element: t.Name.Local, empty: true})
-		case a.Name.Space != "xmlns" && !w.bound(a.Name.Space):
-			out = append(out, unboundPrefix{prefix: a.Name.Space, element: t.Name.Local, attr: a.Name.Local})
+		case prefix == xmlnsPrefix && a.value == "":
+			out = append(out, unboundPrefix{prefix: local, element: element, empty: true})
+		case prefix != xmlnsPrefix && !w.bound(prefix):
+			out = append(out, unboundPrefix{prefix: prefix, element: element, attr: local})
 		}
 	}
 	return out
 }
 
-// bound reports whether space, the namespace of a name, needs no declaration (no namespace, or the xml prefix's) or is
-// a namespace that an open element declares.
-func (w *logoWalk) bound(space string) bool {
-	return space == "" || space == xmlNamespace ||
-		slices.ContainsFunc(w.scopes, func(scope []string) bool { return slices.Contains(scope, space) })
+// bound reports whether prefix needs no declaration (no prefix, or xml) or is declared by an open element.
+func (w *logoWalk) bound(prefix string) bool {
+	return prefix == "" || prefix == xmlPrefix ||
+		slices.ContainsFunc(w.scopes, func(declared []string) bool { return slices.Contains(declared, prefix) })
 }
 
 // text files text: in a style element as its CSS, and outside the root, when it is not blank, as text before or after
@@ -286,25 +325,32 @@ func (w *logoWalk) instruction(t xml.ProcInst, raw string, first bool) {
 
 // checkLogo applies the logo rules of the design to the bytes of the file called name and returns one message per
 // problem: a file of at most 50 KB; well-formed XML in UTF-8 the way a strict parser reads it, so that the site never
-// refuses a logo that passed here (only characters XML allows, comments included; a byte order mark that opens the file
-// is read past; before the root stand only blank lines, comments and an XML declaration that opens the file, after it
-// only blank lines and comments; no other processing instruction, no attribute twice, no unbound prefix and no
-// malformed name); one root svg in the SVG namespace with a viewBox; no DOCTYPE; no script, foreignObject, image or
-// iframe element; no style element that holds @import, url( or a backslash; no on* attribute and no href that is not a
-// #fragment. Every rule is a function of its own.
+// refuses a logo that passed here (only characters XML allows, comments included, and no character reference to a
+// surrogate; a byte order mark that opens the file is read past; before the root stand only blank lines, comments and
+// an XML declaration that opens the file, after it only blank lines and comments; no other processing instruction;
+// white space before every attribute and no attribute twice; no unbound prefix, judged as written; no malformed name,
+// and a part after the colon that starts like a name; no name over 256 bytes and no element deeper than 256 levels);
+// one root svg in the SVG namespace with a viewBox; no DOCTYPE; no script, foreignObject, image or iframe element; no
+// style element that holds @import, url( or a backslash; no on* attribute and no href that is not a #fragment. Every
+// rule is a function of its own.
 func checkLogo(name string, data []byte) []string {
 	label, parts := fmt.Sprintf("logo %q", name), readLogo(data)
 	return slices.Concat(
 		checkLogoSize(label, data),
 		checkLogoXML(label, parts),
+		checkLogoSurrogates(label, parts),
 		checkLogoTextBefore(label, parts),
 		checkLogoTextAfter(label, parts),
 		checkLogoDeclarationPlace(label, parts),
 		checkLogoDeclarationForm(label, parts),
 		checkLogoInstructions(label, parts),
+		checkLogoAttrSpacing(label, parts),
 		checkLogoDuplicateAttrs(label, parts),
 		checkLogoPrefixes(label, parts),
 		checkLogoNames(label, parts),
+		checkLogoLocalPartStart(label, parts),
+		checkLogoNameLengths(label, parts),
+		checkLogoDepth(label, parts),
 		checkLogoRoot(label, parts),
 		checkLogoNamespace(label, parts),
 		checkLogoViewBox(label, parts),
@@ -323,137 +369,6 @@ func checkLogoSize(label string, data []byte) []string {
 	var p findings
 	if len(data) > logoMaxBytes {
 		p.addf("%s: over %d KB (%d bytes; a logo is one small shape)", label, logoMaxBytes/1024, len(data))
-	}
-	return p
-}
-
-// checkLogoXML: the file is XML with exactly one root element and only characters XML allows. The decoder lets a
-// second root pass without a word, and a character it does not read in a comment, so both are judged here. Only UTF-8
-// is read: a file that declares another encoding, or holds a byte that is not UTF-8, is refused here with a word on
-// how to mend it.
-func checkLogoXML(label string, parts logoParts) []string {
-	var p findings
-	switch {
-	case parts.badChar != "":
-		p.addf("%s: not XML: %s", label, parts.badChar)
-	case errors.Is(parts.err, errNotUTF8):
-		p.addf("%s: not XML: %v (save the file as UTF-8)", label, parts.err)
-	case parts.err != nil:
-		p.addf("%s: not XML: %v", label, parts.err)
-	case parts.roots == 0:
-		p.addf("%s: not XML: no root element", label)
-	case parts.roots > 1:
-		p.addf("%s: not XML: %d root elements (a logo has one svg)", label, parts.roots)
-	}
-	return p
-}
-
-// checkLogoTextBefore: nothing but blank lines, comments and the XML declaration stands before the root, as a strict
-// XML parser wants: a CDATA section or a character reference there is text too. A file with no root is left to
-// checkLogoXML.
-func checkLogoTextBefore(label string, parts logoParts) []string {
-	var p findings
-	if parts.roots > 0 && parts.textBefore != "" {
-		p.addf("%s: text before the root: %.40q (only blank lines, comments and the XML declaration come before <svg>)",
-			label, parts.textBefore)
-	}
-	return p
-}
-
-// checkLogoTextAfter: nothing but blank lines and comments follows the root, as a strict XML parser wants.
-func checkLogoTextAfter(label string, parts logoParts) []string {
-	var p findings
-	if parts.textAfter != "" {
-		p.addf("%s: text after the root: %.40q (only blank lines and comments come after </svg>)", label, parts.textAfter)
-	}
-	return p
-}
-
-// checkLogoDeclarationPlace: an XML declaration opens the file or is not there. A strict XML parser refuses one after
-// anything else, a blank line or a first declaration included.
-func checkLogoDeclarationPlace(label string, parts logoParts) []string {
-	var p findings
-	if parts.misplaced > 0 {
-		p.addf("%s: xml declaration out of place (it may only open the file, once, with nothing before it)", label)
-	}
-	return p
-}
-
-// checkLogoDeclarationForm: the declaration that opens the file says version 1.0, and after it at most the encoding
-// UTF-8 and a standalone yes or no, as xmlDeclaration spells out.
-func checkLogoDeclarationForm(label string, parts logoParts) []string {
-	var p findings
-	if parts.declaration != "" && !xmlDeclaration.MatchString(parts.declaration) {
-		p.addf(`%s: malformed xml declaration %.80q (write <?xml version="1.0"?>, with encoding="UTF-8" and `+
-			`standalone="yes" or "no" after the version if at all)`, label, parts.declaration)
-	}
-	return p
-}
-
-// checkLogoInstructions: no processing instruction but the XML declaration. An <?xml-stylesheet?> loads a stylesheet,
-// and no other kind belongs in a logo.
-func checkLogoInstructions(label string, parts logoParts) []string {
-	var p findings
-	for _, target := range parts.instructions {
-		p.addf("%s: processing instruction <?%s?> (a logo holds none but the XML declaration that opens it)",
-			label, target)
-	}
-	return p
-}
-
-// checkLogoDuplicateAttrs: no attribute twice on one element, which a strict XML parser refuses. Two attributes are one
-// when their names and namespaces are: xlink:href and x:href, with x bound to XLink, are the same attribute twice.
-func checkLogoDuplicateAttrs(label string, parts logoParts) []string {
-	var p findings
-	for _, e := range parts.elements {
-		seen := map[xml.Name]bool{}
-		for _, a := range e.Attr {
-			if seen[a.Name] {
-				p.addf("%s: duplicate attribute %s on <%s> (a strict XML parser refuses it)",
-					label, a.Name.Local, e.Name.Local)
-			}
-			seen[a.Name] = true
-		}
-	}
-	return p
-}
-
-// checkLogoPrefixes: every prefix below the root names a namespace declared on its element or above it, and no prefix
-// is declared with an empty namespace. A browser that reads namespaces refuses a file with an unbound prefix, so the
-// logo would not show; xmlns:xlink taken out while an xlink:href stays is the usual case. The root's own prefix is
-// left to checkLogoNamespace.
-func checkLogoPrefixes(label string, parts logoParts) []string {
-	var p findings
-	for _, u := range parts.unbound {
-		switch {
-		case u.empty:
-			p.addf("%s: empty namespace for prefix %s on <%s> (xmlns:%s needs a namespace URI)",
-				label, u.prefix, u.element, u.prefix)
-		case u.attr == "":
-			p.addf("%s: unbound prefix %s on <%s> (declare xmlns:%s on it or above it)", label, u.prefix, u.element, u.prefix)
-		default:
-			p.addf("%s: unbound prefix %s on the attribute %s of <%s> (declare xmlns:%s on it or above it)",
-				label, u.prefix, u.attr, u.element, u.prefix)
-		}
-	}
-	return p
-}
-
-// checkLogoNames: a name of an element or an attribute is a local name, or a prefix and a local name with one colon
-// between them. The decoder refuses a second colon but takes a name with a colon at either end (<:x>, <x:>, :d="") as
-// one local name, which a browser that reads namespaces refuses.
-func checkLogoNames(label string, parts logoParts) []string {
-	var p findings
-	for _, e := range parts.elements {
-		if strings.Contains(e.Name.Local, ":") {
-			p.addf("%s: malformed name <%s> (a colon stands only between a prefix and a local name)", label, e.Name.Local)
-		}
-		for _, a := range e.Attr {
-			if strings.Contains(a.Name.Local, ":") {
-				p.addf("%s: malformed name %s on <%s> (a colon stands only between a prefix and a local name)",
-					label, a.Name.Local, e.Name.Local)
-			}
-		}
 	}
 	return p
 }

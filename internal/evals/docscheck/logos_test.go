@@ -1,8 +1,10 @@
 package docscheck
 
 import (
+	"encoding/xml"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -33,6 +35,15 @@ func paddedLogo(size int) string {
 	const wrapper = "<!---->"
 	return cleanLogo + "<!--" + strings.Repeat(" ", size-len(cleanLogo)-len(wrapper)) + "-->"
 }
+
+// nested is a logo whose deepest element, a path, stands at this level (the root svg is level 1), under groups.
+func nested(levels int) string {
+	groups := levels - 2
+	return inLogo(strings.Repeat("<g>", groups) + logoShape + strings.Repeat("</g>", groups))
+}
+
+// nameOf is a name of exactly size bytes that opens with head and goes on with the letter a.
+func nameOf(head string, size int) string { return head + strings.Repeat("a", size-len(head)) }
 
 // TestCheckLogoCatchesEachRule: a logo that follows the rules gives no problems; every other case breaks one rule and
 // gets exactly one message, carrying the rule's key. The cases without a key are the edges that must stay clean.
@@ -72,6 +83,37 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 			inLogo(`<style>.curl{fill:#fff !important}</style>` + logoShape), ""},
 		{"two styles whose texts only add up to an import", inLogo(`<style>@imp</style><style>ort</style>`), ""},
 		{"text before a style that only adds up to an import", inLogo(`<title>@imp</title><style>ort</style>`), ""},
+		{"character references next to the surrogates", inLogo(`<title>&#xD7FF;&#xE000;</title>` + logoShape), ""},
+		{"character references next to the surrogates, in decimal", inLogo(`<path d="&#55295;&#57344;"/>`), ""},
+		{"an escaped ampersand before what reads as a reference to a surrogate",
+			inLogo(`<title>&amp;#xD800;</title>` + logoShape), ""},
+		{"attributes separated by a space", inLogo(`<path d="M0 0" fill="red"/>`), ""},
+		{"attributes separated by a tab, a line feed and a carriage return",
+			inLogo("<path d=\"M0 0\"\t\n\rfill=\"red\"/>"), ""},
+		{"attributes in single quotes and in double quotes", inLogo(`<path d='M0 0' fill="red" id='a'/>`), ""},
+		{"values that hold quotes, an equals sign and the end of a tag",
+			inLogo(`<path id='a"b="1"' d="M0 0/>" fill='x>y'/>`), ""},
+		{"white space around the equals sign", inLogo("<path d =\t\"M0 0\"\nfill\r= 'red' />"), ""},
+		{"prefixed names whose local parts start with a letter or an underscore",
+			inLogo(`<a:b1 xmlns:a="urn:a" xmlns:b1="urn:b" xmlns:_c="urn:c" a:d.x="1" a:_y="2"/>`), ""},
+		{"a local part that starts with a letter beyond ASCII",
+			inLogo(`<a:` + string(rune(0xe9)) + ` xmlns:a="urn:a"/>`), ""},
+		{"a prefix bound to a namespace spelled like it", inLogo(`<g xmlns:x="x"><x:path d="M0 0h10v10z"/></g>`), ""},
+		{"a prefix bound on a parent and used by a child and its attribute",
+			inLogo(`<g xmlns:x="urn:x"><x:path x:d="1"/></g>`), ""},
+		{"the xml prefix declared for the xml namespace",
+			inLogo(`<g xmlns:xml="` + xmlNamespace + `" xml:space="preserve"/>`), ""},
+		{"a prefix declared for a namespace that only starts like the xml namespace",
+			inLogo(`<g xmlns:p="` + xmlNamespace + `/"><p:path d="M0 0h10v10z"/></g>`), ""},
+		{"nesting 256 levels deep", nested(256), ""},
+		{"many elements side by side", inLogo(strings.Repeat("<g/>", 300)), ""},
+		{"an element name of 256 bytes", inLogo("<" + nameOf("", 256) + "/>"), ""},
+		{"an attribute name of 256 bytes", inLogo("<path " + nameOf("", 256) + `="1"/>`), ""},
+		{"a prefixed element name of 256 bytes", inLogo("<" + nameOf("p:", 256) + ` xmlns:p="urn:p"/>`), ""},
+		{"a prefixed attribute name of 256 bytes", inLogo(`<path xmlns:p="urn:p" ` + nameOf("p:", 256) + `="1"/>`), ""},
+		{"a namespace declaration of 256 bytes", inLogo("<g " + nameOf("xmlns:", 256) + `="urn:a"/>`), ""},
+		{"an element name of 128 two-byte characters, 256 bytes",
+			inLogo("<" + strings.Repeat(string(rune(0xe9)), 128) + "/>"), ""},
 
 		{"a logo over 50 KB", paddedLogo(51201), "over 50 KB"},
 
@@ -89,6 +131,24 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a control character in a comment", "<!-- " + string(rune(0x1)) + " -->" + cleanLogo, "XML does not allow"},
 		{"U+FFFF in a comment", "<!--" + string(rune(0xffff)) + "-->" + cleanLogo, "XML does not allow"},
 		{"a control character in a title", inLogo("<title>" + string(rune(0x1)) + "</title>"), "XML does not allow"},
+
+		{"a character reference to a surrogate", inLogo(`<title>&#xD800;</title>` + logoShape), "character reference"},
+		{"a character reference to the last surrogate, in decimal, in an attribute", inLogo(`<path d="&#57343;"/>`),
+			"character reference"},
+		{"a character reference to the first surrogate, in decimal", inLogo(`<title>&#55296;</title>`),
+			"character reference"},
+		{"a character reference to a surrogate with leading zeros", inLogo(`<title>&#x0000DBFF;</title>`),
+			"character reference"},
+		{"a character reference to a surrogate in lowercase hexadecimal digits", inLogo(`<title>&#xdbff;</title>`),
+			"character reference"},
+		{"a decimal character reference to a surrogate with leading zeros", inLogo(`<title>&#0055296;</title>`),
+			"character reference"},
+		{"a character reference to a surrogate, in an attribute in single quotes", inLogo(`<path d='&#xDC00;'/>`),
+			"character reference"},
+		{"a character reference to a surrogate, in a comment", inLogo(`<!-- &#xD800; -->` + logoShape),
+			"character reference"},
+		{"a character reference to a surrogate, in CDATA", inLogo(`<title><![CDATA[&#xDFFF;]]></title>`),
+			"character reference"},
 
 		{"text before the root", "logo" + cleanLogo, "text before the root"},
 		{"two byte order marks", utf8BOM + utf8BOM + cleanLogo, "text before the root"},
@@ -123,17 +183,66 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a viewBox twice on the root", rootWith(`viewBox="0 0 10 10" viewBox="0 0 10 10"`, logoShape),
 			"duplicate attribute"},
 
+		{"attributes with no white space between them",
+			`<svg xmlns="` + svgNamespace + `"viewBox="0 0 10 10">` + logoShape + `</svg>`, "white space"},
+		{"single-quoted attributes with no white space between them",
+			`<svg xmlns='` + svgNamespace + `'viewBox='0 0 10 10'>` + logoShape + `</svg>`, "white space"},
+		{"attributes with no white space between them, on a child", inLogo(`<path d="M0 0"fill="red"/>`), "white space"},
+		{"attributes with no white space after a value that holds the end of a tag", inLogo(`<path d="M0 0/>"fill="red"/>`),
+			"white space"},
+
 		{"an element with an unbound prefix", inLogo(`<x:path d="M0 0h10v10z"/>`), "unbound prefix"},
 		{"an xlink:href without xmlns:xlink", rootWith(`viewBox="0 0 10 10"`, `<use xlink:href="#a"/>`),
 			"unbound prefix"},
 		{"a prefix bound only on a sibling", inLogo(`<g xmlns:x="urn:x"/><x:path d="M0 0h10v10z"/>`), "unbound prefix"},
 		{"a prefix that names a namespace declared only on a sibling",
 			inLogo(`<g xmlns:y="x"/><x:path d="M0 0h10v10z"/>`), "unbound prefix"},
+		{"an unbound prefix spelled like a namespace declared in scope",
+			inLogo(`<g xmlns:a="x"><x:path d="M0 0h10v10z"/></g>`), "unbound prefix"},
+		{"an unbound attribute prefix spelled like a namespace declared in scope", inLogo(`<g xmlns:a="x" x:b="1"/>`),
+			"unbound prefix"},
+		{"an unbound prefix spelled like the default namespace in scope",
+			inLogo(`<g xmlns="x"><x:path d="M0 0h10v10z"/></g>`), "unbound prefix"},
+		{"xlink: spelled like a namespace that another prefix is bound to",
+			rootWith(`viewBox="0 0 10 10" xmlns:a="xlink"`, `<use xlink:href="#a"/>`), "unbound prefix"},
+		{"a prefix declared for the xml namespace, used by an element",
+			inLogo(`<g xmlns:p="` + xmlNamespace + `"><p:path d="M0 0h10v10z"/></g>`), "unbound prefix"},
+		{"a prefix declared for the xml namespace, used by an attribute",
+			inLogo(`<g xmlns:p="` + xmlNamespace + `" p:a="1"/>`), "unbound prefix"},
+		{"a prefix declared for the xml namespace spelled with a character reference",
+			inLogo(`<g xmlns:p="http&#58;//www.w3.org/XML/1998/namespace"><p:path d="M0 0h10v10z"/></g>`), "unbound prefix"},
+		{"a prefix declared for the xmlns namespace, used by an element",
+			inLogo(`<g xmlns:p="` + xmlnsNamespace + `"><p:path d="M0 0h10v10z"/></g>`), "unbound prefix"},
+		{"a prefix declared for the xmlns namespace, used by an attribute",
+			inLogo(`<g xmlns:p="` + xmlnsNamespace + `" p:a="1"/>`), "unbound prefix"},
+		{"the xmlns prefix declared, used by an element", inLogo(`<g xmlns:xmlns="urn:x"><xmlns:path d="M0 0h10v10z"/></g>`),
+			"unbound prefix"},
 		{"a prefix declared with an empty namespace", inLogo(`<g xmlns:x=""><x:path d="M0 0h10v10z"/></g>`),
 			"empty namespace"},
 		{"an element name that opens with a colon", inLogo(`<:path d="M0 0h10v10z"/>`), "malformed name"},
 		{"an element name that ends with a colon", inLogo(`<path:/>`), "malformed name"},
 		{"an attribute name that opens with a colon", inLogo(`<path :d="M0 0h10v10z"/>`), "malformed name"},
+		{"a prefixed element name whose local part starts with a digit", inLogo(`<a:1b xmlns:a="urn:a"/>`),
+			"malformed name"},
+		{"a prefixed attribute name whose local part starts with a dot", inLogo(`<path xmlns:a="urn:a" a:.d="x"/>`),
+			"malformed name"},
+		{"a prefixed element name whose local part starts with a hyphen", inLogo(`<a:-b xmlns:a="urn:a"/>`),
+			"malformed name"},
+		{"a namespace declaration whose prefix starts with a digit", inLogo(`<g xmlns:6link="urn:a"/>`), "malformed name"},
+
+		{"nesting 257 levels deep", nested(257), "nesting"},
+		{"nesting 7000 levels deep", nested(7000), "nesting"},
+
+		{"an element name of 257 bytes", inLogo("<" + nameOf("", 257) + "/>"), "name longer"},
+		{"an attribute name of 257 bytes", inLogo("<path " + nameOf("", 257) + `="1"/>`), "name longer"},
+		{"a prefixed element name of 257 bytes", inLogo("<" + nameOf("p:", 257) + ` xmlns:p="urn:p"/>`), "name longer"},
+		{"a prefixed attribute name of 257 bytes", inLogo(`<path xmlns:p="urn:p" ` + nameOf("p:", 257) + `="1"/>`),
+			"name longer"},
+		{"a namespace declaration of 257 bytes", inLogo("<g " + nameOf("xmlns:", 257) + `="urn:a"/>`), "name longer"},
+		{"an element name of 129 two-byte characters, 258 bytes",
+			inLogo("<" + strings.Repeat(string(rune(0xe9)), 129) + "/>"), "name longer"},
+		{"an element name of 50001 bytes", inLogo("<" + nameOf("", 50001) + "/>"), "name longer"},
+		{"an attribute name of 50001 bytes", inLogo("<path " + nameOf("", 50001) + `="1"/>`), "name longer"},
 
 		{"an html root", `<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>`, "root is not svg"},
 		{"a group as the root", `<g viewBox="0 0 10 10"><path d="M0 0h10v10z"/></g>`, "root is not svg"},
@@ -254,19 +363,24 @@ func TestCheckLogoSizeLimitIsFiftyKB(t *testing.T) {
 func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 	// The file opens with a declaration without a version and holds a second one out of place; the svg closes, text
 	// follows it, and a second svg is left open, so that the walk fails at the end of the file after it has seen
-	// everything above.
+	// everything above. Inside the first svg, besides the older faults, stand a character reference to a surrogate, two
+	// attributes with no white space between them, a prefixed name whose local part starts with a digit, 257 levels of
+	// nesting and an element name of 257 bytes.
 	everything := `<?xml encoding="UTF-8"?><!--` + strings.Repeat(" ", 51200) + `-->` + declaration +
 		`<?xml-stylesheet href="a.css"?><!DOCTYPE svg>x<svg onload="x" a="1" a="2">` +
-		`<x:g/><g:/><script/><foreignObject/><image href="https://example.com/a.png"/><iframe/>` +
+		`<x:g/><g:/><title>&#xD800;</title><g id="a"class="b"/><g xmlns:p="urn:p"><p:1b/></g>` +
+		strings.Repeat("<g>", 256) + strings.Repeat("</g>", 256) + "<" + nameOf("", 257) + "/>" +
+		`<script/><foreignObject/><image href="https://example.com/a.png"/><iframe/>` +
 		`<style>@import "a.css";.b{fill:url(#g)}.c{content:"` + backslash + `"}</style></svg>y<svg`
 	cases := []struct {
 		name, svg string
 		want      []string // the key of each message, in order
 	}{
-		{"every rule at once", everything, []string{"over 50 KB", "not XML", "text before the root",
-			"text after the root", "declaration out of place", "malformed xml declaration", "processing instruction",
-			"duplicate attribute", "unbound prefix", "malformed name", "not in the SVG namespace", "no viewBox", "doctype",
-			"script", "foreignobject", "image", "iframe", "style import", "style url", "style escape", "event attribute",
+		{"every rule at once", everything, []string{"over 50 KB", "not XML", "character reference",
+			"text before the root", "text after the root", "declaration out of place", "malformed xml declaration",
+			"processing instruction", "white space", "duplicate attribute", "unbound prefix", "malformed name",
+			"malformed name", "name longer", "nesting", "not in the SVG namespace", "no viewBox", "doctype", "script",
+			"foreignobject", "image", "iframe", "style import", "style url", "style escape", "event attribute",
 			"external href"}},
 		{"a doctype with an entity the file uses",
 			`<!DOCTYPE svg [<!ENTITY x "y">]>` + rootWith(`viewBox="0 0 10 10"`, "&x;"), []string{"not XML", "doctype"}},
@@ -289,9 +403,11 @@ func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 
 // TestCheckLogoSaysWhatItFound: a message names what a contributor has to change: the reason a file is not XML (and,
 // for another encoding, to save it as UTF-8), the text before the root, the malformed declaration, the processing
-// instruction, the attribute given twice and its element, the namespace the root needs, the root that is not svg, the
-// event attribute and the element it sits on, the element and the value of an external href. A long value, such as an
-// embedded picture, is cut short.
+// instruction, the attribute given twice and its element, the prefix that nothing declares, the character reference to
+// a surrogate, the attribute that follows no white space, the name that does not start as a name, the depth or the
+// length that passes the limit, the namespace the root needs, the root that is not svg, the event attribute and the
+// element it sits on, the element and the value of an external href. A long value, such as an embedded picture, is cut
+// short.
 func TestCheckLogoSaysWhatItFound(t *testing.T) {
 	cases := []struct {
 		name, svg string
@@ -315,10 +431,24 @@ func TestCheckLogoSaysWhatItFound(t *testing.T) {
 			[]string{"unbound prefix x on <path>", "xmlns:x"}},
 		{"an attribute with an unbound prefix", rootWith(`viewBox="0 0 10 10"`, `<use xlink:href="#a"/>`),
 			[]string{"unbound prefix xlink on the attribute href of <use>", "xmlns:xlink"}},
+		{"an unbound prefix spelled like a namespace in scope", inLogo(`<g xmlns:a="x"><x:path d="M0 0h10v10z"/></g>`),
+			[]string{"unbound prefix x on <path>", "xmlns:x"}},
 		{"a prefix declared with an empty namespace", inLogo(`<g xmlns:x=""/>`),
 			[]string{"empty namespace for prefix x on <g>"}},
 		{"a malformed element name", inLogo(`<path:/>`), []string{"malformed name <path:>"}},
 		{"a malformed attribute name", inLogo(`<path :d="M0 0h10v10z"/>`), []string{"malformed name :d on <path>"}},
+		{"a prefixed element name whose local part is no name", inLogo(`<a:1b xmlns:a="urn:a"/>`),
+			[]string{"malformed name <a:1b>", "can open an XML name", "never with a digit from 0 to 9"}},
+		{"a prefixed attribute name whose local part is no name", inLogo(`<path xmlns:a="urn:a" a:.d="x"/>`),
+			[]string{"malformed name a:.d on <path>", "can open an XML name", "a dot or a hyphen"}},
+		{"a character reference to a surrogate", inLogo(`<title>&#xD800;</title>`), []string{"&#xD800;"}},
+		{"attributes with no white space between them", inLogo(`<path d="M0 0"fill="red"/>`),
+			[]string{"white space before the attribute fill on <path>"}},
+		{"nesting past the limit", nested(257), []string{"nesting 257 levels deep", "at most 256"}},
+		{"an element name past the limit", inLogo("<" + nameOf("", 257) + "/>"),
+			[]string{"name longer than 256 bytes", "the element", "257 bytes"}},
+		{"an attribute name past the limit", inLogo("<path " + nameOf("", 257) + `="1"/>`),
+			[]string{"name longer than 256 bytes", "the attribute", "of <path>", "257 bytes"}},
 		{"a root outside the SVG namespace", `<svg viewBox="0 0 10 10"/>`, []string{`xmlns="` + svgNamespace + `"`}},
 		{"a root that is not svg", `<html/>`, []string{"<html>"}},
 		{"an event attribute", inLogo(`<path onclick="x" d="M0 0h10v10z"/>`), []string{"onclick", "<path>"}},
@@ -345,6 +475,92 @@ func TestCheckLogoSaysWhatItFound(t *testing.T) {
 	}
 	if len(got[0]) > 200 {
 		t.Errorf("the problem is %d bytes long, want it cut short (under 200 bytes)", len(got[0]))
+	}
+}
+
+// TestReadStartTag: a start tag is read as it is written: its name, and each attribute by its name, its value as
+// written and whether white space stands before it, with a quote closing the value only when it is the quote that
+// opened it. The names are those the decoder reads from the same text without translating them.
+func TestReadStartTag(t *testing.T) {
+	e := string(rune(0xe9))
+	cases := []struct {
+		name, tag string
+		want      startTag
+	}{
+		{"no attributes", `<svg>`, startTag{name: "svg"}},
+		{"an empty tag", `<svg/>`, startTag{name: "svg"}},
+		{"an empty tag after a space", `<svg />`, startTag{name: "svg"}},
+		{"an attribute", `<a b="1">`, startTag{"a", []tagAttr{{"b", "1", true}}}},
+		{"an attribute in single quotes", `<a b='1'/>`, startTag{"a", []tagAttr{{"b", "1", true}}}},
+		{"an empty value", `<a b=""/>`, startTag{"a", []tagAttr{{"b", "", true}}}},
+		{"attributes with no white space between them", `<a b="1"c='2'/>`,
+			startTag{"a", []tagAttr{{"b", "1", true}, {"c", "2", false}}}},
+		{"every kind of white space, around the equals sign too", "<a\tb\n=\r\"1\"\nc = '2'\r\n/>",
+			startTag{"a", []tagAttr{{"b", "1", true}, {"c", "2", true}}}},
+		{"values that hold the other quote, an equals sign and the end of a tag", `<a b='x"y=z>w' c="/>'">`,
+			startTag{"a", []tagAttr{{"b", `x"y=z>w`, true}, {"c", "/>'", true}}}},
+		{"prefixed names", `<x:a xmlns:x="u" x:b="1">`,
+			startTag{"x:a", []tagAttr{{"xmlns:x", "u", true}, {"x:b", "1", true}}}},
+		{"names with a colon at either end", `<x: :a="1" b:="2"/>`,
+			startTag{"x:", []tagAttr{{":a", "1", true}, {"b:", "2", true}}}},
+		{"letters beyond ASCII", "<" + e + " " + e + `="1"/>`, startTag{e, []tagAttr{{e, "1", true}}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := readStartTag(c.tag)
+			if got.name != c.want.name || !slices.Equal(got.attrs, c.want.attrs) {
+				t.Errorf("read %+v, want %+v", got, c.want)
+			}
+			sameAsDecoder(t, c.tag, got)
+		})
+	}
+}
+
+// sameAsDecoder fails the test when the names and values of tag, which holds no reference, are not those the decoder
+// reads from text without translating them.
+func sameAsDecoder(t *testing.T, text string, tag startTag) {
+	t.Helper()
+	tok, err := xml.NewDecoder(strings.NewReader(text)).RawToken()
+	start, ok := tok.(xml.StartElement)
+	if err != nil || !ok {
+		t.Fatalf("the decoder reads %q as %T, %v; want a start element", text, tok, err)
+	}
+	prefix, local := splitName(tag.name)
+	if start.Name != (xml.Name{Space: prefix, Local: local}) || len(start.Attr) != len(tag.attrs) {
+		t.Fatalf("the decoder reads the element %+v with %d attributes, the reader %q with %d",
+			start.Name, len(start.Attr), tag.name, len(tag.attrs))
+	}
+	for i, a := range start.Attr {
+		prefix, local := splitName(tag.attrs[i].name)
+		if a.Name != (xml.Name{Space: prefix, Local: local}) || a.Value != tag.attrs[i].value {
+			t.Errorf("the decoder reads the attribute %+v = %q, the reader %+v", a.Name, a.Value, tag.attrs[i])
+		}
+	}
+}
+
+// TestStartsName: the first character of the part after a colon is one that XML lets a name start with (production 4
+// of XML 1.0, fifth edition, without the colon). Both sides of the end of every range are pinned, and so are an empty
+// string and a byte that is no UTF-8, which start no name.
+func TestStartsName(t *testing.T) {
+	starts := []rune{'A', 'Z', '_', 'a', 'z', 0xc0, 0xd6, 0xd8, 0xf6, 0xf8, 0x2ff, 0x370, 0x37d, 0x37f, 0x1fff, 0x200c,
+		0x200d, 0x2070, 0x218f, 0x2c00, 0x2fef, 0x3001, 0xd7ff, 0xf900, 0xfdcf, 0xfdf0, 0xfffd, 0x10000, 0xeffff}
+	others := []rune{'0', '9', '.', '-', ':', ' ', '@', '[', '`', '{', 0xb7, 0xbf, 0xd7, 0xf7, 0x300, 0x36f, 0x37e,
+		0x2000, 0x200b, 0x200e, 0x203f, 0x206f, 0x2190, 0x2bff, 0x2ff0, 0x3000, 0xe000, 0xf8ff, 0xfdd0, 0xfdef, 0xfffe,
+		0xf0000}
+	for _, r := range starts {
+		if !startsName(string(r) + "x") {
+			t.Errorf("%U does not start a name, want it to", r)
+		}
+	}
+	for _, r := range others {
+		if startsName(string(r) + "x") {
+			t.Errorf("%U starts a name, want it not to", r)
+		}
+	}
+	for _, s := range []string{"", string([]byte{0xff}), string([]byte{0xc3}) + "x"} {
+		if startsName(s) {
+			t.Errorf("%q starts a name, want it not to: it is empty or opens with a byte that is no UTF-8", s)
+		}
 	}
 }
 
