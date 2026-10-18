@@ -385,11 +385,18 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   unnamed and the buyer's name otherwise, never blank. A run's `url` is null or an https link, and a run that names its
   buyer has one.
 - **Logos.** A `title`, `lab-sponsor` or `team` sponsor has a logo; the other tiers have none, and a logo that belongs
-  to no sponsor of those tiers fails the check. A logo is an SVG of at most 50 KB with one root `<svg>` that has a
-  `viewBox`. It has no DOCTYPE, no `<script>`, `<foreignObject>`, `<image>` or `<iframe>`, no `<style>` that holds
-  `@import` or `url(`, no `on*` attribute, and no `href` or `xlink:href` that is not a `#fragment`. The page draws a
-  logo as a mask in the text color, so only its shape counts: a logo whose marks differ only by color is prepared as
-  one shape on a transparent background.
+  to no sponsor of those tiers fails the check. A logo is an SVG of at most 50 KB with one root `<svg>` in the SVG
+  namespace (`xmlns="http://www.w3.org/2000/svg"`) and a `viewBox` on it, without a prefix and not blank. It has no
+  DOCTYPE or other `<!...>` declaration, no `<script>`, `<foreignObject>`, `<image>` or `<iframe>`, no `<style>` that
+  holds `@import`, `url(` or a backslash (a CSS escape can spell either), no `on*` attribute, and no `href` or
+  `xlink:href` that is not a `#fragment`. The page draws a logo as a mask in the text color, so only its shape counts:
+  a logo whose marks differ only by color is prepared as one shape on a transparent background.
+- **Logo files.** A logo is UTF-8 and well-formed the way a strict XML parser, such as the site's and a browser's,
+  reads it. A byte order mark may open the file. An XML declaration is optional; when there is one, it comes first,
+  with nothing before it but that mark (not even a blank line), and reads `<?xml version="1.0"?>`, with
+  `encoding="UTF-8"` and `standalone="yes"` or `"no"` after the version if at all. Beside the declaration, only blank
+  lines and comments stand before the root and after it. There is no other processing instruction (an
+  `<?xml-stylesheet?>` included) and no attribute twice on one element.
 - **Lab log.** `month` is a month, each month has one entry, the entries run from the newest month down, and no month
   is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.

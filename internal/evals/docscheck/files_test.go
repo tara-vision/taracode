@@ -28,6 +28,9 @@ const scoreboardPath = docsDir + "scoreboard.json"
 // no fancy character appears in this source.
 var fancyRunes = string([]rune{0x2013, 0x2014, 0x2018, 0x2019, 0x201c, 0x201d})
 
+// backslash is built from its code point too, so that no escape sequence is typed into a case by mistake.
+var backslash = string(rune(0x5c))
+
 // utf8BOM is the byte order mark that a UTF-8 file may open with. A JSON file may not; an SVG file may.
 var utf8BOM = string([]byte{0xef, 0xbb, 0xbf})
 
@@ -458,7 +461,6 @@ func checkDecodeCases(t *testing.T, base string, newDoc func() any, cases []deco
 // object an object, null stands only where the type holds a pointer (until, by and url), the bytes are UTF-8 and no
 // text holds U+FFFD (the character a lone surrogate escape decodes to), and nothing follows the one document.
 func TestDecodeStrictHoldsTheFileToItsType(t *testing.T) {
-	backslash := string(rune(0x5c))
 	sponsorsDocs := func() any { return &sponsorsDoc{} }
 	checkDecodeCases(t, designSponsors, sponsorsDocs, []decodeCase{
 		{"the design's file", "", "", ""},

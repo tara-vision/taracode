@@ -20,6 +20,14 @@ func inLogo(body string) string { return logoOpen + body + "</svg>" }
 // cleanLogo follows every rule: one svg with a viewBox, holding one path.
 var cleanLogo = inLogo(logoShape)
 
+// rootWith is a root svg in the SVG namespace with the attributes given, holding body.
+func rootWith(attrs, body string) string {
+	return `<svg xmlns="` + svgNamespace + `" ` + attrs + `>` + body + `</svg>`
+}
+
+// declaration is the XML declaration that an editor writes at the top of a file.
+const declaration = `<?xml version="1.0" encoding="UTF-8"?>`
+
 // paddedLogo is the clean logo followed by a comment of spaces, so that the file is exactly size bytes long.
 func paddedLogo(size int) string {
 	const wrapper = "<!---->"
@@ -36,8 +44,15 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a single path", cleanLogo, ""},
 		{"a root and a path with a prefix", prefixed, ""},
 		{"an xml declaration and comments, one holding a script tag",
-			`<?xml version="1.0" encoding="UTF-8"?>` + "\n<!-- exported -->\n" +
-				inLogo(logoShape+`<!-- <script>alert(1)</script> -->`), ""},
+			declaration + "\n<!-- exported -->\n" + inLogo(logoShape+`<!-- <script>alert(1)</script> -->`), ""},
+		{"a declaration in single quotes, with spaces and a standalone",
+			`<?xml version = '1.0' encoding='utf-8' standalone='no' ?>` + cleanLogo, ""},
+		{"a byte order mark before the declaration", utf8BOM + declaration + cleanLogo, ""},
+		{"a byte order mark before the root", utf8BOM + cleanLogo, ""},
+		{"blank lines around the root", "\n\t \r\n" + cleanLogo + "\n\n", ""},
+		{"a comment after the root", cleanLogo + "\n<!-- end -->\n", ""},
+		{"an href and an xlink:href on one element", inLogo(`<use href="#a" xlink:href="#a"/>`), ""},
+		{"text inside the root", inLogo("Example Co" + logoShape), ""},
 		{"hrefs that point to a fragment",
 			inLogo(`<defs><path id="a" d="M0 0h10v10z"/></defs><use href="#a"/><use xlink:href="#a"/>`), ""},
 		{"a gradient named in an attribute",
@@ -55,20 +70,63 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 
 		{"text that is not XML", "this is not a logo", "not XML"},
 		{"an empty file", "", "not XML"},
-		{"a truncated file", `<svg viewBox="0 0 10 10"><path d="M0 0`, "not XML"},
-		{"an element left open", `<svg viewBox="0 0 10 10"><path/>`, "not XML"},
-		{"an end tag that does not match", `<svg viewBox="0 0 10 10"></g>`, "not XML"},
+		{"a truncated file", logoOpen + `<path d="M0 0`, "not XML"},
+		{"an element left open", logoOpen + `<path/>`, "not XML"},
+		{"an end tag that does not match", logoOpen + `</g>`, "not XML"},
 		{"an entity nobody defined", inLogo(`&nbsp;`), "not XML"},
 		{"two roots", cleanLogo + cleanLogo, "not XML"},
+		{"an encoding other than UTF-8", `<?xml version="1.0" encoding="ISO-8859-1"?>` + cleanLogo,
+			"save the file as UTF-8"},
+
+		{"text before the root", "logo" + cleanLogo, "text before the root"},
+		{"two byte order marks", utf8BOM + utf8BOM + cleanLogo, "text before the root"},
+		{"a no-break space before the root, which is no XML white space", string(rune(0xa0)) + cleanLogo,
+			"text before the root"},
+		{"a CDATA section before the root", `<![CDATA[ ]]>` + cleanLogo, "text before the root"},
+		{"a character reference before the root", `&#32;` + cleanLogo, "text before the root"},
+		{"text after the root", cleanLogo + "logo", "text after the root"},
+		{"a CDATA section after the root", cleanLogo + `<![CDATA[ ]]>`, "text after the root"},
+
+		{"a blank line before the declaration", "\n" + declaration + cleanLogo, "declaration out of place"},
+		{"a comment before the declaration", "<!-- exported -->" + declaration + cleanLogo, "declaration out of place"},
+		{"a second declaration", declaration + declaration + cleanLogo, "declaration out of place"},
+		{"a declaration inside the root", inLogo(declaration + logoShape), "declaration out of place"},
+		{"a declaration after the root", cleanLogo + declaration, "declaration out of place"},
+		{"a declaration without a version", `<?xml encoding="UTF-8"?>` + cleanLogo, "malformed xml declaration"},
+		{"a declaration with nothing in it", `<?xml?>` + cleanLogo, "malformed xml declaration"},
+		{"a version other than 1.0, spaced so the decoder does not read it", `<?xml version = "1.1"?>` + cleanLogo,
+			"malformed xml declaration"},
+		{"a standalone that is neither yes nor no", `<?xml version="1.0" standalone="maybe"?>` + cleanLogo,
+			"malformed xml declaration"},
+		{"the encoding after the standalone", `<?xml version="1.0" standalone="yes" encoding="UTF-8"?>` + cleanLogo,
+			"malformed xml declaration"},
+
+		{"a stylesheet instruction", `<?xml-stylesheet href="a.css"?>` + cleanLogo, "processing instruction"},
+		{"an instruction inside the root", inLogo(`<?php echo 1; ?>` + logoShape), "processing instruction"},
+		{"a declaration in capitals", `<?XML version="1.0"?>` + cleanLogo, "processing instruction"},
+
+		{"an attribute twice", inLogo(`<path d="M0 0h10v10z" d="M0 0h5v5z"/>`), "duplicate attribute"},
+		{"an attribute twice under two prefixes of one namespace",
+			inLogo(`<use xmlns:x="http://www.w3.org/1999/xlink" xlink:href="#a" x:href="#a"/>`), "duplicate attribute"},
+		{"a viewBox twice on the root", rootWith(`viewBox="0 0 10 10" viewBox="0 0 10 10"`, logoShape),
+			"duplicate attribute"},
 
 		{"an html root", `<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>`, "root is not svg"},
 		{"a group as the root", `<g viewBox="0 0 10 10"><path d="M0 0h10v10z"/></g>`, "root is not svg"},
 		{"a root in capitals", `<SVG viewBox="0 0 10 10"><path d="M0 0h10v10z"/></SVG>`, "root is not svg"},
 
-		{"an svg with width and height only",
-			`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path d="M0 0h10v10z"/></svg>`, "no viewBox"},
-		{"a viewBox spelled in lowercase", `<svg viewbox="0 0 10 10"><path d="M0 0h10v10z"/></svg>`, "no viewBox"},
-		{"a viewBox on an inner svg only", `<svg><svg viewBox="0 0 10 10"/></svg>`, "no viewBox"},
+		{"a root without xmlns", `<svg viewBox="0 0 10 10">` + logoShape + `</svg>`, "not in the SVG namespace"},
+		{"a root with an unbound svg: prefix", `<svg:svg viewBox="0 0 10 10"><svg:path d="M0 0h10v10z"/></svg:svg>`,
+			"not in the SVG namespace"},
+		{"a root in the XHTML namespace", `<svg xmlns="http://www.w3.org/1999/xhtml" viewBox="0 0 10 10">` + logoShape +
+			`</svg>`, "not in the SVG namespace"},
+
+		{"an svg with width and height only", rootWith(`width="10" height="10"`, logoShape), "no viewBox"},
+		{"a viewBox spelled in lowercase", rootWith(`viewbox="0 0 10 10"`, logoShape), "no viewBox"},
+		{"a viewBox on an inner svg only", rootWith("", `<svg viewBox="0 0 10 10"/>`), "no viewBox"},
+		{"a viewBox with a prefix", rootWith(`xmlns:x="urn:x" x:viewBox="0 0 10 10"`, logoShape), "no viewBox"},
+		{"an empty viewBox", rootWith(`viewBox=""`, logoShape), "empty viewBox"},
+		{"a viewBox of spaces", rootWith(`viewBox="  "`, logoShape), "empty viewBox"},
 
 		{"a doctype before the root",
 			`<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">` +
@@ -107,6 +165,12 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a style with a url, in CDATA", inLogo(`<style><![CDATA[a{background:url(x)}]]></style>`), "style url"},
 		{"a url in capitals, even to a fragment", inLogo(`<style>.a{fill:URL(#g)}</style>`), "style url"},
 
+		{"an import spelled with a CSS escape", inLogo(`<style>@` + backslash + `69mport "a.css";</style>`),
+			"style escape"},
+		{"a url spelled with a CSS escape", inLogo(`<style>.a{fill:u` + backslash + `72l(x)}</style>`), "style escape"},
+		{"a CSS escape in CDATA", inLogo(`<style><![CDATA[.a::after{content:"` + backslash + `2014"}]]></style>`),
+			"style escape"},
+
 		{"onload on the root",
 			`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" onload="alert(1)">` + logoShape + `</svg>`,
 			"event attribute"},
@@ -136,13 +200,17 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 }
 
 // TestCheckLogoSizeLimitIsFiftyKB: 50 KB is 51,200 bytes, a KB being 1024 bytes as in the site's own caps. The file at
-// the limit passes and one byte more does not.
+// the limit passes and one byte more does not, a byte order mark counted: the site weighs the file as it is.
 func TestCheckLogoSizeLimitIsFiftyKB(t *testing.T) {
 	for _, c := range []struct {
 		size int
+		bom  bool // the file opens with a byte order mark, which counts toward its size
 		over bool
-	}{{51199, false}, {51200, false}, {51201, true}} {
+	}{{51199, false, false}, {51200, false, false}, {51201, false, true}, {51200, true, false}, {51201, true, true}} {
 		svg := paddedLogo(c.size)
+		if c.bom {
+			svg = utf8BOM + paddedLogo(c.size-len(utf8BOM))
+		}
 		if len(svg) != c.size {
 			t.Fatalf("the fixture is %d bytes long, want %d", len(svg), c.size)
 		}
@@ -158,20 +226,25 @@ func TestCheckLogoSizeLimitIsFiftyKB(t *testing.T) {
 
 // TestCheckLogoReportsEveryProblemAtOnce: a logo that breaks several rules gets a message for each, in the order of the
 // rules and each naming the file; a DOCTYPE that defines an entity the file then uses is a doctype and not XML; a root
-// that is not svg is not also asked for a viewBox.
+// that is not svg is not also asked for a namespace or a viewBox.
 func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
-	// The svg is left open, so that the walk fails at the end of the file, after it has seen everything above.
-	everything := "<!--" + strings.Repeat(" ", 51200) + "-->" + `<!DOCTYPE svg><svg onload="x">` +
+	// The file opens with a declaration without a version and holds a second one out of place; the svg closes, text
+	// follows it, and a second svg is left open, so that the walk fails at the end of the file after it has seen
+	// everything above.
+	everything := `<?xml encoding="UTF-8"?><!--` + strings.Repeat(" ", 51200) + `-->` + declaration +
+		`<?xml-stylesheet href="a.css"?><!DOCTYPE svg>x<svg onload="x" a="1" a="2">` +
 		`<script/><foreignObject/><image href="https://example.com/a.png"/><iframe/>` +
-		`<style>@import "a.css";.b{fill:url(#g)}</style>`
+		`<style>@import "a.css";.b{fill:url(#g)}.c{content:"` + backslash + `"}</style></svg>y<svg`
 	cases := []struct {
 		name, svg string
 		want      []string // the key of each message, in order
 	}{
-		{"every rule at once", everything, []string{"over 50 KB", "not XML", "no viewBox", "doctype", "script",
-			"foreignobject", "image", "iframe", "style import", "style url", "event attribute", "external href"}},
-		{"a doctype with an entity the file uses", `<!DOCTYPE svg [<!ENTITY x "y">]><svg viewBox="0 0 10 10">&x;</svg>`,
-			[]string{"not XML", "doctype"}},
+		{"every rule at once", everything, []string{"over 50 KB", "not XML", "text before the root",
+			"text after the root", "declaration out of place", "malformed xml declaration", "processing instruction",
+			"duplicate attribute", "not in the SVG namespace", "no viewBox", "doctype", "script", "foreignobject",
+			"image", "iframe", "style import", "style url", "style escape", "event attribute", "external href"}},
+		{"a doctype with an entity the file uses",
+			`<!DOCTYPE svg [<!ENTITY x "y">]>` + rootWith(`viewBox="0 0 10 10"`, "&x;"), []string{"not XML", "doctype"}},
 		{"a root that is not svg beside a script", `<html><script/></html>`, []string{"root is not svg", "script"}},
 	}
 	for _, c := range cases {
@@ -189,15 +262,25 @@ func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
-// TestCheckLogoSaysWhatItFound: a message names what a contributor has to change: the reason a file is not XML, the
-// root that is not svg, the event attribute and the element it sits on, the element and the value of an external href.
-// A long value, such as an embedded picture, is cut short.
+// TestCheckLogoSaysWhatItFound: a message names what a contributor has to change: the reason a file is not XML (and,
+// for another encoding, to save it as UTF-8), the text before the root, the malformed declaration, the processing
+// instruction, the attribute given twice and its element, the namespace the root needs, the root that is not svg, the
+// event attribute and the element it sits on, the element and the value of an external href. A long value, such as an
+// embedded picture, is cut short.
 func TestCheckLogoSaysWhatItFound(t *testing.T) {
 	cases := []struct {
 		name, svg string
 		want      []string // fragments the one message holds
 	}{
-		{"a file that is not XML", `<svg viewBox="0 0 10 10"><path d="M0 0`, []string{"not XML", "unexpected EOF"}},
+		{"a file that is not XML", logoOpen + `<path d="M0 0`, []string{"not XML", "unexpected EOF"}},
+		{"an encoding other than UTF-8", `<?xml version="1.0" encoding="ISO-8859-1"?>` + cleanLogo,
+			[]string{"not XML", "ISO-8859-1", "save the file as UTF-8"}},
+		{"text before the root", "logo<!-- -->more" + cleanLogo, []string{`text before the root: "logo"`}},
+		{"a malformed declaration", `<?xml encoding="UTF-8"?>` + cleanLogo, []string{`"<?xml encoding=\"UTF-8\"?>"`}},
+		{"a processing instruction", `<?xml-stylesheet href="a.css"?>` + cleanLogo, []string{"<?xml-stylesheet?>"}},
+		{"an attribute twice", inLogo(`<path d="M0 0h10v10z" d="M0 0h5v5z"/>`),
+			[]string{"duplicate attribute d on <path>"}},
+		{"a root outside the SVG namespace", `<svg viewBox="0 0 10 10"/>`, []string{`xmlns="` + svgNamespace + `"`}},
 		{"a root that is not svg", `<html/>`, []string{"<html>"}},
 		{"an event attribute", inLogo(`<path onclick="x" d="M0 0h10v10z"/>`), []string{"onclick", "<path>"}},
 		{"an external href", inLogo(`<use xlink:href="https://example.com/a.svg#a"/>`),
