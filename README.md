@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/github/v/release/tara-vision/taracode?style=for-the-badge&logo=github&color=blue" alt="Release"></a>
+  <a href="https://github.com/tara-vision/taracode/releases"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcode.tara.vision%2Fapi%2Fversion&query=%24.version&label=release&style=for-the-badge&logo=github&color=blue" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://github.com/sponsors/tara-vision"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor tara-vision"></a>
   <a href="https://github.com/tara-vision/taracode/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/tara-vision/taracode/ci.yml?branch=main&style=for-the-badge&logo=github&label=CI" alt="CI"></a>
