@@ -376,9 +376,11 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   `since`; both months count, so a sponsor is current from `since` through `until`. At most one `title` sponsor and
   three `lab-sponsor` sponsors are current in any month.
 - **Marks.** `marks` has `models` and `engines`, name prefixes compared without regard to case, and `machines`, board
-  hardware labels written exactly as in `scoreboard.json`. Every prefix must match at least one row of the boards, so a
-  typo cannot drop a disclosure. A sponsor with marks never holds `title`, and a `supporter` entry has marks, since
-  Supporter is for a company on the boards only.
+  hardware labels written exactly as in `scoreboard.json`. While a sponsorship runs (`until` null or not before the
+  current month, in UTC), every prefix must match at least one row of the boards and every label must be a board's, so
+  a typo cannot drop a disclosure; once it has ended, its marks stay as they were and are no longer checked, so a board
+  refresh cannot fail the record. A sponsor with marks never holds `title`, and a `supporter` entry has marks, ended or
+  not, since Supporter is for a company on the boards only.
 - **Paid runs.** `id` is a unique slug, `model` is not blank, `month` is a month, and `by` is null for a buyer who stays
   unnamed and the buyer's name otherwise, never blank. A run's `url` is null or an https link, and a run that names its
   buyer has one.
@@ -393,8 +395,9 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.
   `github_total_usd` is not below zero.
 - **Models and releases.** A change in `models` has `model`, `change` (`added` or `re-measured`) and `machines`, board
-  hardware labels written exactly as in `scoreboard.json`. A release has `project` (`taraengine` or `taracode`),
-  `version`, `date` and `effect`. `next` is not blank.
+  hardware labels written exactly as in `scoreboard.json`: they are checked against the boards in the entries of the
+  current and the previous month (in UTC) and of any later month, and an older entry keeps the labels it named. A
+  release has `project` (`taraengine` or `taracode`), `version`, `date` and `effect`. `next` is not blank.
 - **Sponsors of a month.** `sponsors` lists sponsor ids under `title`, `lab-sponsor`, `team`, `lab-hours` and
   `supporter`, and counts the other Supporters in `supporters`. Each id is a sponsor of `sponsors.json`, listed under
   its own tier and current in the entry's month; each id in `runs` is a paid run bought in that month.

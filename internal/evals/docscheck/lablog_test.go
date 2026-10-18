@@ -1,6 +1,7 @@
 package docscheck
 
 import (
+	"cmp"
 	"reflect"
 	"slices"
 	"strings"
@@ -50,6 +51,9 @@ func cleanEntry() labEntry {
 	}
 }
 
+// logMonth is the month the lab-log fixtures are checked in, as the current month: the month of cleanEntry.
+const logMonth = "2026-10"
+
 // cleanLabLog is a lab log with the one clean entry.
 func cleanLabLog() labLogDoc { return labLogDoc{Schema: 1, Entries: []labEntry{cleanEntry()}} }
 
@@ -64,6 +68,7 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 	cases := []struct {
 		name     string
 		want     string               // the key the one message carries; empty for a log that stays clean
+		today    string               // the current month the log is checked in; empty for logMonth
 		log      func(l *labLogDoc)   // an edit of the lab log; the clean entry is its first
 		sponsors func(s *sponsorsDoc) // an edit of the sponsors file the entries point at
 	}{
@@ -119,6 +124,19 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 		}},
 		{name: "a machine label cut short, the second of the second model", want: "machine not on the boards",
 			log: func(l *labLogDoc) { l.Entries[0].Models[1].Machines[1] = "Apple M4 Max" }},
+		// The machines of the entries of the current and the previous month are held to the boards; an older entry
+		// keeps the machines it named, so that a board refresh cannot fail an old record.
+		{name: "a machine gone from the boards in last month's entry", want: "machine not on the boards",
+			today: "2026-11", log: func(l *labLogDoc) {
+				l.Entries[0].Models[0].Machines = []string{"NVIDIA RTX 4090 (24 GB)"}
+			}},
+		{name: "a machine gone from the boards in an older entry", today: "2026-12", log: func(l *labLogDoc) {
+			l.Entries[0].Models[0].Machines = []string{"NVIDIA RTX 4090 (24 GB)"}
+		}},
+		{name: "a machine not on the boards in an entry for a later month", want: "machine not on the boards",
+			today: "2026-09", log: func(l *labLogDoc) {
+				l.Entries[0].Models[0].Machines = []string{"NVIDIA RTX 4090 (24 GB)"}
+			}},
 
 		{name: "a project that is neither taraengine nor taracode", want: "project must be taraengine or taracode",
 			log: func(l *labLogDoc) { l.Entries[0].Releases[0].Project = "ollama" }},
@@ -191,7 +209,7 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 			if c.sponsors != nil {
 				c.sponsors(&sponsors)
 			}
-			got := checkLabLog(log, sponsors, testFacts())
+			got := checkLabLog(log, sponsors, testFacts(), cmp.Or(c.today, logMonth))
 			switch {
 			case c.want == "" && len(got) != 0:
 				t.Errorf("want no problem, got %q", got)
@@ -243,11 +261,33 @@ func TestEveryTierListOfAnEntryIsChecked(t *testing.T) {
 			t.Run(c.tier+": "+k.name, func(t *testing.T) {
 				log := cleanLabLog()
 				c.set(&log.Entries[0].Sponsors, []string{k.id})
-				got := checkLabLog(log, labSponsors(), testFacts())
+				got := checkLabLog(log, labSponsors(), testFacts(), logMonth)
 				if len(got) != 1 || !strings.Contains(got[0], k.want) || !strings.Contains(got[0], "sponsors."+c.tier+":") {
 					t.Errorf("want exactly one problem containing %q for the list %q, got %q", k.want, c.tier, got)
 				}
 			})
+		}
+	}
+}
+
+// TestBeforeLastMonthLetsGoOnlyWhatIsPast: a month is past once it is older than the month before the current one,
+// across a year too. The previous month, the current one, a later one and anything that is not a month are not.
+func TestBeforeLastMonthLetsGoOnlyWhatIsPast(t *testing.T) {
+	for _, c := range []struct {
+		month, thisMonth string
+		want             bool
+	}{
+		{"2026-08", "2026-10", true},
+		{"2026-09", "2026-10", false},
+		{"2026-10", "2026-10", false},
+		{"2026-11", "2026-10", false},
+		{"2026-11", "2027-01", true},
+		{"2026-12", "2027-01", false},
+		{"2026-1", "2026-10", false},
+		{"2025-13", "2026-10", false},
+	} {
+		if got := beforeLastMonth(c.month, c.thisMonth); got != c.want {
+			t.Errorf("beforeLastMonth(%q, %q) = %v, want %v", c.month, c.thisMonth, got, c.want)
 		}
 	}
 }
@@ -306,7 +346,7 @@ func TestLabLogReadsTheKeysOfTheDesign(t *testing.T) {
 	if want := cleanLabLog(); !reflect.DeepEqual(doc, want) {
 		t.Errorf("decoded %+v\nwant    %+v", doc, want)
 	}
-	for _, problem := range checkLabLog(doc, labSponsors(), testFacts()) {
+	for _, problem := range checkLabLog(doc, labSponsors(), testFacts(), logMonth) {
 		t.Error(problem)
 	}
 }
@@ -341,7 +381,7 @@ func TestLabLogSchemaOfAFileIsChecked(t *testing.T) {
 		{"no schema key", `{"entries": []}`, `missing key "schema"`},
 	} {
 		var doc labLogDoc
-		got := problemsOf(c.data, &doc, func() []string { return checkLabLog(doc, labSponsors(), testFacts()) })
+		got := problemsOf(c.data, &doc, func() []string { return checkLabLog(doc, labSponsors(), testFacts(), logMonth) })
 		switch {
 		case c.want != "" && (len(got) != 1 || !strings.Contains(got[0], c.want)):
 			t.Errorf("%s: problems = %q, want exactly one containing %q", c.name, got, c.want)
@@ -355,14 +395,14 @@ func TestLabLogSchemaOfAFileIsChecked(t *testing.T) {
 const labLogPath = docsDir + "lab-log.json"
 
 // TestLabLogFileFollowsTheRules: the committed lab-log.json, with the committed sponsors.json its ids point at and the
-// committed boards its machines are on, passes every rule, so a pull request that breaks one fails in CI before the
-// site reads the file.
+// committed boards its machines are on, passes every rule in the current month, so a pull request that breaks one fails
+// in CI before the site reads the file.
 func TestLabLogFileFollowsTheRules(t *testing.T) {
 	var log labLogDoc
 	readJSON(t, labLogPath, &log)
 	var sponsors sponsorsDoc
 	readJSON(t, sponsorsPath, &sponsors)
-	for _, problem := range checkLabLog(log, sponsors, loadBoardFacts(t)) {
+	for _, problem := range checkLabLog(log, sponsors, loadBoardFacts(t), currentMonth()) {
 		t.Error(problem)
 	}
 }

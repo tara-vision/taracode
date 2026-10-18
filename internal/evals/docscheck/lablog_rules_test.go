@@ -149,9 +149,9 @@ func termText(s sponsor) string {
 }
 
 // checkLabLog applies the rules of the design to a lab log and returns one message per problem. s is the sponsors file
-// that the entries' sponsor and run ids point at, and f holds what the boards show. Every rule is a function of its
-// own.
-func checkLabLog(doc labLogDoc, s sponsorsDoc, f boardFacts) []string {
+// that the entries' sponsor and run ids point at, f holds what the boards show, and thisMonth is the current month
+// (YYYY-MM, in UTC). Every rule is a function of its own.
+func checkLabLog(doc labLogDoc, s sponsorsDoc, f boardFacts, thisMonth string) []string {
 	sponsors := indexBy(s.Sponsors, func(x sponsor) string { return x.ID })
 	runs := indexBy(s.Runs, func(x run) string { return x.ID })
 	return slices.Concat(
@@ -161,7 +161,7 @@ func checkLabLog(doc labLogDoc, s sponsorsDoc, f boardFacts) []string {
 		checkLabLogPublished(doc.Entries),
 		checkLabLogCounts(doc.Entries),
 		checkLabLogChanges(doc.Entries),
-		checkLabLogMachines(doc.Entries, f),
+		checkLabLogMachines(doc.Entries, f, thisMonth),
 		checkLabLogProjects(doc.Entries),
 		checkLabLogReleaseDates(doc.Entries),
 		checkLabLogUnknownSponsors(doc.Entries, sponsors),
@@ -264,10 +264,15 @@ func checkLabLogChanges(entries []labEntry) []string {
 	return p
 }
 
-// checkLabLogMachines: a machine of a model change is a board's hardware label, written exactly as the board has it.
-func checkLabLogMachines(entries []labEntry, f boardFacts) []string {
+// checkLabLogMachines: a machine of a model change is a board's hardware label, written exactly as the board has it, in
+// the entries of thisMonth and the month before (and in any of a later month). An older entry keeps the machines it
+// named: the boards change, and a refresh that retires a machine must not fail the record of a month long published.
+func checkLabLogMachines(entries []labEntry, f boardFacts, thisMonth string) []string {
 	var p findings
 	for _, e := range entries {
+		if beforeLastMonth(e.Month, thisMonth) {
+			continue
+		}
 		for _, m := range e.Models {
 			for _, machine := range m.Machines {
 				if !f.Machines[machine] {
@@ -277,6 +282,13 @@ func checkLabLogMachines(entries []labEntry, f boardFacts) []string {
 		}
 	}
 	return p
+}
+
+// beforeLastMonth reports whether month is a month older than the month before thisMonth. Like ended for a sponsor,
+// it lets go only what is known to be past, so that the date alone never fails a file that passed: a month that is not
+// a month is left to checkLabLogMonths and stays checked, and so does a month after thisMonth.
+func beforeLastMonth(month, thisMonth string) bool {
+	return isMonth(month) && month < monthBefore(thisMonth)
 }
 
 // checkLabLogProjects: a release is one of taraengine or taracode.

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -349,6 +350,22 @@ func plainText(s string) bool { return !strings.ContainsAny(s, fancyRunes) }
 // isMonth reports whether s is a month written YYYY-MM.
 func isMonth(s string) bool { return monthPattern.MatchString(s) }
 
+// monthLayout is a month written YYYY-MM, in the reference time of the time package.
+const monthLayout = "2006-01"
+
+// currentMonth is the month of the clock in UTC, the month the committed files are checked in. The rules take the
+// month as a parameter, so that their tests set it.
+func currentMonth() string { return time.Now().UTC().Format(monthLayout) }
+
+// monthBefore is the month before month, or "" when month is not a month.
+func monthBefore(month string) string {
+	start, err := time.Parse(monthLayout, month)
+	if err != nil {
+		return ""
+	}
+	return start.AddDate(0, -1, 0).Format(monthLayout)
+}
+
 // covers reports whether month lies from since to until, both included. A nil until is a sponsorship that runs on.
 // The months must be valid: valid YYYY-MM strings compare in calendar order.
 func covers(since string, until *string, month string) bool {
@@ -585,6 +602,25 @@ func TestPlainTextRefusesFancyDashesAndQuotes(t *testing.T) {
 				t.Errorf("plainText(%+q) = true, want false", text)
 			}
 		}
+	}
+}
+
+// TestMonthBeforeStepsBackOneMonth: the month before a month, across a year too; anything that is not a month has
+// none. The current month, read from the clock in UTC, is a month.
+func TestMonthBeforeStepsBackOneMonth(t *testing.T) {
+	for _, c := range []struct{ month, want string }{
+		{"2026-11", "2026-10"},
+		{"2026-03", "2026-02"},
+		{"2027-01", "2026-12"},
+		{"2026-13", ""},
+		{"", ""},
+	} {
+		if got := monthBefore(c.month); got != c.want {
+			t.Errorf("monthBefore(%q) = %q, want %q", c.month, got, c.want)
+		}
+	}
+	if month := currentMonth(); !isMonth(month) {
+		t.Errorf("currentMonth() = %q, want a month (YYYY-MM)", month)
 	}
 }
 

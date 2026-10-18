@@ -57,9 +57,6 @@ func checkLabLogRunsListed(entries []labEntry, runs []run) []string {
 	return p
 }
 
-// monthLayout is a month written YYYY-MM, in the reference time of the time package.
-const monthLayout = "2006-01"
-
 // monthsBetween lists the months that lie strictly between two months, oldest first. It is given months that are
 // months and in order; for anything else it finds none.
 func monthsBetween(older, newer string) []string {

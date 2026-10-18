@@ -116,9 +116,9 @@ func countWord(n int) string {
 }
 
 // checkSponsors applies the rules of the design to a sponsors file and returns one message per problem. f holds what
-// the boards show, and logos the ids that have a file docs/evals/sponsors/<id>.svg. Every rule is a function of its
-// own.
-func checkSponsors(doc sponsorsDoc, f boardFacts, logos map[string]bool) []string {
+// the boards show, logos the ids that have a file docs/evals/sponsors/<id>.svg, and thisMonth the current month
+// (YYYY-MM, in UTC). Every rule is a function of its own.
+func checkSponsors(doc sponsorsDoc, f boardFacts, logos map[string]bool, thisMonth string) []string {
 	return slices.Concat(
 		checkSponsorSchema(doc.Schema),
 		checkSponsorIDs(doc.Sponsors),
@@ -127,7 +127,8 @@ func checkSponsors(doc sponsorsDoc, f boardFacts, logos map[string]bool) []strin
 		checkSponsorURLs(doc.Sponsors),
 		checkSponsorMonths(doc.Sponsors),
 		checkTierCaps(doc.Sponsors),
-		checkMarks(doc.Sponsors, f),
+		checkMarkTiers(doc.Sponsors),
+		checkMarksOnBoard(doc.Sponsors, f, thisMonth),
 		checkLogoPresence(doc.Sponsors, logos),
 		checkPaidRuns(doc.Runs),
 		checkRunModels(doc.Runs),
@@ -252,9 +253,8 @@ func currentIn(sponsors []sponsor, tier, month string) int {
 	return n
 }
 
-// checkMarks: a Title sponsor has no marks, a Supporter has some, and every mark points at something on the boards, so
-// that a typo cannot drop a disclosure.
-func checkMarks(sponsors []sponsor, f boardFacts) []string {
+// checkMarkTiers: a Title sponsor has no marks and a Supporter has some, whether the sponsorship runs or has ended.
+func checkMarkTiers(sponsors []sponsor) []string {
 	var p findings
 	for _, s := range sponsors {
 		switch {
@@ -262,6 +262,25 @@ func checkMarks(sponsors []sponsor, f boardFacts) []string {
 			p.addf("%s: title with marks (a company on the boards cannot hold the Title)", s.label())
 		case s.Tier == "supporter" && s.Marks.empty():
 			p.addf("%s: supporter without marks (Supporter is for a company on the boards)", s.label())
+		}
+	}
+	return p
+}
+
+// ended reports whether the sponsorship's last month is before thisMonth. A last month that is not a month is left to
+// checkSponsorMonths, and the sponsorship counts as running.
+func ended(s sponsor, thisMonth string) bool {
+	return s.Until != nil && isMonth(*s.Until) && *s.Until < thisMonth
+}
+
+// checkMarksOnBoard: every mark of a sponsorship that runs in thisMonth or later points at something on the boards, so
+// that a typo cannot drop a disclosure. A sponsorship that has ended keeps the marks it had: the boards change, and a
+// refresh that retires a model or a machine must not fail its record or force it to be erased.
+func checkMarksOnBoard(sponsors []sponsor, f boardFacts, thisMonth string) []string {
+	var p findings
+	for _, s := range sponsors {
+		if ended(s, thisMonth) {
+			continue
 		}
 		for _, machine := range s.Marks.Machines {
 			if !f.Machines[machine] {

@@ -1,6 +1,7 @@
 package docscheck
 
 import (
+	"cmp"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +18,15 @@ const (
 
 // enDash is built from its code point, so that no fancy character appears in this source.
 var enDash = string(rune(0x2013))
+
+// fixtureMonth is the month the sponsors fixtures are checked in, as the current month: the first month of every
+// sponsor of cleanDoc.
+const fixtureMonth = "2026-11"
+
+// gone are marks that point at nothing on the boards of testFacts, one of each kind.
+func gone() marks {
+	return marks{Models: []string{"mistral"}, Machines: []string{"NVIDIA RTX 4090 (24 GB)"}, Engines: []string{"vllm"}}
+}
 
 // testFacts are the boards the fixtures are checked against: two machines, three models and two engines.
 func testFacts() boardFacts {
@@ -85,6 +95,7 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		name   string
 		want   string // the key the one message carries; empty for a file that stays clean
 		noLogo string // the id of a sponsor whose logo file is missing
+		today  string // the current month the file is checked in; empty for fixtureMonth
 		edit   func(d *sponsorsDoc)
 	}{
 		{name: "a clean file"},
@@ -154,6 +165,12 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		{name: "a machine that is on no board", want: "machine not on the boards", edit: func(d *sponsorsDoc) {
 			d.Sponsors[labCo].Marks.Machines = []string{"NVIDIA RTX 4090 (24 GB)"}
 		}},
+		{name: "a machine label in another case", want: "machine not on the boards", edit: func(d *sponsorsDoc) {
+			d.Sponsors[labCo].Marks.Machines = []string{"nvidia rtx 5090 (32 gb)"}
+		}},
+		{name: "a machine label without its memory", want: "machine not on the boards", edit: func(d *sponsorsDoc) {
+			d.Sponsors[labCo].Marks.Machines = []string{"NVIDIA RTX 5090"}
+		}},
 		{name: "a model prefix that matches no row", want: "model prefix matches no row", edit: func(d *sponsorsDoc) {
 			d.Sponsors[labCo].Marks.Models = []string{"mistral"}
 		}},
@@ -209,6 +226,41 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		{name: "prefixes ignore case", edit: func(d *sponsorsDoc) {
 			d.Sponsors[labCo].Marks = marks{Models: []string{"Qwen"}, Engines: []string{"ollama"}}
 		}},
+
+		// A sponsorship that runs in the current month or later has its marks held to the boards; one that ended
+		// before keeps the marks it had, so that a board refresh cannot fail an old record.
+		{name: "a machine gone from the boards in the last month", want: "machine not on the boards",
+			edit: func(d *sponsorsDoc) {
+				d.Sponsors[labCo] = ending(d.Sponsors[labCo], fixtureMonth)
+				d.Sponsors[labCo].Marks.Machines = gone().Machines
+			}},
+		{name: "a model gone from the boards in the last month", want: "model prefix matches no row",
+			edit: func(d *sponsorsDoc) {
+				d.Sponsors[labCo] = ending(d.Sponsors[labCo], fixtureMonth)
+				d.Sponsors[labCo].Marks.Models = gone().Models
+			}},
+		{name: "an engine gone from the boards in the last month", want: "engine prefix matches no row",
+			edit: func(d *sponsorsDoc) {
+				d.Sponsors[labCo] = ending(d.Sponsors[labCo], fixtureMonth)
+				d.Sponsors[labCo].Marks.Engines = gone().Engines
+			}},
+		{name: "marks gone from the boards after the sponsorship ended", edit: func(d *sponsorsDoc) {
+			d.Sponsors[labCo] = ending(starting(d.Sponsors[labCo], "2026-01"), "2026-10")
+			d.Sponsors[labCo].Marks = gone()
+		}},
+		{name: "marks gone from the boards, checked the month after the last", today: "2026-12",
+			edit: func(d *sponsorsDoc) {
+				d.Sponsors[labCo] = ending(d.Sponsors[labCo], fixtureMonth)
+				d.Sponsors[labCo].Marks = gone()
+			}},
+		{name: "an ended supporter without marks", want: "supporter without marks", edit: func(d *sponsorsDoc) {
+			d.Sponsors[boardCo] = ending(starting(d.Sponsors[boardCo], "2026-01"), "2026-10")
+			d.Sponsors[boardCo].Marks = marks{}
+		}},
+		{name: "an ended title sponsor with marks", want: "title with marks", edit: func(d *sponsorsDoc) {
+			d.Sponsors[titleCo] = ending(starting(d.Sponsors[titleCo], "2026-01"), "2026-10")
+			d.Sponsors[titleCo].Marks = marks{Models: []string{"gemma"}}
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -216,7 +268,7 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 			if c.edit != nil {
 				c.edit(&doc)
 			}
-			got := checkSponsors(doc, testFacts(), logosOf(doc, c.noLogo))
+			got := checkSponsors(doc, testFacts(), logosOf(doc, c.noLogo), cmp.Or(c.today, fixtureMonth))
 			switch {
 			case c.want == "" && len(got) != 0:
 				t.Errorf("want no problem, got %q", got)
@@ -237,7 +289,7 @@ func TestSchemaOfAFileIsChecked(t *testing.T) {
 		{"no schema key", `{"sponsors": [], "runs": []}`, `missing key "schema"`},
 	} {
 		var doc sponsorsDoc
-		got := problemsOf(c.data, &doc, func() []string { return checkSponsors(doc, testFacts(), nil) })
+		got := problemsOf(c.data, &doc, func() []string { return checkSponsors(doc, testFacts(), nil, fixtureMonth) })
 		switch {
 		case c.want != "" && (len(got) != 1 || !strings.Contains(got[0], c.want)):
 			t.Errorf("%s: problems = %q, want exactly one containing %q", c.name, got, c.want)
@@ -258,12 +310,34 @@ func TestCheckSponsorsAsksForALogoOnlyWhereTheTierShowsOne(t *testing.T) {
 		if c.tier == "supporter" {
 			s.Marks = marks{Models: []string{"gemma"}}
 		}
-		got := checkSponsors(sponsorsDoc{Schema: 1, Sponsors: []sponsor{s}}, testFacts(), map[string]bool{})
+		got := checkSponsors(sponsorsDoc{Schema: 1, Sponsors: []sponsor{s}}, testFacts(), map[string]bool{}, fixtureMonth)
 		switch {
 		case c.wants && (len(got) != 1 || !strings.Contains(got[0], "no logo for "+c.tier)):
 			t.Errorf("a %s sponsor without a logo gave %q, want one problem about the logo", c.tier, got)
 		case !c.wants && len(got) != 0:
 			t.Errorf("a %s sponsor without a logo gave %q, want none", c.tier, got)
+		}
+	}
+}
+
+// TestEndedMeansALastMonthBeforeThisOne: a sponsorship has ended once its last month is before the current one, across
+// a year too. One that runs on, one in its last month and one whose last month is not a month have not: their marks
+// stay held to the boards.
+func TestEndedMeansALastMonthBeforeThisOne(t *testing.T) {
+	for _, c := range []struct {
+		until *string
+		month string
+		want  bool
+	}{
+		{nil, "2026-11", false},
+		{strPtr("2026-12"), "2026-11", false},
+		{strPtr("2026-11"), "2026-11", false},
+		{strPtr("2026-10"), "2026-11", true},
+		{strPtr("2026-12"), "2027-01", true},
+		{strPtr("2026-1"), "2026-11", false},
+	} {
+		if got := ended(sponsor{Since: "2026-01", Until: c.until}, c.month); got != c.want {
+			t.Errorf("ended(until %q, in %s) = %v, want %v", orEmpty(c.until), c.month, got, c.want)
 		}
 	}
 }
@@ -306,7 +380,8 @@ const (
 )
 
 // TestSponsorsFileFollowsTheRules: the committed sponsors.json, with the logos that sit beside it and the committed
-// boards, passes every rule, so a pull request that breaks one fails in CI before the site reads the file.
+// boards, passes every rule in the current month, so a pull request that breaks one fails in CI before the site reads
+// the file.
 func TestSponsorsFileFollowsTheRules(t *testing.T) {
 	var doc sponsorsDoc
 	readJSON(t, sponsorsPath, &doc)
@@ -318,7 +393,7 @@ func TestSponsorsFileFollowsTheRules(t *testing.T) {
 	for _, file := range files {
 		logos[strings.TrimSuffix(filepath.Base(file), ".svg")] = true
 	}
-	for _, problem := range checkSponsors(doc, loadBoardFacts(t), logos) {
+	for _, problem := range checkSponsors(doc, loadBoardFacts(t), logos, currentMonth()) {
 		t.Error(problem)
 	}
 }
