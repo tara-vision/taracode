@@ -401,17 +401,22 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.
   `github_total_usd` is not below zero.
-- **Models and releases.** A change in `models` has `model`, `change` (`added` or `re-measured`) and `machines`, board
-  hardware labels written exactly as in `scoreboard.json`: they are checked against the boards in the entries of the
-  current and the previous month (in UTC) and of any later month, and an older entry keeps the labels it named. A
-  release has `project` (`taraengine` or `taracode`), `version`, `date` and `effect`. `next` is not blank.
+- **Models and releases.** A change in `models` has `model`, not blank, `change` (`added` or `re-measured`) and
+  `machines`, at least one board hardware label written exactly as in `scoreboard.json`: the labels are checked against
+  the boards in the entries of the current and the previous month (in UTC) and of any later month, and an older entry
+  keeps the labels it named. Each change of a model stands once in an entry, with all its machines. A release has
+  `project` (`taraengine` or `taracode`), `version` and `effect`, neither blank, and `date`. `next` is not blank.
 - **Sponsors of a month.** `sponsors` lists sponsor ids under `title`, `lab-sponsor`, `team`, `lab-hours` and
   `supporter`, and counts the other Supporters in `supporters`. Each id is a sponsor of `sponsors.json`, listed under
-  its own tier and current in the entry's month; each id in `runs` is a paid run bought in that month.
+  its own tier and current in the entry's month; each id in `runs` is a paid run bought in that month. A list names an
+  id once, since the page counts what the lists hold.
 - **Completeness.** The other way round too: every sponsor of `sponsors.json` that is current in an entry's month is
   listed under its tier in that entry, and every paid run bought in that month is in its `runs`. So a sponsor, a board
   company or a paid run has to be named in the lab log of each month it covers, and adding one with an earlier month
   later means amending the old entry.
+
+One rule is the reviewer's, not the test's: a release's `effect` says what it improved for the boards, such as speed,
+memory or pass rate.
 
 Each change goes in through a pull request that edits these files: a new sponsor (with the logo, for a Title, Lab
 sponsor or Team sponsor), an ended credit (`until` set to the last credited month) or a month's entry, which goes in at

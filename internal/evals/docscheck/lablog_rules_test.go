@@ -79,7 +79,7 @@ func (e labEntry) modelLabel(m modelChange) string {
 
 // releaseLabel names one of the entry's releases in a message.
 func (e labEntry) releaseLabel(r release) string {
-	return fmt.Sprintf("%s, %s %s", e.label(), r.Project, r.Version)
+	return fmt.Sprintf("%s, release %s %q", e.label(), r.Project, r.Version)
 }
 
 // isDate reports whether s is a day on the calendar, written YYYY-MM-DD.
@@ -160,15 +160,22 @@ func checkLabLog(doc labLogDoc, s sponsorsDoc, f boardFacts, thisMonth string) [
 		checkLabLogOrder(doc.Entries),
 		checkLabLogPublished(doc.Entries),
 		checkLabLogCounts(doc.Entries),
+		checkLabLogModelNames(doc.Entries),
 		checkLabLogChanges(doc.Entries),
+		checkLabLogMachineLists(doc.Entries),
 		checkLabLogMachines(doc.Entries, f, thisMonth),
+		checkLabLogChangesOnce(doc.Entries),
 		checkLabLogProjects(doc.Entries),
+		checkLabLogVersions(doc.Entries),
 		checkLabLogReleaseDates(doc.Entries),
+		checkLabLogEffects(doc.Entries),
 		checkLabLogUnknownSponsors(doc.Entries, sponsors),
 		checkLabLogSponsorTiers(doc.Entries, sponsors),
 		checkLabLogSponsorTerms(doc.Entries, sponsors),
+		checkLabLogSponsorsOnce(doc.Entries),
 		checkLabLogUnknownRuns(doc.Entries, runs),
 		checkLabLogRunMonths(doc.Entries, runs),
+		checkLabLogRunsOnce(doc.Entries),
 		checkLabLogTotals(doc.Entries),
 		checkLabLogNext(doc.Entries),
 		checkLabLogText(doc.Entries),
@@ -251,6 +258,33 @@ func checkLabLogCounts(entries []labEntry) []string {
 	return p
 }
 
+// repeats lists each item that stands more than once in items, once, in the order in which it is first repeated. The
+// page counts what the lists of an entry hold, so a pasted second copy would publish a wrong count.
+func repeats[T comparable](items []T) []T {
+	count := make(map[T]int, len(items))
+	var out []T
+	for _, item := range items {
+		count[item]++
+		if count[item] == 2 {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// checkLabLogModelNames: a model change names its model, so the model is not blank.
+func checkLabLogModelNames(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, m := range e.Models {
+			if strings.TrimSpace(m.Model) == "" {
+				p.addf("%s: empty model (name the model as the boards do)", e.modelLabel(m))
+			}
+		}
+	}
+	return p
+}
+
 // checkLabLogChanges: a model was added to the boards or measured again.
 func checkLabLogChanges(entries []labEntry) []string {
 	var p findings
@@ -258,6 +292,19 @@ func checkLabLogChanges(entries []labEntry) []string {
 		for _, m := range e.Models {
 			if !slices.Contains(labChanges, m.Change) {
 				p.addf("%s: change must be %s, not %q", e.modelLabel(m), strings.Join(labChanges, " or "), m.Change)
+			}
+		}
+	}
+	return p
+}
+
+// checkLabLogMachineLists: a model change names the machines it was measured on, at least one.
+func checkLabLogMachineLists(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, m := range e.Models {
+			if len(m.Machines) == 0 {
+				p.addf("%s: no machines (name the board machines it was measured on)", e.modelLabel(m))
 			}
 		}
 	}
@@ -291,6 +338,25 @@ func beforeLastMonth(month, thisMonth string) bool {
 	return isMonth(month) && month < monthBefore(thisMonth)
 }
 
+// changeKey is what makes two model changes of an entry one change twice: the model and the kind of change.
+type changeKey struct{ model, change string }
+
+// checkLabLogChangesOnce: each change of a model stands once in an entry, with all the machines it was measured on.
+func checkLabLogChangesOnce(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		keys := make([]changeKey, len(e.Models))
+		for i, m := range e.Models {
+			keys[i] = changeKey{m.Model, m.Change}
+		}
+		for _, k := range repeats(keys) {
+			p.addf("%s, model %q: change %q listed twice (list each change of a model once, with all its machines)",
+				e.label(), k.model, k.change)
+		}
+	}
+	return p
+}
+
 // checkLabLogProjects: a release is one of taraengine or taracode.
 func checkLabLogProjects(entries []labEntry) []string {
 	var p findings
@@ -304,6 +370,19 @@ func checkLabLogProjects(entries []labEntry) []string {
 	return p
 }
 
+// checkLabLogVersions: a release names its version, so the version is not blank.
+func checkLabLogVersions(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, r := range e.Releases {
+			if strings.TrimSpace(r.Version) == "" {
+				p.addf("%s: empty version (give the version that was released)", e.releaseLabel(r))
+			}
+		}
+	}
+	return p
+}
+
 // checkLabLogReleaseDates: the day of a release is a date.
 func checkLabLogReleaseDates(entries []labEntry) []string {
 	var p findings
@@ -311,6 +390,19 @@ func checkLabLogReleaseDates(entries []labEntry) []string {
 		for _, r := range e.Releases {
 			if !isDate(r.Date) {
 				p.addf("%s: release date %q is not a date (YYYY-MM-DD)", e.releaseLabel(r), r.Date)
+			}
+		}
+	}
+	return p
+}
+
+// checkLabLogEffects: a release says what it changed for the boards, so the effect is not blank.
+func checkLabLogEffects(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, r := range e.Releases {
+			if strings.TrimSpace(r.Effect) == "" {
+				p.addf("%s: empty effect (say what the release improved for the boards)", e.releaseLabel(r))
 			}
 		}
 	}
@@ -354,6 +446,20 @@ func checkLabLogSponsorTerms(entries []labEntry, sponsors map[string]sponsor) []
 	return p
 }
 
+// checkLabLogSponsorsOnce: an id stands once in a sponsor list of an entry. A sponsor in two lists is left to the tier
+// rule.
+func checkLabLogSponsorsOnce(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, l := range e.Sponsors.lists() {
+			for _, id := range repeats(l.ids) {
+				p.addf("%s: sponsors.%s: %q listed twice", e.label(), l.tier, id)
+			}
+		}
+	}
+	return p
+}
+
 // checkLabLogUnknownRuns: an id in the runs of an entry is a paid run of sponsors.json.
 func checkLabLogUnknownRuns(entries []labEntry, runs map[string]run) []string {
 	var p findings
@@ -376,6 +482,17 @@ func checkLabLogRunMonths(entries []labEntry, runs map[string]run) []string {
 				p.addf("%s: runs: run bought in another month: %q was bought in %s, not %s",
 					e.label(), id, r.Month, e.Month)
 			}
+		}
+	}
+	return p
+}
+
+// checkLabLogRunsOnce: a run id stands once in the runs of an entry.
+func checkLabLogRunsOnce(entries []labEntry) []string {
+	var p findings
+	for _, e := range entries {
+		for _, id := range repeats(e.Runs) {
+			p.addf("%s: runs: %q listed twice", e.label(), id)
 		}
 	}
 	return p

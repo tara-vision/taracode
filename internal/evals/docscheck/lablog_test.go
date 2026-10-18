@@ -146,6 +146,44 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 			l.Entries[0].Releases[1].Date = "2026-13-01"
 		}},
 
+		// The page shows every model, version and effect, and counts what the lists hold.
+		{name: "a model change without a model", want: "empty model", log: func(l *labLogDoc) {
+			l.Entries[0].Models[1].Model = ""
+		}},
+		{name: "a model of spaces", want: "empty model", log: func(l *labLogDoc) { l.Entries[0].Models[1].Model = "  " }},
+		{name: "a model change on no machine", want: "no machines", log: func(l *labLogDoc) {
+			l.Entries[0].Models[0].Machines = []string{}
+		}},
+		{name: "a release without a version", want: "empty version", log: func(l *labLogDoc) {
+			l.Entries[0].Releases[0].Version = ""
+		}},
+		{name: "a version of spaces", want: "empty version", log: func(l *labLogDoc) {
+			l.Entries[0].Releases[0].Version = "  "
+		}},
+		{name: "a release without an effect", want: "empty effect", log: func(l *labLogDoc) {
+			l.Entries[0].Releases[1].Effect = ""
+		}},
+		{name: "an effect of spaces", want: "empty effect", log: func(l *labLogDoc) {
+			l.Entries[0].Releases[1].Effect = "  "
+		}},
+		{name: "a sponsor listed twice in one list", want: "listed twice", log: func(l *labLogDoc) {
+			l.Entries[0].Sponsors.Team = []string{"team-co", "team-co"}
+		}},
+		{name: "a run listed twice", want: "listed twice", log: func(l *labLogDoc) {
+			l.Entries[0].Runs = []string{"run-one", "run-one"}
+		}},
+		{name: "a model change listed twice", want: "listed twice", log: func(l *labLogDoc) {
+			l.Entries[0].Models = append(l.Entries[0].Models, l.Entries[0].Models[0])
+		}},
+		{name: "a model change listed twice with other machines", want: "listed twice", log: func(l *labLogDoc) {
+			l.Entries[0].Models = append(l.Entries[0].Models,
+				modelChange{Model: "qwen3.8:27b", Change: "added", Machines: []string{"NVIDIA RTX 5090 (32 GB)"}})
+		}},
+		{name: "a model added and measured again in one month", log: func(l *labLogDoc) {
+			l.Entries[0].Models = append(l.Entries[0].Models,
+				modelChange{Model: "qwen3.8:27b", Change: "re-measured", Machines: []string{"Apple M4 Max (48 GB)"}})
+		}},
+
 		{name: "a sponsor id that is not in sponsors.json", want: "unknown sponsor", log: func(l *labLogDoc) {
 			l.Entries[0].Sponsors.Team = []string{"nobody-co"}
 		}},
@@ -217,6 +255,39 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 				t.Errorf("want exactly one problem containing %q, got %q", c.want, got)
 			}
 		})
+	}
+}
+
+// TestLabLogNamesWhatAListHoldsTwice: a message names the entry, the list and the id, or the model and the change, that
+// stand twice; three of one are one message, and each list is judged on its own.
+func TestLabLogNamesWhatAListHoldsTwice(t *testing.T) {
+	log := cleanLabLog()
+	e := &log.Entries[0]
+	e.Sponsors.Team = []string{"team-co", "team-co", "team-co"}
+	e.Runs = []string{"run-one", "run-one"}
+	e.Models = append(e.Models, e.Models[1])
+	want := []string{
+		`entry "2026-10", model "gemma4:12b": change "re-measured" listed twice (list each change of a model once, ` +
+			`with all its machines)`,
+		`entry "2026-10": sponsors.team: "team-co" listed twice`,
+		`entry "2026-10": runs: "run-one" listed twice`,
+	}
+	if got := checkLabLog(log, labSponsors(), testFacts(), logMonth); !slices.Equal(got, want) {
+		t.Errorf("checkLabLog = %q\nwant %q", got, want)
+	}
+}
+
+// TestLabLogNamesTheModelAndTheRelease: a message about a model change names the entry and the model, and one about a
+// release names the entry, the project and the version in quotes, so that an empty one still reads as empty.
+func TestLabLogNamesTheModelAndTheRelease(t *testing.T) {
+	log := cleanLabLog()
+	log.Entries[0].Models[1].Model, log.Entries[0].Releases[0].Version = "", ""
+	want := []string{
+		`entry "2026-10", model "": empty model (name the model as the boards do)`,
+		`entry "2026-10", release taraengine "": empty version (give the version that was released)`,
+	}
+	if got := checkLabLog(log, labSponsors(), testFacts(), logMonth); !slices.Equal(got, want) {
+		t.Errorf("checkLabLog = %q\nwant %q", got, want)
 	}
 }
 
