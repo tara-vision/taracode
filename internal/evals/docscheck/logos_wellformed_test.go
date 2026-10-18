@@ -167,28 +167,32 @@ func checkLogoAttrSpacing(label string, parts logoParts) []string {
 	return p
 }
 
-// checkLogoLocalNames: in a prefixed name, the part after the colon starts as a name does, with a letter, an underscore
-// or another character that XML lets a name start with. The decoder checks the first character of the whole name only,
-// so a:1b, a:.d and xmlns:6link pass it while a strict parser refuses them.
-func checkLogoLocalNames(label string, parts logoParts) []string {
+// nameStartHint says what the part of a prefixed name after the colon may start with, as startsName reads it: any
+// character XML lets a name start with, which takes in more than the letters and the underscore.
+const nameStartHint = "the part after the colon starts with a character that can open an XML name, such as a letter " +
+	"or an underscore, and never with a digit from 0 to 9, a dot or a hyphen"
+
+// checkLogoLocalPartStart: in a prefixed name as written, the part after the colon starts as a name does, with a
+// letter, an underscore or any other character that XML lets a name start with. The decoder checks the first character
+// of the whole name only, so a:1b, a:.d and xmlns:6link pass it while a strict parser refuses them. Beside it,
+// checkLogoNames judges the names as the decoder splits them.
+func checkLogoLocalPartStart(label string, parts logoParts) []string {
 	var p findings
 	for _, tag := range parts.tags {
-		if badLocalPart(tag.name) {
-			p.addf("%s: malformed name <%s> (the part after the colon starts with a letter or an underscore)",
-				label, tag.name)
+		if badLocalPartStart(tag.name) {
+			p.addf("%s: malformed name <%s> (%s)", label, tag.name, nameStartHint)
 		}
 		for _, a := range tag.attrs {
-			if badLocalPart(a.name) {
-				p.addf("%s: malformed name %s on <%s> (the part after the colon starts with a letter or an underscore)",
-					label, a.name, tag.name)
+			if badLocalPartStart(a.name) {
+				p.addf("%s: malformed name %s on <%s> (%s)", label, a.name, tag.name, nameStartHint)
 			}
 		}
 	}
 	return p
 }
 
-// badLocalPart reports whether name, as written, has a prefix and a local part that does not start a name.
-func badLocalPart(name string) bool {
+// badLocalPartStart reports whether name, as written, has a prefix and a local part that does not start a name.
+func badLocalPartStart(name string) bool {
 	prefix, local := splitName(name)
 	return prefix != "" && !startsName(local)
 }
@@ -216,9 +220,9 @@ func checkLogoNameLengths(label string, parts logoParts) []string {
 // limit, libxml refuses an element at level 258 and a browser caps nesting too; a logo is one small shape.
 func checkLogoDepth(label string, parts logoParts) []string {
 	var p findings
-	if parts.depth > logoMaxDepth {
+	if parts.maxDepth > logoMaxDepth {
 		p.addf("%s: nesting %d levels deep (an element may stand at most %d levels down, the root svg being level 1)",
-			label, parts.depth, logoMaxDepth)
+			label, parts.maxDepth, logoMaxDepth)
 	}
 	return p
 }

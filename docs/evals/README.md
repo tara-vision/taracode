@@ -404,10 +404,11 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   its element or above it must declare it (an `xlink:href` needs `xmlns:xlink`, and `xmlns:a="x"` does not cover an
   `x:path`). The namespaces of `xml` and `xmlns` belong to those prefixes alone, so a prefix declared for either
   (`xmlns:p="http://www.w3.org/XML/1998/namespace"`) is not declared, and no prefix is declared with an empty
-  namespace. No name has a colon at either end, and the part of a prefixed name after the colon starts with a letter
-  or an underscore (`a:b1`, not `a:1b`; `xmlns:b1`, not `xmlns:6link`). Elements nest at most 256 levels deep, the
-  root `<svg>` being level 1, and no element or attribute name is longer than 256 bytes, a prefix and its colon
-  counted; the site's parser reads more than both, so a logo that passes is one it serves.
+  namespace. No name has a colon at either end, and the part of a prefixed name after the colon starts with a
+  character that can open an XML name, such as a letter or an underscore, and never with a digit from 0 to 9, a dot
+  or a hyphen (`a:b1`, not `a:1b`; `xmlns:b1`, not `xmlns:6link`). Elements nest at most 256 levels deep, the root
+  `<svg>` being level 1, and no element or attribute name is longer than 256 bytes, a prefix and its colon counted;
+  the site's parser reads more than both, so a logo that passes is one it serves.
 - **Lab log.** `month` is a month, each month has one entry, the entries run from the newest month down, and no month
   is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.

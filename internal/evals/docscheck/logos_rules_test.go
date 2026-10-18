@@ -44,8 +44,10 @@ const (
 )
 
 // The most a logo asks of a strict reader: elements nest at most logoMaxDepth levels deep, the root svg being level 1,
-// and a name is at most logoMaxName bytes long as written, a prefix and its colon counted. Both sit far inside the
-// limits of libxml, which the site parses with (257 levels, 50,000 bytes for a name), and a browser caps nesting too.
+// and a name is at most logoMaxName bytes long as written, a prefix and its colon counted. The site parses with libxml,
+// which reads 257 levels and names of 50,000 bytes (a browser caps nesting too). The name limit sits far inside that,
+// 256 against 50,000 bytes. The depth limit sits only one level inside it, 256 against 257, and on purpose:
+// logoMaxDepth must not be raised, so that CI stays the stricter side.
 const (
 	logoMaxDepth = 256
 	logoMaxName  = 256
@@ -77,7 +79,7 @@ type logoParts struct {
 	textAfter    string             // the first text after the root that is not blank, as written
 	tags         []startTag         // the start tag of every element as written, in the order of elements
 	unbound      []unboundPrefix    // every prefix that no xmlns:<prefix> in scope declares, or that is declared empty
-	depth        int                // the deepest level an element stands at; the root is level 1
+	maxDepth     int                // the deepest level an element stands at; the root is level 1
 	surrogateRef string             // the first character reference to a surrogate, as written; "" when none
 	badChar      string             // where the file holds a character XML does not allow; "" when it holds none
 	err          error              // why the walk stopped before the end of the file: it is not well-formed XML
@@ -154,7 +156,7 @@ func (p logoParts) attrs() []logoAttr {
 }
 
 // blank reports whether s holds nothing but the white space of XML: spaces, tabs, carriage returns and line feeds.
-func blank(s string) bool { return strings.Trim(s, " \t\r\n") == "" }
+func blank(s string) bool { return strings.Trim(s, xmlSpace) == "" }
 
 // logoWalk is the state of the one walk over the tokens of a logo: what it has collected, how deep it is among the
 // elements, and the style element it is in.
@@ -196,7 +198,9 @@ func readLogo(file []byte) logoParts {
 // take files one token. raw is the token as written, and first says whether it opens the file. A character reference to
 // a surrogate is looked for in the text as written, in every kind of token, where the decoder has already replaced it.
 func (w *logoWalk) take(tok xml.Token, raw string, first bool) {
-	w.parts.surrogateRef = cmp.Or(w.parts.surrogateRef, surrogateRefIn(raw))
+	if w.parts.surrogateRef == "" {
+		w.parts.surrogateRef = surrogateRefIn(raw)
+	}
 	switch t := tok.(type) {
 	case xml.StartElement:
 		w.open(t, readStartTag(raw))
@@ -216,7 +220,7 @@ func (w *logoWalk) take(tok xml.Token, raw string, first bool) {
 // for unbound ones.
 func (w *logoWalk) open(t xml.StartElement, tag startTag) {
 	w.depth++
-	w.parts.depth = max(w.parts.depth, w.depth)
+	w.parts.maxDepth = max(w.parts.maxDepth, w.depth)
 	w.parts.elements = append(w.parts.elements, t)
 	w.parts.tags = append(w.parts.tags, tag)
 	w.scopes = append(w.scopes, declaredPrefixes(t))
@@ -344,7 +348,7 @@ func checkLogo(name string, data []byte) []string {
 		checkLogoDuplicateAttrs(label, parts),
 		checkLogoPrefixes(label, parts),
 		checkLogoNames(label, parts),
-		checkLogoLocalNames(label, parts),
+		checkLogoLocalPartStart(label, parts),
 		checkLogoNameLengths(label, parts),
 		checkLogoDepth(label, parts),
 		checkLogoRoot(label, parts),

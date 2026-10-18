@@ -139,6 +139,10 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 			"character reference"},
 		{"a character reference to a surrogate with leading zeros", inLogo(`<title>&#x0000DBFF;</title>`),
 			"character reference"},
+		{"a character reference to a surrogate in lowercase hexadecimal digits", inLogo(`<title>&#xdbff;</title>`),
+			"character reference"},
+		{"a decimal character reference to a surrogate with leading zeros", inLogo(`<title>&#0055296;</title>`),
+			"character reference"},
 		{"a character reference to a surrogate, in an attribute in single quotes", inLogo(`<path d='&#xDC00;'/>`),
 			"character reference"},
 		{"a character reference to a surrogate, in a comment", inLogo(`<!-- &#xD800; -->` + logoShape),
@@ -359,7 +363,9 @@ func TestCheckLogoSizeLimitIsFiftyKB(t *testing.T) {
 func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 	// The file opens with a declaration without a version and holds a second one out of place; the svg closes, text
 	// follows it, and a second svg is left open, so that the walk fails at the end of the file after it has seen
-	// everything above.
+	// everything above. Inside the first svg, besides the older faults, stand a character reference to a surrogate, two
+	// attributes with no white space between them, a prefixed name whose local part starts with a digit, 257 levels of
+	// nesting and an element name of 257 bytes.
 	everything := `<?xml encoding="UTF-8"?><!--` + strings.Repeat(" ", 51200) + `-->` + declaration +
 		`<?xml-stylesheet href="a.css"?><!DOCTYPE svg>x<svg onload="x" a="1" a="2">` +
 		`<x:g/><g:/><title>&#xD800;</title><g id="a"class="b"/><g xmlns:p="urn:p"><p:1b/></g>` +
@@ -432,9 +438,9 @@ func TestCheckLogoSaysWhatItFound(t *testing.T) {
 		{"a malformed element name", inLogo(`<path:/>`), []string{"malformed name <path:>"}},
 		{"a malformed attribute name", inLogo(`<path :d="M0 0h10v10z"/>`), []string{"malformed name :d on <path>"}},
 		{"a prefixed element name whose local part is no name", inLogo(`<a:1b xmlns:a="urn:a"/>`),
-			[]string{"malformed name <a:1b>", "starts with a letter or an underscore"}},
+			[]string{"malformed name <a:1b>", "can open an XML name", "never with a digit from 0 to 9"}},
 		{"a prefixed attribute name whose local part is no name", inLogo(`<path xmlns:a="urn:a" a:.d="x"/>`),
-			[]string{"malformed name a:.d on <path>"}},
+			[]string{"malformed name a:.d on <path>", "can open an XML name", "a dot or a hyphen"}},
 		{"a character reference to a surrogate", inLogo(`<title>&#xD800;</title>`), []string{"&#xD800;"}},
 		{"attributes with no white space between them", inLogo(`<path d="M0 0"fill="red"/>`),
 			[]string{"white space before the attribute fill on <path>"}},
@@ -533,7 +539,8 @@ func sameAsDecoder(t *testing.T, text string, tag startTag) {
 }
 
 // TestStartsName: the first character of the part after a colon is one that XML lets a name start with (production 4
-// of XML 1.0, fifth edition, without the colon). Both sides of the end of every range are pinned.
+// of XML 1.0, fifth edition, without the colon). Both sides of the end of every range are pinned, and so are an empty
+// string and a byte that is no UTF-8, which start no name.
 func TestStartsName(t *testing.T) {
 	starts := []rune{'A', 'Z', '_', 'a', 'z', 0xc0, 0xd6, 0xd8, 0xf6, 0xf8, 0x2ff, 0x370, 0x37d, 0x37f, 0x1fff, 0x200c,
 		0x200d, 0x2070, 0x218f, 0x2c00, 0x2fef, 0x3001, 0xd7ff, 0xf900, 0xfdcf, 0xfdf0, 0xfffd, 0x10000, 0xeffff}
@@ -548,6 +555,11 @@ func TestStartsName(t *testing.T) {
 	for _, r := range others {
 		if startsName(string(r) + "x") {
 			t.Errorf("%U starts a name, want it not to", r)
+		}
+	}
+	for _, s := range []string{"", string([]byte{0xff}), string([]byte{0xc3}) + "x"} {
+		if startsName(s) {
+			t.Errorf("%q starts a name, want it not to: it is empty or opens with a byte that is no UTF-8", s)
 		}
 	}
 }
