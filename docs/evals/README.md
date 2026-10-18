@@ -392,11 +392,13 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   `xlink:href` that is not a `#fragment`. The page draws a logo as a mask in the text color, so only its shape counts:
   a logo whose marks differ only by color is prepared as one shape on a transparent background.
 - **Logo files.** A logo is UTF-8 and well-formed the way a strict XML parser, such as the site's and a browser's,
-  reads it. A byte order mark may open the file. An XML declaration is optional; when there is one, it comes first,
-  with nothing before it but that mark (not even a blank line), and reads `<?xml version="1.0"?>`, with
-  `encoding="UTF-8"` and `standalone="yes"` or `"no"` after the version if at all. Beside the declaration, only blank
-  lines and comments stand before the root and after it. There is no other processing instruction (an
-  `<?xml-stylesheet?>` included) and no attribute twice on one element.
+  reads it, and every character in it, in comments too, is one that XML allows. A byte order mark may open the file.
+  An XML declaration is optional; when there is one, it comes first, with nothing before it but that mark (not even a
+  blank line), and reads `<?xml version="1.0"?>`, with `encoding="UTF-8"` and `standalone="yes"` or `"no"` after the
+  version if at all. Beside the declaration, only blank lines and comments stand before the root and after it. There
+  is no other processing instruction (an `<?xml-stylesheet?>` included), no attribute twice on one element, no
+  prefix that is not declared on its element or above it (an `xlink:href` needs `xmlns:xlink`), no prefix declared
+  with an empty namespace, and no name with a colon at either end.
 - **Lab log.** `month` is a month, each month has one entry, the entries run from the newest month down, and no month
   is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
   (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.

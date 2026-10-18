@@ -53,6 +53,13 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a comment after the root", cleanLogo + "\n<!-- end -->\n", ""},
 		{"an href and an xlink:href on one element", inLogo(`<use href="#a" xlink:href="#a"/>`), ""},
 		{"text inside the root", inLogo("Example Co" + logoShape), ""},
+		{"accented letters in a comment and a title", "<!-- caf" + string(rune(0xe9)) + " -->" +
+			inLogo("<title>caf"+string(rune(0xe9))+"</title>"+logoShape), ""},
+		{"the replacement character and a character beyond U+FFFF in a title",
+			inLogo("<title>" + string(rune(0xfffd)) + string(rune(0x1f600)) + "</title>" + logoShape), ""},
+		{"a prefix bound on its own element", inLogo(`<x:path xmlns:x="urn:x" d="M0 0h10v10z"/>`), ""},
+		{"an xml: attribute, whose prefix is always bound", inLogo(`<path xml:space="preserve" d="M0 0h10v10z"/>`), ""},
+		{"the default namespace taken back, which XML allows", inLogo(`<g xmlns="">` + logoShape + `</g>`), ""},
 		{"hrefs that point to a fragment",
 			inLogo(`<defs><path id="a" d="M0 0h10v10z"/></defs><use href="#a"/><use xlink:href="#a"/>`), ""},
 		{"a gradient named in an attribute",
@@ -77,6 +84,11 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"two roots", cleanLogo + cleanLogo, "not XML"},
 		{"an encoding other than UTF-8", `<?xml version="1.0" encoding="ISO-8859-1"?>` + cleanLogo,
 			"save the file as UTF-8"},
+		{"a Latin-1 byte in a comment", "<!-- " + string([]byte{0xa9}) + " Example Co -->" + cleanLogo,
+			"save the file as UTF-8"},
+		{"a control character in a comment", "<!-- " + string(rune(0x1)) + " -->" + cleanLogo, "XML does not allow"},
+		{"U+FFFF in a comment", "<!--" + string(rune(0xffff)) + "-->" + cleanLogo, "XML does not allow"},
+		{"a control character in a title", inLogo("<title>" + string(rune(0x1)) + "</title>"), "XML does not allow"},
 
 		{"text before the root", "logo" + cleanLogo, "text before the root"},
 		{"two byte order marks", utf8BOM + utf8BOM + cleanLogo, "text before the root"},
@@ -111,12 +123,24 @@ func TestCheckLogoCatchesEachRule(t *testing.T) {
 		{"a viewBox twice on the root", rootWith(`viewBox="0 0 10 10" viewBox="0 0 10 10"`, logoShape),
 			"duplicate attribute"},
 
+		{"an element with an unbound prefix", inLogo(`<x:path d="M0 0h10v10z"/>`), "unbound prefix"},
+		{"an xlink:href without xmlns:xlink", rootWith(`viewBox="0 0 10 10"`, `<use xlink:href="#a"/>`),
+			"unbound prefix"},
+		{"a prefix bound only on a sibling", inLogo(`<g xmlns:x="urn:x"/><x:path d="M0 0h10v10z"/>`), "unbound prefix"},
+		{"a prefix that names a namespace declared only on a sibling",
+			inLogo(`<g xmlns:y="x"/><x:path d="M0 0h10v10z"/>`), "unbound prefix"},
+		{"a prefix declared with an empty namespace", inLogo(`<g xmlns:x=""><x:path d="M0 0h10v10z"/></g>`),
+			"empty namespace"},
+		{"an element name that opens with a colon", inLogo(`<:path d="M0 0h10v10z"/>`), "malformed name"},
+		{"an element name that ends with a colon", inLogo(`<path:/>`), "malformed name"},
+		{"an attribute name that opens with a colon", inLogo(`<path :d="M0 0h10v10z"/>`), "malformed name"},
+
 		{"an html root", `<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>`, "root is not svg"},
 		{"a group as the root", `<g viewBox="0 0 10 10"><path d="M0 0h10v10z"/></g>`, "root is not svg"},
 		{"a root in capitals", `<SVG viewBox="0 0 10 10"><path d="M0 0h10v10z"/></SVG>`, "root is not svg"},
 
 		{"a root without xmlns", `<svg viewBox="0 0 10 10">` + logoShape + `</svg>`, "not in the SVG namespace"},
-		{"a root with an unbound svg: prefix", `<svg:svg viewBox="0 0 10 10"><svg:path d="M0 0h10v10z"/></svg:svg>`,
+		{"a root with an unbound svg: prefix", `<svg:svg viewBox="0 0 10 10">` + logoShape + `</svg:svg>`,
 			"not in the SVG namespace"},
 		{"a root in the XHTML namespace", `<svg xmlns="http://www.w3.org/1999/xhtml" viewBox="0 0 10 10">` + logoShape +
 			`</svg>`, "not in the SVG namespace"},
@@ -233,7 +257,7 @@ func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 	// everything above.
 	everything := `<?xml encoding="UTF-8"?><!--` + strings.Repeat(" ", 51200) + `-->` + declaration +
 		`<?xml-stylesheet href="a.css"?><!DOCTYPE svg>x<svg onload="x" a="1" a="2">` +
-		`<script/><foreignObject/><image href="https://example.com/a.png"/><iframe/>` +
+		`<x:g/><g:/><script/><foreignObject/><image href="https://example.com/a.png"/><iframe/>` +
 		`<style>@import "a.css";.b{fill:url(#g)}.c{content:"` + backslash + `"}</style></svg>y<svg`
 	cases := []struct {
 		name, svg string
@@ -241,8 +265,9 @@ func TestCheckLogoReportsEveryProblemAtOnce(t *testing.T) {
 	}{
 		{"every rule at once", everything, []string{"over 50 KB", "not XML", "text before the root",
 			"text after the root", "declaration out of place", "malformed xml declaration", "processing instruction",
-			"duplicate attribute", "not in the SVG namespace", "no viewBox", "doctype", "script", "foreignobject",
-			"image", "iframe", "style import", "style url", "style escape", "event attribute", "external href"}},
+			"duplicate attribute", "unbound prefix", "malformed name", "not in the SVG namespace", "no viewBox", "doctype",
+			"script", "foreignobject", "image", "iframe", "style import", "style url", "style escape", "event attribute",
+			"external href"}},
 		{"a doctype with an entity the file uses",
 			`<!DOCTYPE svg [<!ENTITY x "y">]>` + rootWith(`viewBox="0 0 10 10"`, "&x;"), []string{"not XML", "doctype"}},
 		{"a root that is not svg beside a script", `<html><script/></html>`, []string{"root is not svg", "script"}},
@@ -280,6 +305,20 @@ func TestCheckLogoSaysWhatItFound(t *testing.T) {
 		{"a processing instruction", `<?xml-stylesheet href="a.css"?>` + cleanLogo, []string{"<?xml-stylesheet?>"}},
 		{"an attribute twice", inLogo(`<path d="M0 0h10v10z" d="M0 0h5v5z"/>`),
 			[]string{"duplicate attribute d on <path>"}},
+		{"a byte that is not UTF-8", "<!-- " + string([]byte{0xa9}) + " -->" + cleanLogo,
+			[]string{"not XML", "at byte 5", "save the file as UTF-8"}},
+		{"a character XML does not allow", "<!--" + string(rune(0x1)) + "-->" + cleanLogo,
+			[]string{"not XML", "U+0001", "at byte 4"}},
+		{"a character XML does not allow, after a byte order mark", utf8BOM + "<!--" + string(rune(0x1)) + "-->" +
+			cleanLogo, []string{"U+0001", "at byte 7"}},
+		{"an element with an unbound prefix", inLogo(`<x:path d="M0 0h10v10z"/>`),
+			[]string{"unbound prefix x on <path>", "xmlns:x"}},
+		{"an attribute with an unbound prefix", rootWith(`viewBox="0 0 10 10"`, `<use xlink:href="#a"/>`),
+			[]string{"unbound prefix xlink on the attribute href of <use>", "xmlns:xlink"}},
+		{"a prefix declared with an empty namespace", inLogo(`<g xmlns:x=""/>`),
+			[]string{"empty namespace for prefix x on <g>"}},
+		{"a malformed element name", inLogo(`<path:/>`), []string{"malformed name <path:>"}},
+		{"a malformed attribute name", inLogo(`<path :d="M0 0h10v10z"/>`), []string{"malformed name :d on <path>"}},
 		{"a root outside the SVG namespace", `<svg viewBox="0 0 10 10"/>`, []string{`xmlns="` + svgNamespace + `"`}},
 		{"a root that is not svg", `<html/>`, []string{"<html>"}},
 		{"an event attribute", inLogo(`<path onclick="x" d="M0 0h10v10z"/>`), []string{"onclick", "<path>"}},
