@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // inTerm reports whether the sponsorship is known to cover the month, which must be a month. Like outsideTerm it judges
@@ -51,6 +52,45 @@ func checkLabLogRunsListed(entries []labEntry, runs []run) []string {
 			if r.Month == e.Month && !slices.Contains(e.Runs, r.ID) {
 				p.addf("%s: run not listed: %q was bought in %s but is missing from runs", e.label(), r.ID, e.Month)
 			}
+		}
+	}
+	return p
+}
+
+// monthLayout is a month written YYYY-MM, in the reference time of the time package.
+const monthLayout = "2006-01"
+
+// monthsBetween lists the months that lie strictly between two months, oldest first. It is given months that are
+// months and in order; for anything else it finds none.
+func monthsBetween(older, newer string) []string {
+	start, errStart := time.Parse(monthLayout, older)
+	end, errEnd := time.Parse(monthLayout, newer)
+	if errStart != nil || errEnd != nil {
+		return nil
+	}
+	var gap []string
+	for month := start.AddDate(0, 1, 0); month.Before(end); month = month.AddDate(0, 1, 0) {
+		gap = append(gap, month.Format(monthLayout))
+	}
+	return gap
+}
+
+// checkLabLogNoSkippedMonth checks that the lab log skips no month: among the entries whose month is a month, every
+// month from the oldest to the newest has an entry, one message per month that has none. An entry whose month is not a
+// month is left to checkLabLogMonths, and a month that stands twice to checkLabLogOrder. Like checkLabLogComplete it
+// runs on its own, so that no case of the tables of checkLabLog and checkLabLogComplete gets a second message from it.
+func checkLabLogNoSkippedMonth(doc labLogDoc) []string {
+	var months []string
+	for _, e := range doc.Entries {
+		if isMonth(e.Month) {
+			months = append(months, e.Month)
+		}
+	}
+	slices.Sort(months) // a month that stands twice leaves an empty gap between its two entries
+	var p findings
+	for i := 1; i < len(months); i++ {
+		for _, missing := range monthsBetween(months[i-1], months[i]) {
+			p.addf("month skipped: no entry for %s between %s and %s", missing, months[i-1], months[i])
 		}
 	}
 	return p
@@ -216,6 +256,118 @@ func TestLabLogFileIsComplete(t *testing.T) {
 	var sponsors sponsorsDoc
 	readJSON(t, sponsorsPath, &sponsors)
 	for _, problem := range checkLabLogComplete(log, sponsors) {
+		t.Error(problem)
+	}
+}
+
+// logOf is a lab log with a bare entry for each month, in the order given.
+func logOf(months ...string) labLogDoc {
+	log := labLogDoc{Schema: 1}
+	for _, month := range months {
+		log.Entries = append(log.Entries, bareEntry(month))
+	}
+	return log
+}
+
+// TestCheckLabLogNoSkippedMonthCatchesEachGap: a log with an entry for every month from its oldest to its newest gives
+// no problems; every case leaves out a month and gets exactly one message, carrying the key. The cases without a key
+// are the edges that must stay clean: an entry whose month is not a month, or that stands twice, is left to the other
+// rules.
+func TestCheckLabLogNoSkippedMonthCatchesEachGap(t *testing.T) {
+	cases := []struct {
+		name   string
+		months []string // the months of the entries, in the order of the file
+		want   string   // the key the one message carries; empty for a log that stays clean
+	}{
+		{"consecutive months", []string{"2026-12", "2026-11", "2026-10"}, ""},
+		{"consecutive months across a year", []string{"2027-01", "2026-12"}, ""},
+		{"a single entry", []string{"2026-10"}, ""},
+		{"an empty log", nil, ""},
+		{"an entry whose month is not a month is ignored", []string{"2026-11", "2026-13", "2026-10"}, ""},
+		{"a month that stands twice is left to the order rule", []string{"2026-11", "2026-11", "2026-10"}, ""},
+
+		{"a gap of one month", []string{"2026-12", "2026-10"}, "month skipped"},
+		{"a gap across a year", []string{"2027-02", "2026-12"}, "month skipped"},
+		{"a gap in the middle of a run", []string{"2026-12", "2026-11", "2026-09", "2026-08"}, "month skipped"},
+		{"entries in the wrong order still show the gap", []string{"2026-10", "2026-12"}, "month skipped"},
+		{"an entry whose month is not a month does not fill a gap", []string{"2026-12", "2026-11a", "2026-10"},
+			"month skipped"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := checkLabLogNoSkippedMonth(logOf(c.months...))
+			switch {
+			case c.want == "" && len(got) != 0:
+				t.Errorf("want no problem, got %q", got)
+			case c.want != "" && (len(got) != 1 || !strings.Contains(got[0], c.want)):
+				t.Errorf("want exactly one problem containing %q, got %q", c.want, got)
+			}
+		})
+	}
+}
+
+// TestMonthsBetweenListsTheMonthsInBetween: the months strictly between two months, oldest first, over the turn of a
+// year too; two months next to each other, the same month twice, months in the wrong order and anything that is not a
+// month have none.
+func TestMonthsBetweenListsTheMonthsInBetween(t *testing.T) {
+	cases := []struct {
+		older, newer string
+		want         []string
+	}{
+		{"2026-10", "2026-11", nil},
+		{"2026-10", "2026-12", []string{"2026-11"}},
+		{"2026-12", "2027-02", []string{"2027-01"}},
+		{"2026-09", "2027-01", []string{"2026-10", "2026-11", "2026-12"}},
+		{"2026-01", "2027-01", []string{"2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08",
+			"2026-09", "2026-10", "2026-11", "2026-12"}},
+		{"2026-10", "2026-10", nil},
+		{"2026-12", "2026-10", nil},
+		{"2026-13", "2027-01", nil},
+		{"2026-10", "2027-1", nil},
+		{"", "", nil},
+	}
+	for _, c := range cases {
+		if got := monthsBetween(c.older, c.newer); !slices.Equal(got, c.want) {
+			t.Errorf("monthsBetween(%q, %q) = %q, want %q", c.older, c.newer, got, c.want)
+		}
+	}
+}
+
+// TestCheckLabLogNoSkippedMonthNamesEachMissingMonth: one message per missing month, oldest first, naming the month and
+// the two entries around it; a gap of several months is several messages.
+func TestCheckLabLogNoSkippedMonthNamesEachMissingMonth(t *testing.T) {
+	cases := []struct {
+		name   string
+		months []string
+		want   []string
+	}{
+		{"one month", []string{"2026-12", "2026-10"},
+			[]string{"month skipped: no entry for 2026-11 between 2026-10 and 2026-12"}},
+		{"across a year", []string{"2027-02", "2026-12"},
+			[]string{"month skipped: no entry for 2027-01 between 2026-12 and 2027-02"}},
+		{"several months", []string{"2027-01", "2026-09"}, []string{
+			"month skipped: no entry for 2026-10 between 2026-09 and 2027-01",
+			"month skipped: no entry for 2026-11 between 2026-09 and 2027-01",
+			"month skipped: no entry for 2026-12 between 2026-09 and 2027-01"}},
+		{"two gaps", []string{"2027-01", "2026-11", "2026-09"}, []string{
+			"month skipped: no entry for 2026-10 between 2026-09 and 2026-11",
+			"month skipped: no entry for 2026-12 between 2026-11 and 2027-01"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := checkLabLogNoSkippedMonth(logOf(c.months...)); !slices.Equal(got, c.want) {
+				t.Errorf("checkLabLogNoSkippedMonth = %q\nwant %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestLabLogFileSkipsNoMonth: the committed lab-log.json has an entry for every month from its oldest to its newest, so
+// that a month nobody wrote up fails in CI before the lab log shows a hole.
+func TestLabLogFileSkipsNoMonth(t *testing.T) {
+	var log labLogDoc
+	readJSON(t, labLogPath, &log)
+	for _, problem := range checkLabLogNoSkippedMonth(log) {
 		t.Error(problem)
 	}
 }

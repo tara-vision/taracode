@@ -385,9 +385,10 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   `@import` or `url(`, no `on*` attribute, and no `href` or `xlink:href` that is not a `#fragment`. The page draws a
   logo as a mask in the text color, so only its shape counts: a logo whose marks differ only by color is prepared as
   one shape on a transparent background.
-- **Lab log.** `month` is a month, each month has one entry, and the entries run from the newest month down.
-  `published` and a release's `date` are real days (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and
-  `sponsors.supporters` are whole numbers, not below zero. `github_total_usd` is not below zero.
+- **Lab log.** `month` is a month, each month has one entry, the entries run from the newest month down, and no month
+  is skipped between the oldest and the newest entry. `published` and a release's `date` are real days
+  (`YYYY-MM-DD`). `hours`, `board_runs`, `task_runs` and `sponsors.supporters` are whole numbers, not below zero.
+  `github_total_usd` is not below zero.
 - **Models and releases.** A change in `models` has `model`, `change` (`added` or `re-measured`) and `machines`, board
   hardware labels written exactly as in `scoreboard.json`. A release has `project` (`taraengine` or `taracode`),
   `version`, `date` and `effect`. `next` is not blank.
