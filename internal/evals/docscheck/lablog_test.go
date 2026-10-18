@@ -69,7 +69,7 @@ func TestCheckLabLogCatchesEachRule(t *testing.T) {
 	}{
 		{name: "a clean entry"},
 		{name: "a schema the site does not read", want: "schema", log: func(l *labLogDoc) { l.Schema = 2 }},
-		{name: "a missing schema key, which reads as 0", want: "schema", log: func(l *labLogDoc) { l.Schema = 0 }},
+		{name: "a schema of 0", want: "schema", log: func(l *labLogDoc) { l.Schema = 0 }},
 
 		// The run, bought in 2026-10, is left out here: it would also miss an entry of another month.
 		{name: "a month that is not a month", want: "not a month", log: func(l *labLogDoc) {
@@ -312,51 +312,40 @@ func TestLabLogReadsTheKeysOfTheDesign(t *testing.T) {
 }
 
 // TestLabLogRefusesAmountsAndUnknownKeys: the lab log carries no amount but the month's GitHub total, and no key the
-// types leave out. An amount beside a sponsor, a model or a release, or kept among the sponsors, fails to decode, as do
-// hours that are not whole.
+// types leave out. An amount on an entry, a model change or a release, or kept among the sponsors, fails to decode, as
+// do a sponsor id given as an object with an amount and hours that are not whole. Each case edits the design's lab
+// log, which holds every key, so that it fails for the amount alone.
 func TestLabLogRefusesAmountsAndUnknownKeys(t *testing.T) {
-	for _, c := range []struct {
-		name, data string
-		ok         bool
-	}{
-		{"an entry with a month only", `{"schema": 1, "entries": [{"month": "2026-10"}]}`, true},
-		{"an amount on an entry", `{"schema": 1, "entries": [{"month": "2026-10", "amount": 30}]}`, false},
-		{"an amount beside a sponsor id",
-			`{"schema": 1, "entries": [{"sponsors": {"team": [{"id": "team-co", "amount": 30}]}}]}`, false},
-		{"an amount among the sponsors", `{"schema": 1, "entries": [{"sponsors": {"total": 30}}]}`, false},
-		{"an amount on a model change", `{"schema": 1, "entries": [{"models": [{"model": "m", "cost": 30}]}]}`, false},
-		{"an amount on a release", `{"schema": 1, "entries": [{"releases": [{"project": "taracode", "price": 30}]}]}`, false},
-		{"hours with a fraction", `{"schema": 1, "entries": [{"hours": 1.5}]}`, false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			var doc labLogDoc
-			if err := decodeStrict([]byte(c.data), &doc); (err == nil) != c.ok {
-				t.Errorf("decodeStrict(%s) error = %v, want an error: %v", c.data, err, !c.ok)
-			}
-		})
-	}
+	checkDecodeCases(t, designLog, func() any { return &labLogDoc{} }, []decodeCase{
+		{"an amount on an entry", `"hours": 32,`, `"hours": 32, "amount": 30,`, `entries[0]: unknown key "amount"`},
+		{"a sponsor id given as an object with an amount", `"team": ["team-co"]`,
+			`"team": [{"id": "team-co", "amount": 30}]`, "entries[0].sponsors.team[0]: an object, but the rules want a text"},
+		{"an amount among the sponsors", `"supporters": 3`, `"supporters": 3, "total": 30`,
+			`entries[0].sponsors: unknown key "total"`},
+		{"an amount on a model change", `"change": "added",`, `"change": "added", "cost": 30,`,
+			`entries[0].models[0]: unknown key "cost"`},
+		{"an amount on a release", `"version": "0.3.1",`, `"version": "0.3.1", "price": 30,`,
+			`entries[0].releases[0]: unknown key "price"`},
+		{"hours with a fraction", `"hours": 32`, `"hours": 1.5`, "number 1.5"},
+	})
 }
 
-// TestLabLogSchemaOfAFileIsChecked: a file that declares schema 2, or declares none (a missing key decodes to 0), is
-// refused, since the site takes it as invalid and then shows the lab log's invitation instead of its entries.
+// TestLabLogSchemaOfAFileIsChecked: a file that declares schema 2 or 0 is refused by the rules, and one that declares
+// none by the decoding, since the site takes either as invalid and then shows the lab log's invitation instead of its
+// entries.
 func TestLabLogSchemaOfAFileIsChecked(t *testing.T) {
-	for _, c := range []struct {
-		name, data string
-		refused    bool
-	}{
-		{"schema 1", `{"schema": 1, "entries": []}`, false},
-		{"schema 2", `{"schema": 2, "entries": []}`, true},
-		{"no schema key", `{"entries": []}`, true},
+	for _, c := range []struct{ name, data, want string }{
+		{"schema 1", `{"schema": 1, "entries": []}`, ""},
+		{"schema 2", `{"schema": 2, "entries": []}`, "schema is 2"},
+		{"schema 0", `{"schema": 0, "entries": []}`, "schema is 0"},
+		{"no schema key", `{"entries": []}`, `missing key "schema"`},
 	} {
 		var doc labLogDoc
-		if err := decodeStrict([]byte(c.data), &doc); err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-		got := checkLabLog(doc, labSponsors(), testFacts())
+		got := problemsOf(c.data, &doc, func() []string { return checkLabLog(doc, labSponsors(), testFacts()) })
 		switch {
-		case c.refused && (len(got) != 1 || !strings.Contains(got[0], "schema")):
-			t.Errorf("%s: problems = %q, want exactly one about the schema", c.name, got)
-		case !c.refused && len(got) != 0:
+		case c.want != "" && (len(got) != 1 || !strings.Contains(got[0], c.want)):
+			t.Errorf("%s: problems = %q, want exactly one containing %q", c.name, got, c.want)
+		case c.want == "" && len(got) != 0:
 			t.Errorf("%s: problems = %q, want none", c.name, got)
 		}
 	}

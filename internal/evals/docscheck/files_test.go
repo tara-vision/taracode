@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // docsDir is the folder of the committed files these tests guard, relative to this package.
@@ -25,14 +27,35 @@ const scoreboardPath = docsDir + "scoreboard.json"
 // no fancy character appears in this source.
 var fancyRunes = string([]rune{0x2013, 0x2014, 0x2018, 0x2019, 0x201c, 0x201d})
 
+// utf8BOM is the byte order mark that a UTF-8 file may open with. A JSON file may not; an SVG file may.
+var utf8BOM = string([]byte{0xef, 0xbb, 0xbf})
+
 // monthPattern is a month written YYYY-MM, with a month from 01 to 12.
 var monthPattern = regexp.MustCompile(`^[0-9]{4}-(0[1-9]|1[0-2])$`)
 
-// decodeStrict reads one JSON document into v. It refuses a key the type does not name (so a file cannot carry an
-// amount or anything else the design leaves out), a second document and trailing text.
+// decodeStrict reads one JSON document into v, a pointer to one of the file types, and holds the file to that type the
+// way the site reads it. encoding/json alone matches a key in any letter case, reads a missing key or a null as an
+// empty value, and turns bytes that are not UTF-8 and lone surrogate escapes into U+FFFD; PHP reads keys exactly and
+// refuses the whole file for either fault, and the site takes a missing or null list as an invalid file. So the bytes
+// are UTF-8, the file is one document with nothing after it, shapeProblems holds every key and every kind of value to
+// the type, and the typed decode then refuses what is left: a count with a fraction or out of range.
 func decodeStrict(data []byte, v any) error {
+	if !utf8.Valid(data) {
+		return errors.New("not UTF-8 (save the file as UTF-8)")
+	}
+	var raw any
+	if err := decodeOne(data, &raw); err != nil {
+		return err
+	}
+	if problems := shapeProblems("", raw, reflect.TypeOf(v).Elem()); len(problems) > 0 {
+		return errors.New(strings.Join(problems, "\n"))
+	}
+	return decodeOne(data, v)
+}
+
+// decodeOne reads the one JSON document of data into v. It refuses a second document and trailing text.
+func decodeOne(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
@@ -40,6 +63,150 @@ func decodeStrict(data []byte, v any) error {
 		return errors.New("data after the JSON document")
 	}
 	return nil
+}
+
+// shapeProblems walks a JSON value, as decoded into any, beside the Go type t it is read into, and returns one message
+// per place where the two part: a key of the type that is missing, a key it does not name, a value of another kind (a
+// list given as an object, or a null where the type holds no pointer) and a text that holds U+FFFD. at is the path of
+// the value in the file, "" at the top level. A text or a number of the right kind is otherwise left to the typed
+// decode.
+func shapeProblems(at string, v any, t reflect.Type) []string {
+	if t.Kind() == reflect.Pointer {
+		if v == nil {
+			return nil
+		}
+		t = t.Elem()
+	}
+	if got, want := jsonKind(v), kindFor(t); got != want {
+		return []string{fmt.Sprintf("%s: %s, but the rules want %s", where(at), got, want)}
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		return objectProblems(at, v.(map[string]any), t)
+	case reflect.Slice:
+		return listProblems(at, v.([]any), t.Elem())
+	case reflect.String:
+		return textProblems(at, v.(string))
+	}
+	return nil
+}
+
+// objectProblems: every key of the struct type t is in the object, spelled as its json tag spells it, and no other key
+// is. A key in another letter case is reported as a misspelling of the key and not also as a missing key; foldMatch is
+// asked only for a key that has no exact match, so a match it finds is in another letter case.
+func objectProblems(at string, object map[string]any, t reflect.Type) []string {
+	var p findings
+	names, keys := jsonNames(t), slices.Sorted(maps.Keys(object))
+	for i, name := range names {
+		value, ok := object[name]
+		switch {
+		case ok:
+			p = append(p, shapeProblems(keyPath(at, name), value, t.Field(i).Type)...)
+		case foldMatch(keys, name) == "":
+			p.addf("%s: missing key %q", where(at), name)
+		}
+	}
+	for _, key := range keys {
+		if !slices.Contains(names, key) {
+			p.addf("%s: %s", where(at), unknownKey(key, names))
+		}
+	}
+	return p
+}
+
+// listProblems walks each item of a list beside the type of the list's items.
+func listProblems(at string, items []any, item reflect.Type) []string {
+	var p []string
+	for i, v := range items {
+		p = append(p, shapeProblems(fmt.Sprintf("%s[%d]", at, i), v, item)...)
+	}
+	return p
+}
+
+// textProblems: a text holds no U+FFFD, the replacement character that a lone surrogate escape (which PHP refuses) and
+// a broken character decode to.
+func textProblems(at, text string) []string {
+	var p findings
+	if strings.ContainsRune(text, utf8.RuneError) {
+		p.addf("%s: holds U+FFFD, the replacement character (a lone surrogate escape or a broken character)", where(at))
+	}
+	return p
+}
+
+// jsonKind names the kind of a JSON value as decoded into any.
+func jsonKind(v any) string {
+	switch v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return "a text"
+	case float64:
+		return "a number"
+	case []any:
+		return "a list"
+	case map[string]any:
+		return "an object"
+	}
+	return "true or false" // the one kind left, a JSON boolean
+}
+
+// kindFor names the kind of JSON value that a field of the Go type t is read from. A kind the file types do not hold
+// panics, so that a new kind of field is noticed and not read loosely.
+func kindFor(t reflect.Type) string {
+	switch t.Kind() {
+	case reflect.String:
+		return "a text"
+	case reflect.Int, reflect.Float64:
+		return "a number"
+	case reflect.Slice:
+		return "a list"
+	case reflect.Struct:
+		return "an object"
+	}
+	panic("the key walk cannot read a " + t.Kind().String())
+}
+
+// jsonNames are the keys the fields of the struct type t are read from, in field order: the names of their json tags.
+func jsonNames(t reflect.Type) []string {
+	names := make([]string, t.NumField())
+	for i := range names {
+		names[i], _, _ = strings.Cut(t.Field(i).Tag.Get("json"), ",")
+	}
+	return names
+}
+
+// foldMatch is the entry of list that is s when letter case is ignored, or "" when there is none.
+func foldMatch(list []string, s string) string {
+	i := slices.IndexFunc(list, func(x string) bool { return strings.EqualFold(x, s) })
+	if i < 0 {
+		return ""
+	}
+	return list[i]
+}
+
+// unknownKey says what is wrong with a key the type does not name: it misspells a key the type names, or it is a key
+// of its own.
+func unknownKey(key string, names []string) string {
+	if name := foldMatch(names, key); name != "" {
+		return fmt.Sprintf("key %q must be spelled %q (keys are case-sensitive)", key, name)
+	}
+	return fmt.Sprintf("unknown key %q", key)
+}
+
+// where names a place in a file for a message: the path of keys and indexes that leads to it, or the top level.
+func where(at string) string {
+	if at == "" {
+		return "top level"
+	}
+	return at
+}
+
+// keyPath is the path of the value under key in the object at the path at.
+func keyPath(at, key string) string {
+	if at == "" {
+		return key
+	}
+	return at + "." + key
 }
 
 // readJSON decodes the file at path into v with decodeStrict and fails the test when it cannot.
@@ -214,30 +381,128 @@ func orEmpty(p *string) string {
 	return *p
 }
 
-// TestDecodeStrictRefusesWhatTheTypeDoesNotName: a key the type leaves out (an amount on a sponsor, which the design
-// has no field for), a second document and trailing text are errors, so a file cannot carry more than the design
-// allows.
-func TestDecodeStrictRefusesWhatTheTypeDoesNotName(t *testing.T) {
-	cases := []struct {
-		name, data string
-		ok         bool
-	}{
-		{"a document the type names", `{"schema": 1, "sponsors": [], "runs": []}` + "\n", true},
-		{"an amount on a sponsor", `{"schema": 1, "sponsors": [{"id": "a", "amount": 30}], "runs": []}`, false},
-		{"an unknown top-level key", `{"schema": 1, "sponsors": [], "runs": [], "extra": 1}`, false},
-		{"a second document", `{"schema": 1} {"schema": 2}`, false},
-		{"text after the document", `{"schema": 1} x`, false},
-		{"a value of the wrong type", `{"schema": "1"}`, false},
-		{"not JSON at all", `sponsors`, false},
+// The files as first committed, with empty lists.
+const (
+	emptySponsors = `{"schema": 1, "sponsors": [], "runs": []}` + "\n"
+	emptyLabLog   = `{"schema": 1, "entries": []}` + "\n"
+)
+
+// designSponsors is a sponsors file written with the keys of the design's example: a sponsor that runs on, and two paid
+// runs, one with a named buyer and one without. The decoding cases edit it, so that each breaks one thing.
+const designSponsors = `{
+  "schema": 1,
+  "sponsors": [
+    {"id": "example-co", "name": "Example Co", "tier": "lab-sponsor", "url": "https://example.com", "since": "2026-11",
+      "until": null, "marks": {"models": [], "machines": [], "engines": []}}
+  ],
+  "runs": [
+    {"id": "example-run", "model": "example-model:27b", "month": "2026-11", "by": "Example Co",
+      "url": "https://example.com"},
+    {"id": "quiet-run", "model": "example-model:27b", "month": "2026-12", "by": null, "url": null}
+  ]
+}`
+
+// problemsOf is what a file meets: the error that decoding data into doc gives, or else the problems that check finds
+// in what doc then holds.
+func problemsOf(data string, doc any, check func() []string) []string {
+	if err := decodeStrict([]byte(data), doc); err != nil {
+		return []string{err.Error()}
 	}
+	return check()
+}
+
+// decodeCase is a file a decoding case reads: its base with old replaced by new. want is a fragment of the one problem
+// decodeStrict reports; it is empty for a file that decodes.
+type decodeCase struct{ name, old, new, want string }
+
+// checkDecodeCases decodes each case into a fresh value of newDoc. An old that does not occur in the base would leave
+// the base as it is, so that case fails rather than pass for the wrong reason.
+func checkDecodeCases(t *testing.T, base string, newDoc func() any, cases []decodeCase) {
+	t.Helper()
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var doc sponsorsDoc
-			if err := decodeStrict([]byte(c.data), &doc); (err == nil) != c.ok {
-				t.Errorf("decodeStrict(%s) error = %v, want an error: %v", c.data, err, !c.ok)
+			if !strings.Contains(base, c.old) {
+				t.Fatalf("the edit %q is not in the file it edits", c.old)
+			}
+			err := decodeStrict([]byte(strings.Replace(base, c.old, c.new, 1)), newDoc())
+			switch {
+			case c.want == "" && err != nil:
+				t.Errorf("want no error, got %v", err)
+			case c.want != "" && (err == nil || strings.Contains(err.Error(), "\n") || !strings.Contains(err.Error(), c.want)):
+				t.Errorf("want exactly one problem containing %q, got %v", c.want, err)
 			}
 		})
 	}
+}
+
+// TestDecodeStrictHoldsTheFileToItsType: a file is read the way the site reads it, so that CI never passes a file the
+// site refuses or reads differently. Every key of the type is present and spelled exactly (keys are case-sensitive),
+// no other key stands beside them (so a file cannot carry an amount the design leaves out), a list is a list and an
+// object an object, null stands only where the type holds a pointer (until, by and url), the bytes are UTF-8 and no
+// text holds U+FFFD (the character a lone surrogate escape decodes to), and nothing follows the one document.
+func TestDecodeStrictHoldsTheFileToItsType(t *testing.T) {
+	backslash := string(rune(0x5c))
+	sponsorsDocs := func() any { return &sponsorsDoc{} }
+	checkDecodeCases(t, designSponsors, sponsorsDocs, []decodeCase{
+		{"the design's file", "", "", ""},
+		{"a surrogate pair, which is one character", "Example Co",
+			"Example " + backslash + "ud83d" + backslash + "ude00 Co", ""},
+		{"a key in another case", `"schema"`, `"Schema"`, `top level: key "Schema" must be spelled "schema"`},
+		{"a key left out", `"until": null, `, "", `sponsors[0]: missing key "until"`},
+		{"the key of a null left out", `"by": null, `, "", `runs[1]: missing key "by"`},
+		{"a key the design does not name", `"tier": "lab-sponsor",`, `"tier": "lab-sponsor", "amount": 30,`,
+			`sponsors[0]: unknown key "amount"`},
+		{"a null list", `"machines": []`, `"machines": null`, "sponsors[0].marks.machines: null, but the rules want a list"},
+		{"a null object", `"marks": {"models": [], "machines": [], "engines": []}`, `"marks": null`,
+			"sponsors[0].marks: null, but the rules want an object"},
+		{"a null text", `"name": "Example Co"`, `"name": null`, "sponsors[0].name: null, but the rules want a text"},
+		{"a null number", `"schema": 1`, `"schema": null`, "schema: null, but the rules want a number"},
+		{"a list given as an object", `"machines": []`, `"machines": {}`,
+			"sponsors[0].marks.machines: an object, but the rules want a list"},
+		{"an object given as a list", `"marks": {"models": [], "machines": [], "engines": []}`, `"marks": []`,
+			"sponsors[0].marks: a list, but the rules want an object"},
+		{"a number given as a text", `"schema": 1`, `"schema": "1"`, "schema: a text, but the rules want a number"},
+		{"true given for a month", `"until": null`, `"until": true`, "sponsors[0].until: true or false, but the rules"},
+		{"a list for the whole file", designSponsors, "[]", "top level: a list, but the rules want an object"},
+		{"bytes that are not UTF-8", "Example Co", "Example " + string([]byte{0xff}) + " Co", "not UTF-8"},
+		{"a byte order mark", designSponsors, utf8BOM + designSponsors, "invalid character"},
+		{"a lone surrogate escape", "Example Co", "Example " + backslash + "ud800 Co", "sponsors[0].name: holds U+FFFD"},
+		{"the replacement character itself", "Example Co", "Example " + string(utf8.RuneError) + " Co",
+			"sponsors[0].name: holds U+FFFD"},
+		{"a second document", designSponsors, designSponsors + designSponsors, "data after the JSON document"},
+		{"text after the document", designSponsors, designSponsors + " x", "data after the JSON document"},
+		{"not JSON at all", designSponsors, "sponsors", "invalid character"},
+	})
+	checkDecodeCases(t, emptySponsors, sponsorsDocs, []decodeCase{
+		{"the committed sponsors file", "", "", ""},
+		{"a null list of sponsors", `"sponsors": []`, `"sponsors": null`, "sponsors: null, but the rules want a list"},
+		{"runs given as an object", `"runs": []`, `"runs": {}`, "runs: an object, but the rules want a list"},
+	})
+	labLogs := func() any { return &labLogDoc{} }
+	checkDecodeCases(t, emptyLabLog, labLogs, []decodeCase{
+		{"the committed lab log", "", "", ""},
+		{"a null list of entries", `"entries": []`, `"entries": null`, "entries: null, but the rules want a list"},
+	})
+	checkDecodeCases(t, designLog, labLogs, []decodeCase{
+		{"the design's lab log", "", "", ""},
+		{"a key in another case in an entry", `"lab-sponsor":`, `"Lab-Sponsor":`,
+			`entries[0].sponsors: key "Lab-Sponsor" must be spelled "lab-sponsor"`},
+		{"a key left out of an entry", `"runs": ["run-one"],`, "", `entries[0]: missing key "runs"`},
+		{"a null list in an entry", `"runs": ["run-one"]`, `"runs": null`,
+			"entries[0].runs: null, but the rules want a list"},
+		{"a null count in an entry", `"hours": 32`, `"hours": null`, "entries[0].hours: null, but the rules want a number"},
+	})
+}
+
+// TestTheKeyWalkRefusesAKindItCannotRead: the walk knows the kinds of field the file types hold; a map, say, makes it
+// panic, so that a new kind of field is noticed and not read loosely.
+func TestTheKeyWalkRefusesAKindItCannotRead(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("the key walk on a map must panic")
+		}
+	}()
+	shapeProblems("", map[string]any{}, reflect.TypeFor[map[string]string]())
 }
 
 // TestBoardFactsCollectMachinesModelsAndEngines: machines are the boards' hardware labels; models come from the ranked,

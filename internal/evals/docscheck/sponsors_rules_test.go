@@ -136,12 +136,12 @@ func checkSponsors(doc sponsorsDoc, f boardFacts, logos map[string]bool) []strin
 	)
 }
 
-// checkSponsorSchema: the file declares the schema the site reads. The site takes any other value, and a missing key
-// (which reads as 0), as an invalid file and then shows no mark, no credit and no Title line.
+// checkSponsorSchema: the file declares the schema the site reads. The site takes any other value as an invalid file
+// and then shows no mark, no credit and no Title line; a file without the key does not decode.
 func checkSponsorSchema(schema int) []string {
 	var p findings
 	if schema != sponsorsSchema {
-		p.addf("schema is %d, but the site reads only schema %d (a missing schema key reads as 0)", schema, sponsorsSchema)
+		p.addf("schema is %d, but the site reads only schema %d", schema, sponsorsSchema)
 	}
 	return p
 }

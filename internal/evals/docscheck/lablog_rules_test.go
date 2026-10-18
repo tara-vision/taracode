@@ -175,13 +175,12 @@ func checkLabLog(doc labLogDoc, s sponsorsDoc, f boardFacts) []string {
 	)
 }
 
-// checkLabLogSchema: the file declares the schema the site reads. The site takes any other value, and a missing key
-// (which reads as 0), as an invalid file and then shows the lab log's invitation instead of its entries.
+// checkLabLogSchema: the file declares the schema the site reads. The site takes any other value as an invalid file
+// and then shows the lab log's invitation instead of its entries; a file without the key does not decode.
 func checkLabLogSchema(schema int) []string {
 	var p findings
 	if schema != labLogSchema {
-		p.addf("schema is %d, but the site reads only schema %d (a missing schema key reads as 0)",
-			schema, labLogSchema)
+		p.addf("schema is %d, but the site reads only schema %d", schema, labLogSchema)
 	}
 	return p
 }

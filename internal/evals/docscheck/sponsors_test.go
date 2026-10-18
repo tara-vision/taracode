@@ -91,7 +91,7 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 		{name: "a schema the site does not read", want: "schema", edit: func(d *sponsorsDoc) {
 			d.Schema = 2
 		}},
-		{name: "a missing schema key, which reads as 0", want: "schema", edit: func(d *sponsorsDoc) {
+		{name: "a schema of 0", want: "schema", edit: func(d *sponsorsDoc) {
 			d.Schema = 0
 		}},
 		{name: "a repeated sponsor id", want: "duplicate id", edit: func(d *sponsorsDoc) {
@@ -227,26 +227,21 @@ func TestCheckSponsorsCatchesEachRule(t *testing.T) {
 	}
 }
 
-// TestSchemaOfAFileIsChecked: a file that declares schema 2, or declares none (a missing key decodes to 0), is
-// refused, since the site takes it as invalid and then shows no mark, credit or Title line at all.
+// TestSchemaOfAFileIsChecked: a file that declares schema 2 or 0 is refused by the rules, and one that declares none by
+// the decoding, since the site takes either as invalid and then shows no mark, credit or Title line at all.
 func TestSchemaOfAFileIsChecked(t *testing.T) {
-	for _, c := range []struct {
-		name, data string
-		refused    bool
-	}{
-		{"schema 1", `{"schema": 1, "sponsors": [], "runs": []}`, false},
-		{"schema 2", `{"schema": 2, "sponsors": [], "runs": []}`, true},
-		{"no schema key", `{"sponsors": [], "runs": []}`, true},
+	for _, c := range []struct{ name, data, want string }{
+		{"schema 1", `{"schema": 1, "sponsors": [], "runs": []}`, ""},
+		{"schema 2", `{"schema": 2, "sponsors": [], "runs": []}`, "schema is 2"},
+		{"schema 0", `{"schema": 0, "sponsors": [], "runs": []}`, "schema is 0"},
+		{"no schema key", `{"sponsors": [], "runs": []}`, `missing key "schema"`},
 	} {
 		var doc sponsorsDoc
-		if err := decodeStrict([]byte(c.data), &doc); err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-		got := checkSponsors(doc, testFacts(), nil)
+		got := problemsOf(c.data, &doc, func() []string { return checkSponsors(doc, testFacts(), nil) })
 		switch {
-		case c.refused && (len(got) != 1 || !strings.Contains(got[0], "schema")):
-			t.Errorf("%s: problems = %q, want exactly one about the schema", c.name, got)
-		case !c.refused && len(got) != 0:
+		case c.want != "" && (len(got) != 1 || !strings.Contains(got[0], c.want)):
+			t.Errorf("%s: problems = %q, want exactly one containing %q", c.name, got, c.want)
+		case c.want == "" && len(got) != 0:
 			t.Errorf("%s: problems = %q, want none", c.name, got)
 		}
 	}

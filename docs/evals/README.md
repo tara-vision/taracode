@@ -365,8 +365,11 @@ privately.
 
 The rules, all checked by `go test ./internal/evals/docscheck/`:
 
-- **Both files.** `schema` is 1 (a missing key counts as 0), a file holds no key beyond the ones named in this section,
-  and every text keeps to plain hyphens and straight quotes.
+- **Both files.** A file is one JSON document in UTF-8 without a byte order mark, and `schema` is 1. Every key named in
+  this section is present, spelled exactly as here (keys are case-sensitive), and no other key stands beside them. A
+  list is a JSON list, `[]` when it is empty, and an object is an object; `null` stands only for a sponsor's `until`
+  and a run's `by` and `url`. No text holds U+FFFD, the replacement character that a broken character or a lone
+  surrogate escape turns into, and every text keeps to plain hyphens and straight quotes.
 - **Sponsors.** `id` is a unique lowercase slug (`[a-z0-9-]+`), which also names the logo file; `tier` is `title`,
   `lab-sponsor`, `team`, `lab-hours` or `supporter`; `name` is not blank; `url` is an https link.
 - **Terms.** `since` and `until` are months (`YYYY-MM`); `until` is null while the sponsorship runs and never before
@@ -377,8 +380,8 @@ The rules, all checked by `go test ./internal/evals/docscheck/`:
   typo cannot drop a disclosure. A sponsor with marks never holds `title`, and a `supporter` entry has marks, since
   Supporter is for a company on the boards only.
 - **Paid runs.** `id` is a unique slug, `model` is not blank, `month` is a month, and `by` is null for a buyer who stays
-  unnamed and the buyer's name otherwise, never blank. A run's `url`, when it has one, is an https link, and a run that
-  names its buyer has one.
+  unnamed and the buyer's name otherwise, never blank. A run's `url` is null or an https link, and a run that names its
+  buyer has one.
 - **Logos.** A `title`, `lab-sponsor` or `team` sponsor has a logo; the other tiers have none, and a logo that belongs
   to no sponsor of those tiers fails the check. A logo is an SVG of at most 50 KB with one root `<svg>` that has a
   `viewBox`. It has no DOCTYPE, no `<script>`, `<foreignObject>`, `<image>` or `<iframe>`, no `<style>` that holds
