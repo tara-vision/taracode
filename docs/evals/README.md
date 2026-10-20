@@ -188,6 +188,15 @@ docs/evals/results/<model>-<server>[-<machine>]-<date>.json
 docs/evals/scoreboard.md, scoreboard.json
 ```
 
+### Rows from outside the catalog
+
+A row may come from a model that is not in the engine's catalog when its results file names the artifact by digest
+and the catalog override that produced it is published under `docs/evals/overrides/` (the engine's embedded catalog
+verbatim plus the entry, placed as `<data>/registry.yaml` on the machine that ran it). Such a row says so in the notes
+of its run, carries the tier the override declares, and is never a tier default: the board measures what the override
+served, the catalog keeps recommending only what it ships. The first is `nemotron-3.5-bolt:74b` on the RTX 5090
+board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
+
 `workdir/`, when present, is copied into the run directory; the five file tools operate on the copy for real.
 For an operate task, the runner creates the run directory's `.taracode` storage with `storage.NewManager`
 and writes the task's `policy.yaml` into it.
