@@ -47,19 +47,21 @@
 
 ## The scoreboard
 
-Which local model can actually do DevOps work? The eight models of taraengine's catalog, 33 offline tasks
-each, on two machines, measured on taracode's own loop with taracode 3.3.1 on taraengine 0.3.1. The top five
+Which local model can actually do DevOps work? Nine models on an NVIDIA RTX 5090 (32 GB), the eight of
+taraengine's catalog and NVIDIA's Nemotron 3.5 Bolt through a published catalog override, measured on 2026-10-20
+with taracode 3.3.2 on taraengine 0.4.0; the eight catalog models on an Apple M4 Max (48 GB), measured on
+2026-10-17 with taracode 3.3.1 on taraengine 0.3.1; 33 offline tasks each, on taracode's own loop. The top five
 on each:
 
 On one NVIDIA RTX 5090 (32 GB):
 
 | #   | Model           | Pass rate | Tokens/s | VRAM     |
 |-----|-----------------|-----------|----------|----------|
-| 1   | `qwen3.8:27b`   | 97%       | 126      | 23.2 GiB |
-| 2   | `glm-4.7-flash` | 91%       | 209      | 18.4 GiB |
-| 3   | `gemma4:31b`    | 91%       | 164      | 24.8 GiB |
-| 4   | `gemma4:12b`    | 88%       | 308      | 10.0 GiB |
-| 5   | `qwen3.6:27b`   | 85%       | 127      | 23.3 GiB |
+| 1   | `qwen3.8:27b`   | 97%       | 128      | 23.2 GiB |
+| 2   | `qwen3.6:27b`   | 94%       | 129      | 23.3 GiB |
+| 3   | `gemma4:31b`    | 88%       | 169      | 24.8 GiB |
+| 4   | `glm-4.7-flash` | 88%       | 218      | 18.4 GiB |
+| 5   | `qwen3.6:35b`   | 82%       | 397      | 22.4 GiB |
 
 On one Apple M4 Max (48 GB):
 

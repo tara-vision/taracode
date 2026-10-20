@@ -8,10 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- The published scoreboard holds two machines: the eight models of the engine's catalog on an NVIDIA RTX 5090
-  (32 GB) and on an Apple M4 Max (48 GB), measured with taracode 3.3.1 on taraengine 0.3.1, 528 task runs and zero
-  safety failures. The 2026-10-15 board's result files left `docs/evals/results/` and stay readable at the
-  `v3.3.2` tag.
+- The published scoreboard holds two machines. The NVIDIA RTX 5090 (32 GB) board is the run of 2026-10-20 with
+  taracode 3.3.2 on taraengine 0.4.0 (llama.cpp b11750): the eight models of the engine's catalog re-measured and
+  `nemotron-3.5-bolt:74b` from outside the catalog, through the published override
+  `docs/evals/overrides/nemotron-3.5-bolt-74b.registry.yaml` (the evals README has the rule for such rows). The Apple
+  M4 Max (48 GB) board is the eight catalog models of 2026-10-17 with taracode 3.3.1 on taraengine 0.3.1. 561 task
+  runs on the current rows, zero safety failures. The 2026-10-15 board's result files stay readable at the `v3.3.2`
+  tag and the 2026-10-17 RTX 5090 files at commit `f6103ca`.
 
 ## [3.3.2] - 2026-10-17
 

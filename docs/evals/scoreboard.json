@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17",
+  "generated_at": "2026-10-20",
   "taracode": "3.3.2",
   "corpus_tasks": 33,
   "boards": [
@@ -553,9 +553,9 @@
           "tier": "32",
           "pass_rate": 0.97,
           "mean_score": 0.9696969696969696,
-          "mean_iterations": 5.727,
-          "mean_wall_s": 18.274,
-          "fixture_miss_rate": 0.407,
+          "mean_iterations": 5.636,
+          "mean_wall_s": 17.227,
+          "fixture_miss_rate": 0.4,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -580,7 +580,7 @@
             "refusal": {
               "tasks": 6,
               "passed": 5,
-              "mean_score": 0.883
+              "mean_score": 0.9
             },
             "secrets": {
               "tasks": 3,
@@ -590,22 +590,22 @@
             "terraform": {
               "tasks": 5,
               "passed": 5,
-              "mean_score": 1
+              "mean_score": 0.98
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 125.7,
-          "suite_wall_s": 603,
+          "tokens_per_s": 127.8,
+          "suite_wall_s": 568.5,
           "size_gb": 24.9,
           "vram_gb": 24.9,
           "gpu_memory_mib": 23726,
@@ -616,14 +616,14 @@
           "digest": "c600de0300ae"
         },
         {
-          "model": "glm-4.7-flash",
-          "default": true,
+          "model": "qwen3.6:27b",
+          "default": false,
           "tier": "32",
-          "pass_rate": 0.909,
-          "mean_score": 0.9272727272727271,
-          "mean_iterations": 5.455,
-          "mean_wall_s": 5.916,
-          "fixture_miss_rate": 0.258,
+          "pass_rate": 0.939,
+          "mean_score": 0.9439393939393936,
+          "mean_iterations": 5.364,
+          "mean_wall_s": 10.485,
+          "fixture_miss_rate": 0.262,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -633,7 +633,7 @@
             "docker": {
               "tasks": 4,
               "passed": 4,
-              "mean_score": 0.975
+              "mean_score": 1
             },
             "helm": {
               "tasks": 3,
@@ -647,51 +647,51 @@
             },
             "refusal": {
               "tasks": 6,
-              "passed": 4,
-              "mean_score": 0.783
+              "passed": 5,
+              "mean_score": 0.867
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.667
+              "passed": 3,
+              "mean_score": 0.967
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 1
+              "passed": 4,
+              "mean_score": 0.81
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 208.8,
-          "suite_wall_s": 195.2,
-          "size_gb": 19.8,
-          "vram_gb": 19.8,
-          "gpu_memory_mib": 18850,
+          "tokens_per_s": 128.6,
+          "suite_wall_s": 346,
+          "size_gb": 25,
+          "vram_gb": 25,
+          "gpu_memory_mib": 23842,
           "gpu_percent": 100,
           "context_length": 32768,
-          "quantization": "Q4_K",
-          "parameter_size": "30B-A3B",
-          "digest": "b6019edc5fbe"
+          "quantization": "Q4_K_M",
+          "parameter_size": "27B",
+          "digest": "65b753ea8356"
         },
         {
           "model": "gemma4:31b",
           "default": true,
           "tier": "48",
-          "pass_rate": 0.909,
-          "mean_score": 0.9272727272727271,
-          "mean_iterations": 5.485,
-          "mean_wall_s": 11.971,
-          "fixture_miss_rate": 0.302,
+          "pass_rate": 0.879,
+          "mean_score": 0.9227272727272726,
+          "mean_iterations": 5.273,
+          "mean_wall_s": 11.218,
+          "fixture_miss_rate": 0.268,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -716,7 +716,7 @@
             "refusal": {
               "tasks": 6,
               "passed": 4,
-              "mean_score": 0.783
+              "mean_score": 0.8
             },
             "secrets": {
               "tasks": 3,
@@ -725,23 +725,23 @@
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.96
+              "passed": 4,
+              "mean_score": 0.91
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 163.8,
-          "suite_wall_s": 395.1,
+          "tokens_per_s": 169.1,
+          "suite_wall_s": 370.2,
           "size_gb": 26.6,
           "vram_gb": 26.6,
           "gpu_memory_mib": 25382,
@@ -752,14 +752,150 @@
           "digest": "031dc1c5fa9c"
         },
         {
+          "model": "glm-4.7-flash",
+          "default": true,
+          "tier": "32",
+          "pass_rate": 0.879,
+          "mean_score": 0.8954545454545454,
+          "mean_iterations": 5.061,
+          "mean_wall_s": 5.464,
+          "fixture_miss_rate": 0.274,
+          "by_area": {
+            "cloud": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "docker": {
+              "tasks": 4,
+              "passed": 2,
+              "mean_score": 0.65
+            },
+            "helm": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 8,
+              "mean_score": 0.928
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 6,
+              "mean_score": 0.933
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 2,
+              "mean_score": 0.667
+            },
+            "terraform": {
+              "tasks": 5,
+              "passed": 5,
+              "mean_score": 1
+            }
+          },
+          "taracode": "3.3.2",
+          "server": {
+            "name": "taraengine",
+            "version": "0.4.0",
+            "runtime": "b11750"
+          },
+          "think": "auto",
+          "date": "2026-10-20",
+          "runs": 1,
+          "tasks": 33,
+          "hardware": "NVIDIA RTX 5090 (32 GB)",
+          "tokens_per_s": 218.2,
+          "suite_wall_s": 180.3,
+          "size_gb": 19.8,
+          "vram_gb": 19.8,
+          "gpu_memory_mib": 18850,
+          "gpu_percent": 100,
+          "context_length": 32768,
+          "quantization": "Q4_K",
+          "parameter_size": "30B-A3B",
+          "digest": "b6019edc5fbe"
+        },
+        {
+          "model": "qwen3.6:35b",
+          "default": false,
+          "tier": "48",
+          "pass_rate": 0.818,
+          "mean_score": 0.8969696969696968,
+          "mean_iterations": 5.758,
+          "mean_wall_s": 3.763,
+          "fixture_miss_rate": 0.342,
+          "by_area": {
+            "cloud": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "docker": {
+              "tasks": 4,
+              "passed": 2,
+              "mean_score": 0.675
+            },
+            "helm": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 7,
+              "mean_score": 0.9
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 6,
+              "mean_score": 0.933
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "terraform": {
+              "tasks": 5,
+              "passed": 3,
+              "mean_score": 0.84
+            }
+          },
+          "taracode": "3.3.2",
+          "server": {
+            "name": "taraengine",
+            "version": "0.4.0",
+            "runtime": "b11750"
+          },
+          "think": "auto",
+          "date": "2026-10-20",
+          "runs": 1,
+          "tasks": 33,
+          "hardware": "NVIDIA RTX 5090 (32 GB)",
+          "tokens_per_s": 397.2,
+          "suite_wall_s": 124.2,
+          "size_gb": 24.1,
+          "vram_gb": 24.1,
+          "gpu_memory_mib": 22986,
+          "gpu_percent": 100,
+          "context_length": 32768,
+          "quantization": "Q4_K_M",
+          "parameter_size": "35B-A3B",
+          "digest": "671e47e0ec53"
+        },
+        {
           "model": "gemma4:12b",
           "default": true,
           "tier": "16",
-          "pass_rate": 0.879,
-          "mean_score": 0.9237272727272724,
-          "mean_iterations": 5,
-          "mean_wall_s": 6.237,
-          "fixture_miss_rate": 0.144,
+          "pass_rate": 0.818,
+          "mean_score": 0.8863636363636361,
+          "mean_iterations": 5.091,
+          "mean_wall_s": 6.416,
+          "fixture_miss_rate": 0.17,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -769,7 +905,7 @@
             "docker": {
               "tasks": 4,
               "passed": 4,
-              "mean_score": 0.958
+              "mean_score": 1
             },
             "helm": {
               "tasks": 3,
@@ -784,7 +920,7 @@
             "refusal": {
               "tasks": 6,
               "passed": 4,
-              "mean_score": 0.783
+              "mean_score": 0.8
             },
             "secrets": {
               "tasks": 3,
@@ -793,23 +929,23 @@
             },
             "terraform": {
               "tasks": 5,
-              "passed": 4,
-              "mean_score": 0.91
+              "passed": 2,
+              "mean_score": 0.61
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 308.3,
-          "suite_wall_s": 205.8,
+          "tokens_per_s": 318.1,
+          "suite_wall_s": 211.7,
           "size_gb": 10.7,
           "vram_gb": 10.7,
           "gpu_memory_mib": 10210,
@@ -820,82 +956,14 @@
           "digest": "3712b9bd32ca"
         },
         {
-          "model": "qwen3.6:27b",
-          "default": false,
-          "tier": "32",
-          "pass_rate": 0.848,
-          "mean_score": 0.9181818181818181,
-          "mean_iterations": 4.848,
-          "mean_wall_s": 10.427,
-          "fixture_miss_rate": 0.259,
-          "by_area": {
-            "cloud": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "docker": {
-              "tasks": 4,
-              "passed": 3,
-              "mean_score": 0.875
-            },
-            "helm": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "kubernetes": {
-              "tasks": 9,
-              "passed": 8,
-              "mean_score": 0.956
-            },
-            "refusal": {
-              "tasks": 6,
-              "passed": 3,
-              "mean_score": 0.733
-            },
-            "secrets": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "terraform": {
-              "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.96
-            }
-          },
-          "taracode": "3.3.1",
-          "server": {
-            "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
-          },
-          "think": "auto",
-          "date": "2026-10-17",
-          "runs": 1,
-          "tasks": 33,
-          "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 127.2,
-          "suite_wall_s": 344.1,
-          "size_gb": 25,
-          "vram_gb": 25,
-          "gpu_memory_mib": 23842,
-          "gpu_percent": 100,
-          "context_length": 32768,
-          "quantization": "Q4_K_M",
-          "parameter_size": "27B",
-          "digest": "65b753ea8356"
-        },
-        {
-          "model": "qwen3.6:35b",
+          "model": "nemotron-3.5-bolt:74b",
           "default": false,
           "tier": "48",
-          "pass_rate": 0.818,
-          "mean_score": 0.8969696969696968,
-          "mean_iterations": 5.818,
-          "mean_wall_s": 4.078,
-          "fixture_miss_rate": 0.376,
+          "pass_rate": 0.788,
+          "mean_score": 0.8848484848484848,
+          "mean_iterations": 6.576,
+          "mean_wall_s": 8.797,
+          "fixture_miss_rate": 0.543,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -905,7 +973,7 @@
             "docker": {
               "tasks": 4,
               "passed": 2,
-              "mean_score": 0.675
+              "mean_score": 0.688
             },
             "helm": {
               "tasks": 3,
@@ -914,56 +982,56 @@
             },
             "kubernetes": {
               "tasks": 9,
-              "passed": 5,
-              "mean_score": 0.822
+              "passed": 9,
+              "mean_score": 0.989
             },
             "refusal": {
               "tasks": 6,
-              "passed": 6,
-              "mean_score": 0.933
+              "passed": 4,
+              "mean_score": 0.783
             },
             "secrets": {
               "tasks": 3,
               "passed": 3,
-              "mean_score": 1
+              "mean_score": 0.967
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.98
+              "passed": 2,
+              "mean_score": 0.79
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 388.1,
-          "suite_wall_s": 134.6,
-          "size_gb": 24.1,
-          "vram_gb": 24.1,
-          "gpu_memory_mib": 22986,
+          "tokens_per_s": 331.3,
+          "suite_wall_s": 290.3,
+          "size_gb": 30.4,
+          "vram_gb": 30.4,
+          "gpu_memory_mib": 29006,
           "gpu_percent": 100,
           "context_length": 32768,
-          "quantization": "Q4_K_M",
-          "parameter_size": "35B-A3B",
-          "digest": "671e47e0ec53"
+          "quantization": "IQ2_XXS",
+          "parameter_size": "74B-A9B",
+          "digest": "91d63363e782"
         },
         {
           "model": "gemma4:26b",
           "default": false,
           "tier": "32",
-          "pass_rate": 0.697,
-          "mean_score": 0.8085757575757575,
-          "mean_iterations": 4.515,
-          "mean_wall_s": 4.517,
-          "fixture_miss_rate": 0.267,
+          "pass_rate": 0.727,
+          "mean_score": 0.8419090909090908,
+          "mean_iterations": 4.576,
+          "mean_wall_s": 4.602,
+          "fixture_miss_rate": 0.254,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -973,7 +1041,7 @@
             "docker": {
               "tasks": 4,
               "passed": 2,
-              "mean_score": 0.675
+              "mean_score": 0.65
             },
             "helm": {
               "tasks": 3,
@@ -982,38 +1050,38 @@
             },
             "kubernetes": {
               "tasks": 9,
-              "passed": 8,
-              "mean_score": 0.9
+              "passed": 7,
+              "mean_score": 0.883
             },
             "refusal": {
               "tasks": 6,
               "passed": 2,
-              "mean_score": 0.65
+              "mean_score": 0.667
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.778
+              "passed": 3,
+              "mean_score": 0.944
             },
             "terraform": {
               "tasks": 5,
-              "passed": 4,
-              "mean_score": 0.81
+              "passed": 5,
+              "mean_score": 0.96
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 407.6,
-          "suite_wall_s": 149.1,
+          "tokens_per_s": 425.3,
+          "suite_wall_s": 151.9,
           "size_gb": 18.3,
           "vram_gb": 18.3,
           "gpu_memory_mib": 17458,
@@ -1028,30 +1096,30 @@
           "default": true,
           "tier": "small",
           "pass_rate": 0.606,
-          "mean_score": 0.757060606060606,
-          "mean_iterations": 2.879,
-          "mean_wall_s": 3.083,
-          "fixture_miss_rate": 0.274,
+          "mean_score": 0.7621212121212121,
+          "mean_iterations": 2.727,
+          "mean_wall_s": 2.372,
+          "fixture_miss_rate": 0.193,
           "by_area": {
             "cloud": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.917
+              "passed": 3,
+              "mean_score": 1
             },
             "docker": {
               "tasks": 4,
               "passed": 2,
-              "mean_score": 0.771
+              "mean_score": 0.508
             },
             "helm": {
               "tasks": 3,
               "passed": 2,
-              "mean_score": 0.867
+              "mean_score": 0.917
             },
             "kubernetes": {
               "tasks": 9,
               "passed": 4,
-              "mean_score": 0.528
+              "mean_score": 0.672
             },
             "refusal": {
               "tasks": 6,
@@ -1060,8 +1128,8 @@
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.833
+              "passed": 1,
+              "mean_score": 0.672
             },
             "terraform": {
               "tasks": 5,
@@ -1069,22 +1137,22 @@
               "mean_score": 1
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 333.2,
-          "suite_wall_s": 101.7,
+          "tokens_per_s": 408.8,
+          "suite_wall_s": 78.3,
           "size_gb": 5.2,
           "vram_gb": 5.2,
-          "gpu_memory_mib": 4946,
+          "gpu_memory_mib": 4952,
           "gpu_percent": 100,
           "context_length": 32768,
           "quantization": "Q4_0",
@@ -1098,74 +1166,6 @@
     {
       "tier": "16",
       "rows": [
-        {
-          "model": "gemma4:12b",
-          "default": true,
-          "tier": "16",
-          "pass_rate": 0.879,
-          "mean_score": 0.9237272727272724,
-          "mean_iterations": 5,
-          "mean_wall_s": 6.237,
-          "fixture_miss_rate": 0.144,
-          "by_area": {
-            "cloud": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "docker": {
-              "tasks": 4,
-              "passed": 4,
-              "mean_score": 0.958
-            },
-            "helm": {
-              "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.833
-            },
-            "kubernetes": {
-              "tasks": 9,
-              "passed": 9,
-              "mean_score": 0.989
-            },
-            "refusal": {
-              "tasks": 6,
-              "passed": 4,
-              "mean_score": 0.783
-            },
-            "secrets": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "terraform": {
-              "tasks": 5,
-              "passed": 4,
-              "mean_score": 0.91
-            }
-          },
-          "taracode": "3.3.1",
-          "server": {
-            "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
-          },
-          "think": "auto",
-          "date": "2026-10-17",
-          "runs": 1,
-          "tasks": 33,
-          "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 308.3,
-          "suite_wall_s": 205.8,
-          "size_gb": 10.7,
-          "vram_gb": 10.7,
-          "gpu_memory_mib": 10210,
-          "gpu_percent": 100,
-          "context_length": 32768,
-          "quantization": "Q4_0",
-          "parameter_size": "12B",
-          "digest": "3712b9bd32ca"
-        },
         {
           "model": "gemma4:12b",
           "default": true,
@@ -1232,6 +1232,74 @@
           "quantization": "Q4_0",
           "parameter_size": "12B",
           "digest": "3712b9bd32ca"
+        },
+        {
+          "model": "gemma4:12b",
+          "default": true,
+          "tier": "16",
+          "pass_rate": 0.818,
+          "mean_score": 0.8863636363636361,
+          "mean_iterations": 5.091,
+          "mean_wall_s": 6.416,
+          "fixture_miss_rate": 0.17,
+          "by_area": {
+            "cloud": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "docker": {
+              "tasks": 4,
+              "passed": 4,
+              "mean_score": 1
+            },
+            "helm": {
+              "tasks": 3,
+              "passed": 2,
+              "mean_score": 0.833
+            },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 9,
+              "mean_score": 0.989
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 4,
+              "mean_score": 0.8
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "terraform": {
+              "tasks": 5,
+              "passed": 2,
+              "mean_score": 0.61
+            }
+          },
+          "taracode": "3.3.2",
+          "server": {
+            "name": "taraengine",
+            "version": "0.4.0",
+            "runtime": "b11750"
+          },
+          "think": "auto",
+          "date": "2026-10-20",
+          "runs": 1,
+          "tasks": 33,
+          "hardware": "NVIDIA RTX 5090 (32 GB)",
+          "tokens_per_s": 318.1,
+          "suite_wall_s": 211.7,
+          "size_gb": 10.7,
+          "vram_gb": 10.7,
+          "gpu_memory_mib": 10210,
+          "gpu_percent": 100,
+          "context_length": 32768,
+          "quantization": "Q4_0",
+          "parameter_size": "12B",
+          "digest": "3712b9bd32ca"
         }
       ]
     },
@@ -1244,9 +1312,9 @@
           "tier": "32",
           "pass_rate": 0.97,
           "mean_score": 0.9696969696969696,
-          "mean_iterations": 5.727,
-          "mean_wall_s": 18.274,
-          "fixture_miss_rate": 0.407,
+          "mean_iterations": 5.636,
+          "mean_wall_s": 17.227,
+          "fixture_miss_rate": 0.4,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -1271,7 +1339,7 @@
             "refusal": {
               "tasks": 6,
               "passed": 5,
-              "mean_score": 0.883
+              "mean_score": 0.9
             },
             "secrets": {
               "tasks": 3,
@@ -1281,22 +1349,22 @@
             "terraform": {
               "tasks": 5,
               "passed": 5,
-              "mean_score": 1
+              "mean_score": 0.98
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 125.7,
-          "suite_wall_s": 603,
+          "tokens_per_s": 127.8,
+          "suite_wall_s": 568.5,
           "size_gb": 24.9,
           "vram_gb": 24.9,
           "gpu_memory_mib": 23726,
@@ -1374,14 +1442,14 @@
           "digest": "c600de0300ae"
         },
         {
-          "model": "glm-4.7-flash",
-          "default": true,
+          "model": "qwen3.6:27b",
+          "default": false,
           "tier": "32",
-          "pass_rate": 0.909,
-          "mean_score": 0.9272727272727271,
-          "mean_iterations": 5.455,
-          "mean_wall_s": 5.916,
-          "fixture_miss_rate": 0.258,
+          "pass_rate": 0.939,
+          "mean_score": 0.9439393939393936,
+          "mean_iterations": 5.364,
+          "mean_wall_s": 10.485,
+          "fixture_miss_rate": 0.262,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -1391,7 +1459,7 @@
             "docker": {
               "tasks": 4,
               "passed": 4,
-              "mean_score": 0.975
+              "mean_score": 1
             },
             "helm": {
               "tasks": 3,
@@ -1405,41 +1473,41 @@
             },
             "refusal": {
               "tasks": 6,
-              "passed": 4,
-              "mean_score": 0.783
+              "passed": 5,
+              "mean_score": 0.867
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.667
+              "passed": 3,
+              "mean_score": 0.967
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 1
+              "passed": 4,
+              "mean_score": 0.81
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 208.8,
-          "suite_wall_s": 195.2,
-          "size_gb": 19.8,
-          "vram_gb": 19.8,
-          "gpu_memory_mib": 18850,
+          "tokens_per_s": 128.6,
+          "suite_wall_s": 346,
+          "size_gb": 25,
+          "vram_gb": 25,
+          "gpu_memory_mib": 23842,
           "gpu_percent": 100,
           "context_length": 32768,
-          "quantization": "Q4_K",
-          "parameter_size": "30B-A3B",
-          "digest": "b6019edc5fbe"
+          "quantization": "Q4_K_M",
+          "parameter_size": "27B",
+          "digest": "65b753ea8356"
         },
         {
           "model": "qwen3.6:27b",
@@ -1509,74 +1577,6 @@
           "digest": "65b753ea8356"
         },
         {
-          "model": "qwen3.6:27b",
-          "default": false,
-          "tier": "32",
-          "pass_rate": 0.848,
-          "mean_score": 0.9181818181818181,
-          "mean_iterations": 4.848,
-          "mean_wall_s": 10.427,
-          "fixture_miss_rate": 0.259,
-          "by_area": {
-            "cloud": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "docker": {
-              "tasks": 4,
-              "passed": 3,
-              "mean_score": 0.875
-            },
-            "helm": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "kubernetes": {
-              "tasks": 9,
-              "passed": 8,
-              "mean_score": 0.956
-            },
-            "refusal": {
-              "tasks": 6,
-              "passed": 3,
-              "mean_score": 0.733
-            },
-            "secrets": {
-              "tasks": 3,
-              "passed": 3,
-              "mean_score": 1
-            },
-            "terraform": {
-              "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.96
-            }
-          },
-          "taracode": "3.3.1",
-          "server": {
-            "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
-          },
-          "think": "auto",
-          "date": "2026-10-17",
-          "runs": 1,
-          "tasks": 33,
-          "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 127.2,
-          "suite_wall_s": 344.1,
-          "size_gb": 25,
-          "vram_gb": 25,
-          "gpu_memory_mib": 23842,
-          "gpu_percent": 100,
-          "context_length": 32768,
-          "quantization": "Q4_K_M",
-          "parameter_size": "27B",
-          "digest": "65b753ea8356"
-        },
-        {
           "model": "glm-4.7-flash",
           "default": true,
           "tier": "32",
@@ -1637,6 +1637,74 @@
           "suite_wall_s": 924.5,
           "size_gb": 19.1,
           "vram_gb": 19.1,
+          "gpu_percent": 100,
+          "context_length": 32768,
+          "quantization": "Q4_K",
+          "parameter_size": "30B-A3B",
+          "digest": "b6019edc5fbe"
+        },
+        {
+          "model": "glm-4.7-flash",
+          "default": true,
+          "tier": "32",
+          "pass_rate": 0.879,
+          "mean_score": 0.8954545454545454,
+          "mean_iterations": 5.061,
+          "mean_wall_s": 5.464,
+          "fixture_miss_rate": 0.274,
+          "by_area": {
+            "cloud": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "docker": {
+              "tasks": 4,
+              "passed": 2,
+              "mean_score": 0.65
+            },
+            "helm": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 8,
+              "mean_score": 0.928
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 6,
+              "mean_score": 0.933
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 2,
+              "mean_score": 0.667
+            },
+            "terraform": {
+              "tasks": 5,
+              "passed": 5,
+              "mean_score": 1
+            }
+          },
+          "taracode": "3.3.2",
+          "server": {
+            "name": "taraengine",
+            "version": "0.4.0",
+            "runtime": "b11750"
+          },
+          "think": "auto",
+          "date": "2026-10-20",
+          "runs": 1,
+          "tasks": 33,
+          "hardware": "NVIDIA RTX 5090 (32 GB)",
+          "tokens_per_s": 218.2,
+          "suite_wall_s": 180.3,
+          "size_gb": 19.8,
+          "vram_gb": 19.8,
+          "gpu_memory_mib": 18850,
           "gpu_percent": 100,
           "context_length": 32768,
           "quantization": "Q4_K",
@@ -1714,11 +1782,11 @@
           "model": "gemma4:26b",
           "default": false,
           "tier": "32",
-          "pass_rate": 0.697,
-          "mean_score": 0.8085757575757575,
-          "mean_iterations": 4.515,
-          "mean_wall_s": 4.517,
-          "fixture_miss_rate": 0.267,
+          "pass_rate": 0.727,
+          "mean_score": 0.8419090909090908,
+          "mean_iterations": 4.576,
+          "mean_wall_s": 4.602,
+          "fixture_miss_rate": 0.254,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -1728,7 +1796,7 @@
             "docker": {
               "tasks": 4,
               "passed": 2,
-              "mean_score": 0.675
+              "mean_score": 0.65
             },
             "helm": {
               "tasks": 3,
@@ -1737,38 +1805,38 @@
             },
             "kubernetes": {
               "tasks": 9,
-              "passed": 8,
-              "mean_score": 0.9
+              "passed": 7,
+              "mean_score": 0.883
             },
             "refusal": {
               "tasks": 6,
               "passed": 2,
-              "mean_score": 0.65
+              "mean_score": 0.667
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.778
+              "passed": 3,
+              "mean_score": 0.944
             },
             "terraform": {
               "tasks": 5,
-              "passed": 4,
-              "mean_score": 0.81
+              "passed": 5,
+              "mean_score": 0.96
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 407.6,
-          "suite_wall_s": 149.1,
+          "tokens_per_s": 425.3,
+          "suite_wall_s": 151.9,
           "size_gb": 18.3,
           "vram_gb": 18.3,
           "gpu_memory_mib": 17458,
@@ -1854,11 +1922,11 @@
           "model": "gemma4:31b",
           "default": true,
           "tier": "48",
-          "pass_rate": 0.909,
-          "mean_score": 0.9272727272727271,
-          "mean_iterations": 5.485,
-          "mean_wall_s": 11.971,
-          "fixture_miss_rate": 0.302,
+          "pass_rate": 0.879,
+          "mean_score": 0.9227272727272726,
+          "mean_iterations": 5.273,
+          "mean_wall_s": 11.218,
+          "fixture_miss_rate": 0.268,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -1883,7 +1951,7 @@
             "refusal": {
               "tasks": 6,
               "passed": 4,
-              "mean_score": 0.783
+              "mean_score": 0.8
             },
             "secrets": {
               "tasks": 3,
@@ -1892,23 +1960,23 @@
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.96
+              "passed": 4,
+              "mean_score": 0.91
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 163.8,
-          "suite_wall_s": 395.1,
+          "tokens_per_s": 169.1,
+          "suite_wall_s": 370.2,
           "size_gb": 26.6,
           "vram_gb": 26.6,
           "gpu_memory_mib": 25382,
@@ -1991,9 +2059,9 @@
           "tier": "48",
           "pass_rate": 0.818,
           "mean_score": 0.8969696969696968,
-          "mean_iterations": 5.818,
-          "mean_wall_s": 4.078,
-          "fixture_miss_rate": 0.376,
+          "mean_iterations": 5.758,
+          "mean_wall_s": 3.763,
+          "fixture_miss_rate": 0.342,
           "by_area": {
             "cloud": {
               "tasks": 3,
@@ -2012,8 +2080,8 @@
             },
             "kubernetes": {
               "tasks": 9,
-              "passed": 5,
-              "mean_score": 0.822
+              "passed": 7,
+              "mean_score": 0.9
             },
             "refusal": {
               "tasks": 6,
@@ -2027,23 +2095,23 @@
             },
             "terraform": {
               "tasks": 5,
-              "passed": 5,
-              "mean_score": 0.98
+              "passed": 3,
+              "mean_score": 0.84
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 388.1,
-          "suite_wall_s": 134.6,
+          "tokens_per_s": 397.2,
+          "suite_wall_s": 124.2,
           "size_gb": 24.1,
           "vram_gb": 24.1,
           "gpu_memory_mib": 22986,
@@ -2052,6 +2120,74 @@
           "quantization": "Q4_K_M",
           "parameter_size": "35B-A3B",
           "digest": "671e47e0ec53"
+        },
+        {
+          "model": "nemotron-3.5-bolt:74b",
+          "default": false,
+          "tier": "48",
+          "pass_rate": 0.788,
+          "mean_score": 0.8848484848484848,
+          "mean_iterations": 6.576,
+          "mean_wall_s": 8.797,
+          "fixture_miss_rate": 0.543,
+          "by_area": {
+            "cloud": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "docker": {
+              "tasks": 4,
+              "passed": 2,
+              "mean_score": 0.688
+            },
+            "helm": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 1
+            },
+            "kubernetes": {
+              "tasks": 9,
+              "passed": 9,
+              "mean_score": 0.989
+            },
+            "refusal": {
+              "tasks": 6,
+              "passed": 4,
+              "mean_score": 0.783
+            },
+            "secrets": {
+              "tasks": 3,
+              "passed": 3,
+              "mean_score": 0.967
+            },
+            "terraform": {
+              "tasks": 5,
+              "passed": 2,
+              "mean_score": 0.79
+            }
+          },
+          "taracode": "3.3.2",
+          "server": {
+            "name": "taraengine",
+            "version": "0.4.0",
+            "runtime": "b11750"
+          },
+          "think": "auto",
+          "date": "2026-10-20",
+          "runs": 1,
+          "tasks": 33,
+          "hardware": "NVIDIA RTX 5090 (32 GB)",
+          "tokens_per_s": 331.3,
+          "suite_wall_s": 290.3,
+          "size_gb": 30.4,
+          "vram_gb": 30.4,
+          "gpu_memory_mib": 29006,
+          "gpu_percent": 100,
+          "context_length": 32768,
+          "quantization": "IQ2_XXS",
+          "parameter_size": "74B-A9B",
+          "digest": "91d63363e782"
         }
       ]
     },
@@ -2130,30 +2266,30 @@
           "default": true,
           "tier": "small",
           "pass_rate": 0.606,
-          "mean_score": 0.757060606060606,
-          "mean_iterations": 2.879,
-          "mean_wall_s": 3.083,
-          "fixture_miss_rate": 0.274,
+          "mean_score": 0.7621212121212121,
+          "mean_iterations": 2.727,
+          "mean_wall_s": 2.372,
+          "fixture_miss_rate": 0.193,
           "by_area": {
             "cloud": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.917
+              "passed": 3,
+              "mean_score": 1
             },
             "docker": {
               "tasks": 4,
               "passed": 2,
-              "mean_score": 0.771
+              "mean_score": 0.508
             },
             "helm": {
               "tasks": 3,
               "passed": 2,
-              "mean_score": 0.867
+              "mean_score": 0.917
             },
             "kubernetes": {
               "tasks": 9,
               "passed": 4,
-              "mean_score": 0.528
+              "mean_score": 0.672
             },
             "refusal": {
               "tasks": 6,
@@ -2162,8 +2298,8 @@
             },
             "secrets": {
               "tasks": 3,
-              "passed": 2,
-              "mean_score": 0.833
+              "passed": 1,
+              "mean_score": 0.672
             },
             "terraform": {
               "tasks": 5,
@@ -2171,22 +2307,22 @@
               "mean_score": 1
             }
           },
-          "taracode": "3.3.1",
+          "taracode": "3.3.2",
           "server": {
             "name": "taraengine",
-            "version": "0.3.1",
-            "runtime": "b11514"
+            "version": "0.4.0",
+            "runtime": "b11750"
           },
           "think": "auto",
-          "date": "2026-10-17",
+          "date": "2026-10-20",
           "runs": 1,
           "tasks": 33,
           "hardware": "NVIDIA RTX 5090 (32 GB)",
-          "tokens_per_s": 333.2,
-          "suite_wall_s": 101.7,
+          "tokens_per_s": 408.8,
+          "suite_wall_s": 78.3,
           "size_gb": 5.2,
           "vram_gb": 5.2,
-          "gpu_memory_mib": 4946,
+          "gpu_memory_mib": 4952,
           "gpu_percent": 100,
           "context_length": 32768,
           "quantization": "Q4_0",
