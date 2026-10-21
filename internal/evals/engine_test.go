@@ -97,18 +97,19 @@ func TestRunCapturesTheLoadedModel(t *testing.T) {
 			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
 			taraenginetest.ModelSpec{Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "sha256:0123456789abcdef0123"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
-				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "0123456789ab", Measured: true}, false},
+				Quantization: "Q4_K_M", ParameterSize: "11.9B", Digest: "0123456789ab", Origin: "catalog", Measured: true}, false},
 		{"estimated by the engine",
 			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000,
 				Source: "estimated"}},
 			taraenginetest.ModelSpec{},
-			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768}, false},
+			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
+				Origin: "catalog"}, false},
 		{"odd engine strings are dropped, not published",
 			[]taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}},
 			taraenginetest.ModelSpec{Quantization: "Q4 | at http://10.1.2.3:11434", ParameterSize: "11.9B",
 				Digest: "sha256:not-hex-at-all"},
 			&EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
-				ParameterSize: "11.9B", Measured: true}, false},
+				ParameterSize: "11.9B", Origin: "catalog", Measured: true}, false},
 		{"another model is loaded", []taraenginetest.LoadedSpec{{Name: "other:1b", Size: 1}}, taraenginetest.ModelSpec{},
 			nil, true},
 		{"the engine reports no size", []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768}},
@@ -293,7 +294,7 @@ func TestEngineInfoReadsTheEngine(t *testing.T) {
 		{Name: "other:1b", Size: 1_000_000_000}}
 	info, others, err := engineInfo(context.Background(), withDefaults(runOptions(srv, "")))
 	want := EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
-		Quantization: "Q4_K_M", ParameterSize: "12B", Digest: "a1b2c3d4e5f6", Measured: true}
+		Quantization: "Q4_K_M", ParameterSize: "12B", Digest: "a1b2c3d4e5f6", Origin: "catalog", Measured: true}
 	if err != nil || info == nil || *info != want || others != 1 {
 		t.Fatalf("info %+v, others %d, err %v", info, others, err)
 	}

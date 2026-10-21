@@ -60,6 +60,10 @@ type Row struct {
 	Quantization    string                 `json:"quantization,omitempty"`
 	ParameterSize   string                 `json:"parameter_size,omitempty"`
 	Digest          string                 `json:"digest,omitempty"`
+	Origin          string                 `json:"origin,omitempty"`   // the engine's entry: catalog, registry or import
+	Override        string                 `json:"override,omitempty"` // the published override a registry row ran from
+	Source          *EngineSource          `json:"source,omitempty"`   // the file an import ran
+	Unranked        string                 `json:"unranked,omitempty"` // why the row is not ranked; "" on a ranked row
 }
 
 // newRow is one model's line on a server from its results: the summary, the run's header, the measured GPU
@@ -86,7 +90,15 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		row.SizeGB, row.VRAMGB, row.GPUPercent = round1(float64(e.SizeBytes)/1e9), round1(float64(e.VRAMBytes)/1e9), &pct
 		row.ContextLength, row.Quantization = e.ContextLength, e.Quantization
 		row.ParameterSize, row.Digest = e.ParameterSize, e.Digest
+		row.Origin = e.Origin
+		if e.Origin != "catalog" { // a catalog model stays unmarked whatever file served it (spec 1h)
+			row.Override = r.Override
+		}
+		if e.Origin == "import" {
+			row.Source = e.Source
+		}
 	}
+	row.Unranked = unranked(row)
 	return row
 }
 
@@ -146,7 +158,9 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			tier = "other"
 		}
 		row := newRow(r, tier, defaults[machineModel{r.Model, r.Hardware}])
-		byTier[tier] = append(byTier[tier], row)
+		if row.Unranked == "" { // a row that cannot rank leaves the tier tables too; its board says why
+			byTier[tier] = append(byTier[tier], row)
+		}
 		allRows = append(allRows, row)
 	}
 	sb.Boards = buildBoards(allRows, corpusTasks)
@@ -276,8 +290,9 @@ func (t TierBoard) markdown(manyMachines bool) string {
 		columns++
 	}
 	b.WriteString("|" + strings.Repeat("---|", columns) + "\n")
-	for _, r := range t.Rows {
-		name := mdText(r.Model)
+	marks, notes := outsideMarks(t.Rows)
+	for i, r := range t.Rows {
+		name := mdText(r.Model) + marks[i]
 		if r.Default {
 			name += " (default)"
 		}
@@ -296,6 +311,7 @@ func (t TierBoard) markdown(manyMachines bool) string {
 		fmt.Fprintf(&b, " %.1f | %.0f s | %.0f%% | %s | %s |\n",
 			r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, mdText(r.Server.String()), r.Date)
 	}
+	b.WriteString(notes)
 	return b.String()
 }
 

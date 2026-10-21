@@ -255,12 +255,20 @@ truthful one. The transcript marks a call the common store answered `COMMON`.
 
 ### Rows from outside the catalog
 
-A row may come from a model that is not in the engine's catalog when its results file names the artifact by digest
-and the catalog override that produced it is published under `docs/evals/overrides/` (the engine's embedded catalog
-verbatim plus the entry, placed as `<data>/registry.yaml` on the machine that ran it). Such a row says so in the notes
-of its run, carries the tier the override declares, and is never a tier default: the board measures what the override
-served, the catalog keeps recommending only what it ships. The first is `nemotron-3.5-bolt:74b` on the RTX 5090
-board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
+The engine says where each model's entry came from, and the run records it in the results' engine block (`origin`:
+`catalog`, `registry` for an operator's registry file, `import` for an `hf://` or local import). A row ranks unmarked
+only when its origin is `catalog`. A model served from a registry file ranks when the run names the published copy of
+that file with `--override docs/evals/overrides/<name>.registry.yaml` (the engine's embedded catalog verbatim plus
+the entry, placed as `<data>/registry.yaml` on the machine that ran it): the results record the path,
+`eval lint --results docs/evals/results` checks that it exists, and the board marks the row with a footnote mark
+after its name in `scoreboard.md` ("outside the catalog", with the file), `override` on the row in `scoreboard.json`,
+and the same mark in the tier tables. An import ranks marked the same way and needs no override: its link is the file
+it ran, which the engine names (`source`: the repository and file, or a local file's name, and the file's sha256), and
+it keeps the tier the engine gives it. The mark is the rule, the notes of the run are the detail. A row with neither is
+listed under its board unranked, with the reason: a registry row without a published override, an import whose engine
+block lacks its file, a result from an engine before taraengine 0.5.0 (which named no origin), or a result without an
+engine block; such a row leaves the tier tables too and is never a tier default. The first row from outside the
+catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
 
 ### The task.yaml reference
 
@@ -336,7 +344,8 @@ taracode eval run --model gemma4:12b
 
 Add `--host` for an engine at another address, `--tasks <glob>` to run a subset of the corpus, `--think <mode>`
 to override the default think level, `--runs N` to repeat each task and average its scores, and
-`--hardware "<label>"` to name the machine the engine runs on. Results are written to
+`--hardware "<label>"` to name the machine the engine runs on, and `--override docs/evals/overrides/<name>.registry.yaml`
+to name the published override a registry-served model runs from. Results are written to
 `docs/evals/results/<model slug>-<server>-<machine>-<date>.json` (the machine part, from the label, only when
 there is one); the full transcript of each task (the conversation,
 every tool decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which
@@ -384,6 +393,9 @@ itself, which is the figure a board shows.
   `--hardware "NVIDIA RTX 5090 (32 GB)"`. The engine does not name its GPU, so taracode does not guess.
   The label is public: it describes the machine and never addresses it. One line, at most 60 characters,
   no URL and no IP address; runs of spaces collapse, so one machine is one board.
+- **Origin and override** (`engine.origin`, `engine.source`, `override`) say where the model's entry came from, what
+  an import ran, and which published override a registry-served model ran from (declared with `--override`); see
+  "Rows from outside the catalog" for how the board reads them.
 
 `taracode eval report` builds one board per hardware label, above the RAM-tier tables: every model whose
 newest results carry that label, ranked by pass rate, then mean score, then tokens per second. Two kinds

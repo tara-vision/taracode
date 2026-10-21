@@ -24,6 +24,7 @@ type evalRunFlags struct {
 	timeout                     time.Duration
 	out, runsDir, hostLabel     string
 	hardware, gpuProbe          string
+	override                    string
 }
 
 var evalCmd = &cobra.Command{
@@ -90,7 +91,8 @@ var evalLintCmd = &cobra.Command{
 			version, _ := cmd.Flags().GetString("version")
 			return runEvalSeal(corpus, version, cmd.OutOrStdout())
 		}
-		return runEvalLint(corpus, cmd.OutOrStdout())
+		results, _ := cmd.Flags().GetString("results")
+		return runEvalLint(corpus, results, cmd.OutOrStdout())
 	},
 }
 
@@ -107,6 +109,9 @@ func init() {
 	evalRunCmd.Flags().StringVar(&evalRun.hardware, "hardware", "",
 		"label for the machine the engine runs on, at most 60 characters, e.g. \"NVIDIA RTX 5090 (32 GB)\" "+
 			"(never a host name or an address)")
+	evalRunCmd.Flags().StringVar(&evalRun.override, "override", "",
+		"the published override file the model runs from (docs/evals/overrides/<name>.registry.yaml), recorded in "+
+			"the results so the board can mark the row; a registry-served model without one is not ranked")
 	evalRunCmd.Flags().StringVar(&evalRun.gpuProbe, "gpu-probe", "",
 		"a shell command that prints the GPU memory in use in MiB, run once after the model is loaded when the "+
 			"engine only estimates its memory, e.g. "+
@@ -122,6 +127,8 @@ func init() {
 	evalReportCmd.Flags().String("corpus", "evals/tasks", "task directory (for the task count)")
 	evalReportCmd.Flags().Bool("check-defaults", false, "print each tier's default and its top scorer")
 	evalLintCmd.Flags().String("corpus", "evals/tasks", "task directory")
+	evalLintCmd.Flags().String("results", "",
+		"results directory to check too: an override a results file names must be a published one")
 	evalLintCmd.Flags().Bool("seal", false, "seal the corpus: write its version and hash to evals/VERSION")
 	evalLintCmd.Flags().String("version", "", "the corpus version to seal, greater than the sealed one")
 	evalCmd.AddCommand(evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd)
@@ -163,6 +170,11 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("--hardware: %w", err)
 	}
+	if f.override != "" {
+		if err := evals.CheckOverride(f.override); err != nil {
+			return fmt.Errorf("--override: %w", err)
+		}
+	}
 	tasks, err := evals.LoadCorpus(f.corpus, f.tasks)
 	if err != nil {
 		return fmt.Errorf("loading the corpus from %s: %w", f.corpus, err)
@@ -177,9 +189,13 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Out: out})
+		Override: f.override, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
+	}
+	if res.Engine != nil && res.Engine.Origin == "registry" && f.override == "" {
+		_, _ = fmt.Fprintf(out, "warning: the engine serves %s from a registry file and no --override names its "+
+			"published copy: the row will not rank\n", f.model)
 	}
 	path, err := evals.WriteResults(f.out, res)
 	if err != nil {
@@ -303,8 +319,8 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 		_, _ = fmt.Fprintf(out, "  left out: %s\n", s)
 	}
 	for _, board := range sb.Boards {
-		_, _ = fmt.Fprintf(out, "board %s: %d ranked (%d without engine data), %d did not fit, %d on part of the corpus\n",
-			board.Hardware, len(board.Rows), board.Unchecked(), len(board.DidNotFit), len(board.Partial))
+		_, _ = fmt.Fprintf(out, "board %s: %d ranked, %d did not fit, %d on part of the corpus, %d not ranked\n",
+			board.Hardware, len(board.Rows), len(board.DidNotFit), len(board.Partial), len(board.Unpublished))
 	}
 	if checkDefaults {
 		for _, line := range sb.CheckDefaults() {
@@ -336,8 +352,11 @@ func runEvalSeal(corpus, version string, out io.Writer) error {
 }
 
 // runEvalLint prints the problems and fails when there are any.
-func runEvalLint(corpus string, out io.Writer) error {
+func runEvalLint(corpus, results string, out io.Writer) error {
 	count, problems := evals.Lint(corpus)
+	if results != "" {
+		problems = append(problems, evals.LintResults(results)...)
+	}
 	for _, p := range problems {
 		_, _ = fmt.Fprintln(out, p)
 	}

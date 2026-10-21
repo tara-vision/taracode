@@ -44,7 +44,7 @@ func fakeEngine(t *testing.T, turns ...taraenginetest.Turn) *taraenginetest.Serv
 	t.Helper()
 	srv := taraenginetest.New(t)
 	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
-		ContextLength: 32768, Tier: "16", Default: true}}
+		ContextLength: 32768, Tier: "16", Default: true, Origin: "catalog"}}
 	srv.Turns = append([]taraenginetest.Turn{{Content: "ready"}}, turns...) // the warm-up answer first
 	return srv
 }

@@ -68,9 +68,13 @@ func (c *Client) Show(ctx context.Context, model string) (*llm.ModelDetails, err
 	if d.Status == statusAvailable {
 		return nil, &llm.ServerError{Status: http.StatusNotFound, Message: model + " is not pulled", Model: model}
 	}
-	return &llm.ModelDetails{Capabilities: d.Capabilities, ContextLength: d.NativeContext, Family: d.Family,
-		ParameterSize: d.Params, Quantization: d.Quantization, Digest: d.Digest,
-		CapabilitiesUnknown: d.CapabilitiesInferred && len(d.Capabilities) == 0}, nil
+	details := &llm.ModelDetails{Capabilities: d.Capabilities, ContextLength: d.NativeContext, Family: d.Family,
+		ParameterSize: d.Params, Quantization: d.Quantization, Digest: d.Digest, Origin: d.Origin,
+		CapabilitiesUnknown: d.CapabilitiesInferred && len(d.Capabilities) == 0}
+	if s := d.Source; s != nil {
+		details.Source = &llm.ModelSource{Repo: s.Repo, File: s.File, Path: s.Path, SHA256: s.SHA256}
+	}
+	return details, nil
 }
 
 // Loaded implements llm.Client through /api/loaded. The engine reports one memory figure per loaded model; every

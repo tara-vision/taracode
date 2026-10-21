@@ -29,6 +29,7 @@ type RunOptions struct {
 	RunsDir                     string           // where transcripts go; "" = none
 	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
 	Corpus                      *Corpus          // the corpus version and hash written to the results; nil = none
+	Override                    string           // the published override file the model ran from; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
 	NumPredict                  int              // tokens per completion; 0 = evalNumPredict, negative = no cap
@@ -195,7 +196,8 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
 		Model:  opts.Model, Tier: tier, Default: isDefault,
 		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
-		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware}, nil
+		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware,
+		Override: opts.Override}, nil
 }
 
 // catalogEntry is the model's tier and default flag as the engine's catalog has them; a model the catalog gives no

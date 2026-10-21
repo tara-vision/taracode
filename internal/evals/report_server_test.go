@@ -9,7 +9,7 @@ import (
 
 func serverResult(model, tier, server, version string, isDefault bool, score float64) Results {
 	r := Results{Taracode: "3.3.0", Model: model, Tier: tier, Default: isDefault, Think: "auto", Date: "2026-10-25",
-		Runs: 1, Summary: Summary{PassRate: score, MeanScore: score, ByArea: map[string]AreaSummary{}}}
+		Runs: 1, Engine: catalogEngine(), Summary: Summary{PassRate: score, MeanScore: score, ByArea: map[string]AreaSummary{}}}
 	if server == "ollama" {
 		r.Taracode, r.Ollama = "3.2.4", version
 	} else {
