@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.3] - 2026-10-21
+
 ### Changed
 - The published scoreboard holds two machines. The NVIDIA RTX 5090 (32 GB) board is the run of 2026-10-20 with
   taracode 3.3.2 on taraengine 0.4.0 (llama.cpp b11750): the eight models of the engine's catalog re-measured and
@@ -884,7 +886,8 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.2...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.3...HEAD
+[3.3.3]: https://github.com/tara-vision/taracode/compare/v3.3.2...v3.3.3
 
 [3.3.2]: https://github.com/tara-vision/taracode/compare/v3.3.1...v3.3.2
 [3.3.1]: https://github.com/tara-vision/taracode/compare/v3.3.0...v3.3.1
