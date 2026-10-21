@@ -27,6 +27,7 @@ type RunOptions struct {
 	GPUProbe                    string           // a command that prints the GPU memory in use in MiB; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
+	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
 	NumPredict                  int              // tokens per completion; 0 = evalNumPredict, negative = no cap
@@ -40,6 +41,7 @@ type RunOptions struct {
 type runScope struct {
 	home       string
 	env        []string
+	common     *Store // the common store, loaded once per run; nil without one
 	transcript sync.Once
 }
 
@@ -91,6 +93,13 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
+	if opts.CommonDir != "" {
+		common, err := LoadFixtures(opts.CommonDir)
+		if err != nil {
+			return Results{}, fmt.Errorf("the common fixtures: %w", err)
+		}
+		opts.scope.common = common
+	}
 	restore, err := isolateEnv()
 	if err != nil {
 		return Results{}, fmt.Errorf("isolating the environment: %w", err)
@@ -217,7 +226,7 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 	}
 	defer remove()
 	t := Task{ID: "warm-up", Mode: "investigate", Permission: "allow", Expect: Expect{MaxIterations: 1}}
-	replay := NewReplay(emptyStore(), dir)
+	replay := NewReplay(emptyStore(), nil, dir)
 	a, err := agent.New(assistantOptions(t, opts, dir, replay, nil, io.Discard))
 	if err != nil {
 		return err

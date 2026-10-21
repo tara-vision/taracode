@@ -26,6 +26,7 @@ var ErrNoFixture = errors.New("no recorded data for this call")
 // their own answer patterns.
 type Replay struct {
 	store  *Store
+	common *Store // the corpus-wide store (spec 1b), consulted after the task's; nil = none
 	runDir string
 
 	mu      sync.Mutex
@@ -39,6 +40,7 @@ type ReplayCall struct {
 	DryRun    bool
 	Miss      bool  // no fixture was recorded for this signature
 	Real      bool  // a probe that ran for real inside the run directory (spec 1a), never a fixture
+	Common    bool  // answered, in whole or in part, from the common store (spec 1b)
 	Defect    bool  // the signature was indexed but its fixture file could not be read
 	Err       error // the error the replay returned, nil when it served an output; wraps ErrNoFixture on a miss
 }
@@ -48,9 +50,30 @@ type ReplayCall struct {
 var realTools = map[string]bool{"read_file": true, "list_files": true, "search_files": true, "write_file": true,
 	"edit_file": true}
 
-// NewReplay returns a replay for one task run in runDir.
-func NewReplay(store *Store, runDir string) *Replay {
-	return &Replay{store: store, runDir: runDir, planned: map[string]bool{}}
+// NewReplay returns a replay for one task run in runDir: the task's store first, then the common store when
+// there is one.
+func NewReplay(store, common *Store, runDir string) *Replay {
+	return &Replay{store: store, common: common, runDir: runDir, planned: map[string]bool{}}
+}
+
+// lookup serves a signature from the task's store, else from the common store; common says which answered.
+// defect is the error of an indexed fixture whose file cannot be read, in the store that holds the signature.
+func (r *Replay) lookup(sig string) (out string, isErr, ok, common bool, defect error) {
+	if out, isErr, ok := r.store.Lookup(sig); ok {
+		return out, isErr, true, false, nil
+	}
+	if err := r.store.LookupErr(sig); err != nil {
+		return "", false, false, false, err
+	}
+	if r.common != nil {
+		if out, isErr, ok := r.common.Lookup(sig); ok {
+			return out, isErr, true, true, nil
+		}
+		if err := r.common.LookupErr(sig); err != nil {
+			return "", false, false, true, err
+		}
+	}
+	return "", false, false, false, nil
 }
 
 // Middleware is the tools.Middleware of this replay.
@@ -74,10 +97,9 @@ func (r *Replay) replay(call tools.Call) tools.Executor {
 		}
 		if call.Tool == "shell" && !call.DryRun {
 			if parts, ok := splitChain(str(args, "command")); ok {
-				if argvs, ok := r.probeArgvs(workingDir, parts); ok {
-					out, err := r.probeChain(ctx, workingDir, argvs)
-					r.note(ReplayCall{Signature: sig, Real: true, Err: err})
-					return out, err
+				if out, rc, handled := r.chain(ctx, workingDir, sig, parts); handled {
+					r.note(rc)
+					return out, rc.Err
 				}
 			}
 		}
@@ -86,11 +108,11 @@ func (r *Replay) replay(call tools.Call) tools.Executor {
 			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Err: err})
 			return "", err
 		}
-		out, isErr, ok := r.store.Lookup(sig)
+		out, isErr, ok, common, defect := r.lookup(sig)
 		if !ok {
-			if r.store.LookupErr(sig) != nil { // the file and its path stay out of what the model sees
+			if defect != nil { // the file and its path stay out of what the model sees
 				err := fmt.Errorf("corpus defect: the recorded data for this call cannot be read: %s", sig)
-				r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Defect: true, Err: err})
+				r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Defect: true, Common: common, Err: err})
 				return "", err
 			}
 			err := fmt.Errorf("%w: %s", ErrNoFixture, sig)
@@ -100,10 +122,10 @@ func (r *Replay) replay(call tools.Call) tools.Executor {
 		r.recordTerraformPlan(sig, call.DryRun, isErr)
 		if isErr {
 			err := errors.New(out)
-			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Err: err})
+			r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Common: common, Err: err})
 			return "", err
 		}
-		r.note(ReplayCall{Signature: sig, DryRun: call.DryRun})
+		r.note(ReplayCall{Signature: sig, DryRun: call.DryRun, Common: common})
 		return out, nil
 	}
 }

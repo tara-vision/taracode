@@ -221,3 +221,58 @@ func (r *Replay) runProbe(ctx context.Context, workingDir string, argv []string)
 	}
 	return out, nil
 }
+
+// chain answers a shell line part by part: a part that is a probe runs for real, any other part is looked up in
+// the task's store and then the common store, keyed as the simple command it is; the outputs run together as a
+// shell shows them, and the chain stops at a part that fails, as && does. handled is false for a single part
+// that is not a probe: that line takes the ordinary replay, with its terraform plan gate. A part with no fixture
+// makes the whole line a miss, keyed by the whole line, so the results name what to record. The gate and the
+// plan state are not applied to the parts of a chain: no recorded task joins terraform calls with &&.
+func (r *Replay) chain(ctx context.Context, workingDir, sig string, parts [][]string) (string, ReplayCall, bool) {
+	rc := ReplayCall{Signature: sig}
+	probes := make([]bool, len(parts))
+	anyProbe := false
+	for i, argv := range parts {
+		if _, ok := r.probeArgv(workingDir, argv); ok {
+			probes[i], anyProbe = true, true
+		}
+	}
+	if len(parts) == 1 && !anyProbe {
+		return "", rc, false
+	}
+	var b strings.Builder
+	for i, argv := range parts {
+		var out string
+		var err error
+		switch {
+		case probes[i]:
+			checked, _ := r.probeArgv(workingDir, argv)
+			out, err = r.runProbe(ctx, workingDir, checked)
+			rc.Real = true
+		default:
+			partSig := Signature("shell", map[string]any{"command": strings.Join(argv, " ")})
+			fixture, isErr, ok, common, defect := r.lookup(partSig)
+			switch {
+			case defect != nil:
+				rc.Defect, rc.Common, rc.Err = true, rc.Common || common, fmt.Errorf(
+					"corpus defect: the recorded data for this call cannot be read: %s", partSig)
+				return "", rc, true
+			case !ok:
+				rc.Miss, rc.Err = true, fmt.Errorf("%w: %s", ErrNoFixture, sig)
+				return "", rc, true
+			}
+			rc.Common = rc.Common || common
+			out = fixture
+			if isErr {
+				err = errors.New(fixture)
+				out = ""
+			}
+		}
+		b.WriteString(out)
+		if err != nil {
+			rc.Err = err
+			return b.String(), rc, true
+		}
+	}
+	return b.String(), rc, true
+}

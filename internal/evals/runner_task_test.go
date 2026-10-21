@@ -7,7 +7,7 @@ func TestTaskResultCountsRealCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(store, t.TempDir())
+	r := NewReplay(store, nil, t.TempDir())
 	r.note(ReplayCall{Signature: "shell pwd", Real: true})
 	r.note(ReplayCall{Signature: "shell ls", Real: true})
 	r.note(ReplayCall{Signature: "shell uname -a", Miss: true, Err: ErrNoFixture})

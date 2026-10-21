@@ -96,6 +96,15 @@ record:
 	ssh $(RECORD_HOST) 'cd $(RECORD_DIR) && ./taracode eval record --corpus evals/tasks --scenarios evals/scenarios $(if $(RECORD_TASKS),--tasks "$(RECORD_TASKS)",)'
 	rsync -az --delete --include='*/' --include='fixtures/***' --exclude='*' $(RECORD_HOST):$(RECORD_DIR)/evals/tasks/ evals/tasks/
 
+## record-common: record the common fixture store (evals/common/calls.yaml) on the sandbox and pull it back
+record-common:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/taracode-linux-amd64 main.go
+	ssh $(RECORD_HOST) 'mkdir -p $(RECORD_DIR)'
+	rsync -az dist/taracode-linux-amd64 $(RECORD_HOST):$(RECORD_DIR)/taracode
+	rsync -az --delete evals/ $(RECORD_HOST):$(RECORD_DIR)/evals/
+	ssh $(RECORD_HOST) 'cd $(RECORD_DIR) && ./taracode eval record --common evals/common'
+	rsync -az --delete $(RECORD_HOST):$(RECORD_DIR)/evals/common/fixtures/ evals/common/fixtures/
+
 # Run the corpus against one lab model. Needs LAB_HOST, and TARACODE_KEY for a keyed engine;
 # EVAL_ARGS passes extra flags (--tasks, --runs).
 eval-lab: build

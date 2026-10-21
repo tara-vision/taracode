@@ -226,6 +226,7 @@ Notes on the first run (3.0.0):
 
 ```
 evals/tasks/<id>/task.yaml, workdir/, policy.yaml, fixtures/index.yaml, fixtures/*.txt
+evals/common/calls.yaml, fixtures/index.yaml, fixtures/*.txt   the common fixture store
 evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
@@ -237,6 +238,18 @@ docs/evals/scoreboard.md, scoreboard.json
 `workdir/`, when present, is copied into the run directory; the five file tools operate on the copy for real.
 For an operate task, the runner creates the run directory's `.taracode` storage with `storage.NewManager`
 and writes the task's `policy.yaml` into it.
+
+### Common fixtures
+
+`evals/common` is a fixture store the whole corpus shares, for the probes that do not depend on a task: which
+tools the sandbox has and which versions (`which terraform`, `terraform version`, `kubectl version --client`, and the
+chains a model types, `which terraform && terraform version`). The replay looks a signature up in the task's own
+store first and in the common store after it, so a task's fixture always wins; a line joined by `&&` or `;` is
+answered part by part, probes run for real and the other parts looked up, and one part without a fixture makes the
+whole line a miss, keyed by the whole line. `calls.yaml` lists the calls that fill the store, shell lines only;
+`make record-common` records them on the sandbox with the recorder the tasks use and pulls the store back. A tool the
+sandbox lacks records its real "not found" answer, which is the truthful one. The transcript marks a call the common
+store answered `COMMON`.
 
 ### Rows from outside the catalog
 

@@ -27,7 +27,7 @@ func probeRunDir(t *testing.T) (*Replay, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewReplay(store, runDir), runDir
+	return NewReplay(store, nil, runDir), runDir
 }
 
 func probe(t *testing.T, r *Replay, runDir string, argv ...string) (string, error) {

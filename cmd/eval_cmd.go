@@ -58,6 +58,9 @@ var evalRecordCmd = &cobra.Command{
 		corpus, _ := cmd.Flags().GetString("corpus")
 		scenarios, _ := cmd.Flags().GetString("scenarios")
 		glob, _ := cmd.Flags().GetString("tasks")
+		if common, _ := cmd.Flags().GetString("common"); common != "" {
+			return evals.RecordCommon(context.Background(), common, evals.KubectlResolver, cmd.OutOrStdout())
+		}
 		return runEvalRecord(corpus, scenarios, glob, cmd.OutOrStdout())
 	},
 }
@@ -108,12 +111,23 @@ func init() {
 	evalRecordCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalRecordCmd.Flags().String("scenarios", "evals/scenarios", "scenario directory")
 	evalRecordCmd.Flags().String("tasks", "", "glob over task ids (default: every recorded task)")
+	evalRecordCmd.Flags().String("common", "",
+		"record the common store of this directory (its calls.yaml) instead of the tasks")
 	evalReportCmd.Flags().String("results", "docs/evals/results", "results directory")
 	evalReportCmd.Flags().String("out-dir", "docs/evals", "where scoreboard.md and scoreboard.json go")
 	evalReportCmd.Flags().String("corpus", "evals/tasks", "task directory (for the task count)")
 	evalReportCmd.Flags().Bool("check-defaults", false, "print each tier's default and its top scorer")
 	evalLintCmd.Flags().String("corpus", "evals/tasks", "task directory")
 	evalCmd.AddCommand(evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd)
+}
+
+// commonDir is the common fixture store beside the corpus (evals/common for evals/tasks); "" when there is none.
+func commonDir(corpus string) string {
+	dir := filepath.Join(filepath.Dir(corpus), "common")
+	if _, err := os.Stat(filepath.Join(dir, "fixtures", "index.yaml")); err != nil {
+		return ""
+	}
+	return dir
 }
 
 // runEvalRun is the testable core of `eval run`.
@@ -137,7 +151,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	}
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
-		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, Out: out})
+		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: commonDir(f.corpus), Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
