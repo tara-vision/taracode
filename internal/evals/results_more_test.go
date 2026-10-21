@@ -126,7 +126,7 @@ func TestEngineHostForms(t *testing.T) {
 }
 
 func TestScoreboardPutsAnUnknownModelInOther(t *testing.T) {
-	sb := BuildScoreboard([]Results{{Model: "mystery:1b", Date: "2026-09-01"}}, 1, "test")
+	sb := BuildScoreboard([]Results{{Model: "mystery:1b", Date: "2026-09-01", Engine: catalogEngine()}}, 1, "test")
 	if len(sb.Tiers) != 1 || sb.Tiers[0].Tier != "other" || sb.Tiers[0].Rows[0].Model != "mystery:1b" {
 		t.Fatalf("%+v", sb.Tiers)
 	}

@@ -19,6 +19,9 @@ import (
 // and a shell line that is a single simple kubectl, helm, terraform, docker or git command keyed
 // like the dedicated tool. Two calls with the same signature replay the same fixture.
 func Signature(tool string, args map[string]any) string {
+	if tool != "scan" { // the scan tool keys its target relative to the run directory by its own rule (scanSignature)
+		args = relativeArgs(args)
+	}
 	switch tool {
 	case "kubectl":
 		return kubectlSignature(kubectlArgv(args))
@@ -85,6 +88,64 @@ func evalRunDir(p string) string {
 		}
 	}
 	return ""
+}
+
+// runDirPath finds, in a word, an absolute path that lies in an eval run directory: an optional prefix the
+// word attaches to the path ("-chdir=", "--file="), the path up to and including the run directory, and the
+// rest of the path.
+var runDirPath = regexp.MustCompile(`([^\s/]*)(/(?:[^\s/]+/)*taracode-eval-[0-9]+)((?:/[^\s]*)?)`)
+
+// relativeToRunDirText keys every absolute path inside an eval run directory relative to it, in a line of shell or
+// an argument string: the run directory itself becomes ".", a path below it loses the directory, so a model that
+// passes the working directory it was given meets the fixture recorded there (spec 1j). A path outside a run
+// directory, and a path in another temporary directory of an eval, stay as written.
+func relativeToRunDirText(s string) string {
+	if !strings.Contains(s, "taracode-eval-") {
+		return s
+	}
+	var b strings.Builder
+	last := 0
+	for _, m := range runDirPath.FindAllStringSubmatchIndex(s, -1) {
+		end := m[1]
+		if m[7] == m[6] && end < len(s) && !isSpace(s[end]) { // taracode-eval-123x: another name, not a run directory
+			continue
+		}
+		prefix, rest := s[m[2]:m[3]], strings.TrimPrefix(s[m[6]:m[7]], "/")
+		if rest == "" {
+			rest = "."
+		}
+		b.WriteString(s[last:m[0]])
+		b.WriteString(prefix + rest)
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// isSpace is the white space a shell line breaks words on.
+func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+
+// relativeArgs is args with every string value keyed through relativeToRunDirText; a map without a run directory
+// in any value is returned as it is.
+func relativeArgs(args map[string]any) map[string]any {
+	var out map[string]any
+	for k, v := range args {
+		s, ok := v.(string)
+		if !ok || !strings.Contains(s, "taracode-eval-") {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]any, len(args))
+			for k2, v2 := range args {
+				out[k2] = v2
+			}
+		}
+		out[k] = relativeToRunDirText(s)
+	}
+	if out == nil {
+		return args
+	}
+	return out
 }
 
 // DryRunSignature keys a tool's dry run.
@@ -347,7 +408,7 @@ func terraformSignature(command, dir string, args []string) string {
 	if dir == "" {
 		dir = "."
 	}
-	dir = path.Clean(dir)
+	dir = path.Clean(relativeToRunDirText(dir))
 	dirField := dir
 	if len(strings.Fields(dir)) > 1 {
 		dirField = strconv.Quote(dir)

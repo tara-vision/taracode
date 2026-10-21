@@ -324,3 +324,29 @@ func TestScanSignatureKeysTheTargetTheToolScans(t *testing.T) {
 		}
 	}
 }
+
+func TestSignatureKeysPathsInsideTheRunDirectoryRelative(t *testing.T) {
+	cases := []struct {
+		tool string
+		args map[string]any
+		want string
+	}{
+		{"terraform", map[string]any{"command": "plan", "dir": "/tmp/taracode-eval-123"}, "terraform plan dir=."},
+		{"terraform", map[string]any{"command": "plan", "dir": "/tmp/taracode-eval-123/infra/"}, "terraform plan dir=infra"},
+		{"shell", map[string]any{"command": "terraform -chdir=/tmp/taracode-eval-123/infra plan"}, "terraform plan dir=infra"},
+		{"shell", map[string]any{"command": "terraform -chdir=/tmp/taracode-eval-123 plan"}, "terraform plan dir=."},
+		{"shell", map[string]any{"command": "ls -la /tmp/taracode-eval-123"}, "shell ls -la ."},
+		{"shell", map[string]any{"command": "cat /tmp/taracode-eval-123/workdir/main.tf"}, "shell cat workdir/main.tf"},
+		{"shell", map[string]any{"command": "cat /tmp/taracode-eval-123/a | grep x"}, "shell cat a | grep x"},
+		{"shell", map[string]any{"command": "ls /private/var/folders/x/T/taracode-eval-9/workdir"}, "shell ls workdir"},
+		{"read_file", map[string]any{"path": "/tmp/taracode-eval-123/workdir/main.tf"}, "read_file path=workdir/main.tf"},
+		{"shell", map[string]any{"command": "ls /etc"}, "shell ls /etc"},
+		{"terraform", map[string]any{"command": "plan", "dir": "/tmp/taracode-eval-env-9/x"}, "terraform plan dir=/tmp/taracode-eval-env-9/x"},
+		{"shell", map[string]any{"command": "cat /tmp/taracode-eval-123x/a"}, "shell cat /tmp/taracode-eval-123x/a"},
+	}
+	for _, c := range cases {
+		if got := Signature(c.tool, c.args); got != c.want {
+			t.Errorf("%s %v: got %q, want %q", c.tool, c.args, got, c.want)
+		}
+	}
+}

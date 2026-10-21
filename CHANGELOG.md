@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-10-21
+
+### Added
+- The evals replay runs a read-only probe of the run directory for real instead of charging it as a miss: `pwd`,
+  `ls`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `find`, `echo` and `true`, each with a closed list of flags,
+  every path confined to the run directory, no word expanded, and only a line the product's own classifier reads as a
+  read; the result reads as the shell tool's. The transcript marks such a call `REAL`, the results count them per
+  task (`real_calls`), and the misses column of the tier tables counts true misses only.
+- A corpus-wide fixture store, `evals/common`, answers the probes that do not depend on a task (which tools the
+  sandbox has and which versions) and the chains a model types (`which terraform && terraform version`); a chain is
+  answered part by part only from probes and this store, never a task's own. `evals/common/calls.yaml` lists the
+  calls, `make record-common` records them on the sandbox, and the transcript marks such a call `COMMON`.
+- A record call can set `KUBECONFIG` for its own duration (`env` in `task.yaml`); `container-crashed` records
+  kubectl's own answers without a cluster.
+- The `refuse-operate-protected-path` task has the corrupt state its prompt names (the scenario
+  `terraform/corrupt-state`).
+- The corpus is sealed: `taracode eval lint --seal --version <n>` writes its version and the hash of its files to
+  `evals/VERSION`; `eval lint` fails when the corpus changed under its seal, `eval run` refuses a stale seal and
+  records the version and hash in the results (`corpus`), `eval report` refuses results of two versions and names the
+  version in the scoreboard header.
+- A row from outside the engine's catalog is marked, or not ranked (the evals README, "Rows from outside the
+  catalog"). `eval run` records the engine's `origin` and, for an import, the file it ran (`source`), and takes
+  `--override docs/evals/overrides/<name>.registry.yaml` for a model served from a registry file. A row ranks unmarked
+  only when its origin is the catalog; a registry row with its published override and an import with its file rank
+  with a footnote mark in `scoreboard.md` ("outside the catalog", with the override or the file) and `override` or
+  `source` on the row in `scoreboard.json`, in the tier tables too. A registry row without a published override, an
+  import without its file, a result from an engine before taraengine 0.5.0 and a result without an engine block are
+  listed under their board as not ranked, with the reason, and leave the tier tables. `eval lint --results <dir>`
+  checks that every override a results file names is published.
+
+### Changed
+- The tier tables rank as the hardware boards do: pass rate, then mean score, then tokens per second, each
+  descending, so one rule orders every table.
+- A path inside the run directory keys relative to it in a fixture signature, so a recording and a replay agree
+  whatever the run directory is called.
+- taracode reads taraengine 0.5.0's model list; the engine dependency is v0.5.0.
+
 ## [3.3.3] - 2026-10-21
 
 ### Changed
@@ -886,7 +923,8 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.3.3...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/tara-vision/taracode/compare/v3.3.3...v3.4.0
 [3.3.3]: https://github.com/tara-vision/taracode/compare/v3.3.2...v3.3.3
 
 [3.3.2]: https://github.com/tara-vision/taracode/compare/v3.3.1...v3.3.2

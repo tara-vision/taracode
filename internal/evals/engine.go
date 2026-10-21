@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -27,7 +28,75 @@ type EngineInfo struct {
 	Quantization  string `json:"quantization,omitempty"`
 	ParameterSize string `json:"parameter_size,omitempty"`
 	Digest        string `json:"digest,omitempty"`
-	Measured      bool   `json:"-"` // the engine measured the memory itself (taraengine on NVIDIA); never written
+	// Origin is where the engine's entry for the model came from (spec 1h): catalog, registry (an operator's
+	// registry file) or import; "" when the engine did not say (an engine before taraengine 0.5.0).
+	Origin string        `json:"origin,omitempty"`
+	Source *EngineSource `json:"source,omitempty"` // what an import runs; absent for a catalog model
+	// Measured: the engine measured the memory itself (taraengine on NVIDIA); never written.
+	Measured bool `json:"-"`
+}
+
+// EngineSource names the file an import ran, as the engine named it: the repository and file of an hf:// import, the
+// base name of a local file (never its path, which is a machine path), and the sha256 of the file.
+type EngineSource struct {
+	Repo   string `json:"repo,omitempty"`
+	File   string `json:"file,omitempty"`
+	Path   string `json:"path,omitempty"`
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+// Label is the source as a board names it: the repository and file, or the file's name.
+func (s *EngineSource) Label() string {
+	if s == nil {
+		return ""
+	}
+	if s.Repo != "" && s.File != "" {
+		return s.Repo + "/" + s.File
+	}
+	if s.File != "" {
+		return s.File
+	}
+	return s.Path
+}
+
+// origins are the values the engine's origin takes; anything else is dropped, like any odd engine string.
+var origins = map[string]bool{"catalog": true, "registry": true, "import": true}
+
+// plainSegment is one segment of a file's path: plain characters, with one that is not a dot, so neither "." nor
+// ".." passes.
+const plainSegment = `[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*`
+
+// hfRepo is a Hugging Face repository id, and hfFile a file in one (a path of plain segments).
+var (
+	hfRepo    = regexp.MustCompile(`^` + plainSegment + `/` + plainSegment + `$`)
+	localName = regexp.MustCompile(`^[A-Za-z0-9._:-]*[A-Za-z0-9_:-][A-Za-z0-9._:-]*$`) // a GGUF's name, colons included
+	hfFile    = regexp.MustCompile(`^` + plainSegment + `(/` + plainSegment + `)*$`)
+	sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
+
+// cleanSource is the engine's source as the results record it: each part kept only in the shape it should have, a
+// local path cut to its base name; nil when nothing survives.
+func cleanSource(s *llm.ModelSource) *EngineSource {
+	if s == nil {
+		return nil
+	}
+	out := &EngineSource{}
+	if len(s.Repo) <= 200 && hfRepo.MatchString(s.Repo) {
+		out.Repo = s.Repo
+	}
+	if len(s.File) <= 256 && hfFile.MatchString(s.File) {
+		out.File = s.File
+	}
+	if base := filepath.Base(s.Path); s.Path != "" && len(base) <= 256 && localName.MatchString(base) {
+		out.Path = base
+	}
+	if sha256Hex.MatchString(s.SHA256) {
+		out.SHA256 = s.SHA256
+	}
+	if *out == (EngineSource{}) {
+		return nil
+	}
+	return out
 }
 
 // CleanHardware trims a run's hardware label, collapses its inner runs of spaces (so one machine is
@@ -118,6 +187,10 @@ func describeModel(ctx context.Context, client llm.Client, model string, info *E
 	}
 	info.Quantization, info.ParameterSize, info.Digest = cleanToken(d.Quantization), cleanToken(d.ParameterSize),
 		shortDigest(d.Digest)
+	if origins[d.Origin] {
+		info.Origin = d.Origin
+	}
+	info.Source = cleanSource(d.Source)
 }
 
 // loadedEngine is engineInfo for Run. The block is measurement metadata, so a failure is one warning

@@ -622,11 +622,13 @@ func recordOneCall(
 		sig = DryRunSignature(call.Tool, args)
 	}
 	var text string
-	if call.DryRun {
-		text, err = reg.DryRun(ctx, call.Tool, args, runDir)
-	} else {
-		text, err = reg.Execute(ctx, call.Tool, args, runDir)
-	}
+	text, err = func() (string, error) { // the call's env, set for the call alone and restored whatever happens
+		defer setCallEnv(call.Env)()
+		if call.DryRun {
+			return reg.DryRun(ctx, call.Tool, args, runDir)
+		}
+		return reg.Execute(ctx, call.Tool, args, runDir)
+	}()
 	// A dry run's own tool can decide it has none for this call (kubectl/helm/terraform, for a verb
 	// other than apply/upgrade/install): that runs through the middleware like any other dry run and
 	// is already saved by it. A tool with no DryRun at all never reaches the middleware (Registry.DryRun

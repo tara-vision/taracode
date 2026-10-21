@@ -10,25 +10,14 @@ import (
 // HardwareBoard is the ranking on one machine: every model whose newest results carry that hardware
 // label and cover the whole corpus. A model the engine reported as not entirely on the GPU is listed
 // apart, since the board's promise is "runs entirely on this GPU", and so is a result that ran only
-// part of the corpus (a --tasks subset), which is never comparable. A result with no engine block
-// stays in the ranking: its fit was never checked, and its memory column holds what the run measured,
-// if anything.
+// part of the corpus (a --tasks subset), which is never comparable. A result that cannot rank at all (spec 1h: no
+// engine block, no origin, an unpublished override, an import without its file) is listed apart with the reason.
 type HardwareBoard struct {
-	Hardware  string `json:"hardware"`
-	Rows      []Row  `json:"rows"`
-	DidNotFit []Row  `json:"did_not_fit,omitempty"`
-	Partial   []Row  `json:"partial,omitempty"`
-}
-
-// Unchecked counts the ranked rows the engine described nothing for: their fit was never checked.
-func (h HardwareBoard) Unchecked() int {
-	n := 0
-	for _, r := range h.Rows {
-		if r.GPUPercent == nil {
-			n++
-		}
-	}
-	return n
+	Hardware    string `json:"hardware"`
+	Rows        []Row  `json:"rows"`
+	DidNotFit   []Row  `json:"did_not_fit,omitempty"`
+	Partial     []Row  `json:"partial,omitempty"`
+	Unpublished []Row  `json:"unpublished,omitempty"` // the rows that cannot rank (spec 1h); each says why in Unranked
 }
 
 // buildBoards groups the rows that carry a hardware label into one board per label: boards by label,
@@ -45,6 +34,8 @@ func buildBoards(rows []Row, corpusTasks int) []HardwareBoard {
 			byHardware[r.Hardware] = b
 		}
 		switch {
+		case r.Unranked != "":
+			b.Unpublished = append(b.Unpublished, r)
 		case corpusTasks > 0 && r.Tasks != corpusTasks:
 			b.Partial = append(b.Partial, r)
 		case r.GPUPercent != nil && *r.GPUPercent < 100:
@@ -58,6 +49,12 @@ func buildBoards(rows []Row, corpusTasks int) []HardwareBoard {
 		for _, list := range [][]Row{b.Rows, b.DidNotFit, b.Partial} {
 			sort.Slice(list, func(i, j int) bool { return rankLess(list[i], list[j]) })
 		}
+		sort.Slice(b.Unpublished, func(i, j int) bool { // by name: a list of what cannot rank is no ranking
+			if b.Unpublished[i].Model != b.Unpublished[j].Model {
+				return b.Unpublished[i].Model < b.Unpublished[j].Model
+			}
+			return b.Unpublished[i].Server.Name < b.Unpublished[j].Server.Name
+		})
 		boards = append(boards, *b)
 	}
 	sort.Slice(boards, func(i, j int) bool { return boards[i].Hardware < boards[j].Hardware })
@@ -95,11 +92,13 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 			"generation rate. %s\n\n", h.facts(), h.memoryNote())
 		b.WriteString("| # | Model | Engine | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |\n")
 		b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|\n")
+		marks, notes := outsideMarks(h.Rows)
 		for i, r := range h.Rows {
-			fmt.Fprintf(&b, "| %d | %s | %s | %s | %.0f%% | %.2f | %s | %.0f s | %s | %s | %d |\n",
-				i+1, mdText(r.Model), mdText(r.Server.String()), tierShort(r.Tier), r.PassRate*100, r.MeanScore,
+			fmt.Fprintf(&b, "| %d | %s%s | %s | %s | %.0f%% | %.2f | %s | %.0f s | %s | %s | %d |\n",
+				i+1, mdText(r.Model), marks[i], mdText(r.Server.String()), tierShort(r.Tier), r.PassRate*100, r.MeanScore,
 				numberOrDash(r.TokensPerS, "%.0f", ""), r.MeanWallS, r.vram(), textOrDash(mdText(r.Quantization)), r.Runs)
 		}
+		b.WriteString(notes)
 	} else if len(h.DidNotFit) > 0 {
 		b.WriteString("No model ran entirely on this GPU.\n")
 	}
@@ -120,7 +119,84 @@ func (h HardwareBoard) markdown(corpusTasks int) string {
 			fmt.Fprintf(&b, "- %s: %d of %d tasks\n", rowName(r), r.Tasks, corpusTasks)
 		}
 	}
+	if len(h.Unpublished) > 0 {
+		b.WriteString("\nNot ranked:\n\n")
+		for _, r := range h.Unpublished {
+			fmt.Fprintf(&b, "- %s: %s\n", rowName(r), unrankedText(r.Unranked))
+		}
+	}
 	return b.String()
+}
+
+// unranked is why a row cannot rank (spec 1h), "" when it can: a row ranks unmarked only when the engine said its
+// entry is the catalog's; a registry row ranks marked when its published override is named, an import when the
+// engine named its file; an engine before taraengine 0.5.0 named no origin and a result without an engine block
+// says nothing, so neither ranks.
+func unranked(r Row) string {
+	switch {
+	case r.GPUPercent == nil:
+		return "no engine block"
+	case r.Origin == "catalog":
+		return ""
+	case r.Origin == "":
+		return "engine before 0.5.0"
+	case r.Origin == "registry" && r.Override != "":
+		return ""
+	case r.Origin == "registry":
+		return "unpublished override"
+	case r.Origin == "import" && r.Source.Label() != "": // the file the board can name, not a sha alone
+		return ""
+	case r.Origin == "import":
+		return "import without its file"
+	}
+	return fmt.Sprintf("origin %q", r.Origin)
+}
+
+// unrankedText is the reason as the list under a board reads it.
+func unrankedText(reason string) string {
+	switch reason {
+	case "unpublished override":
+		return "from an unpublished override"
+	case "engine before 0.5.0":
+		return "engine before 0.5.0, which named no origin"
+	case "import without its file":
+		return "an import without its file"
+	}
+	return mdText(reason)
+}
+
+// outsideLabel names what a ranked row from outside the catalog ran: its published override, or the repository and
+// file (or the file's name) an import ran with the file's sha256 shortened; "" for a catalog row.
+func outsideLabel(r Row) string {
+	switch {
+	case r.Origin == "import" && r.Source != nil: // an import is named by its file, whatever else the run declared
+		label := r.Source.Label()
+		if sha := r.Source.SHA256; sha != "" {
+			label += ", sha256 " + sha[:min(12, len(sha))]
+		}
+		return label
+	case r.Override != "":
+		return r.Override
+	}
+	return ""
+}
+
+// outsideMarks numbers the ranked rows from outside the catalog in rank order: the mark after each one's name, by
+// row index, and the footnote block under the table ("[n] outside the catalog: <override or file>"), "" when none.
+func outsideMarks(rows []Row) (marks map[int]string, notes string) {
+	marks = map[int]string{}
+	var lines []string
+	for i, r := range rows {
+		if label := outsideLabel(r); label != "" {
+			n := len(lines) + 1
+			marks[i] = fmt.Sprintf(" [%d]", n)
+			lines = append(lines, fmt.Sprintf("[%d] outside the catalog: %s", n, mdText(label)))
+		}
+	}
+	if len(lines) == 0 {
+		return marks, ""
+	}
+	return marks, "\n" + strings.Join(lines, "\n") + "\n"
 }
 
 // rowName is a row's model on its server, as the lines under the ranking name it, so two rows of one model read

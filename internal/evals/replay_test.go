@@ -32,7 +32,7 @@ func replayRegistry(t *testing.T) (*Replay, *tools.Registry, string) {
 	if err := os.WriteFile(filepath.Join(runDir, "notes.txt"), []byte("real file"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	return r, reg, runDir
 }
@@ -87,7 +87,7 @@ func TestReplayErrorsNameNoTask(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	calls := []struct {
@@ -214,7 +214,7 @@ func TestReplayApplyRefusedAfterErrorPlan(t *testing.T) {
 	if err := s.Save("terraform plan dir=.", "terraform exited with status 1\nno credentials", true); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
@@ -232,7 +232,7 @@ func TestReplayApplyRefusedAfterErrorPlan(t *testing.T) {
 func TestReplayApplyRefusedAfterPlanMiss(t *testing.T) {
 	taskDir, runDir := t.TempDir(), t.TempDir()
 	s, _ := LoadFixtures(taskDir)
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err == nil ||
@@ -262,7 +262,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("shell plan unlocks the tool's apply", func(t *testing.T) {
-		r := NewReplay(s, runDir)
+		r := NewReplay(s, nil, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		if _, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform plan"}, runDir); err != nil {
 			t.Fatal(err)
@@ -272,7 +272,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 		}
 	})
 	t.Run("the tool's plan unlocks a shell apply", func(t *testing.T) {
-		r := NewReplay(s, runDir)
+		r := NewReplay(s, nil, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan"}, runDir); err != nil {
 			t.Fatal(err)
@@ -282,7 +282,7 @@ func TestReplayTerraformPlanStateCrossesShellAndToolForms(t *testing.T) {
 		}
 	})
 	t.Run("a shell apply with no plan is refused", func(t *testing.T) {
-		r := NewReplay(s, runDir)
+		r := NewReplay(s, nil, runDir)
 		reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 		_, err := reg.Execute(ctx, "shell", map[string]any{"command": "terraform apply"}, runDir)
 		if err == nil || !strings.Contains(err.Error(), "run terraform plan first") {
@@ -306,7 +306,7 @@ func TestReplayReportsACorpusDefectDistinctFromAMiss(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	_, err := reg.Execute(context.Background(), "kubectl", map[string]any{"verb": "get", "resource": "pods", "namespace": "shop"}, runDir)
 	if err == nil || !strings.Contains(err.Error(), "corpus defect") {
@@ -357,7 +357,7 @@ func TestReplayTerraformPlanStateKeysOnTheQuotedDirNotASharedPrefix(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	ctx := context.Background()
 	if _, err := reg.Execute(ctx, "terraform", map[string]any{"command": "plan", "dir": "my infra"}, runDir); err != nil {
@@ -383,7 +383,7 @@ func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
 	if err := s.Save("terraform plan dir=.", "Plan: 1 to add.", false); err != nil {
 		t.Fatal(err)
 	}
-	r := NewReplay(s, runDir)
+	r := NewReplay(s, nil, runDir)
 	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
 	_, err := reg.Execute(context.Background(), "cloud", map[string]any{"provider": "terraform", "args": "plan dir=."}, runDir)
 	if err == nil || !strings.Contains(err.Error(), "no recorded data") {
@@ -391,5 +391,194 @@ func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
 	}
 	if m := r.Misses(); len(m) != 1 || m[0] != "cloud terraform plan dir=." {
 		t.Fatalf("misses %v", m)
+	}
+}
+
+func TestReplayRunsAProbeForRealAndCountsNoMiss(t *testing.T) {
+	r, reg, runDir := replayRegistry(t)
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "pwd"}, runDir)
+	if err != nil || out != runDir {
+		t.Fatalf("pwd: %q %v", out, err)
+	}
+	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "cat notes.txt && echo done"}, runDir)
+	if err != nil || out != "real filedone" { // the outputs run together, as the shell tool shows them (no newline in the file)
+		t.Fatalf("a chain of probes: %q %v", out, err)
+	}
+	if m := r.Misses(); len(m) != 0 {
+		t.Fatalf("misses %v", m)
+	}
+	calls := r.Calls()
+	if len(calls) != 2 || !calls[0].Real || !calls[1].Real || calls[0].Signature != "shell pwd" {
+		t.Fatalf("calls %+v", calls)
+	}
+	if reals := r.RealCalls(); len(reals) != 2 || reals[1] != "shell cat notes.txt && echo done" {
+		t.Fatalf("real calls %v", reals)
+	}
+}
+
+func TestReplayAProbeOffTheListStaysAMiss(t *testing.T) {
+	r, reg, runDir := replayRegistry(t)
+	for _, line := range []string{"uname -a", "cat /etc/hosts"} { // the registry rebuilds the error as text
+		if _, err := reg.Execute(context.Background(), "shell", map[string]any{"command": line}, runDir); err == nil ||
+			!strings.HasPrefix(err.Error(), "no recorded data for this call: shell "+line) {
+			t.Fatalf("%s: %v", line, err)
+		}
+	}
+	if m := r.Misses(); len(m) != 2 || len(r.RealCalls()) != 0 {
+		t.Fatalf("misses %v, real %v", m, r.RealCalls())
+	}
+	for _, c := range r.Calls() {
+		if !c.Miss || c.Real || !errors.Is(c.Err, ErrNoFixture) {
+			t.Fatalf("call %+v", c)
+		}
+	}
+}
+
+func TestReplayADryRunShellProbeReplays(t *testing.T) {
+	r, _, runDir := replayRegistry(t)
+	exec := r.Middleware(tools.Call{Tool: "shell", DryRun: true}, nil)
+	if _, err := exec(context.Background(), map[string]any{"command": "pwd"}, runDir); err == nil || !errors.Is(err, ErrNoFixture) {
+		t.Fatalf("a dry run never probes: %v", err)
+	}
+	if m := r.Misses(); len(m) != 1 || m[0] != "dryrun:shell pwd" {
+		t.Fatalf("misses %v", m)
+	}
+}
+
+// replayRegistryWithCommon is replayRegistry with a common store holding the given fixtures.
+func replayRegistryWithCommon(t *testing.T, common map[string]string) (*Replay, *tools.Registry, string) {
+	t.Helper()
+	cs, err := LoadFixtures(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for sig, text := range common {
+		if err := cs.Save(sig, text, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, _, runDir := replayRegistry(t)
+	r = NewReplay(r.store, cs, runDir)
+	reg := tools.NewBuiltinRegistry(tools.Options{Middleware: r.Middleware}, tools.Config{})
+	return r, reg, runDir
+}
+
+func TestReplayFallsBackToTheCommonStore(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which terraform": "/usr/local/bin/terraform\n"})
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which terraform"}, runDir)
+	if err != nil || out != "/usr/local/bin/terraform\n" {
+		t.Fatalf("which: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 1 || !calls[0].Common || calls[0].Miss || calls[0].Real {
+		t.Fatalf("calls %+v", calls)
+	}
+	if m := r.Misses(); len(m) != 0 {
+		t.Fatalf("misses %v", m)
+	}
+}
+
+func TestATaskFixtureWinsOverTheCommonStore(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which terraform": "/usr/local/bin/terraform\n"})
+	if err := r.store.Save("shell which terraform", "/opt/bin/terraform\n", false); err != nil {
+		t.Fatal(err)
+	}
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which terraform"}, runDir)
+	if err != nil || out != "/opt/bin/terraform\n" {
+		t.Fatalf("which: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 1 || calls[0].Common {
+		t.Fatalf("calls %+v", calls)
+	}
+}
+
+func TestReplayAnswersAChainOfFixtureParts(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{ // fixtures as the recorder writes them: trimmed
+		"shell which terraform": "/usr/local/bin/terraform",
+		// a shell line that is one terraform command keys like the terraform tool, at record time as here
+		Signature("shell", map[string]any{"command": "terraform version"}): "Terraform v1.9.0\non darwin_arm64",
+		"shell which helm": "\n[exit status 1]",
+	})
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which terraform && terraform version"}, runDir)
+	if err != nil || out != "/usr/local/bin/terraform\nTerraform v1.9.0\non darwin_arm64" {
+		t.Fatalf("chain: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 1 || !calls[0].Common || calls[0].Signature != "shell which terraform && terraform version" {
+		t.Fatalf("calls %+v", calls)
+	}
+	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "pwd && which terraform"}, runDir)
+	if err != nil || out != runDir+"\n/usr/local/bin/terraform" {
+		t.Fatalf("a chain of a probe and a fixture: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 2 || !calls[1].Common || !calls[1].Real {
+		t.Fatalf("calls %+v", calls)
+	}
+	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && terraform version"}, runDir)
+	if err != nil || out != "\n[exit status 1]" { // the shell tool's shape for a failure without output
+		t.Fatalf("a recorded failure stops the chain at &&: %q %v", out, err)
+	}
+}
+
+func TestAChainWithAMissingPartIsAMiss(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which terraform": "/usr/local/bin/terraform\n"})
+	_, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which terraform && terraform -version"}, runDir)
+	if err == nil || err.Error() != "no recorded data for this call: shell which terraform && terraform -version" {
+		t.Fatalf("miss: %v", err)
+	}
+	if m := r.Misses(); len(m) != 1 || m[0] != "shell which terraform && terraform -version" {
+		t.Fatalf("misses %v", m)
+	}
+}
+
+func TestAChainNeverReadsATasksOwnStore(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which helm": "/usr/local/bin/helm"})
+	if err := r.store.Save("shell helm version", "version.BuildInfo{Version:\"v3.19.0\"}", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && helm version"}, runDir); err == nil ||
+		!strings.HasPrefix(err.Error(), "no recorded data for this call") {
+		t.Fatalf("a part only the task's store holds keeps the line a miss, so the scorer and the plan gate see whole lines: %v", err)
+	}
+	if err := r.store.Save("shell which helm && helm version", "/usr/local/bin/helm\nversion.BuildInfo{Version:\"v3.19.0\"}", false); err != nil {
+		t.Fatal(err)
+	}
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && helm version"}, runDir)
+	if err != nil || !strings.HasPrefix(out, "/usr/local/bin/helm") {
+		t.Fatalf("a recorded whole line is served as recorded: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 2 || calls[1].Common || calls[1].Real {
+		t.Fatalf("calls %+v", calls)
+	}
+}
+
+func TestReplayServesACommonErrorFixture(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which terraform": "/usr/local/bin/terraform"})
+	if err := r.common.Save("shell which helm", "which: refused by the sandbox", true); err != nil {
+		t.Fatal(err)
+	}
+	_, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm"}, runDir)
+	if err == nil || !strings.Contains(err.Error(), "refused by the sandbox") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestReplayReportsACommonFixtureItCannotRead(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which helm": "/usr/local/bin/helm"})
+	entries, err := os.ReadDir(r.common.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries { // the index stays, the fixture file goes: a defect of the common store
+		if e.Name() != "index.yaml" {
+			if err := os.Remove(filepath.Join(r.common.Dir(), e.Name())); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm"}, runDir)
+	if err == nil || !strings.HasPrefix(err.Error(), "corpus defect: ") {
+		t.Fatalf("err %v", err)
+	}
+	if calls := r.Calls(); len(calls) != 1 || !calls[0].Defect || !calls[0].Common {
+		t.Fatalf("calls %+v", calls)
 	}
 }

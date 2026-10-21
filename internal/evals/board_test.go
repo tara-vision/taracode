@@ -16,7 +16,7 @@ const testCorpus = 2
 
 func testEngine(size, vram int64, pct int) *EngineInfo {
 	return &EngineInfo{SizeBytes: size, VRAMBytes: vram, GPUPercent: pct, ContextLength: 32768,
-		Quantization: "Q4_K_M", ParameterSize: "29.9B", Digest: "4475827791a2"}
+		Quantization: "Q4_K_M", ParameterSize: "29.9B", Digest: "4475827791a2", Origin: "catalog"}
 }
 
 // onGPU is a small model entirely on the GPU, for tests that are not about memory.
@@ -77,8 +77,8 @@ func TestBuildScoreboardRanksAHardwareBoard(t *testing.T) {
 	}
 	board := sb.Boards[0]
 	// Pass rate first; glm-4.7-flash and qwen3.8:27b tie on pass rate and score, the faster one leads;
-	// a row with no engine block stays ranked; the row that is 75% on the GPU is not ranked.
-	want := []string{"laguna-xs-2.1", "glm-4.7-flash", "qwen3.8:27b", "gemma4:12b", "unknown-engine:1b"}
+	// the row that is 75% on the GPU is not ranked, nor is the row with no engine block (spec 1h).
+	want := []string{"laguna-xs-2.1", "glm-4.7-flash", "qwen3.8:27b", "gemma4:12b"}
 	if got := boardModels(board.Rows); !slices.Equal(got, want) {
 		t.Fatalf("ranking %v, want %v", got, want)
 	}
@@ -88,11 +88,11 @@ func TestBuildScoreboardRanksAHardwareBoard(t *testing.T) {
 	if glm := board.Rows[1]; glmRowWrong(glm) {
 		t.Fatalf("row %+v", glm)
 	}
-	if e := board.Rows[4]; e.GPUPercent != nil || e.VRAMGB != 0 || e.SizeGB != 0 {
-		t.Fatalf("a row without an engine block has memory numbers: %+v", e)
+	if u := board.Unpublished; len(u) != 1 || u[0].Model != "unknown-engine:1b" || u[0].GPUPercent != nil {
+		t.Fatalf("a row without an engine block is listed unranked: %+v", u)
 	}
-	// The tier tables still hold every model, labelled or not.
-	if len(sb.Tiers) != 3 || len(sb.Tiers[0].Rows) != 2 || sb.Tiers[0].Rows[0].Model != "qwen3.5:9b" {
+	// The tier tables hold every ranked model, labelled or not; the unlabelled qwen3.5:9b has no engine block either.
+	if len(sb.Tiers) != 3 || len(sb.Tiers[0].Rows) != 1 || sb.Tiers[0].Rows[0].Model != "gemma4:12b" {
 		t.Fatalf("tiers %+v", sb.Tiers)
 	}
 }
@@ -182,8 +182,10 @@ func TestBoardsSortByLabelAndDidNotFitRowsByRank(t *testing.T) {
 func TestPartialCorpusResultsAreNotRanked(t *testing.T) {
 	sb := testBoard(t, hardwareResults(), 33) // every fixture ran 2 tasks, the corpus has 33
 	board := sb.Boards[0]
-	if len(board.Rows) != 0 || len(board.DidNotFit) != 0 || len(board.Partial) != 6 {
-		t.Fatalf("ranked %d, did not fit %d, partial %d", len(board.Rows), len(board.DidNotFit), len(board.Partial))
+	// the row without an engine block cannot rank at all, so it is listed as such rather than as partial
+	if len(board.Rows) != 0 || len(board.DidNotFit) != 0 || len(board.Partial) != 5 || len(board.Unpublished) != 1 {
+		t.Fatalf("ranked %d, did not fit %d, partial %d, unranked %d", len(board.Rows), len(board.DidNotFit),
+			len(board.Partial), len(board.Unpublished))
 	}
 	md := sb.Markdown()
 	for _, want := range []string{
@@ -223,7 +225,7 @@ func TestEmptyRankingPrintsNoTable(t *testing.T) {
 func TestTheNewestResultDecidesBoardMembership(t *testing.T) {
 	old := hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, testEngine(9_300_000_000, 9_300_000_000, 100))
 	newer := Results{Taracode: "v3.2.0", Ollama: "0.35.0", Model: "gemma4:12b", Tier: "16", Think: "auto", Date: "2026-10-02",
-		Runs: 1, Summary: Summary{PassRate: 0.9, MeanScore: 0.9, ByArea: map[string]AreaSummary{}}}
+		Runs: 1, Engine: catalogEngine(), Summary: Summary{PassRate: 0.9, MeanScore: 0.9, ByArea: map[string]AreaSummary{}}}
 	sb := testBoard(t, []Results{old, newer}, testCorpus)
 	if len(sb.Boards) != 0 {
 		t.Fatalf("a stale row stayed on the board: %+v", sb.Boards)
@@ -291,11 +293,11 @@ func TestScoreboardMarkdownPutsTheHardwareBoardFirst(t *testing.T) {
 	md := testBoard(t, hardwareResults(), testCorpus).Markdown()
 	for _, want := range []string{
 		"\n## NVIDIA RTX 5090 (32 GB)\n",
-		"5 models, ollama 0.35.0, context window 32768, one run each.",
+		"4 models, ollama 0.35.0, context window 32768, one run each.",
 		"| # | Model | Engine | Tier | Pass rate | Mean score | Tokens/s | Mean wall | VRAM | Quant | Runs |",
 		"| 1 | laguna-xs-2.1 | ollama 0.35.0 | - | 97% | 0.95 | 120 | 5 s | ~19.2 GiB | Q4_K_M | 1 |",
 		"| 2 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | ~19.3 GiB | Q4_K_M | 1 |",
-		"| 5 | unknown-engine:1b | ollama 0.35.0 | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
+		"\nNot ranked:\n\n- unknown-engine:1b on ollama 0.35.0: no engine block\n",
 		"- huge:70b on ollama 0.35.0: the engine reports 44.0 GB loaded, 75% on the GPU, pass rate 99%",
 	} {
 		if !strings.Contains(md, want) {
@@ -349,19 +351,16 @@ func TestBoardMarkdownEscapesWhatAResultsFileCarries(t *testing.T) {
 	}
 }
 
-// TestUncheckedCountsRankedRowsWithoutMemoryData: a ranked row the engine described nothing for was
-// never checked for fit, and the report says how many there are.
-func TestUncheckedCountsRankedRowsWithoutMemoryData(t *testing.T) {
+// TestARowWithoutAnEngineBlockIsListedUnranked: a row ranks only with an engine block (spec 1h), so a result the engine
+// described nothing for is listed under its board with the reason.
+func TestARowWithoutAnEngineBlockIsListedUnranked(t *testing.T) {
 	board := testBoard(t, hardwareResults(), testCorpus).Boards[0]
-	if got := board.Unchecked(); got != 1 { // unknown-engine:1b
-		t.Fatalf("unchecked %d, want 1", got)
-	}
-	if got := (HardwareBoard{}).Unchecked(); got != 0 {
-		t.Fatalf("an empty board counts %d unchecked rows", got)
+	if len(board.Unpublished) != 1 || board.Unpublished[0].Model != "unknown-engine:1b" ||
+		board.Unpublished[0].Unranked != "no engine block" {
+		t.Fatalf("unpublished %+v", board.Unpublished)
 	}
 }
 
-// TestBoardNamesTheSmallTier: the registry's small tier has no size, so the Tier column says "small".
 func TestBoardNamesTheSmallTier(t *testing.T) {
 	md := testBoard(t, []Results{hardwareResult("gemma4:e4b", "small", 0.7, 0.8, 150, onGPU())}, testCorpus).Markdown()
 	if !strings.Contains(md, "| 1 | gemma4:e4b | ollama 0.35.0 | small | 70% | 0.80 | 150 | 5 s | ~0.9 GiB | Q4_K_M | 1 |") {

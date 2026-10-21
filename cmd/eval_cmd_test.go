@@ -24,7 +24,7 @@ func TestEvalLintReportsProblems(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "task.yaml"), []byte("id: bad-task\narea: nope\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := runEvalLint(root, os.Stdout)
+	err := runEvalLint(root, "", os.Stdout)
 	if err == nil || !strings.Contains(err.Error(), "1 problem") {
 		t.Fatalf("err=%v", err)
 	}
@@ -80,6 +80,7 @@ func TestEvalLintCommandSilencesUsageOnFailure(t *testing.T) {
 func TestEvalReportWritesTheBoard(t *testing.T) {
 	results, out := t.TempDir(), t.TempDir()
 	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Default: true, Date: "2026-09-26",
+		Engine:  &evals.EngineInfo{Origin: "catalog", GPUPercent: 100},
 		Summary: evals.Summary{PassRate: 1, MeanScore: 1, ByArea: map[string]evals.AreaSummary{}}}
 	if _, err := evals.WriteResults(results, r); err != nil {
 		t.Fatal(err)
@@ -137,7 +138,7 @@ func fakeEvalEngine(t *testing.T, turns ...taraenginetest.Turn) *taraenginetest.
 	t.Helper()
 	srv := taraenginetest.New(t)
 	srv.Models = []taraenginetest.ModelSpec{{Name: "gemma4:12b", Capabilities: []string{"completion", "tools"},
-		ContextLength: 32768, Tier: "16", Default: true}}
+		ContextLength: 32768, Tier: "16", Default: true, Origin: "catalog"}}
 	srv.Turns = append([]taraenginetest.Turn{{Content: "ready"}}, turns...)
 	return srv
 }
@@ -310,12 +311,13 @@ func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
 	results, outDir := t.TempDir(), t.TempDir()
 	r := evals.Results{Taracode: "t", Model: "gemma4:12b", Tier: "16", Date: "2026-10-01", Runs: 1,
 		Hardware: "NVIDIA RTX 5090 (32 GB)",
-		Engine:   &evals.EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768},
-		Summary:  evals.Summary{PassRate: 1, MeanScore: 1, TokensPerS: 95, ByArea: map[string]evals.AreaSummary{}}}
+		Engine: &evals.EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000, GPUPercent: 100, ContextLength: 32768,
+			Origin: "catalog"},
+		Summary: evals.Summary{PassRate: 1, MeanScore: 1, TokensPerS: 95, ByArea: map[string]evals.AreaSummary{}}}
 	if _, err := evals.WriteResults(results, r); err != nil {
 		t.Fatal(err)
 	}
-	unchecked := r // a labelled result the engine described nothing for: ranked, but its fit was never checked
+	unchecked := r // a labelled result the engine described nothing for: listed unranked (spec 1h)
 	unchecked.Model, unchecked.Engine = "qwen3.5:9b", nil
 	if _, err := evals.WriteResults(results, unchecked); err != nil {
 		t.Fatal(err)
@@ -324,7 +326,7 @@ func TestEvalReportPrintsTheHardwareBoards(t *testing.T) {
 	if err := runEvalReport(results, outDir, t.TempDir(), false, &out); err != nil {
 		t.Fatal(err)
 	}
-	want := "board NVIDIA RTX 5090 (32 GB): 2 ranked (1 without engine data), 0 did not fit, 0 on part of the corpus"
+	want := "board NVIDIA RTX 5090 (32 GB): 1 ranked, 0 did not fit, 0 on part of the corpus, 1 not ranked"
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("output %q", out.String())
 	}

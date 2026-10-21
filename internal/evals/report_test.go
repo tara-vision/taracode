@@ -7,26 +7,29 @@ import (
 	"testing"
 )
 
+// catalogEngine is the engine block of a catalog model, which every ranked row needs (spec 1h).
+func catalogEngine() *EngineInfo { return &EngineInfo{Origin: "catalog", GPUPercent: 100} }
+
 func sampleResults() []Results {
 	area := func(tasks, passed int, score float64) AreaSummary {
 		return AreaSummary{Tasks: tasks, Passed: passed, MeanScore: score}
 	}
 	return []Results{
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.7, MeanScore: 0.74, MeanIterations: 5.2, MeanWallMs: 21000, FixtureMissRate: 0.05,
 				ByArea: map[string]AreaSummary{"kubernetes": area(9, 7, 0.8), "refusal": area(6, 5, 0.85)}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Think: "auto", Date: "2026-09-25", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "gemma4:12b", Tier: "16", Think: "auto", Date: "2026-09-25", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.5, MeanScore: 0.6, ByArea: map[string]AreaSummary{}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.5:9b", Tier: "16", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.5:9b", Tier: "16", Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.8, MeanScore: 0.82, MeanIterations: 4.1, MeanWallMs: 15000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 8, 0.9)}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.8:27b", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.8:27b", Tier: "32", Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.9, MeanScore: 0.91, MeanIterations: 3.8, MeanWallMs: 30000, ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.95)}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "glm-4.7-flash", Tier: "32", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "glm-4.7-flash", Tier: "32", Default: true, Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.97, MeanScore: 0.96, MeanIterations: 5.4, MeanWallMs: 5000, FixtureMissRate: 0.25,
 				ByArea: map[string]AreaSummary{"kubernetes": area(9, 9, 0.99), "refusal": area(6, 5, 0.9)}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "mystery:1b", Tier: "other", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "mystery:1b", Tier: "other", Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.1, MeanScore: 0.2, ByArea: map[string]AreaSummary{}}},
-		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.6:35b", Tier: "48", Think: "auto", Date: "2026-09-26", Runs: 1,
+		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "qwen3.6:35b", Tier: "48", Think: "auto", Date: "2026-09-26", Runs: 1, Engine: catalogEngine(),
 			Summary: Summary{PassRate: 0.9, MeanScore: 0.9, SafetyFailures: 1, ByArea: map[string]AreaSummary{}}},
 	}
 }
@@ -95,7 +98,7 @@ func TestEmptyScoreboardSerializesEmptyTiers(t *testing.T) {
 func TestRowWithNilByAreaSerializesAsEmptyMap(t *testing.T) {
 	results := []Results{
 		{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "test:1b", Tier: "16", Think: "auto", Date: "2026-09-26", Runs: 1,
-			Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: nil}},
+			Engine: catalogEngine(), Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: nil}},
 	}
 	sb := BuildScoreboard(results, 1, "3.0.0-beta.1")
 	data, err := sb.JSON()
@@ -111,13 +114,38 @@ func TestTierOrderIsDeterministic(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		results := []Results{
 			{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "zzz:1b", Tier: "zzz-tier", Think: "auto", Date: "2026-09-26", Runs: 1,
-				Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: map[string]AreaSummary{}}},
+				Engine: catalogEngine(), Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: map[string]AreaSummary{}}},
 			{Taracode: "3.0.0-beta.1", Ollama: "0.34.2", Model: "aaa:1b", Tier: "aaa-tier", Think: "auto", Date: "2026-09-26", Runs: 1,
-				Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: map[string]AreaSummary{}}},
+				Engine: catalogEngine(), Summary: Summary{PassRate: 0.5, MeanScore: 0.5, ByArea: map[string]AreaSummary{}}},
 		}
 		sb := BuildScoreboard(results, 2, "3.0.0-beta.1")
 		if len(sb.Tiers) != 2 || sb.Tiers[0].Tier != "aaa-tier" || sb.Tiers[1].Tier != "zzz-tier" {
 			t.Fatalf("iteration %d: expected aaa-tier before zzz-tier, got %+v", i, sb.Tiers)
 		}
+	}
+}
+
+func TestTierTablesRankByPassRateThenScoreThenSpeed(t *testing.T) {
+	row := func(model, hardware string, pass, score, tps float64) Results {
+		return Results{Taracode: "3.4.0", Server: &ServerInfo{Name: "taraengine", Version: "0.5.0"}, Model: model,
+			Tier: "32", Think: "auto", Date: "2026-11-01", Runs: 1, Hardware: hardware, Engine: catalogEngine(),
+			Summary: Summary{PassRate: pass, MeanScore: score, TokensPerS: tps, ByArea: map[string]AreaSummary{}}}
+	}
+	all := []Results{
+		row("high-score", "", 0.85, 0.95, 100),
+		row("high-pass", "", 0.91, 0.90, 100),
+		row("tie-slow", "", 0.91, 0.90, 50),
+		row("tie-fast", "", 0.91, 0.90, 200),
+		row("same", "Apple M4 Max (48 GB)", 0.80, 0.80, 10),
+		row("same", "NVIDIA RTX 5090 (32 GB)", 0.80, 0.80, 10),
+	}
+	sb := BuildScoreboard(all, 33, "3.4.0")
+	var got []string
+	for _, r := range sb.Tiers[0].Rows {
+		got = append(got, r.Model+"@"+r.Hardware)
+	}
+	want := []string{"tie-fast@", "high-pass@", "tie-slow@", "high-score@", "same@Apple M4 Max (48 GB)", "same@NVIDIA RTX 5090 (32 GB)"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("tier order:\n got %v\nwant %v", got, want)
 	}
 }

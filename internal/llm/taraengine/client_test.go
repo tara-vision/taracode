@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/tara-vision/taraengine/pkg/api"
 
 	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
@@ -127,5 +130,16 @@ func TestClientPassesEngineErrorsOn(t *testing.T) {
 	}
 	if _, err := c.Loaded(ctx); err == nil {
 		t.Error("loaded: no error")
+	}
+}
+
+func TestClientShowCarriesOriginAndSource(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	_, c := engineWith(t, taraenginetest.ModelSpec{Name: "qwen-import", Origin: "import",
+		Source: &api.Source{Repo: "unsloth/Qwen3-GGUF", File: "q4.gguf", SHA256: sha}})
+	d, err := c.Show(context.Background(), "qwen-import")
+	if err != nil || d.Origin != "import" || d.Source == nil || d.Source.Repo != "unsloth/Qwen3-GGUF" ||
+		d.Source.File != "q4.gguf" || d.Source.SHA256 != sha {
+		t.Fatalf("show %+v %v", d, err)
 	}
 }

@@ -204,7 +204,7 @@ func TestRunWithoutAProbeMeasuresNothing(t *testing.T) {
 
 // TestBoardPrintsMeasuredMemoryAndMarksEstimates: the VRAM column is the measured figure in GiB (the
 // unit a card's size is given in); a row that only has the engine's own estimate is marked with "~",
-// and a row with neither has a dash.
+// and a row with neither is listed unranked (spec 1h: a row ranks only with an engine block).
 func TestBoardPrintsMeasuredMemoryAndMarksEstimates(t *testing.T) {
 	measured := hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))
 	measured.GPUMemoryMiB = 23676
@@ -219,7 +219,7 @@ func TestBoardPrintsMeasuredMemoryAndMarksEstimates(t *testing.T) {
 	for _, want := range []string{
 		"| 1 | glm-4.7-flash | ollama 0.35.0 | 32 GB | 94% | 0.96 | 140 | 5 s | 23.1 GiB | Q4_K_M | 1 |",
 		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | ~8.7 GiB | Q4_K_M | 1 |",
-		"| 3 | unknown-engine:1b | ollama 0.35.0 | - | 50% | 0.50 | - | 5 s | - | - | 1 |",
+		"- unknown-engine:1b on ollama 0.35.0: no engine block", // a row the engine described nothing for cannot rank
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
 		"A figure marked ~ is the engine's own estimate",
 	} {
@@ -321,12 +321,12 @@ func TestSpeedAndMemoryNamesAMeasurementAlone(t *testing.T) {
 func TestBoardWithEveryRowMeasuredSaysOnlyThat(t *testing.T) {
 	a := hardwareResult("glm-4.7-flash", "32", 0.94, 0.96, 140, testEngine(20_720_000_000, 20_720_000_000, 100))
 	a.GPUMemoryMiB = 23676
-	b := hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, nil) // measured, although the engine described nothing
-	b.GPUMemoryMiB = 9500
+	b := hardwareResult("gemma4:12b", "16", 0.82, 0.88, 95, testEngine(9_300_000_000, 9_300_000_000, 100))
+	b.GPUMemoryMiB = 9500 // measured on the machine, so the engine's own figure is not an estimate to mark
 	md := testBoard(t, []Results{a, b}, testCorpus).Markdown()
 	for _, want := range []string{
 		"VRAM is the GPU memory in use with the model loaded, measured on the machine",
-		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | - | 1 |",
+		"| 2 | gemma4:12b | ollama 0.35.0 | 16 GB | 82% | 0.88 | 95 | 5 s | 9.3 GiB | Q4_K_M | 1 |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in:\n%s", want, md)
@@ -478,11 +478,13 @@ func TestMemoryNoteNamesWhereAMeasurementCameFrom(t *testing.T) {
 	}
 }
 
-// TestBoardWithNoMemoryFigureAtAllSaysSo: nothing measured and nothing reported is not "an estimate".
-func TestBoardWithNoMemoryFigureAtAllSaysSo(t *testing.T) {
+// TestBoardWithOnlyUnrankedRowsHasNoMemoryNote: a board whose only run the engine described nothing for ranks
+// nothing, so it talks of no memory and no estimate; the run is listed with its reason.
+func TestBoardWithOnlyUnrankedRowsHasNoMemoryNote(t *testing.T) {
 	md := testBoard(t, []Results{hardwareResult("unknown-engine:1b", "other", 0.5, 0.5, 0, nil)}, testCorpus).Markdown()
-	if strings.Contains(md, "estimate") || !strings.Contains(md, "No run on this board measured or reported its memory.") {
-		t.Errorf("the note for a board with no memory figure:\n%s", md)
+	if strings.Contains(md, "estimate") || strings.Contains(md, "VRAM is") ||
+		!strings.Contains(md, "- unknown-engine:1b on ollama 0.35.0: no engine block") {
+		t.Errorf("a board of one unranked row:\n%s", md)
 	}
 }
 

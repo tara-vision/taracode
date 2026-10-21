@@ -39,4 +39,6 @@ evals/runs/*
 # leftover recorder temp dirs from an interrupted `taracode eval record` (ruling P3-R41)
 evals/tasks/*/fixtures-recording-*/
 evals/tasks/*/fixtures.replaced/
+evals/common/fixtures-recording-*/
+evals/common/fixtures.replaced/
 
