@@ -68,7 +68,8 @@ const plainSegment = `[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*`
 
 // hfRepo is a Hugging Face repository id, and hfFile a file in one (a path of plain segments).
 var (
-	hfRepo    = regexp.MustCompile(`^[A-Za-z0-9._-]{1,96}/[A-Za-z0-9._-]{1,96}$`)
+	hfRepo    = regexp.MustCompile(`^` + plainSegment + `/` + plainSegment + `$`)
+	localName = regexp.MustCompile(`^[A-Za-z0-9._:-]*[A-Za-z0-9_:-][A-Za-z0-9._:-]*$`) // a GGUF's name, colons included
 	hfFile    = regexp.MustCompile(`^` + plainSegment + `(/` + plainSegment + `)*$`)
 	sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -80,13 +81,13 @@ func cleanSource(s *llm.ModelSource) *EngineSource {
 		return nil
 	}
 	out := &EngineSource{}
-	if hfRepo.MatchString(s.Repo) {
+	if len(s.Repo) <= 200 && hfRepo.MatchString(s.Repo) {
 		out.Repo = s.Repo
 	}
 	if len(s.File) <= 256 && hfFile.MatchString(s.File) {
 		out.File = s.File
 	}
-	if base := filepath.Base(s.Path); s.Path != "" && engineToken.MatchString(base) {
+	if base := filepath.Base(s.Path); s.Path != "" && len(base) <= 256 && localName.MatchString(base) {
 		out.Path = base
 	}
 	if sha256Hex.MatchString(s.SHA256) {

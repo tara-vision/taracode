@@ -61,9 +61,13 @@ func hashed(rel string) bool {
 // in the order of their slash-separated paths relative to the evals directory: each path, a NUL, the bytes, a
 // NUL. The same files in another directory hash the same; any changed, added or removed file changes it.
 func CorpusHash(tasksRoot string) (string, error) {
-	base := evalsDir(tasksRoot)
+	tasks := tasksRoot
+	if abs, err := filepath.Abs(tasksRoot); err == nil {
+		tasks = abs
+	}
+	tasks = filepath.Clean(tasks)
+	base := filepath.Dir(tasks)
 	var paths []string
-	tasks := filepath.Join(base, filepath.Base(filepath.Clean(tasksRoot)))
 	for _, root := range []string{tasks, filepath.Join(base, "common")} {
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -158,7 +162,7 @@ func Seal(tasksRoot, version string) (Corpus, error) {
 	if err != nil {
 		return Corpus{}, err
 	}
-	if sealed, _ := strconv.Atoi(current.Version); current.Hash != "" && n <= sealed {
+	if sealed, _ := strconv.Atoi(current.Version); n <= sealed { // an unsealed corpus is already version 1
 		return Corpus{}, fmt.Errorf("seal: the corpus is sealed as version %s; a resealed corpus takes a greater version",
 			current.Version)
 	}

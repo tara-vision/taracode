@@ -10,9 +10,8 @@ import (
 // HardwareBoard is the ranking on one machine: every model whose newest results carry that hardware
 // label and cover the whole corpus. A model the engine reported as not entirely on the GPU is listed
 // apart, since the board's promise is "runs entirely on this GPU", and so is a result that ran only
-// part of the corpus (a --tasks subset), which is never comparable. A result with no engine block
-// stays in the ranking: its fit was never checked, and its memory column holds what the run measured,
-// if anything.
+// part of the corpus (a --tasks subset), which is never comparable. A result that cannot rank at all (spec 1h: no
+// engine block, no origin, an unpublished override, an import without its file) is listed apart with the reason.
 type HardwareBoard struct {
 	Hardware    string `json:"hardware"`
 	Rows        []Row  `json:"rows"`
@@ -47,9 +46,15 @@ func buildBoards(rows []Row, corpusTasks int) []HardwareBoard {
 	}
 	boards := make([]HardwareBoard, 0, len(byHardware))
 	for _, b := range byHardware {
-		for _, list := range [][]Row{b.Rows, b.DidNotFit, b.Partial, b.Unpublished} {
+		for _, list := range [][]Row{b.Rows, b.DidNotFit, b.Partial} {
 			sort.Slice(list, func(i, j int) bool { return rankLess(list[i], list[j]) })
 		}
+		sort.Slice(b.Unpublished, func(i, j int) bool { // by name: a list of what cannot rank is no ranking
+			if b.Unpublished[i].Model != b.Unpublished[j].Model {
+				return b.Unpublished[i].Model < b.Unpublished[j].Model
+			}
+			return b.Unpublished[i].Server.Name < b.Unpublished[j].Server.Name
+		})
 		boards = append(boards, *b)
 	}
 	sort.Slice(boards, func(i, j int) bool { return boards[i].Hardware < boards[j].Hardware })
@@ -139,7 +144,7 @@ func unranked(r Row) string {
 		return ""
 	case r.Origin == "registry":
 		return "unpublished override"
-	case r.Origin == "import" && r.Source != nil:
+	case r.Origin == "import" && r.Source.Label() != "": // the file the board can name, not a sha alone
 		return ""
 	case r.Origin == "import":
 		return "import without its file"
@@ -164,14 +169,14 @@ func unrankedText(reason string) string {
 // file (or the file's name) an import ran with the file's sha256 shortened; "" for a catalog row.
 func outsideLabel(r Row) string {
 	switch {
-	case r.Override != "":
-		return r.Override
-	case r.Source != nil:
+	case r.Origin == "import" && r.Source != nil: // an import is named by its file, whatever else the run declared
 		label := r.Source.Label()
-		if r.Source.SHA256 != "" {
-			label += ", sha256 " + r.Source.SHA256[:12]
+		if sha := r.Source.SHA256; sha != "" {
+			label += ", sha256 " + sha[:min(12, len(sha))]
 		}
 		return label
+	case r.Override != "":
+		return r.Override
 	}
 	return ""
 }

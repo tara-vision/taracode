@@ -286,7 +286,7 @@ func (r *Replay) probeLine(
 		return r.chain(ctx, workingDir, command, sig, parts, ops)
 	}
 	argv, ok := r.probeArgv(workingDir, parts[0])
-	if !ok || !shellReads(command, workingDir) {
+	if !ok || lineExpands(command) || !shellReads(command, workingDir) {
 		return "", ReplayCall{Signature: sig}, false
 	}
 	rc := ReplayCall{Signature: sig, Real: true}
@@ -295,7 +295,7 @@ func (r *Replay) probeLine(
 		rc.Err = err
 		return "", rc, true
 	}
-	return shellResult(text, status), rc, true
+	return shellResult(strings.TrimRight(text, "\n"), status), rc, true
 }
 
 // RealCalls lists the signatures of the probes that ran for real, in call order.

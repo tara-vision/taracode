@@ -19,6 +19,7 @@ func TestSplitChainHonorsEscapes(t *testing.T) {
 	if !ok || len(parts) != 2 || len(ops) != 1 || parts[0][1] != "a;b" {
 		t.Fatalf("an escaped semicolon is a character: %q %v %v", parts, ops, ok)
 	}
+	// the parser splits such lines; the probe then refuses them (TestProbeEchoTakesPlainWordsOnly)
 }
 
 func TestProbeTakesADoubleDash(t *testing.T) {
@@ -35,7 +36,14 @@ func TestProbeRefusesWhenTheRunDirectoryIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	gone := filepath.Join(t.TempDir(), "gone")
-	refused(t, NewReplay(store, nil, gone), gone, "ls workdir")
+	r := NewReplay(store, nil, gone)
+	refused(t, r, gone, "ls workdir")
+	if err := probeErr(t, r, gone, "ls"); err == nil || !strings.Contains(err.Error(), "ls") { // starts nowhere: an error
+		t.Fatalf("a probe that cannot start: %v", err)
+	}
+	if err := probeErr(t, r, gone, "pwd && ls"); err == nil || !strings.Contains(err.Error(), "ls") {
+		t.Fatalf("the same inside a chain: %v", err)
+	}
 }
 
 func TestProbeRefusesASymlinkLoop(t *testing.T) {
@@ -77,11 +85,10 @@ func TestProbeTimesOut(t *testing.T) {
 func TestProbeReportsAProgramThatCannotStart(t *testing.T) {
 	r, runDir := probeRunDir(t)
 	t.Setenv("PATH", "")
-	if err := probeErr(t, r, runDir, "ls"); err == nil || !strings.Contains(err.Error(), "ls") {
-		t.Fatalf("alone: %v", err)
-	}
-	if err := probeErr(t, r, runDir, "pwd && ls"); err == nil || !strings.Contains(err.Error(), "ls") {
-		t.Fatalf("in a chain: %v", err)
+	parts, ops, _ := splitChain("pwd && ls")
+	out, rc, handled := r.probeLine(context.Background(), runDir, "pwd && ls", "shell pwd && ls", parts, ops)
+	if !handled || rc.Err != nil || !strings.HasSuffix(out, "ls: command not found\n[exit status 127]") {
+		t.Fatalf("in a chain: handled %v err %v out %q", handled, rc.Err, out)
 	}
 }
 

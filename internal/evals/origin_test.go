@@ -34,6 +34,22 @@ func TestEngineInfoCarriesOriginAndSource(t *testing.T) {
 		info.Source != nil {
 		t.Fatalf("a catalog model: %+v %v", info, err)
 	}
+}
+
+func TestEngineInfoCleansTheSource(t *testing.T) {
+	srv := fakeEngine(t)
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	srv.Models[0].Origin = "import" // a local import as the engine links it: the GGUF's name, up to 64 characters
+	srv.Models[0].Source = &api.Source{Path: "/data/models/local/Qwen3.6-35B-A3B-Instruct-UD-Q4_K_XL:latest.gguf", SHA256: testSHA}
+	if info, _, err := engineInfo(context.Background(), runOptions(srv, "")); err != nil || info.Source == nil ||
+		info.Source.Path != "Qwen3.6-35B-A3B-Instruct-UD-Q4_K_XL:latest.gguf" {
+		t.Fatalf("a long local name keeps its base name: %+v %v", info, err)
+	}
+	srv.Models[0].Source = &api.Source{Repo: "../x", File: "q4.gguf"}
+	if info, _, err := engineInfo(context.Background(), runOptions(srv, "")); err != nil || info.Source == nil ||
+		info.Source.Repo != "" || info.Source.File != "q4.gguf" {
+		t.Fatalf("a repository id of dot segments is dropped: %+v %v", info, err)
+	}
 	srv.Models[0].Origin = "somewhere | http://10.1.2.3"
 	srv.Models[0].Source = &api.Source{Repo: "not a repo", File: "../x.gguf", Path: "/", SHA256: "sha256:nope"}
 	if info, _, err := engineInfo(context.Background(), runOptions(srv, "")); err != nil || info.Origin != "" ||
@@ -173,7 +189,12 @@ func TestAnImportRowWithoutItsFileIsNotRanked(t *testing.T) {
 	if got := unrankedOf(t, sb, "qwen-import"); got != "import without its file" {
 		t.Fatalf("unranked %q", got)
 	}
-	if md := sb.Markdown(); !strings.Contains(md, "- qwen-import on ollama 0.35.0: an import without its file\n") {
+	shaOnly := &EngineSource{SHA256: testSHA} // the engine named a file the results could not keep
+	sb = testBoard(t, append(hardwareResults(), outsideResult("sha-import", "import", "", shaOnly)), testCorpus)
+	if got := unrankedOf(t, sb, "sha-import"); got != "import without its file" {
+		t.Fatalf("a source with only a sha256: %q", got)
+	}
+	if md := sb.Markdown(); !strings.Contains(md, "- sha-import on ollama 0.35.0: an import without its file\n") {
 		t.Fatalf("markdown:\n%s", md)
 	}
 }
@@ -221,6 +242,11 @@ func TestLintFlagsAResultsFileNamingAMissingOverride(t *testing.T) {
 	r.Override = "overrides/x.registry.yaml"
 	r.Model = "other:1b"
 	if _, err := WriteResults(results, r); err != nil {
+		t.Fatal(err)
+	}
+	plain := r // a results file without an override has nothing to check
+	plain.Override, plain.Model = "", "plain:1b"
+	if _, err := WriteResults(results, plain); err != nil {
 		t.Fatal(err)
 	}
 	if problems := LintResults(results); len(problems) != 1 || !strings.Contains(problems[0], "other:1b") {
@@ -273,5 +299,68 @@ func TestEngineSourceLabelNamesTheFile(t *testing.T) {
 		if got := c.source.Label(); got != c.want {
 			t.Errorf("%+v: %q, want %q", c.source, got, c.want)
 		}
+	}
+}
+
+func TestAnOutsideRowIsNeverATierDefault(t *testing.T) {
+	r := outsideResult("nemotron-3.5-bolt:74b", "registry", bolt, nil)
+	r.Default = true // the override's entry marked itself the tier default
+	sb := testBoard(t, append(hardwareResults(), r), testCorpus)
+	for _, tier := range sb.Tiers {
+		for _, row := range tier.Rows {
+			if row.Model == "nemotron-3.5-bolt:74b" && row.Default {
+				t.Fatalf("an outside row is the %s tier's default", tier.Tier)
+			}
+		}
+	}
+	if md := sb.Markdown(); strings.Contains(md, "nemotron-3.5-bolt:74b [1] (default)") {
+		t.Fatalf("markdown:\n%s", md)
+	}
+}
+
+func TestAnImportWithAnOverrideLinksItsFile(t *testing.T) {
+	src := &EngineSource{Repo: "unsloth/Qwen3-GGUF", File: "q4.gguf", SHA256: testSHA}
+	sb := testBoard(t, append(hardwareResults(), outsideResult("qwen-import", "import", bolt, src)), testCorpus)
+	md := sb.Markdown()
+	if !strings.Contains(md, "[1] outside the catalog: unsloth/Qwen3-GGUF/q4.gguf, sha256 0123456789ab\n") || strings.Contains(md, bolt) {
+		t.Fatalf("an import is named by its file, never by an override:\n%s", md)
+	}
+}
+
+func TestTheUnrankedListIsNotARanking(t *testing.T) {
+	onEngine := outsideResult("alpha:1b", "", "", nil) // the same model on a second server lists after its ollama row
+	onEngine.Ollama, onEngine.Server = "", &ServerInfo{Name: "taraengine", Version: "0.4.1"}
+	results := append(hardwareResults(), outsideResult("zeta:1b", "", "", nil), onEngine, outsideResult("alpha:1b", "", "", nil))
+	md := testBoard(t, results, testCorpus).Markdown()
+	i, i2, j, k := strings.Index(md, "- alpha:1b on ollama"), strings.Index(md, "- alpha:1b on taraengine"),
+		strings.Index(md, "- unknown-engine:1b on"), strings.Index(md, "- zeta:1b on")
+	if i < 0 || i2 < 0 || j < 0 || k < 0 || i > i2 || i2 > j || j > k {
+		t.Fatalf("the list under the board is by name and server, not by score:\n%s", md)
+	}
+}
+
+func TestAShortSHAInAResultsFileDoesNotStopTheReport(t *testing.T) {
+	src := &EngineSource{File: "q4.gguf", SHA256: "abc"}
+	md := testBoard(t, append(hardwareResults(), outsideResult("odd-import", "import", "", src)), testCorpus).Markdown()
+	if !strings.Contains(md, "[1] outside the catalog: q4.gguf, sha256 abc\n") {
+		t.Fatalf("markdown:\n%s", md)
+	}
+}
+
+func TestAnUnrankedResultWithoutAMachineIsListedAsSkipped(t *testing.T) {
+	r := Results{Taracode: "3.3.3", Server: &ServerInfo{Name: "taraengine", Version: "0.4.1"}, Model: "gemma4:12b", Tier: "16",
+		Think: "auto", Date: "2026-10-20", Runs: 1, Engine: &EngineInfo{GPUPercent: 100},
+		Summary: Summary{PassRate: 0.9, MeanScore: 0.9, ByArea: map[string]AreaSummary{}}}
+	sb := BuildScoreboard([]Results{r}, 33, "3.4.0")
+	if len(sb.Tiers) != 0 || len(sb.Boards) != 0 || len(sb.Skipped) != 1 ||
+		sb.Skipped[0] != "gemma4:12b on taraengine 0.4.1 2026-10-20: not ranked, engine before 0.5.0" {
+		t.Fatalf("tiers %d boards %d skipped %q", len(sb.Tiers), len(sb.Boards), sb.Skipped)
+	}
+}
+
+func TestPublishedResultsNameExistingOverrides(t *testing.T) {
+	t.Chdir("../..") // the repository root, where the override paths resolve
+	if problems := LintResults("docs/evals/results"); len(problems) != 0 {
+		t.Fatalf("problems %v", problems)
 	}
 }

@@ -134,7 +134,7 @@ func TestProbeRefusesAFlagTheRuleDoesNotName(t *testing.T) {
 
 func TestProbeFindTakesItsGrammarAndNothingElse(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	if out := probe(t, r, runDir, "find . -name *.tf"); !strings.Contains(out, "main.tf") {
+	if out := probe(t, r, runDir, "find . -name '*.tf'"); !strings.Contains(out, "main.tf") {
 		t.Fatalf("find with a pattern value: %q", out)
 	}
 	if out := probe(t, r, runDir, "find -P workdir -type f -maxdepth 1 -print"); !strings.Contains(out, "notes.txt") {

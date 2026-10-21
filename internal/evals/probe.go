@@ -53,9 +53,9 @@ func set(words ...string) map[string]bool {
 }
 
 var probePrograms = map[string]probeRule{
-	"pwd":  {letters: "LP"},
+	"pwd":  {letters: "P"},
 	"true": {},
-	"echo": {letters: "neE"},
+	"echo": {}, // plain words only: /bin/echo and the shell's builtin differ on every flag and escape
 	"ls": {paths: true, letters: "aAlh1dtrSFpsinogGTucUkmxCqwBbfR",
 		long: set("--all", "--almost-all", "--human-readable", "--recursive", "--reverse", "--directory", "--color")},
 	"cat": {paths: true, letters: "nbsvetAETu",
@@ -65,9 +65,11 @@ var probePrograms = map[string]probeRule{
 		long: set("--quiet", "--verbose", "--silent")},
 	"tail": {paths: true, letters: "qvr", valued: set("-n", "-c", "--lines", "--bytes"),
 		long: set("--quiet", "--verbose", "--silent")},
-	"wc":   {paths: true, letters: "lwcmL", long: set("--lines", "--words", "--bytes", "--chars", "--max-line-length")},
-	"stat": {paths: true, letters: "xt", valued: set("-c", "-f", "--format", "--printf"), long: set("--terse")},
-	"file": {paths: true, letters: "bizhIspk",
+	"wc": {paths: true, letters: "lwcmL", long: set("--lines", "--words", "--bytes", "--chars", "--max-line-length")},
+	// stat's -f is a format on BSD and "file system" on GNU, where the next word is a file: a plain letter, so that
+	// word is path-checked whichever it means
+	"stat": {paths: true, letters: "xtf", valued: set("-c", "--format", "--printf"), long: set("--terse")},
+	"file": {paths: true, letters: "bizhIsk", // never -p, which resets a file's access time
 		long: set("--brief", "--mime", "--mime-type", "--mime-encoding", "--uncompress", "--no-dereference", "--keep-going")},
 	"find": {find: true},
 }
@@ -89,7 +91,8 @@ var (
 // a line with a pipe, ||, a single &, a redirect, a background job, a here-document, a substitution, a function
 // definition or an empty command: none of those is a probe.
 func splitChain(command string) (parts [][]string, ops []string, ok bool) {
-	if strings.TrimSpace(command) == "" {
+	command = strings.TrimSpace(strings.TrimRight(strings.TrimSpace(command), ";")) // a trailing ; or newline ends nothing
+	if command == "" {
 		return nil, nil, false
 	}
 	parsed, err := shellwords.Split(command)
@@ -107,6 +110,34 @@ func splitChain(command string) (parts [][]string, ops []string, ok bool) {
 		return nil, nil, false
 	}
 	return parts, ops, true
+}
+
+// lineExpands reports a line the shell would change before running it, which the probe never does: a parameter or
+// a substitution outside single quotes ($, a backtick), a backslash outside single quotes (an escape whose meaning
+// differs between /bin/echo and the builtin), or a glob, a brace or a tilde outside any quotes. Such a line is no
+// probe: answering it with the words unexpanded would be a lie.
+func lineExpands(command string) bool {
+	var quote byte
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			}
+		case c == '$' || c == '`' || c == '\\':
+			return true
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case strings.IndexByte("*?[{~", c) >= 0:
+			return true
+		}
+	}
+	return false
 }
 
 // chainOperators scans a line outside its quotes for the operators between its commands; a pipe, || or a lone &
@@ -228,8 +259,8 @@ func (r *Replay) probeFind(workingDir string, argv []string) ([]string, bool) {
 		out = append(out, argv[i])
 		starts++
 	}
-	if starts == 0 { // find with no start point searches the working directory; make that explicit and confined
-		out = append(out, ".")
+	if starts == 0 { // BSD find without a start point prints its usage; the shell tool would show that, not a listing
+		return nil, false
 	}
 	for ; i < len(argv); i++ {
 		w := argv[i]
@@ -251,7 +282,7 @@ func (r *Replay) probeFind(workingDir string, argv []string) ([]string, bool) {
 
 // expandable reports a word the probe may pass as it is: nothing the shell would expand.
 func expandable(w string) bool {
-	return w != "" && !strings.ContainsAny(w, "$*?[") && !strings.HasPrefix(w, "~")
+	return w != "" && !strings.ContainsAny(w, "$*?[{`\\") && !strings.HasPrefix(w, "~")
 }
 
 // insideRunDir is confined's check for a probe's path: no ".." component, textual containment, then the symlinks
@@ -293,14 +324,19 @@ var shellReads = func() func(command, workingDir string) bool {
 	}
 }()
 
-// runProbe runs one probe in the run directory with a bare environment and a short deadline, and shapes the
-// result as the shell tool does: the output without its trailing newlines, "(no output)" for none, a non-zero
-// exit as "[exit status N]" on its own line, a timeout as the error the shell tool returns. pwd answers the
-// working directory without running anything, true answers nothing.
+// runProbe runs one probe in the run directory with a bare environment and a short deadline and returns its raw
+// output (stdout and stderr together, as a shell shows them) and exit status; a program the shell would not find
+// answers as the shell does, with status 127; a timeout is the error the shell tool returns. pwd answers the working
+// directory without running anything (the physical one with -P), true answers nothing.
 func (r *Replay) runProbe(ctx context.Context, workingDir string, argv []string) (text string, status int, err error) {
 	switch argv[0] {
 	case "pwd":
-		return workingDir, 0, nil
+		if len(argv) > 1 { // -P, the one flag the rule names
+			if physical, err := filepath.EvalSymlinks(workingDir); err == nil {
+				return physical + "\n", 0, nil
+			}
+		}
+		return workingDir + "\n", 0, nil
 	case "true":
 		return "", 0, nil
 	}
@@ -314,15 +350,17 @@ func (r *Replay) runProbe(ctx context.Context, workingDir string, argv []string)
 	buf := &cappedBuffer{limit: shellProbeOutputLimit}
 	cmd.Stdout, cmd.Stderr = buf, buf
 	runErr := cmd.Run()
-	out := strings.TrimRight(buf.String(), "\n")
+	out := buf.String()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return out, -1, fmt.Errorf("command timed out after %s", shellProbeTimeout)
 	}
 	var exit *exec.ExitError
-	if errors.As(runErr, &exit) {
+	switch {
+	case errors.As(runErr, &exit):
 		return out, exit.ExitCode(), nil
-	}
-	if runErr != nil {
+	case errors.Is(runErr, exec.ErrNotFound):
+		return "sh: " + argv[0] + ": command not found\n", 127, nil
+	case runErr != nil:
 		return out, -1, fmt.Errorf("%s: %w", argv[0], runErr)
 	}
 	return out, 0, nil
@@ -372,7 +410,7 @@ func (r *Replay) chain(
 	ctx context.Context, workingDir, command, sig string, parts [][]string, ops []string,
 ) (string, ReplayCall, bool) {
 	rc := ReplayCall{Signature: sig}
-	if len(parts) < 2 || !shellReads(command, workingDir) {
+	if len(parts) < 2 || lineExpands(command) || !shellReads(command, workingDir) {
 		return "", rc, false
 	}
 	plan := make([]chainPart, 0, len(parts))
@@ -397,14 +435,14 @@ func (r *Replay) chain(
 			break
 		}
 		switch {
-		case part.fixture:
+		case part.fixture: // recorded trimmed, so it takes its newline back before the next command's output
 			rc.Common = true
 			text, st := fixtureResult(part.text)
 			status = st
 			if text != "" {
 				b.WriteString(text + "\n")
 			}
-		default:
+		default: // raw, as a shell shows it: a file without a trailing newline runs into the next output
 			rc.Real = true
 			text, st, err := r.runProbe(ctx, workingDir, part.argv)
 			if err != nil {
@@ -412,9 +450,7 @@ func (r *Replay) chain(
 				return "", rc, true
 			}
 			status = st
-			if text != "" {
-				b.WriteString(text + "\n")
-			}
+			b.WriteString(text)
 		}
 	}
 	return shellResult(strings.TrimRight(b.String(), "\n"), status), rc, true

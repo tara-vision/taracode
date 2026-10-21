@@ -150,3 +150,27 @@ func TestSealReportsAStoreItCannotWrite(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestTheFirstSealIsVersionTwo(t *testing.T) {
+	_, tasksRoot := sealedCorpus(t)
+	if _, err := Seal(tasksRoot, "1"); err == nil {
+		t.Fatal("an unsealed corpus is already version 1, so its first seal takes a greater version")
+	}
+	if _, err := Seal(tasksRoot, "2"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCorpusHashNamesTheTasksRootHoweverSpelled(t *testing.T) {
+	evalsDir, tasksRoot := sealedCorpus(t)
+	want, err := CorpusHash(tasksRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(tasksRoot)
+	for _, spelling := range []string{".", "./", "../tasks", filepath.Join(evalsDir, "tasks") + "/"} {
+		if got, err := CorpusHash(spelling); err != nil || got != want {
+			t.Fatalf("%q: %v %q != %q", spelling, err, got, want)
+		}
+	}
+}

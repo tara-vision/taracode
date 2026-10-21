@@ -91,11 +91,14 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		row.ContextLength, row.Quantization = e.ContextLength, e.Quantization
 		row.ParameterSize, row.Digest = e.ParameterSize, e.Digest
 		row.Origin = e.Origin
-		if e.Origin != "catalog" { // a catalog model stays unmarked whatever file served it (spec 1h)
+		if e.Origin == "registry" { // a catalog model stays unmarked whatever file served it; an import is named by its file
 			row.Override = r.Override
 		}
 		if e.Origin == "import" {
 			row.Source = e.Source
+		}
+		if e.Origin != "catalog" { // a row from outside the catalog is never a tier default, whatever its entry says
+			row.Default = false
 		}
 	}
 	row.Unranked = unranked(row)
@@ -158,8 +161,11 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			tier = "other"
 		}
 		row := newRow(r, tier, defaults[machineModel{r.Model, r.Hardware}])
-		if row.Unranked == "" { // a row that cannot rank leaves the tier tables too; its board says why
+		switch {
+		case row.Unranked == "":
 			byTier[tier] = append(byTier[tier], row)
+		case r.Hardware == "": // a row that cannot rank leaves the tier tables; without a board to list it, Skipped says why
+			sb.Skipped = append(sb.Skipped, fmt.Sprintf("%s %s: not ranked, %s", rowName(row), r.Date, row.Unranked))
 		}
 		allRows = append(allRows, row)
 	}

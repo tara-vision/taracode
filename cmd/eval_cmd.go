@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -152,7 +153,7 @@ func corpusOf(tasksRoot string, out io.Writer) (*evals.Corpus, error) {
 			"taracode eval lint --seal --version <n> before a run", seal.Version)
 	}
 	if seal.Hash == "" {
-		_, _ = fmt.Fprintf(out, "warning: the corpus is not sealed (no evals/VERSION): the results say corpus 1; "+
+		_, _ = fmt.Fprintf(out, "warning: the corpus is not sealed (no hash in evals/VERSION): the results say corpus 1; "+
 			"run taracode eval lint --seal --version <n> before a board run\n")
 	}
 	return &evals.Corpus{Version: seal.Version, Hash: hash}, nil
@@ -193,9 +194,13 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
-	if res.Engine != nil && res.Engine.Origin == "registry" && f.override == "" {
+	switch {
+	case res.Engine != nil && res.Engine.Origin == "registry" && f.override == "":
 		_, _ = fmt.Fprintf(out, "warning: the engine serves %s from a registry file and no --override names its "+
 			"published copy: the row will not rank\n", f.model)
+	case res.Engine != nil && res.Engine.Origin == "":
+		_, _ = fmt.Fprintf(out, "warning: the engine named no origin for %s: the row will not rank (taraengine 0.5.0 "+
+			"names one)\n", f.model)
 	}
 	path, err := evals.WriteResults(f.out, res)
 	if err != nil {
@@ -295,6 +300,13 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 		return err
 	}
 	sb := evals.BuildScoreboard(all, count, Version)
+	for _, board := range sb.Boards { // a board on which nothing ranks is not written: the results need a re-run first
+		if len(board.Rows) == 0 && len(board.Unpublished) > 0 {
+			return fmt.Errorf("board %s: none of its %d rows ranks (%s); re-run them on taraengine 0.5.0 or later, "+
+				"with --override for a model served from a registry file, or move them out of %s before the board is written",
+				board.Hardware, len(board.Unpublished)+len(board.DidNotFit)+len(board.Partial), unrankedReasons(board), results)
+		}
+	}
 	//nolint:gosec // outDir is repository content (docs/evals by default)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", outDir, err)
@@ -336,6 +348,19 @@ func countRows(sb evals.Scoreboard) int {
 		n += len(t.Rows)
 	}
 	return n
+}
+
+// unrankedReasons lists why a board's rows do not rank, each reason once, in order of first appearance.
+func unrankedReasons(board evals.HardwareBoard) string {
+	var reasons []string
+	seen := map[string]bool{}
+	for _, r := range board.Unpublished {
+		if !seen[r.Unranked] {
+			seen[r.Unranked] = true
+			reasons = append(reasons, r.Unranked)
+		}
+	}
+	return strings.Join(reasons, ", ")
 }
 
 // runEvalSeal is `eval lint --seal --version <n>`: the corpus's hash under a new version.

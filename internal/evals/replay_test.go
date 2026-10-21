@@ -401,7 +401,7 @@ func TestReplayRunsAProbeForRealAndCountsNoMiss(t *testing.T) {
 		t.Fatalf("pwd: %q %v", out, err)
 	}
 	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "cat notes.txt && echo done"}, runDir)
-	if err != nil || out != "real file\ndone" { // each command's output on its own line, as the shell tool shows them
+	if err != nil || out != "real filedone" { // the outputs run together, as the shell tool shows them (no newline in the file)
 		t.Fatalf("a chain of probes: %q %v", out, err)
 	}
 	if m := r.Misses(); len(m) != 0 {

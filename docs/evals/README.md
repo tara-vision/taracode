@@ -401,8 +401,9 @@ itself, which is the figure a board shows.
 newest results carry that label, ranked by pass rate, then mean score, then tokens per second. Two kinds
 of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
 not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
-such as a `--tasks` subset. A result with no `engine` block stays ranked, since nothing says it did not
-fit, and the report says how many rows that is ("without engine data"). The VRAM column is in GiB, the
+such as a `--tasks` subset. A result that cannot rank at all is listed under the board with the reason: no
+`engine` block (the engine's `origin` lives in that block), no origin, an unpublished override, an import without its
+file; see "Rows from outside the catalog". The VRAM column is in GiB, the
 unit a card's size is given in (a 24 GB card holds 24 GiB): the measured figure where the run has one,
 otherwise the engine's estimate marked with `~`. The "did not fit" lines keep the engine's own figures,
 named as such, in decimal gigabytes.

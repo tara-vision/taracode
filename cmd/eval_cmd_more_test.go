@@ -199,3 +199,37 @@ func TestEvalLintChecksTheResultsOverrides(t *testing.T) {
 		t.Fatalf("without --results: %v", err)
 	}
 }
+
+func TestEvalReportRefusesABoardOnWhichNothingRanks(t *testing.T) {
+	results, outDir := t.TempDir(), t.TempDir()
+	r := evals.Results{Taracode: "3.3.3", Model: "gemma4:12b", Tier: "16", Date: "2026-10-20", Runs: 1,
+		Hardware: "NVIDIA RTX 5090 (32 GB)", Engine: &evals.EngineInfo{SizeBytes: 9_300_000_000, VRAMBytes: 9_300_000_000,
+			GPUPercent: 100, ContextLength: 32768}, // an engine before 0.5.0: no origin
+		Summary: evals.Summary{PassRate: 1, MeanScore: 1, ByArea: map[string]evals.AreaSummary{}}}
+	if _, err := evals.WriteResults(results, r); err != nil {
+		t.Fatal(err)
+	}
+	err := runEvalReport(results, outDir, t.TempDir(), false, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "NVIDIA RTX 5090 (32 GB)") || !strings.Contains(err.Error(), "none of its 1 rows ranks") {
+		t.Fatalf("%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "scoreboard.md")); err == nil {
+		t.Fatal("the scoreboard was written")
+	}
+}
+
+func TestEvalRunWarnsWhenTheEngineNamesNoOrigin(t *testing.T) {
+	_, corpus := evalsRoot(t)
+	srv := fakeEvalEngine(t, taraenginetest.Turn{Content: "done"})
+	srv.Models[0].Origin = ""
+	srv.Loaded = []taraenginetest.LoadedSpec{{Name: "gemma4:12b", ContextLength: 32768, Size: 9_300_000_000}}
+	var out bytes.Buffer
+	f := evalRunFlags{host: srv.URL, model: "gemma4:12b", corpus: corpus, think: "auto", runs: 1,
+		timeout: 30 * time.Second, out: t.TempDir(), hostLabel: "lab"}
+	if err := runEvalRun(f, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "warning: the engine named no origin for gemma4:12b: the row will not rank") {
+		t.Fatalf("out %q", out.String())
+	}
+}
