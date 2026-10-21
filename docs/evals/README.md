@@ -268,7 +268,9 @@ it keeps the tier the engine gives it. The mark is the rule, the notes of the ru
 listed under its board unranked, with the reason: a registry row without a published override, an import whose engine
 block lacks its file, a result from an engine before taraengine 0.5.0 (which named no origin), or a result without an
 engine block; such a row leaves the tier tables too and is never a tier default. The first row from outside the
-catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
+catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`
+(taraengine 0.4.0); the corpus version 2 boards, once run, take theirs from its twin
+`overrides/nemotron-3.5-bolt-74b.taraengine-0.5.0.registry.yaml` (the 0.5.0 catalog verbatim plus the same entry).
 
 ### The task.yaml reference
 
