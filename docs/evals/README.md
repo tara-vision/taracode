@@ -486,7 +486,10 @@ memory or pass rate.
 
 Each change goes in through a pull request that edits these files: a new sponsor (with the logo, for a Title, Lab
 sponsor or Team sponsor), an ended credit (`until` set to the last credited month) or a month's entry, which goes in at
-the end of that month. `go test ./internal/evals/docscheck/` runs in CI and fails the pull request on any rule above.
+the end of that month. A running sponsor whose products leave the boards is ended the same way and, when it stays a
+sponsor, starts again under a new id without marks (a Supporter is counted in `supporters` from then on, since
+Supporter is for a company on the boards), so the entries of the months it was on the boards keep its disclosure
+lines. `go test ./internal/evals/docscheck/` runs in CI and fails the pull request on any rule above.
 The site keeps the files for an hour, so a merged change is live on /evals within the hour, and sooner with a cache
 clear on the site, run once raw.githubusercontent.com serves the new file (it caches for about five minutes, and a
 clear before that keeps the old file for another hour).
