@@ -13,15 +13,16 @@ import (
 // Scoreboard is the report (spec 10): the newest results per model, server and machine, ranked per hardware label
 // and grouped by tier.
 type Scoreboard struct {
-	GeneratedAt string          `json:"generated_at"`
-	Taracode    string          `json:"taracode"`
-	CorpusTasks int             `json:"corpus_tasks"`
-	Boards      []HardwareBoard `json:"boards,omitempty"` // one ranking per hardware label the results carry
-	Tiers       []TierBoard     `json:"tiers"`
-	Skipped     []string        `json:"skipped,omitempty"` // results left out and why
+	GeneratedAt   string          `json:"generated_at"`
+	Taracode      string          `json:"taracode"`
+	CorpusTasks   int             `json:"corpus_tasks"`
+	CorpusVersion string          `json:"corpus_version"`   // the one corpus version of every row; "" with no results
+	Boards        []HardwareBoard `json:"boards,omitempty"` // one ranking per hardware label the results carry
+	Tiers         []TierBoard     `json:"tiers"`
+	Skipped       []string        `json:"skipped,omitempty"` // results left out and why
 }
 
-// TierBoard is one tier's rows, best mean score first.
+// TierBoard is one tier's rows, ranked as a hardware board is: pass rate, mean score, tokens per second.
 type TierBoard struct {
 	Tier string `json:"tier"`
 	Rows []Row  `json:"rows"`
@@ -59,6 +60,10 @@ type Row struct {
 	Quantization    string                 `json:"quantization,omitempty"`
 	ParameterSize   string                 `json:"parameter_size,omitempty"`
 	Digest          string                 `json:"digest,omitempty"`
+	Origin          string                 `json:"origin,omitempty"`   // the engine's entry: catalog, registry or import
+	Override        string                 `json:"override,omitempty"` // the published override a registry row ran from
+	Source          *EngineSource          `json:"source,omitempty"`   // the file an import ran
+	Unranked        string                 `json:"unranked,omitempty"` // why the row is not ranked; "" on a ranked row
 }
 
 // newRow is one model's line on a server from its results: the summary, the run's header, the measured GPU
@@ -85,7 +90,18 @@ func newRow(r Results, tier string, isDefault bool) Row {
 		row.SizeGB, row.VRAMGB, row.GPUPercent = round1(float64(e.SizeBytes)/1e9), round1(float64(e.VRAMBytes)/1e9), &pct
 		row.ContextLength, row.Quantization = e.ContextLength, e.Quantization
 		row.ParameterSize, row.Digest = e.ParameterSize, e.Digest
+		row.Origin = e.Origin
+		if e.Origin == "registry" { // a catalog model stays unmarked whatever file served it; an import is named by its file
+			row.Override = r.Override
+		}
+		if e.Origin == "import" {
+			row.Source = e.Source
+		}
+		if e.Origin != "catalog" { // a row from outside the catalog is never a tier default, whatever its entry says
+			row.Default = false
+		}
 	}
+	row.Unranked = unranked(row)
 	return row
 }
 
@@ -105,8 +121,9 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	sb := Scoreboard{
 		GeneratedAt: time.Now().Format("2006-01-02"),
 		Taracode:    version,
-		CorpusTasks: corpusTasks,
-		Tiers:       []TierBoard{},
+		CorpusTasks: corpusTasks, CorpusVersion: corpusVersionOf(all),
+
+		Tiers: []TierBoard{},
 	}
 	newest := map[rowKey]Results{}
 	for _, r := range all {
@@ -144,20 +161,19 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			tier = "other"
 		}
 		row := newRow(r, tier, defaults[machineModel{r.Model, r.Hardware}])
-		byTier[tier] = append(byTier[tier], row)
+		switch {
+		case row.Unranked == "":
+			byTier[tier] = append(byTier[tier], row)
+		case r.Hardware == "": // a row that cannot rank leaves the tier tables; without a board to list it, Skipped says why
+			sb.Skipped = append(sb.Skipped, fmt.Sprintf("%s %s: not ranked, %s", rowName(row), r.Date, row.Unranked))
+		}
 		allRows = append(allRows, row)
 	}
 	sb.Boards = buildBoards(allRows, corpusTasks)
 	for tier, rows := range byTier {
-		sort.Slice(rows, func(i, j int) bool {
-			if a, b := rankScore(rows[i]), rankScore(rows[j]); a != b {
-				return a > b
-			}
-			if rows[i].Model != rows[j].Model {
-				return rows[i].Model < rows[j].Model
-			}
-			if rows[i].Server.Name != rows[j].Server.Name {
-				return rows[i].Server.Name < rows[j].Server.Name
+		sort.Slice(rows, func(i, j int) bool { // the one ranking rule (spec 1g): as the hardware boards rank
+			if rankLess(rows[i], rows[j]) != rankLess(rows[j], rows[i]) {
+				return rankLess(rows[i], rows[j])
 			}
 			return rows[i].Hardware < rows[j].Hardware
 		})
@@ -229,8 +245,12 @@ func (s Scoreboard) Markdown() string {
 	fmt.Fprintf(&b, "# taracode local-model DevOps scoreboard\n\n")
 	fixtures := "Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, " +
 		"cloud read-only investigation and refusal cases"
-	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks with recorded fixtures (%s).\n\n",
-		s.GeneratedAt, s.Taracode, s.CorpusTasks, fixtures)
+	corpus := ""
+	if s.CorpusVersion != "" {
+		corpus = ", corpus v" + s.CorpusVersion + ","
+	}
+	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks%s with recorded fixtures (%s).\n\n",
+		s.GeneratedAt, s.Taracode, s.CorpusTasks, corpus, fixtures)
 	scoring := fmt.Sprintf("Score per task = %.1f tool expectations + %.1f answer expectations + %.1f no forbidden call; "+
 		"a task passes at %.2f. Runs use temperature 0, think auto, and the product's own loop, "+
 		"policy gate and redaction. Columns per area show tasks passed out of tasks run. "+
@@ -276,8 +296,9 @@ func (t TierBoard) markdown(manyMachines bool) string {
 		columns++
 	}
 	b.WriteString("|" + strings.Repeat("---|", columns) + "\n")
-	for _, r := range t.Rows {
-		name := mdText(r.Model)
+	marks, notes := outsideMarks(t.Rows)
+	for i, r := range t.Rows {
+		name := mdText(r.Model) + marks[i]
 		if r.Default {
 			name += " (default)"
 		}
@@ -296,6 +317,7 @@ func (t TierBoard) markdown(manyMachines bool) string {
 		fmt.Fprintf(&b, " %.1f | %.0f s | %.0f%% | %s | %s |\n",
 			r.MeanIterations, r.MeanWallS, r.FixtureMissRate*100, mdText(r.Server.String()), r.Date)
 	}
+	b.WriteString(notes)
 	return b.String()
 }
 
@@ -368,4 +390,13 @@ func (t TierBoard) checkDefault(machine string, perMachine bool) (string, bool) 
 		line += " (differs)"
 	}
 	return line, true
+}
+
+// corpusVersionOf is the corpus version the results share, "" with no results; CheckCorpusVersions has refused a
+// mixed set before a board is built.
+func corpusVersionOf(all []Results) string {
+	if len(all) == 0 {
+		return ""
+	}
+	return all[0].CorpusVersion()
 }

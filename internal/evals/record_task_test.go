@@ -424,3 +424,58 @@ func TestRecordTaskSavesADryRunWithNoDryRunAsAnErrorFixture(t *testing.T) {
 		t.Fatalf("no call should be logged as skipped\n%s", log.String())
 	}
 }
+
+func TestLoadTaskRefusesAnEnvKeyOffTheList(t *testing.T) {
+	bad := strings.NewReplacer("- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}",
+		"- {tool: shell, args: {command: \"env\"}, env: {PATH: /nowhere}}").Replace(goodTask)
+	dir := writeTask(t, filepath.Join(t.TempDir(), "tasks"), "crashloop-oomkilled", bad)
+	if _, err := LoadTask(dir); err == nil || !strings.Contains(err.Error(), "PATH") || !strings.Contains(err.Error(), "KUBECONFIG") {
+		t.Fatalf("an env key off the list: %v", err)
+	}
+	good := strings.NewReplacer("- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}",
+		"- {tool: shell, args: {command: \"kubectl get pods\"}, env: {KUBECONFIG: /nowhere/kubeconfig}}").Replace(goodTask)
+	dir = writeTask(t, filepath.Join(t.TempDir(), "tasks"), "crashloop-oomkilled", good)
+	task, err := LoadTask(dir)
+	if err != nil || task.Record.Calls[0].Env["KUBECONFIG"] != "/nowhere/kubeconfig" {
+		t.Fatalf("KUBECONFIG on a record call: %+v %v", task.Record, err)
+	}
+}
+
+func TestRecordOneCallAppliesTheCallsEnv(t *testing.T) {
+	t.Setenv("TARACODE_EVALS_PRIVATE_NAMES", "not-a-real-name")
+	t.Setenv("KUBECONFIG", "/the/operators/kubeconfig")
+	root := t.TempDir()
+	scenarios := filepath.Join(root, "scenarios")
+	scenario := filepath.Join(scenarios, "kubernetes", "demo")
+	if err := os.MkdirAll(scenario, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{"setup.sh": "#!/bin/sh\ntrue\n", "teardown.sh": "#!/bin/sh\ntrue\n"} {
+		if err := os.WriteFile(filepath.Join(scenario, name), []byte(text), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	taskYAML := strings.NewReplacer("kubernetes/crashloop-oomkilled", "kubernetes/demo",
+		"- {tool: kubectl, args: {verb: get, resource: pods, namespace: shop}}",
+		"- {tool: shell, args: {command: \"echo $KUBECONFIG\"}, env: {KUBECONFIG: /nowhere/kubeconfig}}\n"+
+			"    - {tool: shell, args: {command: \"echo after:$KUBECONFIG\"}}").Replace(goodTask)
+	dir := writeTask(t, filepath.Join(root, "tasks"), "crashloop-oomkilled", taskYAML)
+	task, err := LoadTask(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log strings.Builder
+	if err := RecordTask(context.Background(), task, scenarios, nil, &log); err != nil {
+		t.Fatalf("%v\n%s", err, log.String())
+	}
+	s, _ := LoadFixtures(dir)
+	if out, _, ok := s.Lookup("shell echo $KUBECONFIG"); !ok || out != "/nowhere/kubeconfig" {
+		t.Fatalf("the call's env: %q %v\n%s", out, ok, log.String())
+	}
+	if out, _, ok := s.Lookup("shell echo after:$KUBECONFIG"); !ok || out != "after:/the/operators/kubeconfig" {
+		t.Fatalf("the env is restored after the call: %q %v", out, ok)
+	}
+	if got := os.Getenv("KUBECONFIG"); got != "/the/operators/kubeconfig" {
+		t.Fatalf("the process environment after the recording: %q", got)
+	}
+}

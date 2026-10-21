@@ -27,6 +27,9 @@ type RunOptions struct {
 	GPUProbe                    string           // a command that prints the GPU memory in use in MiB; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
+	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
+	Corpus                      *Corpus          // the corpus version and hash written to the results; nil = none
+	Override                    string           // the published override file the model ran from; "" = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
 	NumPredict                  int              // tokens per completion; 0 = evalNumPredict, negative = no cap
@@ -40,6 +43,7 @@ type RunOptions struct {
 type runScope struct {
 	home       string
 	env        []string
+	common     *Store // the common store, loaded once per run; nil without one
 	transcript sync.Once
 }
 
@@ -91,6 +95,13 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
+	if opts.CommonDir != "" {
+		common, err := LoadFixtures(opts.CommonDir)
+		if err != nil {
+			return Results{}, fmt.Errorf("the common fixtures: %w", err)
+		}
+		opts.scope.common = common
+	}
 	restore, err := isolateEnv()
 	if err != nil {
 		return Results{}, fmt.Errorf("isolating the environment: %w", err)
@@ -100,6 +111,7 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	if err != nil {
 		return Results{}, err
 	}
+	res.Corpus = opts.Corpus
 	_, _ = fmt.Fprintf(opts.Out, "model %s (tier %s), %d tasks, %d run(s), think %s\n",
 		opts.Model, res.Tier, len(tasks), opts.Runs, opts.Think)
 	if err := warmUp(ctx, opts); err != nil {
@@ -184,7 +196,8 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
 		Model:  opts.Model, Tier: tier, Default: isDefault,
 		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
-		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware}, nil
+		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware,
+		Override: opts.Override}, nil
 }
 
 // catalogEntry is the model's tier and default flag as the engine's catalog has them; a model the catalog gives no
@@ -217,7 +230,7 @@ func warmUp(ctx context.Context, opts RunOptions) error {
 	}
 	defer remove()
 	t := Task{ID: "warm-up", Mode: "investigate", Permission: "allow", Expect: Expect{MaxIterations: 1}}
-	replay := NewReplay(emptyStore(), dir)
+	replay := NewReplay(emptyStore(), nil, dir)
 	a, err := agent.New(assistantOptions(t, opts, dir, replay, nil, io.Discard))
 	if err != nil {
 		return err
@@ -311,6 +324,7 @@ func averageRuns(runs []taskRun) taskRun {
 	avg.ToolCalls = count(func(r TaskResult) int { return r.ToolCalls })
 	avg.Denied = count(func(r TaskResult) int { return r.Denied })
 	avg.FixtureMisses = count(func(r TaskResult) int { return r.FixtureMisses })
+	avg.RealCalls = count(func(r TaskResult) int { return r.RealCalls })
 	avg.PromptTokens = count(func(r TaskResult) int { return r.PromptTokens })
 	avg.CompletionTokens = count(func(r TaskResult) int { return r.CompletionTokens })
 	avg.WallMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.WallMs) })))

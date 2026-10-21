@@ -7,8 +7,9 @@ reproducibility rules the numbers depend on.
 ## What this suite measures
 
 The suite measures the product loop, not a copy of it: the same system prompt, schemas, classifier, gate,
-truncation and compaction a user gets. Nothing executes for real during a run except the file tools inside a
-throwaway directory, and nothing reaches the network. Fixtures are honest: they are recorded from real tools
+truncation and compaction a user gets. Nothing executes for real during a run except the file tools and a short list of read-only
+probes (`pwd`, `ls`, `find`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `echo`, `true`) inside a throwaway
+directory, and nothing reaches the network. Fixtures are honest: they are recorded from real tools
 against real scenarios and stored as the redacted text the product actually shows, so refusal behaviour is
 measured on the model and asserted on the product itself: a gate that lets a forbidden mutation through fails
 the run, never just the score. Results are reproducible (temperature 0, product defaults otherwise, every
@@ -225,6 +226,8 @@ Notes on the first run (3.0.0):
 
 ```
 evals/tasks/<id>/task.yaml, workdir/, policy.yaml, fixtures/index.yaml, fixtures/*.txt
+evals/common/calls.yaml, fixtures/index.yaml, fixtures/*.txt   the common fixture store
+evals/VERSION                     the corpus seal: its version and the hash of every task and fixture
 evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
@@ -237,14 +240,35 @@ docs/evals/scoreboard.md, scoreboard.json
 For an operate task, the runner creates the run directory's `.taracode` storage with `storage.NewManager`
 and writes the task's `policy.yaml` into it.
 
+### Common fixtures
+
+`evals/common` is a fixture store the whole corpus shares, for the probes that do not depend on a task: which
+tools the sandbox has and which versions (`which terraform`, `terraform version`, `kubectl version --client`, and the
+chains a model types, `which terraform && terraform version`). The replay looks a whole line up in the task's own
+store first and in the common store after it, so a task's fixture always wins and a recorded chain is served as
+recorded. A line the stores lack that joins commands with `&&` or `;` is answered part by part when every part is a
+probe or a line the common store holds, never from a task's own store, whose fixtures the scorer and the terraform
+plan gate read on whole lines; any other chain is a miss, keyed by the whole line. `calls.yaml` lists the calls
+that fill the store, shell lines only; `make record-common` records them on the sandbox with the recorder the
+tasks use and pulls the store back. A tool the sandbox lacks records its real "not found" answer, which is the
+truthful one. The transcript marks a call the common store answered `COMMON`.
+
 ### Rows from outside the catalog
 
-A row may come from a model that is not in the engine's catalog when its results file names the artifact by digest
-and the catalog override that produced it is published under `docs/evals/overrides/` (the engine's embedded catalog
-verbatim plus the entry, placed as `<data>/registry.yaml` on the machine that ran it). Such a row says so in the notes
-of its run, carries the tier the override declares, and is never a tier default: the board measures what the override
-served, the catalog keeps recommending only what it ships. The first is `nemotron-3.5-bolt:74b` on the RTX 5090
-board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
+The engine says where each model's entry came from, and the run records it in the results' engine block (`origin`:
+`catalog`, `registry` for an operator's registry file, `import` for an `hf://` or local import). A row ranks unmarked
+only when its origin is `catalog`. A model served from a registry file ranks when the run names the published copy of
+that file with `--override docs/evals/overrides/<name>.registry.yaml` (the engine's embedded catalog verbatim plus
+the entry, placed as `<data>/registry.yaml` on the machine that ran it): the results record the path,
+`eval lint --results docs/evals/results` checks that it exists, and the board marks the row with a footnote mark
+after its name in `scoreboard.md` ("outside the catalog", with the file), `override` on the row in `scoreboard.json`,
+and the same mark in the tier tables. An import ranks marked the same way and needs no override: its link is the file
+it ran, which the engine names (`source`: the repository and file, or a local file's name, and the file's sha256), and
+it keeps the tier the engine gives it. The mark is the rule, the notes of the run are the detail. A row with neither is
+listed under its board unranked, with the reason: a registry row without a published override, an import whose engine
+block lacks its file, a result from an engine before taraengine 0.5.0 (which named no origin), or a result without an
+engine block; such a row leaves the tier tables too and is never a tier default. The first row from outside the
+catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`.
 
 ### The task.yaml reference
 
@@ -279,6 +303,7 @@ record:                            # record mode only, absent on authored and fi
     - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: ["--previous"]}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: shop}}
     - {tool: shell, args: {command: "kubectl get pods -n shop"}}
+    - {tool: shell, args: {command: "kubectl get nodes"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}   # env: KUBECONFIG only
 ```
 
 A call matcher has `tool`, `verb`, `classification` (read or mutate) and `signature_matches` (a Go regex over
@@ -319,7 +344,8 @@ taracode eval run --model gemma4:12b
 
 Add `--host` for an engine at another address, `--tasks <glob>` to run a subset of the corpus, `--think <mode>`
 to override the default think level, `--runs N` to repeat each task and average its scores, and
-`--hardware "<label>"` to name the machine the engine runs on. Results are written to
+`--hardware "<label>"` to name the machine the engine runs on, and `--override docs/evals/overrides/<name>.registry.yaml`
+to name the published override a registry-served model runs from. Results are written to
 `docs/evals/results/<model slug>-<server>-<machine>-<date>.json` (the machine part, from the label, only when
 there is one); the full transcript of each task (the conversation,
 every tool decision and the final answer) is written to `evals/runs/<model slug>-<date>/<task id>.log`, which
@@ -367,20 +393,25 @@ itself, which is the figure a board shows.
   `--hardware "NVIDIA RTX 5090 (32 GB)"`. The engine does not name its GPU, so taracode does not guess.
   The label is public: it describes the machine and never addresses it. One line, at most 60 characters,
   no URL and no IP address; runs of spaces collapse, so one machine is one board.
+- **Origin and override** (`engine.origin`, `engine.source`, `override`) say where the model's entry came from, what
+  an import ran, and which published override a registry-served model ran from (declared with `--override`); see
+  "Rows from outside the catalog" for how the board reads them.
 
 `taracode eval report` builds one board per hardware label, above the RAM-tier tables: every model whose
 newest results carry that label, ranked by pass rate, then mean score, then tokens per second. Two kinds
 of result are listed under the ranking instead of in it: a model that was not entirely on the GPU ("did
 not fit"; on a machine with no GPU that is every model), and a run that covered only part of the corpus,
-such as a `--tasks` subset. A result with no `engine` block stays ranked, since nothing says it did not
-fit, and the report says how many rows that is ("without engine data"). The VRAM column is in GiB, the
+such as a `--tasks` subset. A result that cannot rank at all is listed under the board with the reason: no
+`engine` block (the engine's `origin` lives in that block), no origin, an unpublished override, an import without its
+file; see "Rows from outside the catalog". The VRAM column is in GiB, the
 unit a card's size is given in (a 24 GB card holds 24 GiB): the measured figure where the run has one,
 otherwise the engine's estimate marked with `~`. The "did not fit" lines keep the engine's own figures,
 named as such, in decimal gigabytes.
 
 One model has one row per server and machine: its newest results there, so the same model can sit on the boards
 of several machines, and the RAM-tier tables then name each row's machine in a Machine column. When a model's
-newest result on a server names no machine, it is that model's only row and the model leaves the boards.
+newest result on a server names no machine, it is that model's only row and the model leaves the boards. The
+RAM-tier tables rank by the boards' rule too: pass rate, then mean score, then tokens per second, one rule everywhere.
 
 ## Run it on your hardware
 
@@ -562,10 +593,30 @@ succeeds.
 
 ## Reproducibility notes
 
+**The corpus seal.** The corpus has a version, sealed in `evals/VERSION` with the sha256 of every file under
+`evals/tasks` and `evals/common` (`taracode eval lint --seal --version <n>`, a whole number greater than the sealed
+one). Every results file records the version and the hash it ran on (`corpus`); a file without the block ran corpus 1.
+`eval lint` fails when the corpus changed under its seal, `eval run` refuses to run on one, and `eval report` refuses
+results of two versions on one board, naming the files: a changed corpus is a new version, and a board holds one
+version only, which `scoreboard.json` names as `corpus_version` and the page prints.
+
 Every run pins `temperature` to 0 and defaults `think` to `auto`, the same defaults the product ships with.
-In replay mode (`eval run`), nothing the model calls actually executes except the five file tools, and even
-those run only inside a throwaway per-task directory; every other tool is answered from a recorded fixture,
-so a run never touches the real network or the real sandbox. Operate-mode tasks write their own
+In replay mode (`eval run`), nothing the model calls actually executes except the five file tools and the
+probes below, and those run only inside a throwaway per-task directory; every other tool is answered from a
+recorded fixture, so a run never touches the real network or the real sandbox.
+
+**Probes.** A shell line that is one simple command, or several joined by `&&` or `;`, from the list `pwd`, `ls`,
+`find`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `echo` and `true` runs for real in the run directory, so a
+model that looks around before it works pays nothing for looking and sees what the file tools see. The rules fail
+closed: each program takes the flags its rule names and no other (`ls -la`, `head -n 5`, `find . -name '*.tf'`;
+never `ls -L`, `tail -f`, `file -f`, `find -L`, `-follow`, `-newer`, `-exec` or `-delete`); every path argument
+has no `..` and resolves inside the run directory, symlinks followed; no word is expanded, so `$`, `~` and a glob
+leave the line alone; a pipe, `||`, a redirect, a background job or a substitution is never a probe; and the
+product's own classifier must call the line a read. Anything else leaves the line to the fixture store, where it
+is the miss it was before. The result reads as the shell tool's: the output without its trailing newline,
+`(no output)` for none, `[exit status N]` on its own line for a failure, which stops a chain at `&&` and not at
+`;`. A probe has fifteen seconds and its output is cut at 64 KiB. The transcript marks such a call `REAL`, the
+results count them per task (`real_calls`), and the misses column counts only true misses. Operate-mode tasks write their own
 `policy.yaml` into the run directory.
 
 ## Known limitations

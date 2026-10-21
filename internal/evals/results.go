@@ -43,6 +43,10 @@ type Results struct {
 	Host        string      `json:"host"`
 	Hardware    string      `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
 	Engine      *EngineInfo `json:"engine,omitempty"`   // the loaded model as the engine reports it
+	Corpus      *Corpus     `json:"corpus,omitempty"`   // the corpus version and hash the run measured; absent = corpus 1
+	// Override is the published override file a registry-served model ran from, declared by the operator with
+	// --override (docs/evals/overrides/<name>.registry.yaml); "" for a catalog model or an unpublished override.
+	Override string `json:"override,omitempty"`
 	// GPUMemoryMiB is the GPU memory in use with the model loaded: the engine's own figure when it measured it
 	// (taraengine on NVIDIA), else what the operator's probe measured on the machine (--gpu-probe); 0 when
 	// nothing was measured. An engine's estimate can be far from what the GPU holds.
@@ -68,6 +72,7 @@ type TaskResult struct {
 	ToolCalls        int      `json:"tool_calls"`               // per-run mean with --runs, rounded
 	Denied           int      `json:"denied"`                   // per-run mean with --runs, rounded
 	FixtureMisses    int      `json:"fixture_misses"`           // per-run mean with --runs, rounded
+	RealCalls        int      `json:"real_calls,omitempty"`     // probes run for real; per-run mean, rounded; absent = 0
 	PromptTokens     int      `json:"prompt_tokens"`            // per-run mean with --runs, rounded
 	CompletionTokens int      `json:"completion_tokens"`        // per-run mean with --runs, rounded
 	WallMs           int64    `json:"wall_ms"`                  // per-run mean with --runs, rounded

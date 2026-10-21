@@ -34,7 +34,11 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	if err != nil {
 		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
-	replay := NewReplay(store, runDir)
+	var common *Store
+	if opts.scope != nil {
+		common = opts.scope.common
+	}
+	replay := NewReplay(store, common, runDir)
 	events := &eventLog{replay: replay}
 	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
 	if err != nil {
@@ -97,6 +101,7 @@ func finishTask(
 	tr.PromptEvalMs, tr.EvalMs = turn.stats.PromptDuration.Milliseconds(), turn.stats.EvalDuration.Milliseconds()
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
 	tr.FixtureMisses = len(replay.Misses())
+	tr.RealCalls = len(replay.RealCalls())
 	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), missNotes(replay)...), opts, t)
 	out.row = tr
 	return out

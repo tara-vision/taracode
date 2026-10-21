@@ -159,7 +159,7 @@ func TestTranscriptWriterWarnsWithoutARunScope(t *testing.T) {
 func newTaskAssistant(t *testing.T, task Task, opts RunOptions) *agent.Assistant {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	a, err := agent.New(assistantOptions(task, opts, t.TempDir(), NewReplay(emptyStore(), t.TempDir()), nil, io.Discard))
+	a, err := agent.New(assistantOptions(task, opts, t.TempDir(), NewReplay(emptyStore(), nil, t.TempDir()), nil, io.Discard))
 	if err != nil {
 		t.Fatal(err)
 	}

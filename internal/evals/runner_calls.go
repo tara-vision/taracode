@@ -30,6 +30,12 @@ func writeCalls(w io.Writer, calls []loggedCall) {
 		for _, sig := range c.missedSignatures() {
 			line += "  MISS " + sig
 		}
+		for _, sig := range c.realSignatures() {
+			line += "  REAL " + sig
+		}
+		for _, sig := range c.commonSignatures() {
+			line += "  COMMON " + sig
+		}
 		_, _ = fmt.Fprintln(w, line)
 		if !e.Allowed && e.Reason != "" {
 			_, _ = fmt.Fprintf(w, "  reason: %s\n", e.Reason)
@@ -80,6 +86,28 @@ func (c loggedCall) missedSignatures() []string {
 	var sigs []string
 	for _, r := range c.replayed {
 		if errors.Is(r.Err, ErrNoFixture) {
+			sigs = append(sigs, r.Signature)
+		}
+	}
+	return sigs
+}
+
+// realSignatures are the signatures of the call's replay records that ran for real as probes.
+func (c loggedCall) realSignatures() []string {
+	var sigs []string
+	for _, r := range c.replayed {
+		if r.Real {
+			sigs = append(sigs, r.Signature)
+		}
+	}
+	return sigs
+}
+
+// commonSignatures are the signatures of the call's replay records the common store answered.
+func (c loggedCall) commonSignatures() []string {
+	var sigs []string
+	for _, r := range c.replayed {
+		if r.Common {
 			sigs = append(sigs, r.Signature)
 		}
 	}
