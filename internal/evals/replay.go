@@ -96,10 +96,14 @@ func (r *Replay) replay(call tools.Call) tools.Executor {
 			sig = DryRunSignature(call.Tool, args)
 		}
 		if call.Tool == "shell" && !call.DryRun {
-			if parts, ok := splitChain(str(args, "command")); ok {
-				if out, rc, handled := r.chain(ctx, workingDir, sig, parts); handled {
-					r.note(rc)
-					return out, rc.Err
+			if _, _, recorded, _, _ := r.lookup(sig); !recorded { // a recorded whole line is served as recorded
+				command := str(args, "command")
+				if parts, ops, ok := splitChain(command); ok {
+					out, rc, handled := r.probeLine(ctx, workingDir, command, sig, parts, ops)
+					if handled {
+						r.note(rc)
+						return out, rc.Err
+					}
 				}
 			}
 		}
@@ -271,6 +275,27 @@ func (r *Replay) Calls() []ReplayCall {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]ReplayCall(nil), r.calls...)
+}
+
+// probeLine answers a shell line that is one probe, or a chain of probes and common-store fixtures; handled is
+// false for any other line.
+func (r *Replay) probeLine(
+	ctx context.Context, workingDir, command, sig string, parts [][]string, ops []string,
+) (string, ReplayCall, bool) {
+	if len(parts) > 1 {
+		return r.chain(ctx, workingDir, command, sig, parts, ops)
+	}
+	argv, ok := r.probeArgv(workingDir, parts[0])
+	if !ok || !shellReads(command, workingDir) {
+		return "", ReplayCall{Signature: sig}, false
+	}
+	rc := ReplayCall{Signature: sig, Real: true}
+	text, status, err := r.runProbe(ctx, workingDir, argv)
+	if err != nil {
+		rc.Err = err
+		return "", rc, true
+	}
+	return shellResult(text, status), rc, true
 }
 
 // RealCalls lists the signatures of the probes that ran for real, in call order.

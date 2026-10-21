@@ -53,15 +53,11 @@ func LoadCommonCalls(path string) ([]RecordCall, error) {
 // (the same redaction and private-name refusal, the same swap that replaces the store only when every call
 // succeeded), in a fresh temporary run directory and with no scenario: the calls ask the sandbox what it has.
 func RecordCommon(ctx context.Context, dir string, resolve Resolver, out io.Writer) error {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("common: %w", err)
+	abs := dir
+	if a, err := filepath.Abs(dir); err == nil {
+		abs = a
 	}
-	calls, err := LoadCommonCalls(filepath.Join(abs, "calls.yaml"))
-	if err != nil {
-		return fmt.Errorf("common: %w", err)
-	}
-	names, err := privateNames()
+	calls, names, err := commonRecording(abs)
 	if err != nil {
 		return fmt.Errorf("common: %w", err)
 	}
@@ -76,4 +72,13 @@ func RecordCommon(ctx context.Context, dir string, resolve Resolver, out io.Writ
 	}
 	t := Task{ID: "common", Dir: abs, Record: &Record{Calls: calls}}
 	return recordCalls(ctx, t, runDir, tempParent, resolve, names, out)
+}
+
+// commonRecording is what a common recording needs before it runs: the store's calls and the private names
+// the recorder redacts.
+func commonRecording(abs string) (calls []RecordCall, names []string, err error) {
+	if calls, err = LoadCommonCalls(filepath.Join(abs, "calls.yaml")); err == nil {
+		names, err = privateNames()
+	}
+	return calls, names, err
 }

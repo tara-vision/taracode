@@ -144,16 +144,11 @@ func corpusOf(tasksRoot string, out io.Writer) (*evals.Corpus, error) {
 		return nil, fmt.Errorf("the corpus changed since it was sealed as version %s: bump the version and run "+
 			"taracode eval lint --seal --version <n> before a run", seal.Version)
 	}
-	return &evals.Corpus{Version: seal.Version, Hash: hash}, nil
-}
-
-// commonDir is the common fixture store beside the corpus (evals/common for evals/tasks); "" when there is none.
-func commonDir(corpus string) string {
-	dir := filepath.Join(filepath.Dir(corpus), "common")
-	if _, err := os.Stat(filepath.Join(dir, "fixtures", "index.yaml")); err != nil {
-		return ""
+	if seal.Hash == "" {
+		_, _ = fmt.Fprintf(out, "warning: the corpus is not sealed (no evals/VERSION): the results say corpus 1; "+
+			"run taracode eval lint --seal --version <n> before a board run\n")
 	}
-	return dir
+	return &evals.Corpus{Version: seal.Version, Hash: hash}, nil
 }
 
 // runEvalRun is the testable core of `eval run`.
@@ -181,7 +176,8 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	}
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
-		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: commonDir(f.corpus), Corpus: corpus, Out: out})
+		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
+		Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
@@ -326,16 +322,12 @@ func countRows(sb evals.Scoreboard) int {
 	return n
 }
 
-// runEvalLint prints the problems and fails when there are any.
 // runEvalSeal is `eval lint --seal --version <n>`: the corpus's hash under a new version.
 func runEvalSeal(corpus, version string, out io.Writer) error {
 	if version == "" {
 		return errors.New("--seal needs --version <n>, a whole number greater than the sealed version")
 	}
-	if err := evals.Seal(corpus, version); err != nil {
-		return err
-	}
-	c, err := evals.ReadSeal(corpus)
+	c, err := evals.Seal(corpus, version)
 	if err != nil {
 		return err
 	}
@@ -343,6 +335,7 @@ func runEvalSeal(corpus, version string, out io.Writer) error {
 	return nil
 }
 
+// runEvalLint prints the problems and fails when there are any.
 func runEvalLint(corpus string, out io.Writer) error {
 	count, problems := evals.Lint(corpus)
 	for _, p := range problems {

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,8 +25,37 @@ type Corpus struct {
 // sealFile is the seal beside the tasks root: evals/VERSION for evals/tasks.
 const sealFile = "VERSION"
 
-// evalsDir is the directory the tasks root lies in, which holds the seal and the common store.
-func evalsDir(tasksRoot string) string { return filepath.Dir(filepath.Clean(tasksRoot)) }
+// evalsDir is the directory the tasks root lies in, which holds the seal and the common store: the absolute parent
+// of the tasks root, so a trailing slash, "." or a relative spelling all name the same place.
+func evalsDir(tasksRoot string) string {
+	if abs, err := filepath.Abs(tasksRoot); err == nil {
+		tasksRoot = abs
+	}
+	return filepath.Dir(filepath.Clean(tasksRoot))
+}
+
+// CommonDir is the common fixture store beside a tasks root (evals/common for evals/tasks), "" when it has no
+// fixtures index yet.
+func CommonDir(tasksRoot string) string {
+	dir := filepath.Join(evalsDir(tasksRoot), "common")
+	if _, err := os.Stat(filepath.Join(dir, "fixtures", "index.yaml")); err != nil {
+		return ""
+	}
+	return dir
+}
+
+// hashed reports whether a file counts for the corpus hash: the files of the corpus and never what the machine or a
+// failed recording leaves beside them (.DS_Store, ._* resource forks, a fixtures-recording-* or fixtures.replaced
+// directory).
+func hashed(rel string) bool {
+	for _, part := range strings.Split(rel, "/") {
+		if part == ".DS_Store" || strings.HasPrefix(part, "._") || strings.HasPrefix(part, "fixtures-recording-") ||
+			part == "fixtures.replaced" {
+			return false
+		}
+	}
+	return true
+}
 
 // CorpusHash is the sha256 over every regular file under the tasks root and under the common store beside it,
 // in the order of their slash-separated paths relative to the evals directory: each path, a NUL, the bytes, a
@@ -35,7 +63,8 @@ func evalsDir(tasksRoot string) string { return filepath.Dir(filepath.Clean(task
 func CorpusHash(tasksRoot string) (string, error) {
 	base := evalsDir(tasksRoot)
 	var paths []string
-	for _, root := range []string{filepath.Clean(tasksRoot), filepath.Join(base, "common")} {
+	tasks := filepath.Join(base, filepath.Base(filepath.Clean(tasksRoot)))
+	for _, root := range []string{tasks, filepath.Join(base, "common")} {
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
 				if os.IsNotExist(err) && p == root {
@@ -43,40 +72,33 @@ func CorpusHash(tasksRoot string) (string, error) {
 				}
 				return err
 			}
-			if d.Type().IsRegular() {
+			if d.Type().IsRegular() && hashed(relSlash(base, p)) {
 				paths = append(paths, p)
 			}
 			return nil
 		})
-		if err != nil && !os.IsNotExist(err) {
+		if err != nil {
 			return "", fmt.Errorf("corpus hash: %w", err)
 		}
 	}
 	sort.Slice(paths, func(i, j int) bool { return relSlash(base, paths[i]) < relSlash(base, paths[j]) })
 	h := sha256.New()
 	for _, p := range paths {
+		data, err := os.ReadFile(p) //nolint:gosec // p walks the corpus, repository content
+		if err != nil {
+			return "", fmt.Errorf("corpus hash: %w", err)
+		}
 		h.Write([]byte(relSlash(base, p)))
 		h.Write([]byte{0})
-		f, err := os.Open(p) //nolint:gosec // p walks the corpus, repository content
-		if err != nil {
-			return "", fmt.Errorf("corpus hash: %w", err)
-		}
-		_, err = io.Copy(h, f)
-		_ = f.Close()
-		if err != nil {
-			return "", fmt.Errorf("corpus hash: %w", err)
-		}
+		h.Write(data)
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// relSlash is p's slash-separated path under base, where the walks above found it.
 func relSlash(base, p string) string {
-	rel, err := filepath.Rel(base, p)
-	if err != nil {
-		rel = p
-	}
-	return filepath.ToSlash(rel)
+	return filepath.ToSlash(strings.TrimPrefix(p, base+string(filepath.Separator)))
 }
 
 // ReadSeal reads evals/VERSION: the version and the hash the corpus was sealed with. A corpus without a seal is
@@ -127,26 +149,30 @@ func isHash(s string) bool {
 
 // Seal writes evals/VERSION with the version and the corpus's current hash. The version is a whole number greater
 // than the sealed one: a corpus that changed is a new version, and a board never mixes two.
-func Seal(tasksRoot, version string) error {
+func Seal(tasksRoot, version string) (Corpus, error) {
 	n, err := strconv.Atoi(version)
 	if err != nil || n < 1 {
-		return fmt.Errorf("seal: the version must be a whole number, not %q", version)
+		return Corpus{}, fmt.Errorf("seal: the version must be a whole number, not %q", version)
 	}
 	current, err := ReadSeal(tasksRoot)
 	if err != nil {
-		return err
+		return Corpus{}, err
 	}
 	if sealed, _ := strconv.Atoi(current.Version); current.Hash != "" && n <= sealed {
-		return fmt.Errorf("seal: the corpus is sealed as version %s; a resealed corpus takes a greater version",
+		return Corpus{}, fmt.Errorf("seal: the corpus is sealed as version %s; a resealed corpus takes a greater version",
 			current.Version)
 	}
 	hash, err := CorpusHash(tasksRoot)
 	if err != nil {
-		return err
+		return Corpus{}, err
 	}
-	text := fmt.Sprintf("version: %d\nhash: %s\n", n, hash)
+	c := Corpus{Version: strconv.Itoa(n), Hash: hash}
+	text := fmt.Sprintf("version: %s\nhash: %s\n", c.Version, c.Hash)
 	path := filepath.Join(evalsDir(tasksRoot), sealFile)
-	return os.WriteFile(path, []byte(text), 0o644) //nolint:gosec // repository content
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil { //nolint:gosec // repository content
+		return Corpus{}, fmt.Errorf("seal: %w", err)
+	}
+	return c, nil
 }
 
 // lintSeal is the one lint of the seal: a sealed corpus whose hash is not the corpus's any more changed under its
@@ -164,8 +190,9 @@ func lintSeal(tasksRoot string) []string {
 		return []string{err.Error()}
 	}
 	if hash != c.Hash {
-		return []string{fmt.Sprintf("%s: the corpus changed since it was sealed as version %s; bump the version and run "+
-			"taracode eval lint --seal --version <n>", sealFile, c.Version)}
+		return []string{fmt.Sprintf("%s: the corpus changed since it was sealed as version %s; check git status for a file "+
+			"left beside the corpus, then bump the version and run taracode eval lint --seal --version <n>",
+			filepath.Join(filepath.Base(evalsDir(tasksRoot)), sealFile), c.Version)}
 	}
 	return nil
 }

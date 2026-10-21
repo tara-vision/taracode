@@ -244,13 +244,14 @@ and writes the task's `policy.yaml` into it.
 
 `evals/common` is a fixture store the whole corpus shares, for the probes that do not depend on a task: which
 tools the sandbox has and which versions (`which terraform`, `terraform version`, `kubectl version --client`, and the
-chains a model types, `which terraform && terraform version`). The replay looks a signature up in the task's own
-store first and in the common store after it, so a task's fixture always wins; a line joined by `&&` or `;` is
-answered part by part, probes run for real and the other parts looked up, and one part without a fixture makes the
-whole line a miss, keyed by the whole line. `calls.yaml` lists the calls that fill the store, shell lines only;
-`make record-common` records them on the sandbox with the recorder the tasks use and pulls the store back. A tool the
-sandbox lacks records its real "not found" answer, which is the truthful one. The transcript marks a call the common
-store answered `COMMON`.
+chains a model types, `which terraform && terraform version`). The replay looks a whole line up in the task's own
+store first and in the common store after it, so a task's fixture always wins and a recorded chain is served as
+recorded. A line the stores lack that joins commands with `&&` or `;` is answered part by part when every part is a
+probe or a line the common store holds, never from a task's own store, whose fixtures the scorer and the terraform
+plan gate read on whole lines; any other chain is a miss, keyed by the whole line. `calls.yaml` lists the calls
+that fill the store, shell lines only; `make record-common` records them on the sandbox with the recorder the
+tasks use and pulls the store back. A tool the sandbox lacks records its real "not found" answer, which is the
+truthful one. The transcript marks a call the common store answered `COMMON`.
 
 ### Rows from outside the catalog
 
@@ -593,13 +594,16 @@ recorded fixture, so a run never touches the real network or the real sandbox.
 
 **Probes.** A shell line that is one simple command, or several joined by `&&` or `;`, from the list `pwd`, `ls`,
 `find`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `echo` and `true` runs for real in the run directory, so a
-model that looks around before it works pays nothing for looking and sees what the file tools see. Every path
-argument must resolve inside the run directory, symlinks followed; a path outside, a word the shell would expand
-(`~`, `$`), a pipe, `||`, a redirect, a background job, a substitution, `find` with `-exec`, `-execdir`, `-ok`,
-`-okdir`, `-delete` or an `-fprint` form, and `tail -f` leave the line to the fixture store, where it is the miss
-it was before. A glob expands inside the run directory. A probe has fifteen seconds and its output is cut at 64
-KiB. The transcript marks such a call `REAL`, the results count them per task (`real_calls`), and the misses
-column counts only true misses. Operate-mode tasks write their own
+model that looks around before it works pays nothing for looking and sees what the file tools see. The rules fail
+closed: each program takes the flags its rule names and no other (`ls -la`, `head -n 5`, `find . -name '*.tf'`;
+never `ls -L`, `tail -f`, `file -f`, `find -L`, `-follow`, `-newer`, `-exec` or `-delete`); every path argument
+has no `..` and resolves inside the run directory, symlinks followed; no word is expanded, so `$`, `~` and a glob
+leave the line alone; a pipe, `||`, a redirect, a background job or a substitution is never a probe; and the
+product's own classifier must call the line a read. Anything else leaves the line to the fixture store, where it
+is the miss it was before. The result reads as the shell tool's: the output without its trailing newline,
+`(no output)` for none, `[exit status N]` on its own line for a failure, which stops a chain at `&&` and not at
+`;`. A probe has fifteen seconds and its output is cut at 64 KiB. The transcript marks such a call `REAL`, the
+results count them per task (`real_calls`), and the misses column counts only true misses. Operate-mode tasks write their own
 `policy.yaml` into the run directory.
 
 ## Known limitations

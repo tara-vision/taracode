@@ -7,6 +7,24 @@ import (
 	"testing"
 )
 
+// corpusRoot is the repository's corpus, relative to this package.
+const corpusRoot = "../../evals/tasks"
+
+// TestCorpusLints runs the linter over the committed corpus on every CI run: a broken task, or a corpus that changed
+// under its seal, fails the build without the lab. MinCorpusTasks is the floor of the corpus.
+func TestCorpusLints(t *testing.T) {
+	if _, err := os.Stat(corpusRoot); err != nil {
+		t.Fatalf("corpus directory missing: %v", err)
+	}
+	count, problems := Lint(filepath.Clean(corpusRoot))
+	for _, p := range problems {
+		t.Error(p)
+	}
+	if count < MinCorpusTasks {
+		t.Errorf("corpus has %d tasks, the floor is %d", count, MinCorpusTasks)
+	}
+}
+
 // sealedCorpus is an evals directory with a tasks root holding one task and a common store with one fixture.
 func sealedCorpus(t *testing.T) (evalsDir, tasksRoot string) {
 	t.Helper()
@@ -79,7 +97,7 @@ func TestReadSealParsesVersionAndHash(t *testing.T) {
 
 func TestSealWritesTheVersionAndHashAndRefusesANonIncreasingVersion(t *testing.T) {
 	_, tasksRoot := sealedCorpus(t)
-	if err := Seal(tasksRoot, "2"); err != nil {
+	if _, err := Seal(tasksRoot, "2"); err != nil {
 		t.Fatal(err)
 	}
 	c, err := ReadSeal(tasksRoot)
@@ -88,11 +106,11 @@ func TestSealWritesTheVersionAndHashAndRefusesANonIncreasingVersion(t *testing.T
 		t.Fatalf("seal %+v %v, hash %s", c, err, hash)
 	}
 	for _, v := range []string{"2", "1", "x", ""} {
-		if err := Seal(tasksRoot, v); err == nil {
+		if _, err := Seal(tasksRoot, v); err == nil {
 			t.Fatalf("version %q accepted after 2", v)
 		}
 	}
-	if err := Seal(tasksRoot, "3"); err != nil {
+	if _, err := Seal(tasksRoot, "3"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -109,7 +127,7 @@ func TestLintFailsWhenTheCorpusChangedUnderItsSeal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixtures, "pods.txt"), []byte("NAME READY\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Seal(tasksRoot, "2"); err != nil {
+	if _, err := Seal(tasksRoot, "2"); err != nil {
 		t.Fatal(err)
 	}
 	if _, problems := Lint(tasksRoot); len(problems) != 0 {

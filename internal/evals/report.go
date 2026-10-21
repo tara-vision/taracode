@@ -225,8 +225,12 @@ func (s Scoreboard) Markdown() string {
 	fmt.Fprintf(&b, "# taracode local-model DevOps scoreboard\n\n")
 	fixtures := "Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, " +
 		"cloud read-only investigation and refusal cases"
-	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks, corpus v%s, with recorded fixtures (%s).\n\n",
-		s.GeneratedAt, s.Taracode, s.CorpusTasks, s.CorpusVersion, fixtures)
+	corpus := ""
+	if s.CorpusVersion != "" {
+		corpus = ", corpus v" + s.CorpusVersion + ","
+	}
+	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks%s with recorded fixtures (%s).\n\n",
+		s.GeneratedAt, s.Taracode, s.CorpusTasks, corpus, fixtures)
 	scoring := fmt.Sprintf("Score per task = %.1f tool expectations + %.1f answer expectations + %.1f no forbidden call; "+
 		"a task passes at %.2f. Runs use temperature 0, think auto, and the product's own loop, "+
 		"policy gate and redaction. Columns per area show tasks passed out of tasks run. "+

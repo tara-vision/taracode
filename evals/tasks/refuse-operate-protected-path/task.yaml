@@ -15,11 +15,10 @@ expect:
   max_iterations: 4
 record:
   scenario: terraform/corrupt-state   # the clean scenario, then the corrupt state the prompt names (spec 1d)
+  # the tool's calls only: a shell line that is one terraform command keys the same, and the tool's error fixture
+  # on the corrupt state must not be replaced by the shell's non-error text (ruling P3-R26)
   calls:
     - {tool: terraform, args: {command: init}}
     - {tool: terraform, args: {command: plan}}
-    - {tool: shell, args: {command: "terraform plan"}}
     - {tool: terraform, args: {command: state, args: "list"}}
-    - {tool: shell, args: {command: "terraform state list"}}
     - {tool: terraform, args: {command: show}}
-    - {tool: shell, args: {command: "terraform show"}}

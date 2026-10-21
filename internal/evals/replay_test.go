@@ -397,11 +397,11 @@ func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
 func TestReplayRunsAProbeForRealAndCountsNoMiss(t *testing.T) {
 	r, reg, runDir := replayRegistry(t)
 	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "pwd"}, runDir)
-	if err != nil || strings.TrimSpace(out) != runDir {
+	if err != nil || out != runDir {
 		t.Fatalf("pwd: %q %v", out, err)
 	}
 	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "cat notes.txt && echo done"}, runDir)
-	if err != nil || out != "real filedone\n" { // the streams run together, as a shell shows them
+	if err != nil || out != "real file\ndone" { // each command's output on its own line, as the shell tool shows them
 		t.Fatalf("a chain of probes: %q %v", out, err)
 	}
 	if m := r.Misses(); len(m) != 0 {
@@ -492,24 +492,29 @@ func TestATaskFixtureWinsOverTheCommonStore(t *testing.T) {
 }
 
 func TestReplayAnswersAChainOfFixtureParts(t *testing.T) {
-	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{
-		"shell which terraform": "/usr/local/bin/terraform\n",
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{ // fixtures as the recorder writes them: trimmed
+		"shell which terraform": "/usr/local/bin/terraform",
 		// a shell line that is one terraform command keys like the terraform tool, at record time as here
-		Signature("shell", map[string]any{"command": "terraform version"}): "Terraform v1.9.0\non darwin_arm64\n",
+		Signature("shell", map[string]any{"command": "terraform version"}): "Terraform v1.9.0\non darwin_arm64",
+		"shell which helm": "\n[exit status 1]",
 	})
 	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which terraform && terraform version"}, runDir)
-	if err != nil || out != "/usr/local/bin/terraform\nTerraform v1.9.0\non darwin_arm64\n" {
+	if err != nil || out != "/usr/local/bin/terraform\nTerraform v1.9.0\non darwin_arm64" {
 		t.Fatalf("chain: %q %v", out, err)
 	}
 	if calls := r.Calls(); len(calls) != 1 || !calls[0].Common || calls[0].Signature != "shell which terraform && terraform version" {
 		t.Fatalf("calls %+v", calls)
 	}
 	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "pwd && which terraform"}, runDir)
-	if err != nil || out != runDir+"\n/usr/local/bin/terraform\n" {
+	if err != nil || out != runDir+"\n/usr/local/bin/terraform" {
 		t.Fatalf("a chain of a probe and a fixture: %q %v", out, err)
 	}
 	if calls := r.Calls(); len(calls) != 2 || !calls[1].Common || !calls[1].Real {
 		t.Fatalf("calls %+v", calls)
+	}
+	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && terraform version"}, runDir)
+	if err != nil || out != "\n[exit status 1]" { // the shell tool's shape for a failure without output
+		t.Fatalf("a recorded failure stops the chain at &&: %q %v", out, err)
 	}
 }
 
@@ -521,5 +526,59 @@ func TestAChainWithAMissingPartIsAMiss(t *testing.T) {
 	}
 	if m := r.Misses(); len(m) != 1 || m[0] != "shell which terraform && terraform -version" {
 		t.Fatalf("misses %v", m)
+	}
+}
+
+func TestAChainNeverReadsATasksOwnStore(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which helm": "/usr/local/bin/helm"})
+	if err := r.store.Save("shell helm version", "version.BuildInfo{Version:\"v3.19.0\"}", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && helm version"}, runDir); err == nil ||
+		!strings.HasPrefix(err.Error(), "no recorded data for this call") {
+		t.Fatalf("a part only the task's store holds keeps the line a miss, so the scorer and the plan gate see whole lines: %v", err)
+	}
+	if err := r.store.Save("shell which helm && helm version", "/usr/local/bin/helm\nversion.BuildInfo{Version:\"v3.19.0\"}", false); err != nil {
+		t.Fatal(err)
+	}
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm && helm version"}, runDir)
+	if err != nil || !strings.HasPrefix(out, "/usr/local/bin/helm") {
+		t.Fatalf("a recorded whole line is served as recorded: %q %v", out, err)
+	}
+	if calls := r.Calls(); len(calls) != 2 || calls[1].Common || calls[1].Real {
+		t.Fatalf("calls %+v", calls)
+	}
+}
+
+func TestReplayServesACommonErrorFixture(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which terraform": "/usr/local/bin/terraform"})
+	if err := r.common.Save("shell which helm", "which: refused by the sandbox", true); err != nil {
+		t.Fatal(err)
+	}
+	_, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm"}, runDir)
+	if err == nil || !strings.Contains(err.Error(), "refused by the sandbox") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestReplayReportsACommonFixtureItCannotRead(t *testing.T) {
+	r, reg, runDir := replayRegistryWithCommon(t, map[string]string{"shell which helm": "/usr/local/bin/helm"})
+	entries, err := os.ReadDir(r.common.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries { // the index stays, the fixture file goes: a defect of the common store
+		if e.Name() != "index.yaml" {
+			if err := os.Remove(filepath.Join(r.common.Dir(), e.Name())); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "which helm"}, runDir)
+	if err == nil || !strings.HasPrefix(err.Error(), "corpus defect: ") {
+		t.Fatalf("err %v", err)
+	}
+	if calls := r.Calls(); len(calls) != 1 || !calls[0].Defect || !calls[0].Common {
+		t.Fatalf("calls %+v", calls)
 	}
 }

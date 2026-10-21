@@ -30,141 +30,160 @@ func probeRunDir(t *testing.T) (*Replay, string) {
 	return NewReplay(store, nil, runDir), runDir
 }
 
-func probe(t *testing.T, r *Replay, runDir string, argv ...string) (string, error) {
+// probe runs one line through probeLine as the replay does and returns what the model would read.
+func probe(t *testing.T, r *Replay, runDir, line string) string {
 	t.Helper()
-	argvs, ok := r.probeArgvs(runDir, [][]string{argv})
+	parts, ops, ok := splitChain(line)
 	if !ok {
-		t.Fatalf("%v is not taken as a probe", argv)
+		t.Fatalf("%q does not split", line)
 	}
-	return r.probeChain(context.Background(), runDir, argvs)
+	out, rc, handled := r.probeLine(context.Background(), runDir, line, "shell "+line, parts, ops)
+	if !handled {
+		t.Fatalf("%q is not taken as a probe", line)
+	}
+	if rc.Err != nil {
+		t.Fatalf("%q: %v", line, rc.Err)
+	}
+	return out
 }
 
-func refused(t *testing.T, r *Replay, runDir string, argv ...string) {
+// refused asserts that a line is left to the fixture store.
+func refused(t *testing.T, r *Replay, runDir, line string) {
 	t.Helper()
-	if _, ok := r.probeArgvs(runDir, [][]string{argv}); ok {
-		t.Fatalf("%v was taken as a probe", argv)
+	parts, ops, ok := splitChain(line)
+	if !ok {
+		return // not even a chain: refused before any check
+	}
+	if _, _, handled := r.probeLine(context.Background(), runDir, line, "shell "+line, parts, ops); handled {
+		t.Fatalf("%q was run as a probe", line)
 	}
 }
 
 func TestProbePwdAnswersTheWorkingDirectory(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	if out, err := probe(t, r, runDir, "pwd"); err != nil || strings.TrimSpace(out) != runDir {
-		t.Fatalf("pwd: %q %v", out, err)
+	if out := probe(t, r, runDir, "pwd"); out != runDir {
+		t.Fatalf("pwd: %q", out)
 	}
 }
 
 func TestProbeLsListsTheRunDirectory(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	out, err := probe(t, r, runDir, "ls", "-la")
-	if err != nil || !strings.Contains(out, "workdir") || !strings.Contains(out, "out") {
-		t.Fatalf("ls: %q %v", out, err)
+	out := probe(t, r, runDir, "ls -la")
+	if !strings.Contains(out, "workdir") || !strings.Contains(out, "out") {
+		t.Fatalf("ls: %q", out)
+	}
+	if out := probe(t, r, runDir, "ls --color=never workdir"); !strings.Contains(out, "main.tf") {
+		t.Fatalf("ls with a long flag: %q", out)
 	}
 }
 
 func TestProbeCatReadsAWorkdirFile(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	if out, err := probe(t, r, runDir, "cat", "workdir/notes.txt"); err != nil || out != "hello\n" {
-		t.Fatalf("cat: %q %v", out, err)
+	if out := probe(t, r, runDir, "cat workdir/notes.txt"); out != "hello" {
+		t.Fatalf("cat: %q", out)
 	}
-	if out, err := probe(t, r, runDir, "cat", filepath.Join(runDir, "workdir", "notes.txt")); err != nil || out != "hello\n" {
-		t.Fatalf("cat of the absolute path: %q %v", out, err)
+	if out := probe(t, r, runDir, "cat "+filepath.Join(runDir, "workdir", "notes.txt")); out != "hello" {
+		t.Fatalf("cat of the absolute path: %q", out)
+	}
+	if out := probe(t, r, runDir, "head -n 1 workdir/notes.txt && tail -1 workdir/main.tf"); out != "hello\nresource {}" {
+		t.Fatalf("head and tail with their values: %q", out)
+	}
+}
+
+func TestProbeResultReadsLikeTheShellTools(t *testing.T) {
+	r, runDir := probeRunDir(t)
+	if out := probe(t, r, runDir, "true"); out != "(no output)" {
+		t.Fatalf("true: %q", out)
+	}
+	out := probe(t, r, runDir, "cat workdir/missing")
+	if !strings.HasSuffix(out, "\n[exit status 1]") || !strings.Contains(out, "missing") {
+		t.Fatalf("a failing probe keeps its output and ends with its status: %q", out)
 	}
 }
 
 func TestProbeRefusesAPathOutsideTheRunDirectory(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "cat", "/etc/hosts")
-	refused(t, r, runDir, "ls", "/")
-	refused(t, r, runDir, "ls", filepath.Dir(runDir))
+	for _, line := range []string{"cat /etc/hosts", "ls /", "ls " + filepath.Dir(runDir), "cat ../x", "ls workdir/../../x",
+		"cat out/../etc/hosts", "ls -LR out/..", "ls out", "cat out/hosts"} {
+		refused(t, r, runDir, line)
+	}
 }
 
-func TestProbeRefusesASymlinkOutOfTheRunDirectory(t *testing.T) {
+func TestProbeRefusesWhatTheShellWouldExpand(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "ls", "out")
-	refused(t, r, runDir, "cat", "out/hosts")
-}
-
-func TestProbeRefusesDotDotAndTildeAndDollar(t *testing.T) {
-	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "cat", "../x")
-	refused(t, r, runDir, "ls", "~")
-	refused(t, r, runDir, "cat", "$HOME/x")
-	refused(t, r, runDir, "ls", "workdir/../../x")
+	for _, line := range []string{"ls ~", "cat $HOME/x", "echo $HOME", "echo ~", "echo *", "ls *.tf", "ls workdir/*.tf", "cat $KUBECONFIG"} {
+		refused(t, r, runDir, line)
+	}
 }
 
 func TestProbeRefusesAProgramOffTheList(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "uname", "-a")
-	refused(t, r, runDir, "git", "status")
-	refused(t, r, runDir, "env")
-	refused(t, r, runDir, "rm", "workdir/notes.txt")
-}
-
-func TestProbeRefusesFindWithExecOrDelete(t *testing.T) {
-	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "find", ".", "-delete")
-	refused(t, r, runDir, "find", ".", "-exec", "rm", "{}", ";")
-	refused(t, r, runDir, "find", "/etc", "-name", "hosts")
-	if out, err := probe(t, r, runDir, "find", ".", "-name", "*.tf"); err != nil || !strings.Contains(out, "main.tf") {
-		t.Fatalf("find: %q %v", out, err)
+	for _, line := range []string{"uname -a", "git status", "env", "rm workdir/notes.txt", "cd workdir", "which ls"} {
+		refused(t, r, runDir, line)
 	}
 }
 
-func TestProbeRefusesTailFollow(t *testing.T) {
+func TestProbeRefusesAFlagTheRuleDoesNotName(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	refused(t, r, runDir, "tail", "-f", "workdir/notes.txt")
-	refused(t, r, runDir, "tail", "--follow=name", "workdir/notes.txt")
-	if out, err := probe(t, r, runDir, "tail", "-n", "1", "workdir/notes.txt"); err != nil || out != "hello\n" {
-		t.Fatalf("tail: %q %v", out, err)
+	for _, line := range []string{"ls -L out", "ls -H", "tail -f workdir/notes.txt", "tail -fn 1 workdir/notes.txt",
+		"tail --follow=name workdir/notes.txt", "file -f/etc/hosts", "file --files-from=/etc/hosts", "file -C -m x",
+		"file -L workdir", "wc --files0-from=x", "stat -L out", "cat --unknown", "head --lines", "head -n"} {
+		refused(t, r, runDir, line)
 	}
 }
 
-func TestProbeExpandsAGlobInsideTheRunDirectory(t *testing.T) {
+func TestProbeFindTakesItsGrammarAndNothingElse(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	if out, err := probe(t, r, runDir, "ls", "workdir/*.tf"); err != nil || strings.TrimSpace(out) != "workdir/main.tf" {
-		t.Fatalf("a glob: %q %v", out, err)
+	if out := probe(t, r, runDir, "find . -name *.tf"); !strings.Contains(out, "main.tf") {
+		t.Fatalf("find with a pattern value: %q", out)
 	}
-	if _, err := probe(t, r, runDir, "ls", "workdir/*.none"); err == nil {
-		t.Fatal("a glob with no match keeps the word, and ls says it does not exist")
+	if out := probe(t, r, runDir, "find -P workdir -type f -maxdepth 1 -print"); !strings.Contains(out, "notes.txt") {
+		t.Fatalf("find with a leading option: %q", out)
+	}
+	for _, line := range []string{"find . -delete", "find . -exec rm {} ;", "find /etc -name hosts", "find -L /etc", "find -H /etc",
+		"find -f /etc", "find . -newer /etc/passwd", "find . -follow", "find . -samefile out", "find . -files0-from x",
+		"find . -fprint x", "find out -name hosts", "find . -name"} {
+		refused(t, r, runDir, line)
 	}
 }
 
 func TestSplitChainSplitsOnAndAndSemicolon(t *testing.T) {
-	parts, ok := splitChain("pwd && ls -la; echo hi")
-	if !ok || len(parts) != 3 || parts[1][1] != "-la" || parts[2][1] != "hi" {
-		t.Fatalf("parts %v %v", parts, ok)
+	parts, ops, ok := splitChain("pwd && ls -la; echo hi")
+	if !ok || len(parts) != 3 || parts[1][1] != "-la" || parts[2][1] != "hi" || strings.Join(ops, " ") != "&& ;" {
+		t.Fatalf("parts %v ops %v %v", parts, ops, ok)
+	}
+	if _, ops, ok := splitChain("echo 'a && b' && echo c"); !ok || len(ops) != 1 {
+		t.Fatalf("an operator inside quotes is a word: %v %v", ops, ok)
 	}
 }
 
 func TestSplitChainRefusesPipesOrAndRedirects(t *testing.T) {
-	for _, line := range []string{"ls | wc -l", "ls || true", "ls > out", "ls &", "echo $(id)", "f() { ls; }", "cat <<EOF\nx\nEOF", ""} {
-		if _, ok := splitChain(line); ok {
+	for _, line := range []string{"ls | wc -l", "ls || true", "ls > out", "ls &", "echo $(id)", "f() { ls; }", "cat <<EOF\nx\nEOF", "", "ls & ls"} {
+		if _, _, ok := splitChain(line); ok {
 			t.Fatalf("%q was split as a chain of probes", line)
 		}
 	}
 }
 
-func TestProbeChainStopsAtTheFirstFailure(t *testing.T) {
+func TestProbeChainStopsAtAFailureOnAndAndGoesOnAtASemicolon(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	argvs, ok := r.probeArgvs(runDir, [][]string{{"cat", "missing"}, {"echo", "after"}})
-	if !ok {
-		t.Fatal("not a chain of probes")
+	out := probe(t, r, runDir, "cat workdir/missing && echo after")
+	if strings.Contains(out, "after") || !strings.HasSuffix(out, "[exit status 1]") {
+		t.Fatalf("the chain ran on: %q", out)
 	}
-	out, err := r.probeChain(context.Background(), runDir, argvs)
-	if err == nil || strings.Contains(out, "after") {
-		t.Fatalf("the chain ran on: %q %v", out, err)
+	out = probe(t, r, runDir, "cat workdir/missing; echo after")
+	if !strings.HasSuffix(out, "\nafter") || strings.Contains(out, "exit status") {
+		t.Fatalf("a semicolon goes on and the line's status is the last command's: %q", out)
 	}
-	argvs, _ = r.probeArgvs(runDir, [][]string{{"echo", "one"}, {"echo", "two"}})
-	if out, err := r.probeChain(context.Background(), runDir, argvs); err != nil || out != "one\ntwo\n" {
-		t.Fatalf("a chain of two: %q %v", out, err)
+	if out := probe(t, r, runDir, "echo one && echo two"); out != "one\ntwo" {
+		t.Fatalf("a chain of two: %q", out)
 	}
 }
 
 func TestProbeChainWithAnOffListPartIsNotAProbe(t *testing.T) {
 	r, runDir := probeRunDir(t)
-	if _, ok := r.probeArgvs(runDir, [][]string{{"pwd"}, {"uname", "-a"}}); ok {
-		t.Fatal("a chain with a part off the list is not a probe")
-	}
+	refused(t, r, runDir, "pwd && uname -a")
+	refused(t, r, runDir, "pwd && cat /etc/hosts")
 }
 
 func TestProbeOutputIsCapped(t *testing.T) {
@@ -173,8 +192,24 @@ func TestProbeOutputIsCapped(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(runDir, "workdir", "big"), []byte(big), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := probe(t, r, runDir, "cat", "workdir/big")
-	if err != nil || len(out) > shellProbeOutputLimit+len(shellProbeTruncated) || !strings.HasSuffix(out, shellProbeTruncated) {
-		t.Fatalf("len %d, suffix %q, %v", len(out), out[max(0, len(out)-20):], err)
+	out := probe(t, r, runDir, "cat workdir/big")
+	if len(out) > shellProbeOutputLimit+len(shellProbeTruncated) || !strings.HasSuffix(out, shellProbeTruncated) {
+		t.Fatalf("len %d, suffix %q", len(out), out[max(0, len(out)-20):])
+	}
+}
+
+func TestFixtureResultReadsTheShellToolsShapes(t *testing.T) {
+	for text, want := range map[string]struct {
+		out    string
+		status int
+	}{
+		"(no output)":                            {"", 0},
+		"/usr/local/bin/terraform":               {"/usr/local/bin/terraform", 0},
+		"sh: helm: not found\n[exit status 127]": {"sh: helm: not found", 127},
+		"[exit status 1]":                        {"", 1},
+	} {
+		if out, st := fixtureResult(text); out != want.out || st != want.status {
+			t.Fatalf("%q: %q %d", text, out, st)
+		}
 	}
 }
