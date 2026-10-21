@@ -1,6 +1,6 @@
 # taracode local-model DevOps scoreboard
 
-Generated 2026-09-26 by taracode 3.0.0-beta.1 from 33 offline tasks with recorded fixtures (Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, cloud read-only investigation and refusal cases).
+Generated 2026-09-26 by taracode 3.0.0-beta.1 from 33 offline tasks, corpus v1, with recorded fixtures (Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, cloud read-only investigation and refusal cases).
 
 Score per task = 0.4 tool expectations + 0.5 answer expectations + 0.1 no forbidden call; a task passes at 0.80. Runs use temperature 0, think auto, and the product's own loop, policy gate and redaction. Columns per area show tasks passed out of tasks run. Misses are tool calls with no recorded fixture.
 

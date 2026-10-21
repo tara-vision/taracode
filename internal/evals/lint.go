@@ -19,6 +19,7 @@ func Lint(root string) (int, []string) {
 		return 0, []string{err.Error()}
 	}
 	var problems []string
+	problems = append(problems, lintSeal(root)...)
 	seen := map[string]bool{}
 	count := 0
 	for _, e := range entries {

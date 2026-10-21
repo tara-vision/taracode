@@ -227,6 +227,7 @@ Notes on the first run (3.0.0):
 ```
 evals/tasks/<id>/task.yaml, workdir/, policy.yaml, fixtures/index.yaml, fixtures/*.txt
 evals/common/calls.yaml, fixtures/index.yaml, fixtures/*.txt   the common fixture store
+evals/VERSION                     the corpus seal: its version and the hash of every task and fixture
 evals/scenarios/<area>/<name>/setup.sh, teardown.sh, manifests or sources
 evals/scenarios/kind/up.sh, down.sh
 evals/runs/                       transcripts, git-ignored
@@ -576,6 +577,13 @@ recording run leaves the previous fixtures in place, since the pull-back only ru
 succeeds.
 
 ## Reproducibility notes
+
+**The corpus seal.** The corpus has a version, sealed in `evals/VERSION` with the sha256 of every file under
+`evals/tasks` and `evals/common` (`taracode eval lint --seal --version <n>`, a whole number greater than the sealed
+one). Every results file records the version and the hash it ran on (`corpus`); a file without the block ran corpus 1.
+`eval lint` fails when the corpus changed under its seal, `eval run` refuses to run on one, and `eval report` refuses
+results of two versions on one board, naming the files: a changed corpus is a new version, and a board holds one
+version only, which `scoreboard.json` names as `corpus_version` and the page prints.
 
 Every run pins `temperature` to 0 and defaults `think` to `auto`, the same defaults the product ships with.
 In replay mode (`eval run`), nothing the model calls actually executes except the five file tools and the

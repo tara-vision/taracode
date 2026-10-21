@@ -13,12 +13,13 @@ import (
 // Scoreboard is the report (spec 10): the newest results per model, server and machine, ranked per hardware label
 // and grouped by tier.
 type Scoreboard struct {
-	GeneratedAt string          `json:"generated_at"`
-	Taracode    string          `json:"taracode"`
-	CorpusTasks int             `json:"corpus_tasks"`
-	Boards      []HardwareBoard `json:"boards,omitempty"` // one ranking per hardware label the results carry
-	Tiers       []TierBoard     `json:"tiers"`
-	Skipped     []string        `json:"skipped,omitempty"` // results left out and why
+	GeneratedAt   string          `json:"generated_at"`
+	Taracode      string          `json:"taracode"`
+	CorpusTasks   int             `json:"corpus_tasks"`
+	CorpusVersion string          `json:"corpus_version"`   // the one corpus version of every row; "" with no results
+	Boards        []HardwareBoard `json:"boards,omitempty"` // one ranking per hardware label the results carry
+	Tiers         []TierBoard     `json:"tiers"`
+	Skipped       []string        `json:"skipped,omitempty"` // results left out and why
 }
 
 // TierBoard is one tier's rows, best mean score first.
@@ -105,8 +106,9 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	sb := Scoreboard{
 		GeneratedAt: time.Now().Format("2006-01-02"),
 		Taracode:    version,
-		CorpusTasks: corpusTasks,
-		Tiers:       []TierBoard{},
+		CorpusTasks: corpusTasks, CorpusVersion: corpusVersionOf(all),
+
+		Tiers: []TierBoard{},
 	}
 	newest := map[rowKey]Results{}
 	for _, r := range all {
@@ -229,8 +231,8 @@ func (s Scoreboard) Markdown() string {
 	fmt.Fprintf(&b, "# taracode local-model DevOps scoreboard\n\n")
 	fixtures := "Kubernetes triage, Helm, Terraform plan review, Docker and image security, secrets, " +
 		"cloud read-only investigation and refusal cases"
-	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks with recorded fixtures (%s).\n\n",
-		s.GeneratedAt, s.Taracode, s.CorpusTasks, fixtures)
+	fmt.Fprintf(&b, "Generated %s by taracode %s from %d offline tasks, corpus v%s, with recorded fixtures (%s).\n\n",
+		s.GeneratedAt, s.Taracode, s.CorpusTasks, s.CorpusVersion, fixtures)
 	scoring := fmt.Sprintf("Score per task = %.1f tool expectations + %.1f answer expectations + %.1f no forbidden call; "+
 		"a task passes at %.2f. Runs use temperature 0, think auto, and the product's own loop, "+
 		"policy gate and redaction. Columns per area show tasks passed out of tasks run. "+
@@ -368,4 +370,13 @@ func (t TierBoard) checkDefault(machine string, perMachine bool) (string, bool) 
 		line += " (differs)"
 	}
 	return line, true
+}
+
+// corpusVersionOf is the corpus version the results share, "" with no results; CheckCorpusVersions has refused a
+// mixed set before a board is built.
+func corpusVersionOf(all []Results) string {
+	if len(all) == 0 {
+		return ""
+	}
+	return all[0].CorpusVersion()
 }

@@ -86,6 +86,10 @@ var evalLintCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		corpus, _ := cmd.Flags().GetString("corpus")
+		if seal, _ := cmd.Flags().GetBool("seal"); seal {
+			version, _ := cmd.Flags().GetString("version")
+			return runEvalSeal(corpus, version, cmd.OutOrStdout())
+		}
 		return runEvalLint(corpus, cmd.OutOrStdout())
 	},
 }
@@ -118,7 +122,29 @@ func init() {
 	evalReportCmd.Flags().String("corpus", "evals/tasks", "task directory (for the task count)")
 	evalReportCmd.Flags().Bool("check-defaults", false, "print each tier's default and its top scorer")
 	evalLintCmd.Flags().String("corpus", "evals/tasks", "task directory")
+	evalLintCmd.Flags().Bool("seal", false, "seal the corpus: write its version and hash to evals/VERSION")
+	evalLintCmd.Flags().String("version", "", "the corpus version to seal, greater than the sealed one")
 	evalCmd.AddCommand(evalRunCmd, evalRecordCmd, evalReportCmd, evalLintCmd)
+}
+
+// corpusOf is the corpus block a run records: the seal's version with the corpus's current hash, which must be the
+// sealed one; a corpus without a seal is version 1 with its hash. A corpus whose files cannot all be read hashes to
+// nothing and runs on: the run itself reports the unreadable fixture as the corpus defect it is.
+func corpusOf(tasksRoot string, out io.Writer) (*evals.Corpus, error) {
+	seal, err := evals.ReadSeal(tasksRoot)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := evals.CorpusHash(tasksRoot)
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "warning: the corpus could not be hashed, the results carry no hash: %v\n", err)
+		return &evals.Corpus{Version: seal.Version}, nil
+	}
+	if seal.Hash != "" && seal.Hash != hash {
+		return nil, fmt.Errorf("the corpus changed since it was sealed as version %s: bump the version and run "+
+			"taracode eval lint --seal --version <n> before a run", seal.Version)
+	}
+	return &evals.Corpus{Version: seal.Version, Hash: hash}, nil
 }
 
 // commonDir is the common fixture store beside the corpus (evals/common for evals/tasks); "" when there is none.
@@ -149,9 +175,13 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if len(tasks) == 0 {
 		return fmt.Errorf("no task under %s matches %q", f.corpus, f.tasks)
 	}
+	corpus, err := corpusOf(f.corpus, out)
+	if err != nil {
+		return err
+	}
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
-		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: commonDir(f.corpus), Out: out})
+		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: commonDir(f.corpus), Corpus: corpus, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
@@ -249,6 +279,9 @@ func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Wr
 	if err != nil {
 		return fmt.Errorf("loading results from %s: %w", results, err)
 	}
+	if err := evals.CheckCorpusVersions(all); err != nil {
+		return err
+	}
 	sb := evals.BuildScoreboard(all, count, Version)
 	//nolint:gosec // outDir is repository content (docs/evals by default)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -294,6 +327,22 @@ func countRows(sb evals.Scoreboard) int {
 }
 
 // runEvalLint prints the problems and fails when there are any.
+// runEvalSeal is `eval lint --seal --version <n>`: the corpus's hash under a new version.
+func runEvalSeal(corpus, version string, out io.Writer) error {
+	if version == "" {
+		return errors.New("--seal needs --version <n>, a whole number greater than the sealed version")
+	}
+	if err := evals.Seal(corpus, version); err != nil {
+		return err
+	}
+	c, err := evals.ReadSeal(corpus)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(out, "sealed: corpus version %s, hash %s\n", c.Version, c.Hash)
+	return nil
+}
+
 func runEvalLint(corpus string, out io.Writer) error {
 	count, problems := evals.Lint(corpus)
 	for _, p := range problems {

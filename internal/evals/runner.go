@@ -28,6 +28,7 @@ type RunOptions struct {
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
 	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
+	Corpus                      *Corpus          // the corpus version and hash written to the results; nil = none
 	Out                         io.Writer        // progress; nil = io.Discard
 	Now                         func() time.Time // nil = time.Now
 	NumPredict                  int              // tokens per completion; 0 = evalNumPredict, negative = no cap
@@ -109,6 +110,7 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	if err != nil {
 		return Results{}, err
 	}
+	res.Corpus = opts.Corpus
 	_, _ = fmt.Fprintf(opts.Out, "model %s (tier %s), %d tasks, %d run(s), think %s\n",
 		opts.Model, res.Tier, len(tasks), opts.Runs, opts.Think)
 	if err := warmUp(ctx, opts); err != nil {
