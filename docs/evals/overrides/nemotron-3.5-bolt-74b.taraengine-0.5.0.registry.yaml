@@ -1,0 +1,213 @@
+# The catalog override for the corpus version 2 boards' nemotron-3.5-bolt:74b row: taraengine's embedded catalog
+# at v0.5.0 (the eight entries below, verbatim) plus Bolt, which is not in the catalog; valid for taraengine 0.5.0
+# only, since a registry.yaml replaces the embedded catalog wholesale. Put it at <data>/registry.yaml (the lab:
+# /var/lib/taraengine/registry.yaml), restart the engine, and compare the placed file with this one (cmp): the
+# engine reads the 0.4.0 twin, nemotron-3.5-bolt-74b.registry.yaml, alike, since it ignores notes, so
+# `taraengine list` (the eight as catalog, Bolt as registry) cannot tell them apart. A store without Bolt's files
+# needs `taraengine pull nemotron-3.5-bolt:74b` after the restart. A run names this file with --override. The 0.4.0
+# twin stays for the 2026-10-20 row. docs/evals/README.md has the rule.
+entries:
+  - name: gemma4:e4b
+    family: gemma4
+    params: 4B
+    hf_repo: ggml-org/gemma-4-E4B-it-GGUF
+    file: gemma-4-E4B-it-Q4_0.gguf
+    sha256: a555b900214b477d8880e7832e0b8925e139b0159640036b09fe472b6f2097f2
+    size: 4590807392
+    quantization: Q4_0
+    context: 131072
+    capabilities: [tools, thinking, vision]
+    tier: "small"
+    default: true
+    mmproj:
+      file: mmproj-gemma-4-E4B-it-Q8_0.gguf
+      sha256: 197f49a93027f9843772bd24a6a9e0be2a32a788de5a3def330e9c585d86edd1
+      size: 559874816
+    mtp:
+      file: mtp-gemma-4-E4B-it-Q4_0.gguf
+      sha256: d19a11e4fd5019967d9296f77f4d3e139c8903909f70c3a9cf009c9af4b9b88d
+      size: 59678240
+    min_runtime: b11514
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+    notes: Small fast model for helper roles and quick checks.
+  - name: gemma4:12b
+    family: gemma4
+    params: 12B
+    hf_repo: ggml-org/gemma-4-12B-it-GGUF
+    file: gemma-4-12B-it-Q4_0.gguf
+    sha256: 3712b9bd32cae83a22f67ee7a4466d8d7a4f21646ac8a07d19bf9418e8767a70
+    size: 7219673216
+    quantization: Q4_0
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "16"
+    default: true
+    mmproj:
+      file: mmproj-gemma-4-12B-it-Q8_0.gguf
+      sha256: 59e62255435dda870e2d1de97cc031330b31a898bac12b38a182cecff9cd3738
+      size: 158987616
+    mtp:
+      file: mtp-gemma-4-12B-it-Q4_0.gguf
+      sha256: b894e614824dfc2746b26d3c3ba78c50000a464382682502392b4325257b7602
+      size: 253708960
+    min_runtime: b11514
+    notes: The laptop default; tools, thinking and images.
+  - name: gemma4:26b
+    family: gemma4
+    params: 26B-A4B
+    hf_repo: ggml-org/gemma-4-26B-A4B-it-GGUF
+    file: gemma-4-26B-A4B-it-Q4_0.gguf
+    sha256: d208665ab1cd3a69f7a9a4bc59430e8448c8093d9b06334f566ac59d6d504a03
+    size: 14618145824
+    quantization: Q4_0
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    mmproj:
+      file: mmproj-gemma-4-26B-A4B-it-Q8_0.gguf
+      sha256: cc4e855736da450bf1e162d8cccfe0ad685727d0c9e04ef7dd8d884f3121039b
+      size: 806408320
+    mtp:
+      file: mtp-gemma-4-26B-A4B-it-Q4_0.gguf
+      sha256: e00b0ce326d03d8f6f6972ad2320fe90b6ff25a3da5fc51bec15efe283052aa2
+      size: 251939520
+    min_runtime: b11514
+    notes: Mixture of experts; fast per token.
+  - name: gemma4:31b
+    family: gemma4
+    params: 31B
+    hf_repo: ggml-org/gemma-4-31B-it-GGUF
+    file: gemma-4-31B-it-Q4_0.gguf
+    sha256: 031dc1c5fa9c5a0abbf3c39c5173fb2af65f5ac2dc2a090268561d3c72dcd834
+    size: 17992313088
+    quantization: Q4_0
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "48"
+    default: true
+    mmproj:
+      file: mmproj-gemma-4-31B-it-Q8_0.gguf
+      sha256: 8872f1dd7ba6a750a039c04b45812511f4ecf004e229420cea58c8049a970fb6
+      size: 809541728
+    mtp:
+      file: mtp-gemma-4-31B-it-Q4_0.gguf
+      sha256: f8f1b8c89b72da2b7391d6fe29d26dd373efe9624a3d5b3f0e99e62579b12c08
+      size: 279956160
+    min_runtime: b11514
+    notes: The 48 GB default since 0.3.1; the boards say why.
+  - name: glm-4.7-flash
+    family: glm-4.7-flash
+    params: 30B-A3B
+    hf_repo: ggml-org/GLM-4.7-Flash-GGUF
+    file: GLM-4.7-Flash-Q4_K.gguf
+    sha256: b6019edc5fbe37d3660d2e994d16c839a7855a6f03362c5dcf8142ba479cd0d2
+    size: 18244193920
+    quantization: Q4_K
+    context: 198000
+    capabilities: [tools, thinking]
+    tier: "32"
+    default: true
+    min_runtime: b11514
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+    notes: The 32 GB default; a 30B MoE with 3B active.
+  - name: qwen3.6:27b
+    family: qwen3.6
+    params: 27B
+    hf_repo: ggml-org/Qwen3.6-27B-GGUF
+    file: Qwen3.6-27B-Q4_K_M.gguf
+    sha256: 65b753ea835627f7b511143c6ceb976525c7f21f5df8c664bc0a9c23d1c49921
+    size: 19095766304
+    quantization: Q4_K_M
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    mmproj:
+      file: mmproj-Qwen3.6-27B-Q8_0.gguf
+      sha256: dd184a692287f0d7e8fa56c8744df20c46667818efc04e6d48996d18d9521a4e
+      size: 629247104
+    mtp:
+      file: mtp-Qwen3.6-27B-Q4_0.gguf
+      sha256: 3d593f9e2788d59bb30d6024706b1efd5219fea466b6397c46159e3540937173
+      size: 1680270560
+    min_runtime: b11514
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+  - name: qwen3.8:27b
+    family: qwen3.8
+    params: 27B
+    hf_repo: ggml-org/Qwen3.8-27B-GGUF
+    file: Qwen3.8-27B-Q4_K_M.gguf
+    sha256: c600de0300ae8a0eb3a6c0b8b5561b8b96f16bd2c863c2a66c42de29d391a747
+    size: 18973870528
+    quantization: Q4_K_M
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "32"
+    mmproj:
+      file: mmproj-Qwen3.8-27B-Q8_0.gguf
+      sha256: 2e968a6af97ce35d8971890b257b9b7edabf20ad91450501fa53162a19ee33eb
+      size: 629247008
+    mtp:
+      file: mtp-Qwen3.8-27B-Q4_0.gguf
+      sha256: c5be331f82fb61f5304adfa00ccd60c6743c8ce52255d66fa863446231d49ba4
+      size: 1680271776
+    min_runtime: b11514
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+    notes: Strongest agentic results in its class (Terminal-Bench 2.1, SWE-bench Pro).
+  - name: qwen3.6:35b
+    family: qwen3.6
+    params: 35B-A3B
+    hf_repo: ggml-org/Qwen3.6-35B-A3B-GGUF
+    file: Qwen3.6-35B-A3B-Q4_K_M.gguf
+    sha256: 671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7
+    size: 20419565568
+    quantization: Q4_K_M
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "48"
+    mmproj:
+      file: mmproj-Qwen3.6-35B-A3B-Q8_0.gguf
+      sha256: 904cbf8c8e876220066ab3bf676c7efa40f3da372276fdaf8b01d2fb2a37a51d
+      size: 614194304
+    mtp:
+      file: mtp-Qwen3.6-35B-A3B-Q4_0.gguf
+      sha256: 606fca331adcbfbdadc107512ce6a7161e84e1646ba0e0018256426f6296877f
+      size: 1060038432
+    min_runtime: b11514
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+    notes: Mixture of experts with the best SWE-bench and TAU2 numbers in class.
+  - name: nemotron-3.5-bolt:74b
+    family: nemotron-3.5
+    params: 74B-A9B
+    hf_repo: nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF
+    file: NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf
+    sha256: 91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75
+    size: 22018326528
+    quantization: IQ2_XXS
+    context: 262144
+    capabilities: [tools, thinking, vision]
+    tier: "48"
+    mmproj:
+      file: mmproj-NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf
+      sha256: 0ee891eadc7bf0cae6289b249c74eb1ef420534351f6ef8b64d49f0ca6a926b0
+      size: 1733692736
+    dflash:
+      hf_repo: nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr-GGUF
+      file: NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr.gguf
+      sha256: 080e1ea41c9562a7804dbf30c6fbd4d17e216c6b8ff666f88e6edb1816010194
+      size: 998242560
+    min_runtime: b11750
+    preset:
+      cache-type-k: q8_0
+      cache-type-v: q8_0
+      spec-draft-n-max: "6"
+    notes: NVIDIA's 24 GB build of Bolt, measured for the board from outside the catalog; NVIDIA GPUs only.
