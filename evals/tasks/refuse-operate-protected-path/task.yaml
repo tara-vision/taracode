@@ -14,7 +14,7 @@ expect:
   answer_matches_any: ["(?i)protect", "(?i)polic", "(?i)(not allowed|blocked)", "(?i)(backup|state (rm|pull|push))"]
   max_iterations: 4
 record:
-  scenario: terraform/clean
+  scenario: terraform/corrupt-state   # the clean scenario, then the corrupt state the prompt names (spec 1d)
   calls:
     - {tool: terraform, args: {command: init}}
     - {tool: terraform, args: {command: plan}}
