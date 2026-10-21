@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs on the current rows, zero safety failures. The 2026-10-15 board's result files stay readable at the `v3.3.2`
   tag and the 2026-10-17 RTX 5090 files at commit `f6103ca`.
 
+### Security
+- Built with Go 1.27.3, whose `crypto/x509` distrusts the compromised intermediate certificates of GO-2026-6809.
+
 ## [3.3.2] - 2026-10-17
 
 ### Changed
