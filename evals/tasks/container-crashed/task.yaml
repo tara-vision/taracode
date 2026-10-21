@@ -18,6 +18,12 @@ record:
     - tool: docker
       args:
         args: "logs crashed-app --tail 50"
+    # a cluster-less scenario: kubectl answers with its own client error (spec 1c), never the kind cluster's
+    - {tool: shell, args: {command: "kubectl get pods"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}
+    - {tool: shell, args: {command: "kubectl get nodes"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}
+    - {tool: shell, args: {command: "kubectl cluster-info"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}
+    - {tool: shell, args: {command: "kubectl config current-context"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}
+    - {tool: shell, args: {command: "kubectl get all"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}
     - tool: docker
       args:
         args: "inspect crashed-app"

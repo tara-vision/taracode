@@ -42,6 +42,9 @@ func LoadCommonCalls(path string) ([]RecordCall, error) {
 		if c.DryRun {
 			return nil, fmt.Errorf("%s: call %d: a common call is never a dry run", path, i)
 		}
+		if len(c.Env) > 0 {
+			return nil, fmt.Errorf("%s: call %d: a common call carries no env", path, i)
+		}
 	}
 	return f.Calls, nil
 }

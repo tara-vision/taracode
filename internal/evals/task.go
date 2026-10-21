@@ -71,10 +71,15 @@ type Expect struct {
 // RecordCall is one call the recorder makes, written as the model would; DryRun records the tool's
 // dry run instead of its execution.
 type RecordCall struct {
-	Tool   string         `yaml:"tool"`
-	Args   map[string]any `yaml:"args"`
-	DryRun bool           `yaml:"dry_run,omitempty"`
+	Tool   string            `yaml:"tool"`
+	Args   map[string]any    `yaml:"args"`
+	DryRun bool              `yaml:"dry_run,omitempty"`
+	Env    map[string]string `yaml:"env,omitempty"` // set around this call's execution alone (recordEnvKeys)
 }
+
+// recordEnvKeys are the environment variables a record call may set: KUBECONFIG, pointed at a file that does not
+// exist, records kubectl's own answer in a scenario without a cluster (spec 1c).
+var recordEnvKeys = map[string]bool{"KUBECONFIG": true}
 
 // Record is a recorded task's scenario and calls.
 type Record struct {
@@ -210,6 +215,12 @@ func (t Task) validateRecord() []error {
 		for i, c := range t.Record.Calls {
 			if !builtinTools[c.Tool] {
 				errs = append(errs, fmt.Errorf("record.calls[%d]: unknown tool %q", i, c.Tool))
+			}
+			for k := range c.Env {
+				if !recordEnvKeys[k] {
+					errs = append(errs, fmt.Errorf("record.calls[%d]: env %s is not a key a record call may set (KUBECONFIG only)",
+						i, k))
+				}
 			}
 		}
 	}

@@ -622,11 +622,13 @@ func recordOneCall(
 		sig = DryRunSignature(call.Tool, args)
 	}
 	var text string
+	restore := setCallEnv(call.Env)
 	if call.DryRun {
 		text, err = reg.DryRun(ctx, call.Tool, args, runDir)
 	} else {
 		text, err = reg.Execute(ctx, call.Tool, args, runDir)
 	}
+	restore()
 	// A dry run's own tool can decide it has none for this call (kubectl/helm/terraform, for a verb
 	// other than apply/upgrade/install): that runs through the middleware like any other dry run and
 	// is already saved by it. A tool with no DryRun at all never reaches the middleware (Registry.DryRun
@@ -664,6 +666,32 @@ func recordOneCall(
 	}
 	_, _ = fmt.Fprintf(out, "   %-14s %s (%d bytes)\n", status, sig, len(text))
 	return nil
+}
+
+// setCallEnv sets a record call's env in the process for the call's execution and returns what restores it: the
+// tools run commands with the process environment, and the recorder runs one call at a time.
+func setCallEnv(env map[string]string) (restore func()) {
+	if len(env) == 0 {
+		return func() {}
+	}
+	previous := map[string]*string{}
+	for k, v := range env {
+		if old, ok := os.LookupEnv(k); ok {
+			previous[k] = &old
+		} else {
+			previous[k] = nil
+		}
+		_ = os.Setenv(k, v)
+	}
+	return func() {
+		for k, old := range previous {
+			if old == nil {
+				_ = os.Unsetenv(k)
+			} else {
+				_ = os.Setenv(k, *old)
+			}
+		}
+	}
 }
 
 // swapFixtures replaces finalDir with newDir: the previous fixtures move aside, the new ones move

@@ -293,6 +293,7 @@ record:                            # record mode only, absent on authored and fi
     - {tool: kubectl, args: {verb: logs, name: "{{pod app=checkout ns=shop}}", namespace: shop, args: ["--previous"]}}
     - {tool: kubectl, args: {verb: get, resource: events, namespace: shop}}
     - {tool: shell, args: {command: "kubectl get pods -n shop"}}
+    - {tool: shell, args: {command: "kubectl get nodes"}, env: {KUBECONFIG: /nonexistent/kubeconfig}}   # env: KUBECONFIG only
 ```
 
 A call matcher has `tool`, `verb`, `classification` (read or mutate) and `signature_matches` (a Go regex over
