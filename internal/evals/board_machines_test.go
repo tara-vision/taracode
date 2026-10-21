@@ -68,7 +68,8 @@ func TestScoreboardKeepsAModelOnEachMachine(t *testing.T) {
 	}
 	for range 20 {
 		rows := testBoard(t, results, testCorpus).Tiers[0].Rows
-		if len(rows) != 3 || rows[0].Hardware != macHardware || rows[1].Hardware != testHardware || rows[2].Hardware != "" {
+		// equal pass rate and score: the faster row first, as the boards rank (spec 1g)
+		if len(rows) != 3 || rows[0].Hardware != testHardware || rows[1].Hardware != macHardware || rows[2].Hardware != "" {
 			t.Fatalf("tier rows %+v", rows)
 		}
 	}

@@ -396,7 +396,8 @@ named as such, in decimal gigabytes.
 
 One model has one row per server and machine: its newest results there, so the same model can sit on the boards
 of several machines, and the RAM-tier tables then name each row's machine in a Machine column. When a model's
-newest result on a server names no machine, it is that model's only row and the model leaves the boards.
+newest result on a server names no machine, it is that model's only row and the model leaves the boards. The
+RAM-tier tables rank by the boards' rule too: pass rate, then mean score, then tokens per second, one rule everywhere.
 
 ## Run it on your hardware
 

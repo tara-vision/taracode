@@ -121,3 +121,28 @@ func TestTierOrderIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestTierTablesRankByPassRateThenScoreThenSpeed(t *testing.T) {
+	row := func(model, hardware string, pass, score, tps float64) Results {
+		return Results{Taracode: "3.4.0", Server: &ServerInfo{Name: "taraengine", Version: "0.5.0"}, Model: model,
+			Tier: "32", Think: "auto", Date: "2026-11-01", Runs: 1, Hardware: hardware,
+			Summary: Summary{PassRate: pass, MeanScore: score, TokensPerS: tps, ByArea: map[string]AreaSummary{}}}
+	}
+	all := []Results{
+		row("high-score", "", 0.85, 0.95, 100),
+		row("high-pass", "", 0.91, 0.90, 100),
+		row("tie-slow", "", 0.91, 0.90, 50),
+		row("tie-fast", "", 0.91, 0.90, 200),
+		row("same", "Apple M4 Max (48 GB)", 0.80, 0.80, 10),
+		row("same", "NVIDIA RTX 5090 (32 GB)", 0.80, 0.80, 10),
+	}
+	sb := BuildScoreboard(all, 33, "3.4.0")
+	var got []string
+	for _, r := range sb.Tiers[0].Rows {
+		got = append(got, r.Model+"@"+r.Hardware)
+	}
+	want := []string{"tie-fast@", "high-pass@", "tie-slow@", "high-score@", "same@Apple M4 Max (48 GB)", "same@NVIDIA RTX 5090 (32 GB)"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("tier order:\n got %v\nwant %v", got, want)
+	}
+}

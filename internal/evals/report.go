@@ -22,7 +22,7 @@ type Scoreboard struct {
 	Skipped       []string        `json:"skipped,omitempty"` // results left out and why
 }
 
-// TierBoard is one tier's rows, best mean score first.
+// TierBoard is one tier's rows, ranked as a hardware board is: pass rate, mean score, tokens per second.
 type TierBoard struct {
 	Tier string `json:"tier"`
 	Rows []Row  `json:"rows"`
@@ -151,15 +151,9 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	}
 	sb.Boards = buildBoards(allRows, corpusTasks)
 	for tier, rows := range byTier {
-		sort.Slice(rows, func(i, j int) bool {
-			if a, b := rankScore(rows[i]), rankScore(rows[j]); a != b {
-				return a > b
-			}
-			if rows[i].Model != rows[j].Model {
-				return rows[i].Model < rows[j].Model
-			}
-			if rows[i].Server.Name != rows[j].Server.Name {
-				return rows[i].Server.Name < rows[j].Server.Name
+		sort.Slice(rows, func(i, j int) bool { // the one ranking rule (spec 1g): as the hardware boards rank
+			if rankLess(rows[i], rows[j]) != rankLess(rows[j], rows[i]) {
+				return rankLess(rows[i], rows[j])
 			}
 			return rows[i].Hardware < rows[j].Hardware
 		})
