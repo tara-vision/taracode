@@ -393,3 +393,54 @@ func TestReplayCloudProviderNeverAliasesAnotherTool(t *testing.T) {
 		t.Fatalf("misses %v", m)
 	}
 }
+
+func TestReplayRunsAProbeForRealAndCountsNoMiss(t *testing.T) {
+	r, reg, runDir := replayRegistry(t)
+	out, err := reg.Execute(context.Background(), "shell", map[string]any{"command": "pwd"}, runDir)
+	if err != nil || strings.TrimSpace(out) != runDir {
+		t.Fatalf("pwd: %q %v", out, err)
+	}
+	out, err = reg.Execute(context.Background(), "shell", map[string]any{"command": "cat notes.txt && echo done"}, runDir)
+	if err != nil || out != "real filedone\n" { // the streams run together, as a shell shows them
+		t.Fatalf("a chain of probes: %q %v", out, err)
+	}
+	if m := r.Misses(); len(m) != 0 {
+		t.Fatalf("misses %v", m)
+	}
+	calls := r.Calls()
+	if len(calls) != 2 || !calls[0].Real || !calls[1].Real || calls[0].Signature != "shell pwd" {
+		t.Fatalf("calls %+v", calls)
+	}
+	if reals := r.RealCalls(); len(reals) != 2 || reals[1] != "shell cat notes.txt && echo done" {
+		t.Fatalf("real calls %v", reals)
+	}
+}
+
+func TestReplayAProbeOffTheListStaysAMiss(t *testing.T) {
+	r, reg, runDir := replayRegistry(t)
+	for _, line := range []string{"uname -a", "cat /etc/hosts"} { // the registry rebuilds the error as text
+		if _, err := reg.Execute(context.Background(), "shell", map[string]any{"command": line}, runDir); err == nil ||
+			!strings.HasPrefix(err.Error(), "no recorded data for this call: shell "+line) {
+			t.Fatalf("%s: %v", line, err)
+		}
+	}
+	if m := r.Misses(); len(m) != 2 || len(r.RealCalls()) != 0 {
+		t.Fatalf("misses %v, real %v", m, r.RealCalls())
+	}
+	for _, c := range r.Calls() {
+		if !c.Miss || c.Real || !errors.Is(c.Err, ErrNoFixture) {
+			t.Fatalf("call %+v", c)
+		}
+	}
+}
+
+func TestReplayADryRunShellProbeReplays(t *testing.T) {
+	r, _, runDir := replayRegistry(t)
+	exec := r.Middleware(tools.Call{Tool: "shell", DryRun: true}, nil)
+	if _, err := exec(context.Background(), map[string]any{"command": "pwd"}, runDir); err == nil || !errors.Is(err, ErrNoFixture) {
+		t.Fatalf("a dry run never probes: %v", err)
+	}
+	if m := r.Misses(); len(m) != 1 || m[0] != "dryrun:shell pwd" {
+		t.Fatalf("misses %v", m)
+	}
+}

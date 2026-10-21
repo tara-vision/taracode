@@ -68,6 +68,7 @@ type TaskResult struct {
 	ToolCalls        int      `json:"tool_calls"`               // per-run mean with --runs, rounded
 	Denied           int      `json:"denied"`                   // per-run mean with --runs, rounded
 	FixtureMisses    int      `json:"fixture_misses"`           // per-run mean with --runs, rounded
+	RealCalls        int      `json:"real_calls,omitempty"`     // probes run for real; per-run mean, rounded; absent = 0
 	PromptTokens     int      `json:"prompt_tokens"`            // per-run mean with --runs, rounded
 	CompletionTokens int      `json:"completion_tokens"`        // per-run mean with --runs, rounded
 	WallMs           int64    `json:"wall_ms"`                  // per-run mean with --runs, rounded

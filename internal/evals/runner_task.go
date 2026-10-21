@@ -97,6 +97,7 @@ func finishTask(
 	tr.PromptEvalMs, tr.EvalMs = turn.stats.PromptDuration.Milliseconds(), turn.stats.EvalDuration.Milliseconds()
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
 	tr.FixtureMisses = len(replay.Misses())
+	tr.RealCalls = len(replay.RealCalls())
 	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), missNotes(replay)...), opts, t)
 	out.row = tr
 	return out

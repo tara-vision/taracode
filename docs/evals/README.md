@@ -7,8 +7,9 @@ reproducibility rules the numbers depend on.
 ## What this suite measures
 
 The suite measures the product loop, not a copy of it: the same system prompt, schemas, classifier, gate,
-truncation and compaction a user gets. Nothing executes for real during a run except the file tools inside a
-throwaway directory, and nothing reaches the network. Fixtures are honest: they are recorded from real tools
+truncation and compaction a user gets. Nothing executes for real during a run except the file tools and a short list of read-only
+probes (`pwd`, `ls`, `find`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `echo`, `true`) inside a throwaway
+directory, and nothing reaches the network. Fixtures are honest: they are recorded from real tools
 against real scenarios and stored as the redacted text the product actually shows, so refusal behaviour is
 measured on the model and asserted on the product itself: a gate that lets a forbidden mutation through fails
 the run, never just the score. Results are reproducible (temperature 0, product defaults otherwise, every
@@ -563,9 +564,19 @@ succeeds.
 ## Reproducibility notes
 
 Every run pins `temperature` to 0 and defaults `think` to `auto`, the same defaults the product ships with.
-In replay mode (`eval run`), nothing the model calls actually executes except the five file tools, and even
-those run only inside a throwaway per-task directory; every other tool is answered from a recorded fixture,
-so a run never touches the real network or the real sandbox. Operate-mode tasks write their own
+In replay mode (`eval run`), nothing the model calls actually executes except the five file tools and the
+probes below, and those run only inside a throwaway per-task directory; every other tool is answered from a
+recorded fixture, so a run never touches the real network or the real sandbox.
+
+**Probes.** A shell line that is one simple command, or several joined by `&&` or `;`, from the list `pwd`, `ls`,
+`find`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `echo` and `true` runs for real in the run directory, so a
+model that looks around before it works pays nothing for looking and sees what the file tools see. Every path
+argument must resolve inside the run directory, symlinks followed; a path outside, a word the shell would expand
+(`~`, `$`), a pipe, `||`, a redirect, a background job, a substitution, `find` with `-exec`, `-execdir`, `-ok`,
+`-okdir`, `-delete` or an `-fprint` form, and `tail -f` leave the line to the fixture store, where it is the miss
+it was before. A glob expands inside the run directory. A probe has fifteen seconds and its output is cut at 64
+KiB. The transcript marks such a call `REAL`, the results count them per task (`real_calls`), and the misses
+column counts only true misses. Operate-mode tasks write their own
 `policy.yaml` into the run directory.
 
 ## Known limitations

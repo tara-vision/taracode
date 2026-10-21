@@ -38,6 +38,7 @@ type ReplayCall struct {
 	Signature string
 	DryRun    bool
 	Miss      bool  // no fixture was recorded for this signature
+	Real      bool  // a probe that ran for real inside the run directory (spec 1a), never a fixture
 	Defect    bool  // the signature was indexed but its fixture file could not be read
 	Err       error // the error the replay returned, nil when it served an output; wraps ErrNoFixture on a miss
 }
@@ -66,10 +67,19 @@ func (r *Replay) Middleware(call tools.Call, next tools.Executor) tools.Executor
 // to terraform (ruling P3-R11) shares state with the dedicated tool in both directions (ruling
 // P3-R26).
 func (r *Replay) replay(call tools.Call) tools.Executor {
-	return func(_ context.Context, args map[string]any, _ string) (string, error) {
+	return func(ctx context.Context, args map[string]any, workingDir string) (string, error) {
 		sig := Signature(call.Tool, args)
 		if call.DryRun {
 			sig = DryRunSignature(call.Tool, args)
+		}
+		if call.Tool == "shell" && !call.DryRun {
+			if parts, ok := splitChain(str(args, "command")); ok {
+				if argvs, ok := r.probeArgvs(workingDir, parts); ok {
+					out, err := r.probeChain(ctx, workingDir, argvs)
+					r.note(ReplayCall{Signature: sig, Real: true, Err: err})
+					return out, err
+				}
+			}
 		}
 		if msg, refused := r.terraformApplyGate(sig); refused {
 			err := errors.New(msg)
@@ -239,6 +249,17 @@ func (r *Replay) Calls() []ReplayCall {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]ReplayCall(nil), r.calls...)
+}
+
+// RealCalls lists the signatures of the probes that ran for real, in call order.
+func (r *Replay) RealCalls() []string {
+	var out []string
+	for _, c := range r.Calls() {
+		if c.Real {
+			out = append(out, c.Signature)
+		}
+	}
+	return out
 }
 
 // Misses lists the signatures that had no fixture, in call order.

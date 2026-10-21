@@ -311,6 +311,7 @@ func averageRuns(runs []taskRun) taskRun {
 	avg.ToolCalls = count(func(r TaskResult) int { return r.ToolCalls })
 	avg.Denied = count(func(r TaskResult) int { return r.Denied })
 	avg.FixtureMisses = count(func(r TaskResult) int { return r.FixtureMisses })
+	avg.RealCalls = count(func(r TaskResult) int { return r.RealCalls })
 	avg.PromptTokens = count(func(r TaskResult) int { return r.PromptTokens })
 	avg.CompletionTokens = count(func(r TaskResult) int { return r.CompletionTokens })
 	avg.WallMs = int64(math.Round(mean(func(r TaskResult) float64 { return float64(r.WallMs) })))
