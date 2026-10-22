@@ -200,7 +200,8 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Override: f.override, Temperature: f.temperature, Live: f.live, JSONTranscripts: f.transcriptsJSON, Out: out})
+		Override: f.override, Temperature: f.temperature, Live: f.live, Sandbox: os.Getenv("TARACODE_EVALS_LIVE_SANDBOX"),
+		JSONTranscripts: f.transcriptsJSON, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}

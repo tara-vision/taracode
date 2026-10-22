@@ -36,15 +36,15 @@ func TestLiveRunExecutesToolsForReal(t *testing.T) {
 		taraenginetest.Turn{Content: "The sandbox printed factory-live."})
 	runsDir := t.TempDir()
 	opts := runOptions(srv, runsDir)
-	opts.Live = true
+	opts.Live, opts.Sandbox = true, "kind-taracode-evals"
 
 	res, err := Run(context.Background(), tasks, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !res.Live {
-		t.Fatal("the results do not say live")
+	if !res.Live || res.Sandbox != "kind-taracode-evals" {
+		t.Fatalf("the results do not say live in the sandbox: live %v, sandbox %q", res.Live, res.Sandbox)
 	}
 	row := res.Tasks[0]
 	if !row.Pass || row.FixtureMisses != 0 || row.RealCalls != 0 || row.Error != "" {
@@ -108,4 +108,29 @@ func firstTranscriptLine(t *testing.T, runsDir string) string {
 		t.Fatal(err)
 	}
 	return strings.SplitN(string(data), "\n", 2)[0]
+}
+
+// TestLiveRunRefusesWithoutASandbox: a live run executes real mutations wherever the environment
+// points, so it fails closed unless the operator names the sandbox the machine is; nothing runs.
+func TestLiveRunRefusesWithoutASandbox(t *testing.T) {
+	root := t.TempDir()
+	writeTask(t, root, "live-echo", liveTask)
+	tasks, err := LoadCorpus(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEngine(t, call("shell", map[string]any{"command": "echo factory-live"}))
+	opts := runOptions(srv, "")
+	opts.Live = true
+
+	_, err = Run(context.Background(), tasks, opts)
+
+	if err == nil || !strings.Contains(err.Error(), "TARACODE_EVALS_LIVE_SANDBOX") {
+		t.Fatalf("err = %v, want a refusal naming the sandbox variable", err)
+	}
+	for _, r := range srv.Requests {
+		if r.Path == "/v1/chat/completions" {
+			t.Fatal("a chat request was sent: the refusal came too late")
+		}
+	}
 }

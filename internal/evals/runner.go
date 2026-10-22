@@ -2,6 +2,7 @@ package evals
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -22,6 +23,7 @@ type RunOptions struct {
 	Think                       string           // auto|off|on|low|medium|high
 	Temperature                 float64          // sampling temperature of a factory run; 0 = the board's explicit temperature 0
 	Live                        bool             // execute every tool for real: no replay, no fixtures; the results carry live and never rank
+	Sandbox                     string           // the sandbox a live run may touch, named by the operator (TARACODE_EVALS_LIVE_SANDBOX); "" refuses a live run
 	Runs                        int              // repetitions per task, default 1
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
@@ -96,6 +98,10 @@ func withDefaults(o RunOptions) RunOptions {
 // tasks finished before the cancellation and ctx's error.
 func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
+	if opts.Live && opts.Sandbox == "" {
+		return Results{}, errors.New("a live run executes every tool for real wherever the environment points: set " +
+			"TARACODE_EVALS_LIVE_SANDBOX to the name of the sandbox this machine is, and only there")
+	}
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
 	if opts.CommonDir != "" {
@@ -198,7 +204,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	return Results{Taracode: opts.Version,
 		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
 		Model:  opts.Model, Tier: tier, Default: isDefault,
-		Think: opts.Think, Temperature: opts.Temperature, Live: opts.Live, // 0 is sent explicitly (TemperatureZero); a factory run samples above it
+		Think: opts.Think, Temperature: opts.Temperature, Live: opts.Live, Sandbox: opts.Sandbox, // 0 is sent explicitly (TemperatureZero); a factory run samples above it
 		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware,
 		Override: opts.Override}, nil
 }
