@@ -521,7 +521,8 @@ func (a *Assistant) GetConversationLength() int {
 }
 
 // Conversation returns a copy of the messages as they are sent to the model: the system prompt,
-// the user turns, the assistant replies with their tool calls and the tool results, in order.
+// the user turns, the assistant replies with their tool calls and the tool results, in order. The
+// slice is new; the tool calls inside are shared values, so a caller changes its own copies of them.
 func (a *Assistant) Conversation() []openai.ChatCompletionMessage {
 	return append([]openai.ChatCompletionMessage(nil), a.conversation...)
 }

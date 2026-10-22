@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -29,6 +31,15 @@ type Transcript struct {
 	Calls       []TranscriptCall    `json:"calls"`
 	Score       TranscriptScore     `json:"score"`
 	Usage       TranscriptUsage     `json:"usage"`
+	// Truncated, TimedOut and Error travel with the row, so a selector can drop a capped or broken run.
+	Truncated bool   `json:"truncated,omitempty"`
+	TimedOut  bool   `json:"timed_out,omitempty"`
+	Error     string `json:"error,omitempty"`
+	// ReasoningAligned says every assistant message got its reply's reasoning; false means none was attached.
+	ReasoningAligned bool `json:"reasoning_aligned"`
+	// PrivateNames lists the lab's private names found anywhere in the transcript (ruling P3-R35): such a
+	// transcript must not train a public model, and the selector drops it.
+	PrivateNames []string `json:"private_names,omitempty"`
 }
 
 // TranscriptMessage is one message of the conversation; an assistant message carries the reasoning
@@ -84,22 +95,31 @@ type transcriptSource interface {
 func buildTranscript(
 	t Task, opts RunOptions, run int, src transcriptSource, replies []llm.Result, calls []loggedCall, row TaskResult,
 ) Transcript {
-	scrub := func(s string) string { return publicText(s, opts, t) }
+	scrub := func(s string) string { return transcriptText(s, opts, t) }
 	tr := Transcript{Task: t.ID, Area: string(t.Area), Mode: t.Mode, Model: opts.Model, Run: run, Live: opts.Live,
 		Temperature: opts.Temperature, Think: opts.Think, Tools: src.ToolDefinitions(),
 		Score: TranscriptScore{Total: row.Score, Tools: row.Tools, Answer: row.Answer, Forbidden: row.Forbidden,
 			Pass: row.Pass, SafetyFailure: row.SafetyFailure, Notes: row.Notes},
 		Usage: TranscriptUsage{PromptTokens: row.PromptTokens, CompletionTokens: row.CompletionTokens,
-			Completions: row.Iterations, WallMs: row.WallMs}}
+			Completions: row.Iterations, WallMs: row.WallMs},
+		Truncated: row.Truncated, TimedOut: row.TimedOut, Error: row.Error}
+	conversation := src.Conversation()
+	assistants := 0
+	for _, m := range conversation {
+		if m.Role == openai.ChatMessageRoleAssistant {
+			assistants++
+		}
+	}
+	tr.ReasoningAligned = assistants == len(replies)
 	assistant := 0
-	for _, m := range src.Conversation() {
+	for _, m := range conversation {
 		msg := TranscriptMessage{Role: m.Role, Content: scrub(m.Content), ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {
 			tc.Function.Arguments = scrub(tc.Function.Arguments)
 			msg.ToolCalls = append(msg.ToolCalls, tc)
 		}
 		if m.Role == openai.ChatMessageRoleAssistant {
-			if assistant < len(replies) {
+			if tr.ReasoningAligned {
 				msg.Reasoning = scrub(replies[assistant].Thinking)
 			}
 			assistant++
@@ -108,8 +128,10 @@ func buildTranscript(
 	}
 	for _, c := range calls {
 		e := c.event
-		call := TranscriptCall{Tool: e.Tool, Signature: Signature(e.Tool, e.Args), Decision: "allowed",
-			Missed: c.missedSignatures()}
+		call := TranscriptCall{Tool: e.Tool, Signature: scrub(Signature(e.Tool, e.Args)), Decision: "allowed"}
+		for _, sig := range c.missedSignatures() {
+			call.Missed = append(call.Missed, scrub(sig))
+		}
 		if !e.Allowed {
 			call.Decision, call.Rule, call.Reason = "denied", e.Rule, scrub(e.Reason)
 		}
@@ -121,7 +143,28 @@ func buildTranscript(
 	if tr.Calls == nil {
 		tr.Calls = []TranscriptCall{}
 	}
+	if opts.scope != nil {
+		tr.PrivateNames = privateNamesIn(tr, opts.scope.private)
+	}
 	return tr
+}
+
+// privateNamesIn lists the private names whose pattern matches anywhere in the transcript's JSON.
+func privateNamesIn(tr Transcript, patterns []*regexp.Regexp) []string {
+	if len(patterns) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(tr)
+	if err != nil {
+		return nil
+	}
+	var found []string
+	for _, p := range patterns {
+		if loc := p.FindStringIndex(string(data)); loc != nil {
+			found = append(found, strings.Trim(string(data)[loc[0]:loc[1]], " \"\\:/,[]{}"))
+		}
+	}
+	return found
 }
 
 // writeJSONTranscript writes the transcript next to the text log: <task>.json, or <task>.run<N>.json

@@ -26,6 +26,7 @@ expect:
 // TestLiveRunExecutesToolsForReal covers --live: the shell call runs for real and its output
 // reaches the model, no fixture is consulted, the results say live and the transcript header too.
 func TestLiveRunExecutesToolsForReal(t *testing.T) {
+	fakeKubectlContext(t, "kind-taracode-evals")
 	root := t.TempDir()
 	writeTask(t, root, "live-echo", liveTask)
 	tasks, err := LoadCorpus(root, "")

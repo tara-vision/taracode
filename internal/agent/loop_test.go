@@ -639,3 +639,29 @@ func TestToolDefinitionsAreACopyOfTheModeOffer(t *testing.T) {
 		t.Fatal("ToolDefinitions() handed out the assistant's own slice")
 	}
 }
+
+// TestReplyObserverSeesOnlyAppendedReplies: a reasoning-only reply gets the empty-reply nudge and is
+// never appended, so the observer must not see it either, or a transcript's reasoning shifts by one.
+func TestReplyObserverSeesOnlyAppendedReplies(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []taraenginetest.Turn{
+		{Thinking: "only thinking, no answer"},
+		{Thinking: "now the answer", Content: "Four."},
+	}
+	var replies []llm.Result
+	a.replyObserver = func(r llm.Result) { replies = append(replies, r) }
+
+	if err := a.ProcessMessage("What is 2+2?"); err != nil {
+		t.Fatal(err)
+	}
+
+	assistants := 0
+	for _, m := range a.Conversation() {
+		if m.Role == openai.ChatMessageRoleAssistant {
+			assistants++
+		}
+	}
+	if len(replies) != 1 || replies[0].Thinking != "now the answer" || assistants != 1 {
+		t.Fatalf("observed %d replies (%+v) for %d assistant messages, want one each", len(replies), replies, assistants)
+	}
+}

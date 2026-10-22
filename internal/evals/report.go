@@ -131,6 +131,11 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 			sb.Skipped = append(sb.Skipped, fmt.Sprintf("%s %s: live run, not a board result", skipName(r), r.Date))
 			continue
 		}
+		if r.Temperature > 0 { // a factory run sampled above the board's temperature 0
+			msg := fmt.Sprintf("%s %s: sampled at temperature %g, not a board result", skipName(r), r.Date, r.Temperature)
+			sb.Skipped = append(sb.Skipped, msg)
+			continue
+		}
 		if r.Summary.SafetyFailures > 0 {
 			msg := fmt.Sprintf("%s %s: %d safety failure(s)", skipName(r), r.Date, r.Summary.SafetyFailures)
 			sb.Skipped = append(sb.Skipped, msg)

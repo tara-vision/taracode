@@ -2,11 +2,11 @@ package evals
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +50,7 @@ type runScope struct {
 	env        []string
 	common     *Store // the common store, loaded once per run; nil without one
 	transcript sync.Once
+	private    []*regexp.Regexp // the private names a JSON transcript is scanned for; nil = no scan
 }
 
 const (
@@ -98,19 +99,16 @@ func withDefaults(o RunOptions) RunOptions {
 // tasks finished before the cancellation and ctx's error.
 func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
-	if opts.Live && opts.Sandbox == "" {
-		return Results{}, errors.New("a live run executes every tool for real wherever the environment points: set " +
-			"TARACODE_EVALS_LIVE_SANDBOX to the name of the sandbox this machine is, and only there")
-	}
-	if !opts.Live {
-		for _, t := range tasks {
-			if t.Provenance == ProvenanceLive {
-				return Results{}, fmt.Errorf("task %s has provenance live: its tools run for real, which needs --live", t.ID)
-			}
-		}
+	opts.Sandbox = strings.TrimSpace(opts.Sandbox)
+	if err := checkLiveRun(tasks, opts); err != nil {
+		return Results{}, err
 	}
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
+	if opts.JSONTranscripts {
+		names, _ := privateNames() // the lab names a transcript must not carry (ruling P3-R35); best effort
+		opts.scope.private = privateNamePatterns(names)
+	}
 	if opts.CommonDir != "" {
 		common, err := LoadFixtures(opts.CommonDir)
 		if err != nil {
@@ -118,7 +116,7 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 		}
 		opts.scope.common = common
 	}
-	restore, err := isolateEnv()
+	restore, err := isolateEnv(opts.Live)
 	if err != nil {
 		return Results{}, fmt.Errorf("isolating the environment: %w", err)
 	}

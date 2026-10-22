@@ -50,8 +50,8 @@ type Options struct {
 	PermissionDecider func(inv policy.Invocation, args map[string]any) ui.PermissionChoice
 	// ToolObserver sees every tool call the gate decided.
 	ToolObserver func(ev ToolEvent)
-	// ReplyObserver sees every completed reply of a turn in order: its text, its reasoning, its tool
-	// calls and its usage; nil observes nothing.
+	// ReplyObserver sees every reply that becomes an assistant message, in order: its text, its reasoning,
+	// its tool calls and its usage; a nudged empty reply is not seen; nil observes nothing.
 	ReplyObserver func(reply llm.Result)
 	// ToolMiddleware wraps every tool execution.
 	ToolMiddleware tools.Middleware

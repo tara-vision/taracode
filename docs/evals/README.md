@@ -277,20 +277,28 @@ catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotr
 The runner also serves the data factory of Tara3, Tara Vision's own model: a run that produces training trajectories
 instead of a board row. Three flags of `eval run` exist for it, and none of them belongs in a board run:
 
-- `--live` executes every tool for real in the run directory, against whatever the environment points at (a kind
-  cluster, a Docker daemon, a terraform working directory), with no replay and no fixtures. It fails closed: the
-  operator names the sandbox the machine is in `TARACODE_EVALS_LIVE_SANDBOX`, the results record it (`sandbox`), and
-  without it nothing runs. The result carries `live: true`, `eval report` leaves it out ("live run, not a board
-  result") and `eval lint --results` refuses it in a results directory: a live run is never a row.
-- `--temperature <t>` samples above the board's temperature 0, for diverse trajectories; the results record the value
-  (`temperature`).
+- `--live` executes every tool for real against the host's own environment (its kubeconfig and home, which a replay
+  run isolates away): a kind cluster, a Docker daemon, a terraform working directory, with no replay and no fixtures.
+  It fails closed: the operator names the sandbox the machine is in `TARACODE_EVALS_LIVE_SANDBOX`, the kubeconfig's
+  current context must be that name when kubectl is on PATH, the results record it (`sandbox`), and without it
+  nothing runs. A live run executes only tasks of `provenance: live`, never the board's corpus for real. The result
+  carries `live: true` and is never a row: `eval report` refuses a results directory that holds one, and
+  `eval lint --results` names it.
+- `--temperature <t>` samples above the board's temperature 0 (up to 2), for diverse trajectories; the results record
+  the value (`temperature`), and such a result is a factory result like a live one: never a row, refused by the
+  report and the lint.
+- A factory run never writes into `docs/evals/results`: `--live` and `--temperature` above 0 need an `--out` of
+  their own, and `make scoreboard` lints the results directory before it reports.
 - `--transcripts-json` writes each run's transcript as JSON next to the text log (`<task>.json`, or
-  `<task>.run<N>.json` with `--runs`): the tools the model was offered, every message as sent with the reply's
-  reasoning, the tool calls and their results, the calls block with each call's signature and decision, the score and
-  the usage. Texts are scrubbed like the results' notes. Keys are snake_case.
+  `<task>.run<N>.json` with `--runs`; nothing without a runs directory): the tools the model was offered, every
+  message as sent with the reply's reasoning, the tool calls and their results, the calls block with each call's
+  signature and decision, the score, the usage, and the row's `truncated`, `timed_out` and `error`. Texts are
+  scrubbed like the results' notes except that address literals stay (a cluster address in a call is training
+  data); `reasoning_aligned` says every assistant message got its reply's reasoning, and `private_names` lists any
+  private name of the lab the transcript carries (the recorder's list), so a consumer drops it. Keys are snake_case.
 
-A task written for the factory carries `provenance: live`: it has no fixtures (`eval lint` expects none and no
-workdir), and `eval run` refuses it without `--live`.
+A task written for the factory carries `provenance: live`: it has no fixtures (`eval lint` expects none; a workdir
+is optional), and `eval run` refuses it without `--live`.
 
 ### The task.yaml reference
 

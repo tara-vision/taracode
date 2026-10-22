@@ -69,7 +69,7 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		_, _ = fmt.Fprintf(transcript, "\n## error\n\n%s\n", out.raw)
 	}
 	writeCalls(transcript, events.calls())
-	if opts.JSONTranscripts {
+	if opts.JSONTranscripts && opts.RunsDir != "" {
 		js := buildTranscript(t, opts, run, a, replies, events.calls(), out.row)
 		if err := writeJSONTranscript(opts, t.ID, run, js); err != nil {
 			warnTranscripts(opts, err)

@@ -15,6 +15,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
@@ -275,4 +276,133 @@ func keysOf(m map[string][]byte) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// TestJSONTranscriptScrubsSignaturesAndMisses: the calls block is scrubbed like the messages.
+func TestJSONTranscriptScrubsSignaturesAndMisses(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t,
+		call("shell", map[string]any{"command": "cat " + home + "/notes/pods.txt"}),
+		taraenginetest.Turn{Content: "OOMKilled memory limit"})
+	runsDir := t.TempDir()
+	opts := runOptions(srv, runsDir)
+	opts.JSONTranscripts = true
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range jsonTranscripts(t, runsDir) {
+		var tr Transcript
+		if err := json.Unmarshal(data, &tr); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), home) {
+			t.Fatalf("%s carries the home path", name)
+		}
+		if len(tr.Calls) != 1 || !strings.Contains(tr.Calls[0].Signature, "~/notes/pods.txt") ||
+			len(tr.Calls[0].Missed) != 1 || !strings.Contains(tr.Calls[0].Missed[0], "~/notes/pods.txt") {
+			t.Fatalf("calls = %+v, want the scrubbed signature and miss", tr.Calls)
+		}
+	}
+}
+
+// TestJSONTranscriptKeepsAddressesInToolCalls: a cluster address in a call is training data, not a
+// secret; the engine's own address is still scrubbed.
+func TestJSONTranscriptKeepsAddressesInToolCalls(t *testing.T) {
+	root, _ := corpusWithTriage(t)
+	store, _ := LoadFixtures(filepath.Join(root, "crashloop-oomkilled"))
+	if err := store.Save("kubectl get pod -n shop", "see the engine at ENGINE for the list", false); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadCorpus(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEngine(t,
+		call("shell", map[string]any{"command": "curl http://10.96.0.1/healthz"}),
+		triageTurns()[0],
+		taraenginetest.Turn{Content: "OOMKilled memory limit"})
+	data, _ := os.ReadFile(filepath.Join(root, "crashloop-oomkilled", "fixtures", "index.yaml"))
+	_ = data
+	runsDir := t.TempDir()
+	opts := runOptions(srv, runsDir)
+	opts.JSONTranscripts = true
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range jsonTranscripts(t, runsDir) {
+		text := string(raw)
+		if !strings.Contains(text, "curl http://10.96.0.1/healthz") {
+			t.Fatalf("the cluster address was rewritten:\n%s", text)
+		}
+		if strings.Contains(text, srv.URL) {
+			t.Fatalf("the engine address survived:\n%s", text)
+		}
+	}
+}
+
+// TestJSONTranscriptMarksPrivateNames: a transcript carrying a private name of the lab says so.
+func TestJSONTranscriptMarksPrivateNames(t *testing.T) {
+	t.Setenv(privateNamesEnvVar, "aramis,tara.lab")
+	root, _ := corpusWithTriage(t)
+	store, _ := LoadFixtures(filepath.Join(root, "crashloop-oomkilled"))
+	if err := store.Save("kubectl get pod -n shop", "scheduled on node aramis", false); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadCorpus(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEngine(t, triageTurns()...)
+	runsDir := t.TempDir()
+	opts := runOptions(srv, runsDir)
+	opts.JSONTranscripts = true
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range jsonTranscripts(t, runsDir) {
+		var tr Transcript
+		if err := json.Unmarshal(raw, &tr); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(tr.PrivateNames, ",") != "aramis" {
+			t.Fatalf("private names = %v, want aramis", tr.PrivateNames)
+		}
+	}
+}
+
+// TestJSONTranscriptWritesNothingWithoutARunsDirectory: no runs directory, no transcript anywhere.
+func TestJSONTranscriptWritesNothingWithoutARunsDirectory(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, triageTurns()...)
+	opts := runOptions(srv, "")
+	opts.JSONTranscripts = true
+	if _, err := Run(context.Background(), tasks, opts); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := os.ReadDir(cwd)
+	if len(entries) != 0 {
+		t.Fatalf("the working directory got %v", entries)
+	}
+}
+
+// TestBuildTranscriptCarriesTheRowFlagsAndAlignment: truncated, timed out and error travel with the
+// row; reasoning is attached only when every assistant message has its reply.
+func TestBuildTranscriptCarriesTheRowFlagsAndAlignment(t *testing.T) {
+	task := Task{ID: "t", Area: "kubernetes", Mode: "investigate"}
+	src := fakeSource{messages: []openai.ChatCompletionMessage{
+		{Role: "system", Content: "s"}, {Role: "user", Content: "u"}, {Role: "assistant", Content: "a"},
+	}}
+	row := TaskResult{Truncated: true, TimedOut: true, Error: "the turn timed out"}
+	aligned := buildTranscript(task, RunOptions{}, 1, src, []llm.Result{{Content: "a", Thinking: "think"}}, nil, row)
+	if !aligned.ReasoningAligned || aligned.Messages[2].Reasoning != "think" || !aligned.Truncated || !aligned.TimedOut ||
+		aligned.Error != "the turn timed out" {
+		t.Fatalf("aligned transcript = %+v", aligned)
+	}
+	shifted := buildTranscript(task, RunOptions{}, 1, src, []llm.Result{{Thinking: "one"}, {Thinking: "two"}}, nil, row)
+	if shifted.ReasoningAligned || shifted.Messages[2].Reasoning != "" {
+		t.Fatalf("shifted transcript attached reasoning: %+v", shifted)
+	}
 }

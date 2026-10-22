@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,7 +114,7 @@ func init() {
 		"also write each run's transcript as JSON next to the text log: every message with its reasoning, tool calls "+
 			"and results, the calls block and the score")
 	evalRunCmd.Flags().DurationVar(&evalRun.timeout, "timeout", 10*time.Minute, "wall-clock limit per task")
-	evalRunCmd.Flags().StringVar(&evalRun.out, "out", "docs/evals/results", "results directory")
+	evalRunCmd.Flags().StringVar(&evalRun.out, "out", boardResultsDir, "results directory")
 	evalRunCmd.Flags().StringVar(&evalRun.runsDir, "runs-dir", "evals/runs", "transcripts directory (\"\" = none)")
 	evalRunCmd.Flags().StringVar(&evalRun.hostLabel, "host-label", "lab",
 		"label for the results' host field (never a host name)")
@@ -181,6 +182,9 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("--hardware: %w", err)
 	}
+	if err := checkFactoryFlags(f); err != nil {
+		return err
+	}
 	if f.override != "" {
 		if err := evals.CheckOverride(f.override); err != nil {
 			return fmt.Errorf("--override: %w", err)
@@ -200,7 +204,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Override: f.override, Temperature: f.temperature, Live: f.live, Sandbox: os.Getenv("TARACODE_EVALS_LIVE_SANDBOX"),
+		Override: f.override, Temperature: f.temperature, Live: f.live, Sandbox: sandboxLabel(f.live),
 		JSONTranscripts: f.transcriptsJSON, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
@@ -299,6 +303,10 @@ func runEvalRecord(corpus, scenarios, glob string, out io.Writer) error {
 // runEvalReport builds the scoreboard files from the results directory. The corpus-lint gate lives
 // here, not in the cobra command, so the testable core enforces it on its own.
 func runEvalReport(results, outDir, corpus string, checkDefaults bool, out io.Writer) error {
+	if factory, err := evals.FactoryResults(results); err == nil && len(factory) > 0 {
+		return fmt.Errorf("the results directory holds factory results (a live or sampled run) that must not sit "+
+			"there: %s", strings.Join(factory, ", "))
+	}
 	count, problems := evals.Lint(corpus)
 	if len(problems) > 0 {
 		return fmt.Errorf("the corpus does not lint (%d problem(s)); run taracode eval lint", len(problems))
@@ -388,6 +396,30 @@ func runEvalSeal(corpus, version string, out io.Writer) error {
 }
 
 // runEvalLint prints the problems and fails when there are any.
+// boardResultsDir is where the board reads; a factory run never writes there.
+const boardResultsDir = "docs/evals/results"
+
+// checkFactoryFlags validates the flags of a factory run: a temperature from 0 to 2, and an --out of its own
+// for a live or sampled run, never the board's directory.
+func checkFactoryFlags(f evalRunFlags) error {
+	if math.IsNaN(f.temperature) || f.temperature < 0 || f.temperature > 2 {
+		return fmt.Errorf("--temperature %v: a sampling temperature is a number from 0 to 2", f.temperature)
+	}
+	if (f.live || f.temperature > 0) && filepath.Clean(f.out) == filepath.Clean(boardResultsDir) {
+		return fmt.Errorf("a factory run (--live or --temperature above 0) never writes into the board's results "+
+			"directory %s: pass --out", boardResultsDir)
+	}
+	return nil
+}
+
+// sandboxLabel is the sandbox a live run names (TARACODE_EVALS_LIVE_SANDBOX); a board run records none.
+func sandboxLabel(live bool) string {
+	if !live {
+		return ""
+	}
+	return os.Getenv("TARACODE_EVALS_LIVE_SANDBOX")
+}
+
 func runEvalLint(corpus, results string, out io.Writer) error {
 	count, problems := evals.Lint(corpus)
 	if results != "" {

@@ -47,7 +47,7 @@ func brokenTempDir(t *testing.T) {
 func TestRunReportsAnEnvironmentItCannotIsolate(t *testing.T) {
 	srv := fakeEngine(t)
 	brokenTempDir(t)
-	if restore, err := isolateEnv(); err == nil || restore != nil {
+	if restore, err := isolateEnv(false); err == nil || restore != nil {
 		t.Fatalf("isolateEnv: %v", err)
 	}
 	if _, err := Run(context.Background(), nil, runOptions(srv, "")); err == nil ||
