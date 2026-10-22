@@ -1,13 +1,20 @@
 package evals
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/tara-vision/taracode/internal/agent"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 )
 
@@ -54,12 +61,22 @@ func TestJSONTranscriptCarriesTheWholeConversation(t *testing.T) {
 	files := jsonTranscripts(t, runsDir)
 	data, ok := files["crashloop-oomkilled.json"]
 	if !ok {
-		t.Fatalf("transcripts written: %v, want crashloop-oomkilled.json", files)
+		t.Fatalf("transcripts written: %v, want crashloop-oomkilled.json", keysOf(files))
 	}
 	var tr Transcript
 	if err := json.Unmarshal(data, &tr); err != nil {
 		t.Fatal(err)
 	}
+	checkTranscriptMessages(t, tr)
+	checkTranscriptHeader(t, tr, res.Tasks[0])
+	if !strings.Contains(string(data), `"tool_call_id"`) || !strings.Contains(string(data), `"safety_failure"`) {
+		t.Fatalf("keys are not snake_case: %s", data)
+	}
+}
+
+// checkTranscriptMessages asserts the message list of a triage transcript.
+func checkTranscriptMessages(t *testing.T, tr Transcript) {
+	t.Helper()
 	var roles []string
 	for _, m := range tr.Messages {
 		roles = append(roles, m.Role)
@@ -77,8 +94,13 @@ func TestJSONTranscriptCarriesTheWholeConversation(t *testing.T) {
 	if len(tr.Calls) != 1 || !strings.HasPrefix(tr.Calls[0].Signature, "kubectl ") || tr.Calls[0].Decision != "allowed" {
 		t.Fatalf("calls = %+v", tr.Calls)
 	}
-	if tr.Score.Pass != res.Tasks[0].Pass || tr.Score.Total != res.Tasks[0].Score {
-		t.Fatalf("score %+v, row %+v", tr.Score, res.Tasks[0])
+}
+
+// checkTranscriptHeader asserts the header, the score and the usage of a triage transcript against its row.
+func checkTranscriptHeader(t *testing.T, tr Transcript, row TaskResult) {
+	t.Helper()
+	if tr.Score.Pass != row.Pass || tr.Score.Total != row.Score {
+		t.Fatalf("score %+v, row %+v", tr.Score, row)
 	}
 	// an eval run is offline, so an investigate task offers 11 tools: the 13 with a read form less the two web tools
 	if len(tr.Tools) != 11 || tr.Task != "crashloop-oomkilled" || tr.Mode != "investigate" || tr.Model != "gemma4:12b" {
@@ -86,9 +108,6 @@ func TestJSONTranscriptCarriesTheWholeConversation(t *testing.T) {
 	}
 	if tr.Usage.Completions != 2 || tr.Usage.PromptTokens != 220 || tr.Usage.CompletionTokens != 15 {
 		t.Fatalf("usage = %+v", tr.Usage)
-	}
-	if !json.Valid(data) || !strings.Contains(string(data), `"tool_call_id"`) || !strings.Contains(string(data), `"safety_failure"`) {
-		t.Fatalf("keys are not snake_case: %s", data)
 	}
 }
 
@@ -147,6 +166,106 @@ func TestJSONTranscriptNamesRunsWhenRepeated(t *testing.T) {
 	}
 	if _, ok := files["crashloop-oomkilled.run2.json"]; !ok {
 		t.Fatalf("files %v lack run2", keysOf(files))
+	}
+}
+
+// TestRunWarnsWhenTranscriptsCannotBeWritten: a runs directory that is a file warns once, for the
+// text transcript and the JSON one together, and the run goes on.
+func TestRunWarnsWhenTranscriptsCannotBeWritten(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, triageTurns()...)
+	runsDir := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(runsDir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	opts := runOptions(srv, runsDir)
+	opts.JSONTranscripts, opts.Out = true, &out
+
+	res, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(res.Tasks) != 1 || strings.Count(out.String(), "warning: transcripts are not written") != 1 {
+		t.Fatalf("rows %d, output:\n%s", len(res.Tasks), out.String())
+	}
+}
+
+// TestRunStopsOnUnreadableFixtures: a fixtures index that does not parse is a setup defect that stops the run.
+func TestRunStopsOnUnreadableFixtures(t *testing.T) {
+	root, tasks := corpusWithTriage(t)
+	index := filepath.Join(root, "crashloop-oomkilled", "fixtures", "index.yaml")
+	if err := os.WriteFile(index, []byte("fixtures: [unclosed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEngine(t, triageTurns()...)
+
+	_, err := Run(context.Background(), tasks, runOptions(srv, ""))
+
+	if err == nil || !strings.Contains(err.Error(), "setup defect: the fixtures") {
+		t.Fatalf("err = %v, want the fixtures setup defect", err)
+	}
+}
+
+// fakeSource is a transcriptSource for the unit tests of buildTranscript.
+type fakeSource struct {
+	messages []openai.ChatCompletionMessage
+	tools    []openai.Tool
+}
+
+func (f fakeSource) Conversation() []openai.ChatCompletionMessage { return f.messages }
+func (f fakeSource) ToolDefinitions() []openai.Tool               { return f.tools }
+
+// TestBuildTranscriptRecordsDeniedAndFailedCalls: a denied call keeps its rule and reason, a failed
+// one its error, a missed one the signature the replay lacked.
+func TestBuildTranscriptRecordsDeniedAndFailedCalls(t *testing.T) {
+	task := Task{ID: "t", Area: "kubernetes", Mode: "operate"}
+	src := fakeSource{messages: []openai.ChatCompletionMessage{{Role: "system", Content: "s"}}}
+	calls := []loggedCall{
+		{event: agent.ToolEvent{Tool: "kubectl", Args: map[string]any{"verb": "delete", "resource": "pod", "name": "a",
+			"namespace": "kube-system"}, Allowed: false, Rule: "protected", Reason: "kube-system is protected"}},
+		{event: agent.ToolEvent{Tool: "shell", Args: map[string]any{"command": "cat notes"}, Allowed: true,
+			Err: errors.New("exit status 1")}, replayed: []ReplayCall{{Signature: "cat notes", Miss: true, Err: fmt.Errorf("%w: cat notes", ErrNoFixture)}}},
+	}
+
+	tr := buildTranscript(task, RunOptions{Model: "m"}, 1, src, nil, calls, TaskResult{})
+
+	if tr.Calls[0].Decision != "denied" || tr.Calls[0].Rule != "protected" || tr.Calls[0].Reason != "kube-system is protected" {
+		t.Fatalf("denied call = %+v", tr.Calls[0])
+	}
+	if tr.Calls[1].Decision != "allowed" || tr.Calls[1].Error != "exit status 1" || strings.Join(tr.Calls[1].Missed, ",") != "cat notes" {
+		t.Fatalf("failed call = %+v", tr.Calls[1])
+	}
+}
+
+// TestBuildTranscriptWithoutCallsWritesAnEmptyList: no calls is an empty list, never null.
+func TestBuildTranscriptWithoutCallsWritesAnEmptyList(t *testing.T) {
+	tr := buildTranscript(Task{ID: "t"}, RunOptions{}, 1, fakeSource{}, nil, nil, TaskResult{})
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"calls":[]`) {
+		t.Fatalf("calls are not an empty list: %s", data)
+	}
+}
+
+// TestWriteJSONTranscriptReportsWhatItCannotWrite: an unwritable directory and an unencodable score
+// are errors, not panics or silence.
+func TestWriteJSONTranscriptReportsWhatItCannotWrite(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts := runOptions(nil, file)
+	if err := writeJSONTranscript(opts, "t", 1, Transcript{}); err == nil {
+		t.Fatal("a runs directory that is a file did not fail")
+	}
+	opts = runOptions(nil, t.TempDir())
+	bad := Transcript{Score: TranscriptScore{Total: math.NaN()}}
+	if err := writeJSONTranscript(opts, "t", 1, bad); err == nil {
+		t.Fatal("an unencodable score did not fail")
 	}
 }
 

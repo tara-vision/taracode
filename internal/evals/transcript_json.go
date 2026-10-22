@@ -139,5 +139,6 @@ func writeJSONTranscript(opts RunOptions, taskID string, run int, tr Transcript)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, name), append(data, '\n'), 0o644) //nolint:gosec // the corpus task id, validated by LoadTask
+	path := filepath.Join(dir, name)                     // the corpus task id, validated by LoadTask
+	return os.WriteFile(path, append(data, '\n'), 0o644) //nolint:gosec // a transcript under the runs directory
 }

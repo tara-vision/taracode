@@ -70,7 +70,8 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	}
 	writeCalls(transcript, events.calls())
 	if opts.JSONTranscripts {
-		if err := writeJSONTranscript(opts, t.ID, run, buildTranscript(t, opts, run, a, replies, events.calls(), out.row)); err != nil {
+		js := buildTranscript(t, opts, run, a, replies, events.calls(), out.row)
+		if err := writeJSONTranscript(opts, t.ID, run, js); err != nil {
 			warnTranscripts(opts, err)
 		}
 	}
@@ -110,8 +111,8 @@ func finishTask(
 	tr.PromptTokens, tr.CompletionTokens = turn.stats.PromptTokens, turn.stats.CompletionTokens
 	tr.PromptEvalMs, tr.EvalMs = turn.stats.PromptDuration.Milliseconds(), turn.stats.EvalDuration.Milliseconds()
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
-	misses, real, notes := replayAccounting(replay)
-	tr.FixtureMisses, tr.RealCalls = misses, real
+	misses, realCalls, notes := replayAccounting(replay)
+	tr.FixtureMisses, tr.RealCalls = misses, realCalls
 	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), notes...), opts, t)
 	out.row = tr
 	return out
@@ -144,7 +145,7 @@ func replayDefects(replay *Replay) []string {
 
 // replayAccounting is the row's fixture accounting: the misses, the real probes and the miss notes;
 // a live run has no replay, so every count is zero and there are no notes.
-func replayAccounting(replay *Replay) (misses, real int, notes []string) {
+func replayAccounting(replay *Replay) (misses, realCalls int, notes []string) {
 	if replay == nil {
 		return 0, 0, nil
 	}

@@ -40,7 +40,7 @@ type Results struct {
 	Temperature float64     `json:"temperature"`
 	Date        string      `json:"date"`
 	Runs        int         `json:"runs"`
-	Live        bool        `json:"live,omitempty"`    // a --live factory run: tools ran for real, no fixtures; never a board row
+	Live        bool        `json:"live,omitempty"`    // a --live factory run: tools ran for real; never a board row
 	Sandbox     string      `json:"sandbox,omitempty"` // the sandbox a live run named (TARACODE_EVALS_LIVE_SANDBOX)
 	Host        string      `json:"host"`
 	Hardware    string      `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
