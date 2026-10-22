@@ -11,6 +11,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/llm/taraenginetest"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
@@ -564,4 +565,77 @@ func countPath(srv *taraenginetest.Server, path string) int {
 		}
 	}
 	return n
+}
+
+// TestReplyObserverSeesEveryReplyOfATurn: the observer gets every completed reply of a turn in
+// order, with its reasoning, its tool calls and its text.
+func TestReplyObserverSeesEveryReplyOfATurn(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []taraenginetest.Turn{
+		{Thinking: "look first", ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+		{Content: "The file says hello from disk."},
+	}
+	var replies []llm.Result
+	a.replyObserver = func(r llm.Result) { replies = append(replies, r) }
+
+	if err := a.ProcessMessage("What does hello.txt say?"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(replies) != 2 {
+		t.Fatalf("observed %d replies, want 2", len(replies))
+	}
+	if replies[0].Thinking != "look first" || len(replies[0].ToolCalls) != 1 {
+		t.Fatalf("first reply = %+v, want the reasoning and one tool call", replies[0])
+	}
+	if replies[1].Content != "The file says hello from disk." {
+		t.Fatalf("second reply = %+v, want the answer", replies[1])
+	}
+}
+
+// TestConversationIsACopyInSendOrder: Conversation() is the message list as sent, and a copy.
+func TestConversationIsACopyInSendOrder(t *testing.T) {
+	a, srv := newTestAssistant(t, false)
+	srv.Turns = []taraenginetest.Turn{
+		{ToolCalls: []taraenginetest.ToolCall{{Name: "read_file", Args: map[string]any{"path": "hello.txt"}}}},
+		{Content: "The file says hello from disk."},
+	}
+	if err := a.ProcessMessage("What does hello.txt say?"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := a.Conversation()
+	var roles []string
+	for _, m := range got {
+		roles = append(roles, m.Role)
+	}
+	if want := "system user assistant tool assistant"; strings.Join(roles, " ") != want {
+		t.Fatalf("roles = %q, want %q", strings.Join(roles, " "), want)
+	}
+	if got[3].ToolCallID == "" || got[3].ToolCallID != got[2].ToolCalls[0].ID {
+		t.Fatalf("tool result %q does not answer the call %q", got[3].ToolCallID, got[2].ToolCalls[0].ID)
+	}
+	n := a.GetConversationLength()
+	got = append(got, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: "extra"})
+	got[0].Content = "changed"
+	if a.GetConversationLength() != n || a.Conversation()[0].Content == "changed" {
+		t.Fatal("Conversation() handed out the assistant's own slice")
+	}
+}
+
+// TestToolDefinitionsAreACopyOfTheModeOffer: the schemas the mode offers, and a copy.
+func TestToolDefinitionsAreACopyOfTheModeOffer(t *testing.T) {
+	a, _ := newTestAssistant(t, false)
+	if n := len(a.ToolDefinitions()); n != 13 {
+		t.Fatalf("investigate offers %d tools, want 13", n)
+	}
+	enterOperate(t, a)
+	defs := a.ToolDefinitions()
+	if len(defs) != 15 {
+		t.Fatalf("operate offers %d tools, want 15", len(defs))
+	}
+	defs[0] = openai.Tool{}
+	if a.ToolDefinitions()[0].Function == nil || a.ToolDefinitions()[0].Function.Name == "" {
+		t.Fatal("ToolDefinitions() handed out the assistant's own slice")
+	}
 }

@@ -273,6 +273,9 @@ func (a *Assistant) completeWith(
 	a.turn.CompletionTokens += res.Usage.CompletionTokens
 	a.turn.PromptDuration += res.Usage.PromptDuration
 	a.turn.EvalDuration += res.Usage.EvalDuration
+	if a.replyObserver != nil {
+		a.replyObserver(*res)
+	}
 	return res, nil
 }
 
