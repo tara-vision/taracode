@@ -24,6 +24,7 @@ type evalRunFlags struct {
 	runs                        int
 	timeout                     time.Duration
 	temperature                 float64
+	live                        bool
 	out, runsDir, hostLabel     string
 	hardware, gpuProbe          string
 	override                    string
@@ -105,6 +106,9 @@ func init() {
 	evalRunCmd.Flags().IntVar(&evalRun.runs, "runs", 1, "repetitions per task, averaged")
 	evalRunCmd.Flags().Float64Var(&evalRun.temperature, "temperature", 0,
 		"sampling temperature; 0 is the board's deterministic setting")
+	evalRunCmd.Flags().BoolVar(&evalRun.live, "live", false,
+		"execute every tool for real in the run directory against the sandbox the environment points at; the result "+
+			"is a factory run and never a board row")
 	evalRunCmd.Flags().DurationVar(&evalRun.timeout, "timeout", 10*time.Minute, "wall-clock limit per task")
 	evalRunCmd.Flags().StringVar(&evalRun.out, "out", "docs/evals/results", "results directory")
 	evalRunCmd.Flags().StringVar(&evalRun.runsDir, "runs-dir", "evals/runs", "transcripts directory (\"\" = none)")
@@ -193,7 +197,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Override: f.override, Temperature: f.temperature, Out: out})
+		Override: f.override, Temperature: f.temperature, Live: f.live, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
