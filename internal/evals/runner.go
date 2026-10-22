@@ -102,6 +102,13 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 		return Results{}, errors.New("a live run executes every tool for real wherever the environment points: set " +
 			"TARACODE_EVALS_LIVE_SANDBOX to the name of the sandbox this machine is, and only there")
 	}
+	if !opts.Live {
+		for _, t := range tasks {
+			if t.Provenance == ProvenanceLive {
+				return Results{}, fmt.Errorf("task %s has provenance live: its tools run for real, which needs --live", t.ID)
+			}
+		}
+	}
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
 	if opts.CommonDir != "" {

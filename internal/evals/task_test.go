@@ -92,3 +92,15 @@ func TestLoadCorpusFiltersByGlobAndSorts(t *testing.T) {
 		t.Fatalf("some=%+v err=%v", some, err)
 	}
 }
+
+// TestLoadTaskAcceptsLiveProvenance: a live task has no fixtures and no record block; it loads.
+func TestLoadTaskAcceptsLiveProvenance(t *testing.T) {
+	dir := writeTask(t, t.TempDir(), "live-echo", liveTask)
+	task, err := LoadTask(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Provenance != ProvenanceLive {
+		t.Fatalf("provenance %q, want live", task.Provenance)
+	}
+}

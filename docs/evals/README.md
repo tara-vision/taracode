@@ -289,6 +289,9 @@ instead of a board row. Three flags of `eval run` exist for it, and none of them
   reasoning, the tool calls and their results, the calls block with each call's signature and decision, the score and
   the usage. Texts are scrubbed like the results' notes. Keys are snake_case.
 
+A task written for the factory carries `provenance: live`: it has no fixtures (`eval lint` expects none and no
+workdir), and `eval run` refuses it without `--live`.
+
 ### The task.yaml reference
 
 ```yaml

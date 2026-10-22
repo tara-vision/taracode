@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `eval run --live` executes every tool for real in the run directory for a factory run: no replay, no fixtures, the
   result marked `live` and never a board row (`eval report` leaves it out, `eval lint --results` refuses it). It fails
   closed unless `TARACODE_EVALS_LIVE_SANDBOX` names the sandbox the machine is (the evals README, "Factory runs").
+  A task of `provenance: live` has no fixtures and runs only under `--live`.
 - `eval run --temperature` samples above the board's temperature 0 and records the value in the results.
 - `eval run --transcripts-json` writes each run's transcript as JSON next to the text log: the tools offered, every
   message with the reply's reasoning, the tool calls and results, the calls block, the score and the usage.

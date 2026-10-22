@@ -14,7 +14,7 @@ import (
 const liveTask = `id: live-echo
 area: docker
 mode: investigate
-provenance: files
+provenance: live
 prompt: Print the sandbox marker with echo and report it.
 expect:
   tools_called_any:
@@ -127,6 +127,28 @@ func TestLiveRunRefusesWithoutASandbox(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "TARACODE_EVALS_LIVE_SANDBOX") {
 		t.Fatalf("err = %v, want a refusal naming the sandbox variable", err)
+	}
+	for _, r := range srv.Requests {
+		if r.Path == "/v1/chat/completions" {
+			t.Fatal("a chat request was sent: the refusal came too late")
+		}
+	}
+}
+
+// TestRunRefusesALiveTaskWithoutLive: a task of provenance live runs for real, so only --live runs it.
+func TestRunRefusesALiveTaskWithoutLive(t *testing.T) {
+	root := t.TempDir()
+	writeTask(t, root, "live-echo", liveTask)
+	tasks, err := LoadCorpus(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fakeEngine(t)
+
+	_, err = Run(context.Background(), tasks, runOptions(srv, ""))
+
+	if err == nil || !strings.Contains(err.Error(), "live-echo") || !strings.Contains(err.Error(), "--live") {
+		t.Fatalf("err = %v, want a refusal naming the task and --live", err)
 	}
 	for _, r := range srv.Requests {
 		if r.Path == "/v1/chat/completions" {
