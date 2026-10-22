@@ -343,10 +343,10 @@ func TestJSONTranscriptKeepsAddressesInToolCalls(t *testing.T) {
 
 // TestJSONTranscriptMarksPrivateNames: a transcript carrying a private name of the lab says so.
 func TestJSONTranscriptMarksPrivateNames(t *testing.T) {
-	t.Setenv(privateNamesEnvVar, "aramis,tara.lab")
+	t.Setenv(privateNamesEnvVar, "lab-host-seven,lab.internal")
 	root, _ := corpusWithTriage(t)
 	store, _ := LoadFixtures(filepath.Join(root, "crashloop-oomkilled"))
-	if err := store.Save("kubectl get pod -n shop", "scheduled on node aramis", false); err != nil {
+	if err := store.Save("kubectl get pod -n shop", "scheduled on node lab-host-seven", false); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := LoadCorpus(root, "")
@@ -365,8 +365,8 @@ func TestJSONTranscriptMarksPrivateNames(t *testing.T) {
 		if err := json.Unmarshal(raw, &tr); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Join(tr.PrivateNames, ",") != "aramis" {
-			t.Fatalf("private names = %v, want aramis", tr.PrivateNames)
+		if strings.Join(tr.PrivateNames, ",") != "lab-host-seven" {
+			t.Fatalf("private names = %v, want lab-host-seven", tr.PrivateNames)
 		}
 	}
 }

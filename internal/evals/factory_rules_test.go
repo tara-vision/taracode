@@ -206,8 +206,8 @@ func TestPrivateNamesInHandlesNoPatternsAndAnUnencodableTranscript(t *testing.T)
 	if names := privateNamesIn(Transcript{Task: "t"}, nil); names != nil {
 		t.Fatalf("no patterns found %v", names)
 	}
-	patterns := privateNamePatterns([]string{"aramis"})
-	bad := Transcript{Task: "aramis", Score: TranscriptScore{Total: math.NaN()}}
+	patterns := privateNamePatterns([]string{"lab-host-seven"})
+	bad := Transcript{Task: "lab-host-seven", Score: TranscriptScore{Total: math.NaN()}}
 	if names := privateNamesIn(bad, patterns); names != nil {
 		t.Fatalf("an unencodable transcript found %v", names)
 	}
