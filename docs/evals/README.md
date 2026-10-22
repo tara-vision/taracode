@@ -272,6 +272,23 @@ catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotr
 (taraengine 0.4.0); the corpus version 2 boards, once run, take theirs from its twin
 `overrides/nemotron-3.5-bolt-74b.taraengine-0.5.0.registry.yaml` (the 0.5.0 catalog verbatim plus the same entry).
 
+### Factory runs
+
+The runner also serves the data factory of Tara3, Tara Vision's own model: a run that produces training trajectories
+instead of a board row. Three flags of `eval run` exist for it, and none of them belongs in a board run:
+
+- `--live` executes every tool for real in the run directory, against whatever the environment points at (a kind
+  cluster, a Docker daemon, a terraform working directory), with no replay and no fixtures. It fails closed: the
+  operator names the sandbox the machine is in `TARACODE_EVALS_LIVE_SANDBOX`, the results record it (`sandbox`), and
+  without it nothing runs. The result carries `live: true`, `eval report` leaves it out ("live run, not a board
+  result") and `eval lint --results` refuses it in a results directory: a live run is never a row.
+- `--temperature <t>` samples above the board's temperature 0, for diverse trajectories; the results record the value
+  (`temperature`).
+- `--transcripts-json` writes each run's transcript as JSON next to the text log (`<task>.json`, or
+  `<task>.run<N>.json` with `--runs`): the tools the model was offered, every message as sent with the reply's
+  reasoning, the tool calls and their results, the calls block with each call's signature and decision, the score and
+  the usage. Texts are scrubbed like the results' notes. Keys are snake_case.
+
 ### The task.yaml reference
 
 ```yaml
