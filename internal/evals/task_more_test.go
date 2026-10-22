@@ -25,7 +25,7 @@ func TestValidateNamesEachProblem(t *testing.T) {
 		want   string
 	}{
 		{"id", func(t *Task) { t.ID, t.Dir = "Bad_ID", "" }, `id "Bad_ID" must match`},
-		{"provenance", func(t *Task) { t.Provenance = "guessed" }, `provenance "guessed" must be recorded, authored or files`},
+		{"provenance", func(t *Task) { t.Provenance = "guessed" }, `provenance "guessed" must be recorded, authored, files or live`},
 		{"prompt", func(t *Task) { t.Prompt = "  " }, "prompt is empty"},
 		{"weight", func(t *Task) { t.Weight = -1 }, "weight must be positive"},
 		{"permission", func(t *Task) { t.Permission = "maybe" }, `permission "maybe" must be allow or deny`},

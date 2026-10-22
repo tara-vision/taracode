@@ -39,6 +39,7 @@ const (
 	ProvenanceRecorded = "recorded" // the recorder wrote them from a scenario
 	ProvenanceAuthored = "authored" // hand-written (cloud tasks)
 	ProvenanceFiles    = "files"    // no fixtures: the task only reads its workdir
+	ProvenanceLive     = "live"     // no fixtures: every tool runs for real, only under eval run --live (the factory)
 )
 
 // MinCorpusTasks is the floor the corpus test enforces; the release task raises it to 33.
@@ -153,8 +154,9 @@ func (t Task) Validate() error {
 	if t.Mode != "investigate" && t.Mode != "operate" {
 		fail("mode %q must be investigate or operate", t.Mode)
 	}
-	if t.Provenance != ProvenanceRecorded && t.Provenance != ProvenanceAuthored && t.Provenance != ProvenanceFiles {
-		fail("provenance %q must be recorded, authored or files", t.Provenance)
+	if t.Provenance != ProvenanceRecorded && t.Provenance != ProvenanceAuthored && t.Provenance != ProvenanceFiles &&
+		t.Provenance != ProvenanceLive {
+		fail("provenance %q must be recorded, authored, files or live", t.Provenance)
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
 		fail("prompt is empty")

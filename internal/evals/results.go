@@ -40,6 +40,8 @@ type Results struct {
 	Temperature float64     `json:"temperature"`
 	Date        string      `json:"date"`
 	Runs        int         `json:"runs"`
+	Live        bool        `json:"live,omitempty"`    // a --live factory run: tools ran for real; never a board row
+	Sandbox     string      `json:"sandbox,omitempty"` // the sandbox a live run named (TARACODE_EVALS_LIVE_SANDBOX)
 	Host        string      `json:"host"`
 	Hardware    string      `json:"hardware,omitempty"` // the operator's label for the machine the engine runs on
 	Engine      *EngineInfo `json:"engine,omitempty"`   // the loaded model as the engine reports it
@@ -347,6 +349,17 @@ func publicNotes(notes []string, opts RunOptions, t Task) []string {
 // path starts with, the engine's own included, ruling P3-R56), the engine's URL, address and host
 // name <engine>, and any other IP address, with or without a port, <addr>.
 func publicText(s string, opts RunOptions, t Task) string {
+	return scrubText(s, opts, t, true)
+}
+
+// transcriptText scrubs a text for a JSON transcript: the same, except that address literals stay,
+// since a cluster address in a call is training data (the lab's own addresses are private names the
+// transcript is scanned for instead).
+func transcriptText(s string, opts RunOptions, t Task) string {
+	return scrubText(s, opts, t, false)
+}
+
+func scrubText(s string, opts RunOptions, t Task, addresses bool) string {
 	for _, p := range scrubbedPaths(opts, t) {
 		s = replaceBounded(s, p[0], p[1], isPathByte, isPathByte)
 	}
@@ -354,7 +367,9 @@ func publicText(s string, opts RunOptions, t Task) string {
 	for _, form := range engineForms(opts.Host) {
 		s = strings.ReplaceAll(s, form, "<engine>")
 	}
-	s = ipLiteral.ReplaceAllString(s, "<addr>")
+	if addresses {
+		s = ipLiteral.ReplaceAllString(s, "<addr>")
+	}
 	if host := engineHostname(opts.Host); host != "" {
 		s = replaceBounded(s, host, "<engine>", isHostByte, isHostByte)
 	}

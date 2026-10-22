@@ -282,3 +282,13 @@ func TestLintFlagsLeftoverRecordingArtifacts(t *testing.T) {
 		t.Fatalf("expected a leftover fixtures.replaced problem: %q", problems)
 	}
 }
+
+// TestLintAcceptsALiveTaskWithoutFixturesOrWorkdir: a live task runs for real and needs neither.
+func TestLintAcceptsALiveTaskWithoutFixturesOrWorkdir(t *testing.T) {
+	root := t.TempDir()
+	writeTask(t, root, "live-echo", liveTask)
+	count, problems := Lint(root)
+	if count != 1 || len(problems) != 0 {
+		t.Fatalf("count %d, problems %v, want one clean task", count, problems)
+	}
+}

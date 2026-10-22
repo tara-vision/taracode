@@ -101,9 +101,10 @@ type Assistant struct {
 	truncationEvents []TruncationResult
 
 	// Headless hooks (Phase 3): where the loop prints, who observes tool decisions, the last turn.
-	out      io.Writer
-	observer func(ToolEvent)
-	turn     TurnStats
+	out           io.Writer
+	observer      func(ToolEvent)
+	replyObserver func(llm.Result) // sees every completed reply of a turn (Options.ReplyObserver)
+	turn          TurnStats
 }
 
 // stdoutWriter is the output when Options.Output is nil. It writes to os.Stdout as it is at the time
@@ -251,6 +252,7 @@ func New(opts Options) (*Assistant, error) {
 		truncationEvents:   make([]TruncationResult, 0),
 		out:                out,
 		observer:           opts.ToolObserver,
+		replyObserver:      opts.ReplyObserver,
 	}
 	if opts.PermissionDecider != nil {
 		a.confirmPermission = opts.PermissionDecider
@@ -516,6 +518,18 @@ func (a *Assistant) GetSessionUsage() *storage.TokenUsage {
 // GetConversationLength returns the number of messages in the conversation
 func (a *Assistant) GetConversationLength() int {
 	return len(a.conversation)
+}
+
+// Conversation returns a copy of the messages as they are sent to the model: the system prompt,
+// the user turns, the assistant replies with their tool calls and the tool results, in order. The
+// slice is new; the tool calls inside are shared values, so a caller changes its own copies of them.
+func (a *Assistant) Conversation() []openai.ChatCompletionMessage {
+	return append([]openai.ChatCompletionMessage(nil), a.conversation...)
+}
+
+// ToolDefinitions returns a copy of the tool schemas the current mode offers the model.
+func (a *Assistant) ToolDefinitions() []openai.Tool {
+	return append([]openai.Tool(nil), a.toolDefs...)
 }
 
 // GetLastResponse returns the last model response text (for suggestion detection)

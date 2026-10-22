@@ -285,6 +285,35 @@ func TestRunnerSendsTemperatureZero(t *testing.T) {
 	}
 }
 
+// TestRunSamplesAtTheTemperatureAsked covers --temperature: a factory run samples at the value
+// asked, every chat request carries it, and the results record it.
+func TestRunSamplesAtTheTemperatureAsked(t *testing.T) {
+	_, tasks := corpusWithTriage(t)
+	srv := fakeEngine(t, taraenginetest.Turn{Content: "OOMKilled memory limit"})
+	opts := runOptions(srv, "")
+	opts.Temperature = 0.7
+	results, err := Run(context.Background(), tasks, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results.Temperature != 0.7 {
+		t.Fatalf("results temperature %v, want 0.7", results.Temperature)
+	}
+	chats := 0
+	for _, r := range srv.Requests {
+		if r.Path != "/v1/chat/completions" {
+			continue
+		}
+		chats++
+		if temperature, ok := r.Body["temperature"]; !ok || temperature != 0.7 {
+			t.Errorf("chat request %d temperature %v, want 0.7", chats, r.Body["temperature"])
+		}
+	}
+	if chats != 2 {
+		t.Fatalf("chat requests %d, want the warm-up and the task", chats)
+	}
+}
+
 // TestRunnerAveragesRepeatedRuns covers --runs: the scores and the counts are per-run means, the
 // counts rounded (ruling P3-R48), and the pass mark is applied to the mean.
 func TestRunnerAveragesRepeatedRuns(t *testing.T) {

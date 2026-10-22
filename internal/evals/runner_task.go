@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -21,7 +22,11 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	tr := TaskResult{ID: t.ID, Area: string(t.Area)}
 	transcript, closeTranscript := transcriptWriter(opts, t.ID, run)
 	defer closeTranscript()
-	_, _ = fmt.Fprintf(transcript, "# %s (%s, %s)\n\n%s\n\n", t.ID, t.Area, t.Mode, t.Prompt)
+	header := fmt.Sprintf("# %s (%s, %s)", t.ID, t.Area, t.Mode)
+	if opts.Live {
+		header += " (live)"
+	}
+	_, _ = fmt.Fprintf(transcript, "%s\n\n%s\n\n", header, t.Prompt)
 	runDir, remove, err := makeRunDir("taracode-eval-*")
 	if err != nil {
 		return setupDefect(tr, t, opts, "the run directory", err, transcript)
@@ -30,17 +35,17 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 	if err := prepareRunDir(t, runDir); err != nil {
 		return setupDefect(tr, t, opts, "the run directory", err, transcript)
 	}
-	store, err := LoadFixtures(t.Dir)
+	store, replay, err := fixturesFor(t, opts, runDir)
 	if err != nil {
 		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
-	var common *Store
-	if opts.scope != nil {
-		common = opts.scope.common
-	}
-	replay := NewReplay(store, common, runDir)
 	events := &eventLog{replay: replay}
-	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
+	o := assistantOptions(t, opts, runDir, replay, events.observe, transcript)
+	var replies []llm.Result
+	if opts.JSONTranscripts {
+		o.ReplyObserver = func(r llm.Result) { replies = append(replies, r) }
+	}
+	a, err := agent.New(o)
 	if err != nil {
 		return setupDefect(tr, t, opts, "the assistant", err, transcript)
 	}
@@ -64,6 +69,12 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		_, _ = fmt.Fprintf(transcript, "\n## error\n\n%s\n", out.raw)
 	}
 	writeCalls(transcript, events.calls())
+	if opts.JSONTranscripts && opts.RunsDir != "" {
+		js := buildTranscript(t, opts, run, a, replies, events.calls(), out.row)
+		if err := writeJSONTranscript(opts, t.ID, run, js); err != nil {
+			warnTranscripts(opts, err)
+		}
+	}
 	return out
 }
 
@@ -84,7 +95,7 @@ func finishTask(
 		tr.Error, out.raw = publicError(turn.err, opts, t), turn.err.Error()
 		sc = scoredZero(sc, "turn error: scored 0")
 	}
-	if defects := replay.Defects(); len(defects) > 0 { // a repository bug, never a model miss (P3-R39)
+	if defects := replayDefects(replay); len(defects) > 0 { // a repository bug, never a model miss (P3-R39)
 		tr.Error = corpusDefect(store, defects)
 		out.raw, out.stop = tr.Error, errors.New(tr.Error)
 		sc = scoredZero(sc, "corpus defect: scored 0")
@@ -100,11 +111,45 @@ func finishTask(
 	tr.PromptTokens, tr.CompletionTokens = turn.stats.PromptTokens, turn.stats.CompletionTokens
 	tr.PromptEvalMs, tr.EvalMs = turn.stats.PromptDuration.Milliseconds(), turn.stats.EvalDuration.Milliseconds()
 	tr.WallMs, tr.Truncated = turn.wall.Milliseconds(), turn.stats.Truncated
-	tr.FixtureMisses = len(replay.Misses())
-	tr.RealCalls = len(replay.RealCalls())
-	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), missNotes(replay)...), opts, t)
+	misses, realCalls, notes := replayAccounting(replay)
+	tr.FixtureMisses, tr.RealCalls = misses, realCalls
+	tr.Notes = publicNotes(append(append([]string(nil), sc.Notes...), notes...), opts, t)
 	out.row = tr
 	return out
+}
+
+// fixturesFor loads the task's fixtures and builds its replay. A live run (--live) has neither: every
+// tool executes for real in the run directory, so both are nil.
+func fixturesFor(t Task, opts RunOptions, runDir string) (*Store, *Replay, error) {
+	if opts.Live {
+		return nil, nil, nil
+	}
+	store, err := LoadFixtures(t.Dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	var common *Store
+	if opts.scope != nil {
+		common = opts.scope.common
+	}
+	return store, NewReplay(store, common, runDir), nil
+}
+
+// replayDefects lists the replay's corpus defects; a live run has no replay and no defects.
+func replayDefects(replay *Replay) []string {
+	if replay == nil {
+		return nil
+	}
+	return replay.Defects()
+}
+
+// replayAccounting is the row's fixture accounting: the misses, the real probes and the miss notes;
+// a live run has no replay, so every count is zero and there are no notes.
+func replayAccounting(replay *Replay) (misses, realCalls int, notes []string) {
+	if replay == nil {
+		return 0, 0, nil
+	}
+	return len(replay.Misses()), len(replay.RealCalls()), missNotes(replay)
 }
 
 // setupDefect is a task whose run directory, fixtures or assistant could not be set up as the task
@@ -233,11 +278,17 @@ func assistantOptions(
 	o.MemoryEnabled = false
 	o.PreviewEdits = false // the preview is a terminal prompt
 	o.Generation.TemperatureZero = true
+	if opts.Temperature > 0 {
+		o.Generation.TemperatureZero = false
+		o.Generation.Temperature = float32(opts.Temperature)
+	}
 	if opts.NumPredict > 0 {
 		o.Generation.NumPredict = opts.NumPredict
 	}
 	o.Output = out
-	o.ToolMiddleware = replay.Middleware
+	if replay != nil { // a live run executes every tool for real
+		o.ToolMiddleware = replay.Middleware
+	}
 	o.ToolObserver = observe
 	allow := t.Permission == "allow"
 	o.PermissionDecider = func(policy.Invocation, map[string]any) ui.PermissionChoice {

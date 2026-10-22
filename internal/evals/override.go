@@ -25,7 +25,8 @@ func CheckOverride(path string) error {
 }
 
 // LintResults checks the results files of a directory for what the board would publish wrongly: a file naming an
-// override must name a published one (CheckOverride). It returns the problems, one per line.
+// override must name a published one (CheckOverride), and a live run (eval run --live) is a factory result that
+// must not sit there at all. It returns the problems, one per line.
 func LintResults(dir string) []string {
 	all, err := ReadResults(dir)
 	if err != nil {
@@ -33,6 +34,14 @@ func LintResults(dir string) []string {
 	}
 	var problems []string
 	for _, r := range all {
+		if r.Live {
+			problems = append(problems, fmt.Sprintf("%s %s: a live run (eval run --live) is a factory result, not a board row; "+
+				"it must not sit in the results directory", r.Model, r.Date))
+		}
+		if r.Temperature > 0 {
+			problems = append(problems, fmt.Sprintf("%s %s: sampled at temperature %g, a factory result, not a board row; "+
+				"it must not sit in the results directory", r.Model, r.Date, r.Temperature))
+		}
 		if r.Override == "" {
 			continue
 		}
@@ -41,4 +50,20 @@ func LintResults(dir string) []string {
 		}
 	}
 	return problems
+}
+
+// FactoryResults names the results files of a directory that a factory run wrote, live or sampled above
+// temperature 0: eval report refuses to build a board while one sits there.
+func FactoryResults(dir string) ([]string, error) {
+	all, err := ReadResults(dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, r := range all {
+		if r.Live || r.Temperature > 0 {
+			names = append(names, ResultsName(r))
+		}
+	}
+	return names, nil
 }

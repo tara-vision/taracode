@@ -160,7 +160,7 @@ func TestIsolateEnvRestoresTheVariables(t *testing.T) {
 	if err := os.Unsetenv("HELM_NAMESPACE"); err != nil {
 		t.Fatal(err)
 	}
-	restore, err := isolateEnv()
+	restore, err := isolateEnv(false)
 	if err != nil {
 		t.Fatal(err)
 	}

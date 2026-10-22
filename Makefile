@@ -118,4 +118,5 @@ eval-lab: build
 scoreboard: build
 	@test -n "$(LAB_HOST)" || (echo "set LAB_HOST"; exit 1)
 	for m in $(SCOREBOARD_MODELS); do ./$(BINARY) eval run --host $(LAB_HOST) --model $$m $(if $(LAB_HARDWARE),--hardware "$(LAB_HARDWARE)",) $(EVAL_ARGS) || exit 1; done
+	./$(BINARY) eval lint --results docs/evals/results
 	./$(BINARY) eval report --check-defaults
