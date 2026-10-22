@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tara-vision/taracode/internal/agent"
+	"github.com/tara-vision/taracode/internal/llm"
 	"github.com/tara-vision/taracode/internal/policy"
 	"github.com/tara-vision/taracode/internal/storage"
 	"github.com/tara-vision/taracode/internal/ui"
@@ -39,7 +40,12 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		return setupDefect(tr, t, opts, "the fixtures", err, transcript)
 	}
 	events := &eventLog{replay: replay}
-	a, err := agent.New(assistantOptions(t, opts, runDir, replay, events.observe, transcript))
+	o := assistantOptions(t, opts, runDir, replay, events.observe, transcript)
+	var replies []llm.Result
+	if opts.JSONTranscripts {
+		o.ReplyObserver = func(r llm.Result) { replies = append(replies, r) }
+	}
+	a, err := agent.New(o)
 	if err != nil {
 		return setupDefect(tr, t, opts, "the assistant", err, transcript)
 	}
@@ -63,6 +69,11 @@ func runTask(ctx context.Context, t Task, opts RunOptions, run int) taskRun {
 		_, _ = fmt.Fprintf(transcript, "\n## error\n\n%s\n", out.raw)
 	}
 	writeCalls(transcript, events.calls())
+	if opts.JSONTranscripts {
+		if err := writeJSONTranscript(opts, t.ID, run, buildTranscript(t, opts, run, a, replies, events.calls(), out.row)); err != nil {
+			warnTranscripts(opts, err)
+		}
+	}
 	return out
 }
 

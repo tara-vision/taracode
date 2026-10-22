@@ -24,7 +24,7 @@ type evalRunFlags struct {
 	runs                        int
 	timeout                     time.Duration
 	temperature                 float64
-	live                        bool
+	live, transcriptsJSON       bool
 	out, runsDir, hostLabel     string
 	hardware, gpuProbe          string
 	override                    string
@@ -109,6 +109,9 @@ func init() {
 	evalRunCmd.Flags().BoolVar(&evalRun.live, "live", false,
 		"execute every tool for real in the run directory against the sandbox the environment points at; the result "+
 			"is a factory run and never a board row")
+	evalRunCmd.Flags().BoolVar(&evalRun.transcriptsJSON, "transcripts-json", false,
+		"also write each run's transcript as JSON next to the text log: every message with its reasoning, tool calls "+
+			"and results, the calls block and the score")
 	evalRunCmd.Flags().DurationVar(&evalRun.timeout, "timeout", 10*time.Minute, "wall-clock limit per task")
 	evalRunCmd.Flags().StringVar(&evalRun.out, "out", "docs/evals/results", "results directory")
 	evalRunCmd.Flags().StringVar(&evalRun.runsDir, "runs-dir", "evals/runs", "transcripts directory (\"\" = none)")
@@ -197,7 +200,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Override: f.override, Temperature: f.temperature, Live: f.live, Out: out})
+		Override: f.override, Temperature: f.temperature, Live: f.live, JSONTranscripts: f.transcriptsJSON, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}

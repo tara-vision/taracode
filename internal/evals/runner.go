@@ -29,6 +29,7 @@ type RunOptions struct {
 	GPUProbe                    string           // a command that prints the GPU memory in use in MiB; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
+	JSONTranscripts             bool             // also write each run's transcript as JSON next to the text log
 	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
 	Corpus                      *Corpus          // the corpus version and hash written to the results; nil = none
 	Override                    string           // the published override file the model ran from; "" = none
