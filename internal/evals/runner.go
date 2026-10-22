@@ -20,6 +20,7 @@ import (
 type RunOptions struct {
 	Host, Model, Vendor, APIKey string
 	Think                       string           // auto|off|on|low|medium|high
+	Temperature                 float64          // sampling temperature of a factory run; 0 = the board's explicit temperature 0
 	Runs                        int              // repetitions per task, default 1
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
@@ -195,7 +196,7 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	return Results{Taracode: opts.Version,
 		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
 		Model:  opts.Model, Tier: tier, Default: isDefault,
-		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
+		Think: opts.Think, Temperature: opts.Temperature, // 0 is sent explicitly (TemperatureZero); a factory run samples above it
 		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware,
 		Override: opts.Override}, nil
 }

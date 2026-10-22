@@ -233,6 +233,10 @@ func assistantOptions(
 	o.MemoryEnabled = false
 	o.PreviewEdits = false // the preview is a terminal prompt
 	o.Generation.TemperatureZero = true
+	if opts.Temperature > 0 {
+		o.Generation.TemperatureZero = false
+		o.Generation.Temperature = float32(opts.Temperature)
+	}
 	if opts.NumPredict > 0 {
 		o.Generation.NumPredict = opts.NumPredict
 	}

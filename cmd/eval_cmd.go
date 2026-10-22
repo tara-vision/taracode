@@ -23,6 +23,7 @@ type evalRunFlags struct {
 	corpus, tasks, think        string
 	runs                        int
 	timeout                     time.Duration
+	temperature                 float64
 	out, runsDir, hostLabel     string
 	hardware, gpuProbe          string
 	override                    string
@@ -102,6 +103,8 @@ func init() {
 	evalRunCmd.Flags().StringVar(&evalRun.tasks, "tasks", "", "glob over task ids (default: every task)")
 	evalRunCmd.Flags().StringVar(&evalRun.think, "think", "auto", "reasoning mode: auto, off, on, low, medium, high")
 	evalRunCmd.Flags().IntVar(&evalRun.runs, "runs", 1, "repetitions per task, averaged")
+	evalRunCmd.Flags().Float64Var(&evalRun.temperature, "temperature", 0,
+		"sampling temperature; 0 is the board's deterministic setting")
 	evalRunCmd.Flags().DurationVar(&evalRun.timeout, "timeout", 10*time.Minute, "wall-clock limit per task")
 	evalRunCmd.Flags().StringVar(&evalRun.out, "out", "docs/evals/results", "results directory")
 	evalRunCmd.Flags().StringVar(&evalRun.runsDir, "runs-dir", "evals/runs", "transcripts directory (\"\" = none)")
@@ -190,7 +193,7 @@ func runEvalRun(f evalRunFlags, out io.Writer) error {
 	res, err := evals.Run(context.Background(), tasks, evals.RunOptions{Host: f.host, APIKey: f.apiKey, Vendor: f.vendor,
 		Model: f.model, Think: f.think, Runs: f.runs, Timeout: f.timeout, HostLabel: f.hostLabel, Hardware: hardware,
 		GPUProbe: f.gpuProbe, Version: Version, RunsDir: f.runsDir, CommonDir: evals.CommonDir(f.corpus), Corpus: corpus,
-		Override: f.override, Out: out})
+		Override: f.override, Temperature: f.temperature, Out: out})
 	if err != nil {
 		return reportStoppedRun(f, tasks, res, err, out)
 	}
