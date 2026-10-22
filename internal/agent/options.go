@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"github.com/tara-vision/taracode/internal/llm"
 	"io"
 
 	"github.com/tara-vision/taracode/internal/policy"
@@ -49,6 +50,9 @@ type Options struct {
 	PermissionDecider func(inv policy.Invocation, args map[string]any) ui.PermissionChoice
 	// ToolObserver sees every tool call the gate decided.
 	ToolObserver func(ev ToolEvent)
+	// ReplyObserver sees every reply that becomes an assistant message, in order: its text, its reasoning,
+	// its tool calls and its usage; a nudged empty reply is not seen; nil observes nothing.
+	ReplyObserver func(reply llm.Result)
 	// ToolMiddleware wraps every tool execution.
 	ToolMiddleware tools.Middleware
 }

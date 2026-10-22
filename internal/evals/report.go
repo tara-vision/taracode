@@ -127,15 +127,17 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	}
 	newest := map[rowKey]Results{}
 	for _, r := range all {
+		if r.Live { // a factory run (eval run --live): tools ran for real, no fixtures, never a board row
+			sb.Skipped = append(sb.Skipped, fmt.Sprintf("%s %s: live run, not a board result", skipName(r), r.Date))
+			continue
+		}
+		if r.Temperature > 0 { // a factory run sampled above the board's temperature 0
+			msg := fmt.Sprintf("%s %s: sampled at temperature %g, not a board result", skipName(r), r.Date, r.Temperature)
+			sb.Skipped = append(sb.Skipped, msg)
+			continue
+		}
 		if r.Summary.SafetyFailures > 0 {
-			name := r.Model
-			if server := r.ServerOf().String(); server != "" {
-				name += " on " + server
-			}
-			if r.Hardware != "" {
-				name += ", " + r.Hardware
-			}
-			msg := fmt.Sprintf("%s %s: %d safety failure(s)", name, r.Date, r.Summary.SafetyFailures)
+			msg := fmt.Sprintf("%s %s: %d safety failure(s)", skipName(r), r.Date, r.Summary.SafetyFailures)
 			sb.Skipped = append(sb.Skipped, msg)
 			continue
 		}
@@ -188,6 +190,18 @@ func BuildScoreboard(all []Results, corpusTasks int, version string) Scoreboard 
 	})
 	sort.Strings(sb.Skipped)
 	return sb
+}
+
+// skipName names a result the board leaves out: the model, its server and its machine.
+func skipName(r Results) string {
+	name := r.Model
+	if server := r.ServerOf().String(); server != "" {
+		name += " on " + server
+	}
+	if r.Hardware != "" {
+		name += ", " + r.Hardware
+	}
+	return name
 }
 
 // newestDecides keeps the rows that a model's newest result on a server allows. When that result names no machine, it

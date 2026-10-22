@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,9 @@ import (
 type RunOptions struct {
 	Host, Model, Vendor, APIKey string
 	Think                       string           // auto|off|on|low|medium|high
+	Temperature                 float64          // a factory run's sampling temperature; 0 = the board's explicit 0
+	Live                        bool             // every tool runs for real, no replay; the result says live, never ranks
+	Sandbox                     string           // the sandbox a live run names (TARACODE_EVALS_LIVE_SANDBOX); "" refuses
 	Runs                        int              // repetitions per task, default 1
 	Timeout                     time.Duration    // per task wall clock, default 10 minutes
 	HostLabel                   string           // the results' host field, default "lab"; never a host name
@@ -27,6 +31,7 @@ type RunOptions struct {
 	GPUProbe                    string           // a command that prints the GPU memory in use in MiB; "" = none
 	Version                     string           // the taracode version written to the results
 	RunsDir                     string           // where transcripts go; "" = none
+	JSONTranscripts             bool             // also write each run's transcript as JSON next to the text log
 	CommonDir                   string           // the corpus-wide fixture store (evals/common); "" = none
 	Corpus                      *Corpus          // the corpus version and hash written to the results; nil = none
 	Override                    string           // the published override file the model ran from; "" = none
@@ -45,6 +50,7 @@ type runScope struct {
 	env        []string
 	common     *Store // the common store, loaded once per run; nil without one
 	transcript sync.Once
+	private    []*regexp.Regexp // the private names a JSON transcript is scanned for; nil = no scan
 }
 
 const (
@@ -93,8 +99,16 @@ func withDefaults(o RunOptions) RunOptions {
 // tasks finished before the cancellation and ctx's error.
 func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 	opts = withDefaults(opts)
+	opts.Sandbox = strings.TrimSpace(opts.Sandbox)
+	if err := checkLiveRun(tasks, opts); err != nil {
+		return Results{}, err
+	}
 	home, _ := os.UserHomeDir()
 	opts.scope = &runScope{home: home, env: os.Environ()}
+	if opts.JSONTranscripts {
+		names, _ := privateNames() // the lab names a transcript must not carry (ruling P3-R35); best effort
+		opts.scope.private = privateNamePatterns(names)
+	}
 	if opts.CommonDir != "" {
 		common, err := LoadFixtures(opts.CommonDir)
 		if err != nil {
@@ -102,7 +116,7 @@ func Run(ctx context.Context, tasks []Task, opts RunOptions) (Results, error) {
 		}
 		opts.scope.common = common
 	}
-	restore, err := isolateEnv()
+	restore, err := isolateEnv(opts.Live)
 	if err != nil {
 		return Results{}, fmt.Errorf("isolating the environment: %w", err)
 	}
@@ -195,7 +209,8 @@ func checkEngine(ctx context.Context, opts RunOptions) (Results, error) {
 	return Results{Taracode: opts.Version,
 		Server: &ServerInfo{Name: "taraengine", Version: version.Version, Runtime: version.Runtime.Build},
 		Model:  opts.Model, Tier: tier, Default: isDefault,
-		Think: opts.Think, Temperature: 0, // every request sends temperature 0 (TemperatureZero)
+		Think: opts.Think, Temperature: opts.Temperature,
+		Live: opts.Live, Sandbox: opts.Sandbox, // 0 is sent explicitly (TemperatureZero); a factory run samples above it
 		Date: opts.Now().Format("2006-01-02"), Runs: opts.Runs, Host: opts.HostLabel, Hardware: opts.Hardware,
 		Override: opts.Override}, nil
 }

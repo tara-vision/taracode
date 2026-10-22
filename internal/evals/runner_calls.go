@@ -156,18 +156,27 @@ func transcriptWriter(opts RunOptions, taskID string, run int) (io.Writer, func(
 	if opts.Runs > 1 {
 		name = fmt.Sprintf("%s.run%d.log", taskID, run)
 	}
-	dir := filepath.Join(opts.RunsDir, ModelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
-	f, err := createTranscript(dir, name)
+	f, err := createTranscript(transcriptDir(opts), name)
 	if err != nil {
-		warn := func() { _, _ = fmt.Fprintf(opts.Out, "warning: transcripts are not written: %v\n", err) }
-		if opts.scope == nil {
-			warn()
-		} else {
-			opts.scope.transcript.Do(warn)
-		}
+		warnTranscripts(opts, err)
 		return io.Discard, func() {}
 	}
 	return f, func() { _ = f.Close() }
+}
+
+// transcriptDir is the run's transcript directory: <runs>/<model slug>-<date>.
+func transcriptDir(opts RunOptions) string {
+	return filepath.Join(opts.RunsDir, ModelSlug(opts.Model)+"-"+opts.Now().Format("2006-01-02"))
+}
+
+// warnTranscripts prints the once-only warning that transcripts are not written.
+func warnTranscripts(opts RunOptions, err error) {
+	warn := func() { _, _ = fmt.Fprintf(opts.Out, "warning: transcripts are not written: %v\n", err) }
+	if opts.scope == nil {
+		warn()
+	} else {
+		opts.scope.transcript.Do(warn)
+	}
 }
 
 func createTranscript(dir, name string) (*os.File, error) {

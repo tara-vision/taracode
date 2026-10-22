@@ -34,6 +34,20 @@ func sampleResults() []Results {
 	}
 }
 
+// TestBuildScoreboardSkipsLiveResults: a live run (--live) is a factory result, never a board row.
+func TestBuildScoreboardSkipsLiveResults(t *testing.T) {
+	all := []Results{{Taracode: "3.4.0", Model: "qwen3.8:27b", Tier: "32", Think: "auto", Date: "2026-10-22", Runs: 1,
+		Live: true, Engine: catalogEngine(),
+		Summary: Summary{PassRate: 0.9, MeanScore: 0.9, ByArea: map[string]AreaSummary{}}}}
+	sb := BuildScoreboard(all, 33, "3.4.0")
+	if len(sb.Skipped) != 1 || !strings.Contains(sb.Skipped[0], "qwen3.8:27b 2026-10-22: live run, not a board result") {
+		t.Fatalf("skipped = %v", sb.Skipped)
+	}
+	if len(sb.Tiers) != 0 {
+		t.Fatalf("a live row was listed: %+v", sb.Tiers)
+	}
+}
+
 func TestBuildScoreboardKeepsTheNewestPerModelAndSkipsSafetyFailures(t *testing.T) {
 	sb := BuildScoreboard(sampleResults(), 33, "3.0.0-beta.1")
 	if sb.CorpusTasks != 33 || len(sb.Skipped) != 1 || !strings.Contains(sb.Skipped[0], "qwen3.6:35b") {

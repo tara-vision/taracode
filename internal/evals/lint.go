@@ -55,7 +55,7 @@ func Lint(root string) (int, []string) {
 }
 
 // lintFixtures checks whether a task needs a fixtures index at all: recorded and authored tasks
-// need a non-empty one, a files task should have none. lintFixtureContents then scans whatever is
+// need a non-empty one, a files or live task should have none. lintFixtureContents then scans whatever is
 // actually on disk either way, since a files task's fixtures directory, if one exists at all, needs
 // the same content checks.
 func lintFixtures(t Task) []string {
@@ -64,10 +64,11 @@ func lintFixtures(t Task) []string {
 		return []string{t.ID + ": fixtures: " + err.Error()}
 	}
 	var problems []string
+	fixtureless := t.Provenance == ProvenanceFiles || t.Provenance == ProvenanceLive
 	switch {
-	case t.Provenance == ProvenanceFiles && store.Len() > 0:
-		problems = append(problems, t.ID+": a files task has fixtures; set provenance")
-	case t.Provenance != ProvenanceFiles && store.Len() == 0:
+	case fixtureless && store.Len() > 0:
+		problems = append(problems, t.ID+": a "+t.Provenance+" task has fixtures; set provenance")
+	case !fixtureless && store.Len() == 0:
 		problems = append(problems, t.ID+": fixtures index is empty (run make record, or author them)")
 	}
 	return append(problems, lintFixtureContents(t, store)...)

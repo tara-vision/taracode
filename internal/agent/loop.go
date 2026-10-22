@@ -361,6 +361,9 @@ func toolCallsOf(res *llm.Result) (calls []*ToolCall, display string) {
 // appendAssistantTurn stores the assistant reply in the conversation and in the session. Only
 // cleaned text is stored, so reasoning never survives the turn that produced it.
 func (a *Assistant) appendAssistantTurn(res *llm.Result, calls []*ToolCall, reply string) {
+	if a.replyObserver != nil { // observed here, not at completion: a nudged empty reply is never appended
+		a.replyObserver(*res)
+	}
 	message := openai.ChatCompletionMessage{Role: openai.ChatMessageRoleAssistant, Content: reply}
 	if len(res.ToolCalls) > 0 {
 		message.ToolCalls = res.ToolCalls

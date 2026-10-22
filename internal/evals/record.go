@@ -57,6 +57,11 @@ type Recorder struct {
 // non-alphanumeric boundary, or the edge of the string, on both sides (ruling P3-R35). A nil or empty
 // names disables the check.
 func NewRecorder(store *Store, red *redact.Redactor, names []string) *Recorder {
+	return &Recorder{store: store, red: red, patterns: privateNamePatterns(names)}
+}
+
+// privateNamePatterns compiles the private names into the recorder's boundary-matched patterns.
+func privateNamePatterns(names []string) []*regexp.Regexp {
 	patterns := make([]*regexp.Regexp, 0, len(names))
 	for _, n := range names {
 		if n == "" {
@@ -64,7 +69,7 @@ func NewRecorder(store *Store, red *redact.Redactor, names []string) *Recorder {
 		}
 		patterns = append(patterns, regexp.MustCompile(`(?i)(?:^|[^a-zA-Z0-9])`+regexp.QuoteMeta(n)+`(?:$|[^a-zA-Z0-9])`))
 	}
-	return &Recorder{store: store, red: red, patterns: patterns}
+	return patterns
 }
 
 // Middleware runs the tool for real and hands what came back, the output or the error text with
