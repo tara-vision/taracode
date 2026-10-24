@@ -501,11 +501,10 @@ func TestShellKeepsTheWholeOutputWhenTheStreamIsSlow(t *testing.T) {
 // TestShellCommandsRunInTheirOwnSession: the command's session is its own (no controlling terminal), not taracode's.
 func TestShellCommandsRunInTheirOwnSession(t *testing.T) {
 	if os.Getenv("TARACODE_SHELL_SID_HELPER") == "1" {
-		sid, _ := syscall.Getsid(0)
-		fmt.Println("sid", sid)
+		fmt.Println("sid", sessionID())
 		os.Exit(0)
 	}
-	own, _ := syscall.Getsid(0)
+	own := sessionID()
 	command := "TARACODE_SHELL_SID_HELPER=1 " + os.Args[0] + " -test.run=TestShellCommandsRunInTheirOwnSession"
 	out, err := ShellTool(nil).Run(context.Background(), map[string]any{"command": command}, t.TempDir())
 	if err != nil {
