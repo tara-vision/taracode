@@ -24,7 +24,7 @@ import (
 const (
 	defaultShellTimeout = 60 * time.Second
 	maxShellTimeout     = 600 * time.Second
-	groupSettle         = 200 * time.Millisecond // a detaching or just-finished job leaves the group on its own
+	groupSettle         = 500 * time.Millisecond // a detaching or just-finished job leaves the group on its own
 	groupGrace          = 2 * time.Second        // from TERM to KILL, and the wait after a KILL
 )
 
