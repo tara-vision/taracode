@@ -105,7 +105,7 @@ func cdTarget(words, dirs []string) (string, bool) {
 
 // wrapperPrograms run the command that follows them; the file writer is looked up after them.
 var wrapperPrograms = map[string]bool{
-	"sudo": true, "doas": true, "env": true, "command": true, "exec": true, "nohup": true, "time": true,
+	"sudo": true, "doas": true, "env": true, "command": true, "exec": true, "nohup": true, "setsid": true, "time": true,
 	"nice": true, "timeout": true, "builtin": true, "xargs": true, "parallel": true, "stdbuf": true,
 	"ionice": true, "watch": true, "busybox": true,
 }
