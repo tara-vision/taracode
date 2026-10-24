@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-24
+
 ### Added
 - `eval run --live` executes every tool for real against the host's environment for a factory run: no replay, no
   fixtures, only tasks of `provenance: live`, the result marked `live` and never a board row (`eval report` refuses a
@@ -19,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message with the reply's reasoning (aligned to the appended messages), the tool calls and results, the calls
   block, the score, the usage, the row's flags, and the lab's private names it carries, if any.
 - The agent offers a `ReplyObserver` hook and `Conversation()` and `ToolDefinitions()` copies for headless callers.
+
+### Changed
+- A `shell` call is a bounded action. The command runs in a session of its own: a process group to itself and no
+  controlling terminal, so a prompt (a sudo password, an ssh host key) fails at once with its own message instead
+  of waiting for input the model cannot give. Its timeout interrupts that whole group, as Ctrl-C would (terraform
+  stops at a safe point), and ends what remains after a 30 s grace, TERM then KILL, so a hung child no longer lives
+  on. A background child that keeps the output open can no longer hold the call past sh's exit for more than a
+  few seconds. Whatever the command leaves running when it returns is ended the same way, with a line in the
+  result saying so: `cmd &` and `nohup cmd &` no longer survive the call. On Linux a process meant to outlive it
+  needs `setsid CMD >FILE 2>&1 </dev/null &`, which the result tells the model where the system has setsid. Ctrl-C,
+  a hangup or a TERM during a command interrupts the command first and taracode quits once it has stopped; a second
+  signal moves to TERM, a third to KILL (Ctrl-\ goes straight to KILL); a signal taracode started with ignored (a
+  nohup, a background job) stays ignored. The policy classifier knows `setsid` as a wrapper, like `nohup`, and
+  names a background job for what it is.
 
 ## [3.4.0] - 2026-10-21
 
@@ -936,7 +952,8 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.4.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/tara-vision/taracode/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/tara-vision/taracode/compare/v3.3.3...v3.4.0
 [3.3.3]: https://github.com/tara-vision/taracode/compare/v3.3.2...v3.3.3
 

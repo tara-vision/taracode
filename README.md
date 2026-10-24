@@ -342,6 +342,11 @@ tool's name. Investigate mode exposes the tools that have a read form (thirteen,
 | `web_search` | query, max | always (external, disabled by `offline`) | never |
 | `web_fetch` | url | always (external, disabled by `offline`) | never |
 
+A `shell` call is a bounded action: the command runs in a session of its own, without a terminal (a prompt
+fails at once), its timeout interrupts the whole group and ends what remains after a grace, and whatever the
+command leaves running when it returns is ended, which the result says. `cmd &` does not survive the call; on
+Linux a process meant to outlive it needs `setsid CMD >FILE 2>&1 </dev/null &`.
+
 MCP tools join the same registry. With `mcp.trust_read_only_hint: true` (the default) a server that
 annotates a tool `readOnlyHint: true` gives it a read form; every other MCP tool is a mutation and
 stays hidden in investigate mode. Set it to `false` for a server you do not trust and list the tools
