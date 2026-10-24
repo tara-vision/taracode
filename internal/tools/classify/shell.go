@@ -130,7 +130,7 @@ func shellSegment(seg shellwords.Segment, vars lineVars) (Result, []string) {
 		}
 	}
 	if seg.Background {
-		return mutate(first(command), "background jobs (&) outlive the command timeout"), nil
+		return mutate(first(command), "a background job (&) runs unobserved alongside the command"), nil
 	}
 	if header {
 		if res, found := vars.expansionCheck(seg.Words, seg.Redirects, nil); found {
@@ -260,11 +260,21 @@ func programName(word string) (string, bool) {
 	return word, false
 }
 
+// setsidFlag reports whether word is one of setsid's own flags (-c, -f, -w, combined or long) or the -- that
+// ends them: the words before the command setsid runs.
+func setsidFlag(word string) bool {
+	if word == "--" || in(word, "--ctty", "--fork", "--wait") {
+		return true
+	}
+	return len(word) > 1 && word[0] == '-' && word[1] != '-' && strings.Trim(word[1:], "cfw") == ""
+}
+
 // shellWrapper classifies the programs that run another command in a modified context: sudo, su and
-// doas escalate privileges outright; command, exec, nohup, time, nice, builtin, timeout and env run
-// whatever follows them, so the wrapped command is classified by recursing into shellProgram (command
-// -v and -V are the exception: they describe a command without running it). ok is false when prog is
-// not one of these wrapper programs, so shellProgram falls through to its own switch.
+// doas escalate privileges outright; command, exec, nohup, setsid, time, nice, builtin, timeout and env
+// run whatever follows them, so the wrapped command is classified by recursing into shellProgram
+// (command -v and -V are the exception: they describe a command without running it; setsid's -c, -f and
+// -w flags only shape the session). ok is false when prog is not one of these wrapper programs, so
+// shellProgram falls through to its own switch.
 func shellWrapper(prog string, rest []string) (Result, bool) {
 	switch prog {
 	case "sudo", "su", "doas":
@@ -281,6 +291,14 @@ func shellWrapper(prog string, rest []string) (Result, bool) {
 		}
 		return shellProgram(rest), true
 	case "exec", "nohup", "time", "nice", "builtin":
+		if len(rest) == 0 {
+			return read(prog), true
+		}
+		return shellProgram(rest), true
+	case "setsid":
+		for len(rest) > 0 && setsidFlag(rest[0]) {
+			rest = rest[1:]
+		}
 		if len(rest) == 0 {
 			return read(prog), true
 		}
