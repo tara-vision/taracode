@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
@@ -650,8 +651,14 @@ func TestShellActsOnASignalThatArrivesWhileDraining(t *testing.T) {
 	var quitWith []os.Signal
 	defer func(previous func(os.Signal)) { quit = previous }(quit)
 	quit = func(sig os.Signal) { quitWith = append(quitWith, sig) }
+	caught := make(chan os.Signal, 1) // a signal that lands after the call has returned must not kill the binary
+	signal.Notify(caught, os.Interrupt)
+	defer signal.Stop(caught)
 	go func() {
-		time.Sleep(600 * time.Millisecond) // sh is long gone: the call is inside the drain
+		for i := 0; i < 100 && !processExists(t, "sleep 20.6"); i++ {
+			time.Sleep(20 * time.Millisecond) // the detached holder exists: sh is gone and the call drains
+		}
+		time.Sleep(300 * time.Millisecond)
 		_ = syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}()
 	command := "perl -MPOSIX -e 'POSIX::setsid() or die; exec @ARGV' -- sleep 20.6 & echo detached"

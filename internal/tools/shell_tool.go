@@ -265,7 +265,7 @@ func (c *shellCall) tail(stream io.Writer) {
 			_ = f.Flush()
 		}
 	}()
-	sent := 0
+	sent, atLineStart := 0, true
 	for {
 		c.mu.Lock()
 		for c.buf.Len() == sent && !c.eof && !c.cut {
@@ -275,7 +275,11 @@ func (c *shellCall) tail(stream io.Writer) {
 		done, cut := c.eof && len(chunk) == 0, c.cut
 		c.mu.Unlock()
 		if cut {
-			_, _ = io.WriteString(stream, "\n[live output cut; the result has it all]\n")
+			note := "[live output cut; the result has it all]\n"
+			if !atLineStart {
+				note = "\n" + note
+			}
+			_, _ = io.WriteString(stream, note)
 			return
 		}
 		if done {
@@ -283,6 +287,7 @@ func (c *shellCall) tail(stream io.Writer) {
 		}
 		_, _ = stream.Write(chunk)
 		sent += len(chunk)
+		atLineStart = len(chunk) == 0 || chunk[len(chunk)-1] == '\n'
 	}
 }
 
