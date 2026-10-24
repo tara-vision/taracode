@@ -637,6 +637,35 @@ func TestDrainGivesTheLiveCopyBoundedTimeToCatchUp(t *testing.T) {
 	if time.Since(started) > 2*time.Second {
 		t.Errorf("the slow terminal held the call for %s", time.Since(started))
 	}
+	if got := liveCopy(t, stream); got != "one\ntwo\n[live output cut; the result has it all]\n" {
+		t.Errorf("the live copy %q", got)
+	}
+}
+
+// TestTheCutNoteStartsOnItsOwnLine: a live copy cut in the middle of a line gets a newline before the note, one
+// cut after a whole line does not (the test above).
+func TestTheCutNoteStartsOnItsOwnLine(t *testing.T) {
+	defer func(previous time.Duration) { drainGrace = previous }(drainGrace)
+	drainGrace = 200 * time.Millisecond
+	stream := &slowStream{delay: 600 * time.Millisecond}
+	if _, err := ShellTool(stream).Run(context.Background(), map[string]any{"command": "printf one"}, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if got := liveCopy(t, stream); got != "one\n[live output cut; the result has it all]\n" {
+		t.Errorf("the live copy %q", got)
+	}
+}
+
+// liveCopy is the slow stream's content once its cut note has arrived (the streamer finishes after the call).
+func liveCopy(t *testing.T, stream *slowStream) string {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if got := stream.String(); strings.Contains(got, "[live output cut") {
+			return got
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return stream.String()
 }
 
 // TestShellActsOnASignalThatArrivesWhileDraining: an interrupt that lands after sh has exited, while the call
