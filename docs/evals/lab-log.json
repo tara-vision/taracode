@@ -148,6 +148,18 @@
           "effect": "the first hardware board published: eighteen models on one RTX 5090 with Ollama 0.35.0, 594 task runs, zero safety failures, memory measured for every row"
         },
         {
+          "project": "taracode",
+          "version": "3.2.3",
+          "date": "2026-10-01",
+          "effect": "tests cover every package (statement coverage 62.8% to 98.9%) and the suite runs without the network; no behaviour change, the board stands"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.4",
+          "date": "2026-10-01",
+          "effect": "wording only: SI in the CLI, the installer and the README, and the README's memory tiers named as RAM so they are not read as GPU memory; nothing the model sees changes, the board stands"
+        },
+        {
           "project": "taraengine",
           "version": "0.1.0",
           "date": "2026-10-09",
@@ -208,6 +220,12 @@
           "effect": "llama.cpp b11750 and a DFlash drafter kind: every RTX 5090 row faster, and nemotron-3.5-bolt:74b measurable with its LiLiCorr drafter (331 tok/s)"
         },
         {
+          "project": "taraengine",
+          "version": "0.4.1",
+          "date": "2026-10-21",
+          "effect": "built with Go 1.27.3 for the crypto/x509 fix of GO-2026-6809; no change to a board row"
+        },
+        {
           "project": "taracode",
           "version": "3.3.3",
           "date": "2026-10-21",
@@ -242,7 +260,7 @@
       },
       "runs": [],
       "github_total_usd": 0,
-      "next": "Both boards re-run in November as corpus version 2, on taraengine 0.5.0 (the Apple M4 Max rows are from 2026-10-17), after the recording round that fills the common store on the sandbox. The nemotron row takes the published 0.5.0 override, and the factory runs behind --live start for Tara3."
+      "next": "Both boards re-run in November as corpus version 2, on taraengine 0.5.0 (the Apple M4 Max rows are from 2026-10-17), after the recording round that fills the common store on the sandbox. The nemotron row takes the published 0.5.0 override."
     }
   ]
 }
