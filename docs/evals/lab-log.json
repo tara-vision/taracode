@@ -206,6 +206,30 @@
           "version": "0.4.0",
           "date": "2026-10-20",
           "effect": "llama.cpp b11750 and a DFlash drafter kind: every RTX 5090 row faster, and nemotron-3.5-bolt:74b measurable with its LiLiCorr drafter (331 tok/s)"
+        },
+        {
+          "project": "taracode",
+          "version": "3.3.3",
+          "date": "2026-10-21",
+          "effect": "the published scoreboard holds two machines: the RTX 5090 board is the 2026-10-20 run of the eight catalog models re-measured and the nemotron row from outside the catalog through the published override, the M4 Max board the 2026-10-17 run of the eight catalog models, 561 task runs on the current rows, zero safety failures"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.5.0",
+          "date": "2026-10-21",
+          "effect": "the engine names a model's origin (catalog, registry, import) and the source of an import, which the boards rank a row by, and serves one slot at a time, so the memory a row shows is the single-user figure"
+        },
+        {
+          "project": "taracode",
+          "version": "3.4.0",
+          "date": "2026-10-21",
+          "effect": "board v2: the replay runs a read-only probe of the run directory for real (REAL), a corpus-wide fixture store answers the tool-version probes and the chains a model types (COMMON), the corpus is sealed so a run records its version and a report refuses results of two versions, the tier tables rank by the board rule, and a row from outside the catalog is marked or left unranked"
+        },
+        {
+          "project": "taracode",
+          "version": "3.5.0",
+          "date": "2026-10-24",
+          "effect": "a shell call is a bounded action - its own process group, no controlling terminal, its timeout ends the whole group, whatever the command leaves running is ended with it - and eval run grows the data-factory flags --live, --temperature and --transcripts-json, whose results are recorded but never a board row"
         }
       ],
       "sponsors": {
@@ -218,7 +242,7 @@
       },
       "runs": [],
       "github_total_usd": 0,
-      "next": "Both boards refreshed in November on taraengine 0.4.0 or later (the Apple M4 Max rows are from 2026-10-17), after a recording round for the environment probes that the replay punishes (pwd, ls, which terraform). A mark on the boards for rows from outside the catalog."
+      "next": "Both boards re-run in November as corpus version 2, on taraengine 0.5.0 (the Apple M4 Max rows are from 2026-10-17), after the recording round that fills the common store on the sandbox. The nemotron row takes the published 0.5.0 override, and the factory runs behind --live start for Tara3."
     }
   ]
 }
