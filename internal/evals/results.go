@@ -353,8 +353,8 @@ func publicText(s string, opts RunOptions, t Task) string {
 }
 
 // transcriptText scrubs a text for a JSON transcript: the same, except that address literals stay,
-// since a cluster address in a call is training data (the lab's own addresses are private names the
-// transcript is scanned for instead).
+// since a cluster address in a call is part of the trajectory (the lab's own addresses are private
+// names the transcript is scanned for instead).
 func transcriptText(s string, opts RunOptions, t Task) string {
 	return scrubText(s, opts, t, false)
 }
