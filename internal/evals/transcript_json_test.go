@@ -306,8 +306,8 @@ func TestJSONTranscriptScrubsSignaturesAndMisses(t *testing.T) {
 	}
 }
 
-// TestJSONTranscriptKeepsAddressesInToolCalls: a cluster address in a call is training data, not a
-// secret; the engine's own address is still scrubbed.
+// TestJSONTranscriptKeepsAddressesInToolCalls: a cluster address in a call is part of the
+// trajectory, not a secret; the engine's own address is still scrubbed.
 func TestJSONTranscriptKeepsAddressesInToolCalls(t *testing.T) {
 	root, _ := corpusWithTriage(t)
 	store, _ := LoadFixtures(filepath.Join(root, "crashloop-oomkilled"))

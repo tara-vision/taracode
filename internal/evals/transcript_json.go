@@ -15,7 +15,7 @@ import (
 
 // Transcript is one run of one task as JSON (--transcripts-json): the tools the model was offered,
 // every message as sent with the reply's reasoning, the calls the gate decided, the score and the
-// usage. Keys are snake_case; the data factory of Tara3 reads them. Texts are scrubbed like the
+// usage. Keys are snake_case, for a consumer outside the boards. Texts are scrubbed like the
 // results (publicText, ruling P3-R45).
 type Transcript struct {
 	Task        string              `json:"task"`

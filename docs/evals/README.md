@@ -274,8 +274,8 @@ catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotr
 
 ### Factory runs
 
-The runner also serves the data factory of Tara3, Tara Vision's own model: a run that produces training trajectories
-instead of a board row. Three flags of `eval run` exist for it, and none of them belongs in a board run:
+The runner also does factory runs: a run that records trajectories instead of a board row. Three flags of `eval run`
+exist for it, and none of them belongs in a board run:
 
 - `--live` executes every tool for real against the host's own environment (its kubeconfig and home, which a replay
   run isolates away): a kind cluster, a Docker daemon, a terraform working directory, with no replay and no fixtures.
@@ -293,8 +293,8 @@ instead of a board row. Three flags of `eval run` exist for it, and none of them
   `<task>.run<N>.json` with `--runs`; nothing without a runs directory): the tools the model was offered, every
   message as sent with the reply's reasoning, the tool calls and their results, the calls block with each call's
   signature and decision, the score, the usage, and the row's `truncated`, `timed_out` and `error`. Texts are
-  scrubbed like the results' notes except that address literals stay (a cluster address in a call is training
-  data); `reasoning_aligned` says every assistant message got its reply's reasoning, and `private_names` lists any
+  scrubbed like the results' notes except that address literals stay (a cluster address in a call is part of the
+  trajectory); `reasoning_aligned` says every assistant message got its reply's reasoning, and `private_names` lists any
   private name of the lab the transcript carries (the recorder's list), so a consumer drops it. Keys are snake_case.
 
 A task written for the factory carries `provenance: live`: it has no fixtures (`eval lint` expects none; a workdir
