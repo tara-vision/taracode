@@ -5,8 +5,8 @@
       "month": "2026-10",
       "published": "2026-10-31",
       "hours": 32,
-      "board_runs": 5,
-      "task_runs": 1683,
+      "board_runs": 4,
+      "task_runs": 1089,
       "models": [
         {
           "model": "nemotron-3.5-bolt:74b",
@@ -247,7 +247,7 @@
           "project": "taracode",
           "version": "3.5.0",
           "date": "2026-10-24",
-          "effect": "a shell call is a bounded action - its own process group, no controlling terminal, its timeout ends the whole group, whatever the command leaves running is ended with it - and eval run grows the data-factory flags --live, --temperature and --transcripts-json, whose results are recorded but never a board row"
+          "effect": "a shell call is a bounded action - its own process group, no controlling terminal, its timeout ends the whole group, whatever the command leaves running is ended with it - and eval run gains --live, --temperature and --transcripts-json for runs outside the boards, whose results never rank"
         }
       ],
       "sponsors": {
