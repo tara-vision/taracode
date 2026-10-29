@@ -471,8 +471,9 @@ from the `main` branch of this repository.
 `sponsors.json` has `schema`, `sponsors` and `runs`; `lab-log.json` has `schema` and `entries`. A sponsor has `id`,
 `name`, `tier`, `url`, `since`, `until` and `marks`. A paid run has `id`, `model`, `month`, `by` and `url`. A lab-log
 entry has `month`, `published`, `hours`, `board_runs`, `task_runs`, `models`, `releases`, `sponsors`, `runs`,
-`github_total_usd` and `next`. There is no amount per sponsor: the only amount in either file is an entry's
-`github_total_usd`, the GitHub Sponsors money of its month.
+`github_total_usd` and `next`. `board_runs` and `task_runs` count the published runs of the boards on taraengine in
+the entry's month, and `models` lists the changes those runs made to the boards. There is no amount per sponsor: the
+only amount in either file is an entry's `github_total_usd`, the GitHub Sponsors money of its month.
 
 Any money from a company whose products appear on the boards is disclosed, whatever the amount: it is listed with its
 marks (at the Supporter tier too), marked on its rows and named in the lab log, so a board company cannot sponsor
