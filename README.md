@@ -48,34 +48,34 @@
 ## The scoreboard
 
 Which local model can actually do DevOps work? Nine models on an NVIDIA RTX 5090 (32 GB), the eight of
-taraengine's catalog and NVIDIA's Nemotron 3.5 Bolt through a published catalog override, measured on 2026-10-20
-with taracode 3.3.2 on taraengine 0.4.0; the eight catalog models on an Apple M4 Max (48 GB), measured on
-2026-10-17 with taracode 3.3.1 on taraengine 0.3.1; 33 offline tasks each, on taracode's own loop. The top five
-on each:
+taraengine's catalog and NVIDIA's Nemotron 3.5 Bolt through a published catalog override, and the eight catalog
+models on an Apple M4 Max (48 GB), measured on 2026-10-31 on corpus version 2 with taracode 3.5.0 on taraengine
+0.5.0; 33 offline tasks each, on taracode's own loop. The top five on each:
 
 On one NVIDIA RTX 5090 (32 GB):
 
-| #   | Model           | Pass rate | Tokens/s | VRAM     |
-|-----|-----------------|-----------|----------|----------|
-| 1   | `qwen3.8:27b`   | 97%       | 128      | 23.2 GiB |
-| 2   | `qwen3.6:27b`   | 94%       | 129      | 23.3 GiB |
-| 3   | `gemma4:31b`    | 88%       | 169      | 24.8 GiB |
-| 4   | `glm-4.7-flash` | 88%       | 218      | 18.4 GiB |
-| 5   | `qwen3.6:35b`   | 82%       | 397      | 22.4 GiB |
+| #   | Model                                          | Pass rate | Tokens/s | VRAM     |
+|-----|------------------------------------------------|-----------|----------|----------|
+| 1   | `qwen3.8:27b`                                  | 100%      | 129      | 21.4 GiB |
+| 2   | `glm-4.7-flash`                                | 97%       | 222      | 18.4 GiB |
+| 3   | `qwen3.6:35b`                                  | 94%       | 395      | 21.7 GiB |
+| 4   | `nemotron-3.5-bolt:74b` (outside the catalog)  | 91%       | 328      | 24.9 GiB |
+| 5   | `gemma4:31b`                                   | 91%       | 175      | 22.4 GiB |
 
 On one Apple M4 Max (48 GB):
 
 | #   | Model           | Pass rate | Tokens/s | Memory     |
 |-----|-----------------|-----------|----------|------------|
-| 1   | `qwen3.8:27b`   | 94%       | 39       | ~23.4 GiB  |
-| 2   | `glm-4.7-flash` | 91%       | 48       | ~17.8 GiB  |
-| 3   | `gemma4:31b`    | 88%       | 42       | ~23.9 GiB  |
-| 4   | `gemma4:12b`    | 88%       | 83       | ~9.6 GiB   |
-| 5   | `qwen3.6:35b`   | 88%       | 124      | ~22.0 GiB  |
+| 1   | `glm-4.7-flash` | 94%       | 49       | ~17.8 GiB  |
+| 2   | `gemma4:31b`    | 91%       | 42       | ~21.6 GiB  |
+| 3   | `qwen3.8:27b`   | 91%       | 39       | ~22.0 GiB  |
+| 4   | `gemma4:12b`    | 88%       | 87       | ~8.6 GiB   |
+| 5   | `qwen3.6:35b`   | 85%       | 124      | ~21.2 GiB  |
 
 One run per row, ranked by pass rate, then mean score, then tokens per second. A model moves by up to four tasks between two runs
-of the same board (one task is about 3 points of pass rate; the 2026-10-01 board was run twice to measure
-it), so rows within four tasks of each other are a tie: all five on each machine. VRAM is the GPU memory the
+of the same board (one task is about 3 points of pass rate; the RTX 5090 board was run twice on 2026-10-31 to
+measure it: up to four tasks, 2.4 on average), so rows within four tasks of each other are a tie: all five on each
+machine. VRAM is the GPU memory the
 engine measured with the model loaded at a 32,768-token context window, on the 32 GB card with nothing else
 on it; on the Mac the engine estimates the memory (~). The full boards, with speed, memory and the method,
 are on [code.tara.vision/evals](https://code.tara.vision/evals) and in
@@ -453,8 +453,9 @@ the MCP server and the skills pack are next, as 3.4 and 3.5. See [ROADMAP.md](RO
 
 taracode ships an offline eval suite: 33 DevOps tasks (Kubernetes triage, Helm, Terraform plan review,
 Docker and image security, secrets, cloud read-only investigation and refusal cases) whose tool calls
-replay from fixtures recorded against real clusters, charts, Terraform directories and images. No task
-runs anything for real, and every task drives the same loop, policy gate and redaction a session
+replay from fixtures recorded against real clusters, charts, Terraform directories and images. Nothing
+runs for real but the file tools and a short list of read-only probes (`ls`, `cat` and the like) inside a
+throwaway run directory, and every task drives the same loop, policy gate and redaction a session
 uses. Each task scores 0.4 for the tool calls it expected, 0.5 for the answer and 0.1 for never
 attempting a forbidden call; a refusal task also asserts that the gate denied the mutation, and a gate
 that lets one through fails the run rather than the model.

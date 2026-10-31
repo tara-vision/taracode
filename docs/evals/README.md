@@ -83,18 +83,22 @@ Notes on the corpus v2 run (2026-10-31, taracode 3.5.0, taraengine 0.5.0):
   against 27), glm-4.7-flash three up, gemma4:26b two up, qwen3.8:27b (33 of 33) and gemma4:31b one up, gemma4:12b one
   down, qwen3.6:27b two down, gemma4:e4b three down; 254 of the 297 task runs passed against 245. The ranking moved
   inside the tie; the corpus fixes show in the misses and in the two re-recorded tasks.
-- Misses: 490 calls the corpus could not answer on the 2026-10-20 board against 367 now (444 on the second run). By
-  distinct call: paths named by the absolute run directory 27 to none; tool-presence and version probes 20 to 7
-  (three for aws, which the sandbox does not have, and four chains with a redirect, a pipe or a part that is not a
-  probe); probes of the run directory 49 to 33 (19 leave the run directory, 13 use a pipe or a redirect, one quotes
-  its echo); the tasks' own tool calls in shapes the corpus never recorded 348 to 304. The first run executed 36
-  probes for real and answered 6 calls from the common store.
+- Misses: 490 calls the corpus could not answer on the 2026-10-20 board against 367 on the first run and 444 on the
+  second. By distinct call, first run (second run in brackets): paths named by the absolute run directory 27 to none
+  (none); tool-presence and version probes 20 to 7 (7), on the first run three for aws, which the sandbox does not
+  have, and four chains with a redirect, a pipe or a part that is not a probe (two and five on the second); probes
+  of the run directory 49 to 33 (39), on the
+  first run 19 that leave the run directory, 13 with a pipe or a redirect and one that quotes its echo; the tasks' own
+  tool calls in shapes the corpus never recorded 348 to 304 (347). The kinds the fixes target fell on both runs; the
+  last kind moves run to run (on the 31 tasks the corpus did not touch: 323 on 2026-10-20, 293 and 331 now), so its
+  first-run fall is the run, not the corpus. The first run executed 36 probes for real and answered 6 calls from the
+  common store.
 - The two re-recorded tasks: container-crashed passed for 3 of the 9 models on 2026-10-20 and for 7 and 8 on the two
   runs; refuse-operate-protected-path for 5, then 8 and 9.
 - Memory, four slots against one, measured by the engine: every row at or below its 2026-10-20 figure. Bolt 24.9
   against 28.3 GiB (3,558 MiB less), gemma4:31b 2,406 MiB less, qwen3.8:27b and qwen3.6:27b 1,794, gemma4:12b 966,
-  qwen3.6:35b 754, gemma4:26b 604, gemma4:e4b 34; glm-4.7-flash is level at 18,850 MiB, the one row without
-  per-sequence state for the other three slots to have held.
+  qwen3.6:35b 754, gemma4:26b 604, gemma4:e4b 34; glm-4.7-flash is level at 18,850 MiB: one slot frees the
+  per-sequence state the other three held, and this row shows none to free.
 - Tokens per second within 4% of the 2026-10-20 rows on the same llama.cpp b11750: gemma4:31b 175 against 169,
   gemma4:12b 329 against 318, gemma4:26b 431 against 425, glm-4.7-flash 222 against 218, Bolt 328 against 331,
   qwen3.6:35b 395 against 397.
@@ -105,7 +109,10 @@ Notes on the corpus v2 run (2026-10-31, taracode 3.5.0, taraengine 0.5.0):
   Mac moved from llama.cpp b11514 and four slots to b11750 and one slot with this board. 215 of the 264 task runs
   passed against 221; missed calls 331 against 371. Tokens per second within 3% of the 2026-10-17 rows on six rows,
   gemma4:12b 87 against 83 and gemma4:e4b 124 against 113. Memory on the Mac is the engine's estimate (marked ~), and
-  the estimate fell with one slot on seven rows (gemma4:31b by 2.3 GiB, qwen3.6:27b by 1.8 GiB), glm-4.7-flash level.
+  the estimate fell with one slot on seven rows (gemma4:31b by 2,347 MiB, qwen3.6:27b by 1,818 MiB), glm-4.7-flash
+  level. The board ran to its end after one restart: an error in the lab's run script ran qwen3.8:27b in place of
+  the next two models, then once more before it was stopped. Those runs are not published; the row is the clean
+  run's 30, against 32 and 31 for the two void runs that finished, the Mac's only repeat.
 - The nine RTX 5090 files of 2026-10-20 and the eight M4 Max files of 2026-10-17 left `docs/evals/results/` with this
   board (a board holds one corpus version) and stay readable at the `v3.5.0` tag.
 
@@ -500,13 +507,14 @@ taracode eval run --model glm-4.7-flash --hardware "your GPU or machine"
 taracode eval report --out-dir /tmp/board
 ```
 
-Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. No task runs
-anything for real and nothing leaves the machine. On taraengine with an NVIDIA GPU the engine measures the
-memory itself. On a Mac, where it estimates, add `--gpu-probe "<command>"` with a command that prints the
-GPU memory in use in MiB (the one command a run then executes is your own), or leave it out: the board then
-shows the engine's estimate, marked with `~`. A model takes two to fifteen minutes on a current GPU. Share the
-results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
-`docs/evals/results/` wait until the report can hold one model on several machines.
+Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. Nothing runs for
+real but the file tools and the read-only probes inside each task's throwaway run directory, and nothing leaves the
+machine. On taraengine with an NVIDIA GPU the engine measures the memory itself. On a Mac, where it estimates, add
+`--gpu-probe "<command>"` with a command that prints the GPU memory in use in MiB (the one command a run then
+executes outside its run directory is your own), or leave it out: the board then shows the engine's estimate, marked
+with `~`. A model takes two to fifteen minutes on a current GPU. Share the results file and your hardware label in
+GitHub Discussions (Show and tell); pull requests against `docs/evals/results/` wait until the report can hold one
+model on several machines.
 
 ## Lab log and sponsors
 
