@@ -1,2 +1,2 @@
-CONTAINER ID   IMAGE          COMMAND                   CREATED                  STATUS                              PORTS     NAMES
-ab71cfb28991   busybox:1.37   "sh -c 'echo \"starti…"   Less than a second ago   Exited (3) Less than a second ago             crashed-app
+CONTAINER ID   IMAGE          COMMAND                   CREATED        STATUS                              PORTS     NAMES
+23052cbffe06   busybox:1.37   "sh -c 'echo \"starti…"   1 second ago   Exited (3) Less than a second ago             crashed-app
