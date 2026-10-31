@@ -1,0 +1,3 @@
+error: invalid argument "ersion" for "-v, --v" flag: strconv.ParseInt: parsing "ersion": invalid syntax
+See 'kubectl --help' for usage.
+[exit status 1]

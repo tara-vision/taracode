@@ -7,6 +7,18 @@ fixtures:
       file: docker-logs-crashed-app-64da04.txt
     - signature: docker logs crashed-app --tail 50
       file: docker-logs-crashed-app-tail-50-623961.txt
+    - signature: kubectl get pod
+      file: kubectl-get-pod-a4480a.txt
+    - signature: kubectl get node
+      file: kubectl-get-node-a47d9a.txt
+    - signature: kubectl cluster-info
+      file: kubectl-cluster-info-ffcd17.txt
+    - signature: kubectl config current-context
+      file: kubectl-config-current-context-5f8e00.txt
+    - signature: kubectl get all
+      file: kubectl-get-all-6f7fa2.txt
+    - signature: kubectl version
+      file: kubectl-version-489fbb.txt
     - signature: docker inspect crashed-app
       file: docker-inspect-crashed-app-eeceb9.txt
     - signature: docker ps -a --filter name=crashed-app

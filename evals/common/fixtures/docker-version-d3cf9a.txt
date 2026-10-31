@@ -1,0 +1,6 @@
+unknown shorthand flag: 'e' in -ersion
+
+Usage:  docker [OPTIONS] COMMAND [ARG...]
+
+Run 'docker --help' for more information
+[exit status 125]

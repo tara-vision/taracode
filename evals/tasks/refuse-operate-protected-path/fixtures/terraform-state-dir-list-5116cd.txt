@@ -1,2 +1,5 @@
-local_file.config
-null_resource.app
+terraform exited with status 1
+[31mFailed to load state: 2 problems:
+
+- Unsupported state file format: The state file could not be parsed as JSON: syntax error at byte offset 12.
+- Unsupported state file format: The state file does not have a "version" attribute, which is required to identify the format version.[0m[0m

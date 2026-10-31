@@ -1,0 +1,95 @@
+fixtures:
+    - signature: shell which terraform
+      file: shell-which-terraform-05e7bc.txt
+    - signature: shell command -v terraform
+      file: shell-command-v-terraform-1fdccb.txt
+    - signature: shell type terraform
+      file: shell-type-terraform-983c85.txt
+    - signature: terraform version dir=.
+      file: terraform-version-dir-d51b3f.txt
+    - signature: terraform --version dir=.
+      file: terraform-version-dir-3e9596.txt
+    - signature: terraform -version dir=.
+      file: terraform-version-dir-8e39bb.txt
+    - signature: shell which kubectl
+      file: shell-which-kubectl-f50935.txt
+    - signature: shell command -v kubectl
+      file: shell-command-v-kubectl-8e4cab.txt
+    - signature: shell type kubectl
+      file: shell-type-kubectl-577eb9.txt
+    - signature: kubectl --version
+      file: kubectl-version-075aab.txt
+    - signature: kubectl -version
+      file: kubectl-version-35073b.txt
+    - signature: shell which helm
+      file: shell-which-helm-d72bc5.txt
+    - signature: shell command -v helm
+      file: shell-command-v-helm-3f5d2c.txt
+    - signature: shell type helm
+      file: shell-type-helm-b614e2.txt
+    - signature: helm version
+      file: helm-version-251856.txt
+    - signature: helm --version
+      file: helm-version-e494a4.txt
+    - signature: helm -version
+      file: helm-version-963e33.txt
+    - signature: shell which docker
+      file: shell-which-docker-0e71e0.txt
+    - signature: shell command -v docker
+      file: shell-command-v-docker-3e6c03.txt
+    - signature: shell type docker
+      file: shell-type-docker-7d9a27.txt
+    - signature: docker version
+      file: docker-version-a4664d.txt
+    - signature: docker --version
+      file: docker-version-f078a8.txt
+    - signature: docker -version
+      file: docker-version-d3cf9a.txt
+    - signature: shell which git
+      file: shell-which-git-a8a9a5.txt
+    - signature: shell command -v git
+      file: shell-command-v-git-42b953.txt
+    - signature: shell type git
+      file: shell-type-git-b3bfb9.txt
+    - signature: git version
+      file: git-version-783916.txt
+    - signature: git --version
+      file: git-version-e85ae0.txt
+    - signature: git -version
+      file: git-version-87a000.txt
+    - signature: shell which python3
+      file: shell-which-python3-30553f.txt
+    - signature: shell command -v python3
+      file: shell-command-v-python3-db4021.txt
+    - signature: shell python3 --version
+      file: shell-python3-version-5b3391.txt
+    - signature: shell which jq
+      file: shell-which-jq-e5471f.txt
+    - signature: shell command -v jq
+      file: shell-command-v-jq-b57ee1.txt
+    - signature: shell jq --version
+      file: shell-jq-version-849731.txt
+    - signature: shell which curl
+      file: shell-which-curl-60c308.txt
+    - signature: shell command -v curl
+      file: shell-command-v-curl-32e3b9.txt
+    - signature: shell curl --version
+      file: shell-curl-version-df04df.txt
+    - signature: kubectl version --client
+      file: kubectl-version-client-3960c4.txt
+    - signature: kubectl version --client=true
+      file: kubectl-version-client-true-7ef424.txt
+    - signature: kubectl version --short
+      file: kubectl-version-short-1cdc05.txt
+    - signature: helm version --short
+      file: helm-version-short-867509.txt
+    - signature: terraform version dir=. -json
+      file: terraform-version-dir-json-65e328.txt
+    - signature: shell which terraform && terraform version
+      file: shell-which-terraform-terraform-version-5a912a.txt
+    - signature: shell which kubectl && kubectl version --client
+      file: shell-which-kubectl-kubectl-version-client-e3ae2a.txt
+    - signature: shell which helm && helm version
+      file: shell-which-helm-helm-version-01f24b.txt
+    - signature: shell which docker && docker --version
+      file: shell-which-docker-docker-version-fb2009.txt
