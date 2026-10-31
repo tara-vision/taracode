@@ -250,8 +250,11 @@ recorded. A line the stores lack that joins commands with `&&` or `;` is answere
 probe or a line the common store holds, never from a task's own store, whose fixtures the scorer and the terraform
 plan gate read on whole lines; any other chain is a miss, keyed by the whole line. `calls.yaml` lists the calls
 that fill the store, shell lines only; `make record-common` records them on the sandbox with the recorder the
-tasks use and pulls the store back. A tool the sandbox lacks records its real "not found" answer, which is the
-truthful one. The transcript marks a call the common store answered `COMMON`.
+tasks use and pulls the store back. The store holds the tools the sandbox has: a tool it lacks is not recorded, so
+a probe for it stays a miss (the sandbox has no aws, gcloud or az; the cloud tasks' worlds have aws and gcloud), and for
+kubectl it holds the client's answers only (`kubectl version --client`), since a cluster belongs to a task's world
+and the store answers every task, inside chains too. Two corpus tests hold both rules on the committed store. The
+transcript marks a call the common store answered `COMMON`.
 
 ### Rows from outside the catalog
 

@@ -1,0 +1,3 @@
+error: unknown flag: --version
+See 'kubectl --help' for usage.
+[exit status 1]

@@ -1,0 +1,6 @@
+/usr/local/bin/terraform
+Terraform v1.16.4
+on linux_amd64
+
+Your version of Terraform is out of date! The latest version
+is 1.17.1. You can update by downloading from https://developer.hashicorp.com/terraform/install

@@ -1,0 +1,1 @@
+helm is /usr/local/bin/helm

@@ -1,0 +1,2 @@
+Error: invalid argument "ersion" for "-v, --v" flag: strconv.ParseInt: parsing "ersion": invalid syntax
+[exit status 1]

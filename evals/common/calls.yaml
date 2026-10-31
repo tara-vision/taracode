@@ -1,6 +1,8 @@
 # The calls that fill the common fixture store (docs/evals/README.md, "Common fixtures"): the probes a model types to
 # learn which tools the sandbox has and which versions, recorded once per corpus version with `make record-common`.
-# Shell lines only; a tool the sandbox lacks records its real "not found" answer, which is the truthful one.
+# Shell lines only, for the tools the sandbox has (spec 1b): a tool it lacks is not recorded, so a probe for it stays
+# a miss (the sandbox has no aws, gcloud or az; the cloud tasks' worlds have aws and gcloud). For kubectl the store
+# holds the client's answers only, since a cluster belongs to a task's world and this store answers every task.
 calls:
   - {tool: shell, args: {command: "which terraform"}}
   - {tool: shell, args: {command: "command -v terraform"}}
@@ -11,7 +13,6 @@ calls:
   - {tool: shell, args: {command: "which kubectl"}}
   - {tool: shell, args: {command: "command -v kubectl"}}
   - {tool: shell, args: {command: "type kubectl"}}
-  - {tool: shell, args: {command: "kubectl version"}}
   - {tool: shell, args: {command: "kubectl --version"}}
   - {tool: shell, args: {command: "kubectl -version"}}
   - {tool: shell, args: {command: "which helm"}}
@@ -26,24 +27,6 @@ calls:
   - {tool: shell, args: {command: "docker version"}}
   - {tool: shell, args: {command: "docker --version"}}
   - {tool: shell, args: {command: "docker -version"}}
-  - {tool: shell, args: {command: "which aws"}}
-  - {tool: shell, args: {command: "command -v aws"}}
-  - {tool: shell, args: {command: "type aws"}}
-  - {tool: shell, args: {command: "aws version"}}
-  - {tool: shell, args: {command: "aws --version"}}
-  - {tool: shell, args: {command: "aws -version"}}
-  - {tool: shell, args: {command: "which gcloud"}}
-  - {tool: shell, args: {command: "command -v gcloud"}}
-  - {tool: shell, args: {command: "type gcloud"}}
-  - {tool: shell, args: {command: "gcloud version"}}
-  - {tool: shell, args: {command: "gcloud --version"}}
-  - {tool: shell, args: {command: "gcloud -version"}}
-  - {tool: shell, args: {command: "which az"}}
-  - {tool: shell, args: {command: "command -v az"}}
-  - {tool: shell, args: {command: "type az"}}
-  - {tool: shell, args: {command: "az version"}}
-  - {tool: shell, args: {command: "az --version"}}
-  - {tool: shell, args: {command: "az -version"}}
   - {tool: shell, args: {command: "which git"}}
   - {tool: shell, args: {command: "command -v git"}}
   - {tool: shell, args: {command: "type git"}}
@@ -64,9 +47,7 @@ calls:
   - {tool: shell, args: {command: "kubectl version --short"}}
   - {tool: shell, args: {command: "helm version --short"}}
   - {tool: shell, args: {command: "terraform version -json"}}
-  - {tool: shell, args: {command: "aws --version 2>&1"}}
   - {tool: shell, args: {command: "which terraform && terraform version"}}
   - {tool: shell, args: {command: "which kubectl && kubectl version --client"}}
   - {tool: shell, args: {command: "which helm && helm version"}}
   - {tool: shell, args: {command: "which docker && docker --version"}}
-  - {tool: shell, args: {command: "which aws && aws --version"}}
