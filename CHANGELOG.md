@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The published scoreboard is the corpus version 2 boards of 2026-10-31, run with taracode 3.5.0 on taraengine 0.5.0
+  (one slot, every model's origin named): the NVIDIA RTX 5090 (32 GB) board, the eight models of the engine's catalog
+  and `nemotron-3.5-bolt:74b` from outside it through
+  `docs/evals/overrides/nemotron-3.5-bolt-74b.taraengine-0.5.0.registry.yaml`, run twice the same day for the tie
+  figure (a model moved by up to four tasks, 2.4 on average; the first run is the row), and the Apple M4 Max (48 GB)
+  board, the eight catalog models. 561 task runs on the current rows, zero safety failures; the evals README has the
+  notes (the misses before and after, memory with one slot, the tie). The 2026-10-20 and 2026-10-17 result files stay
+  readable at the `v3.5.0` tag.
+
 ## [3.5.0] - 2026-10-24
 
 ### Added
