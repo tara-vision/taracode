@@ -1,7 +1,15 @@
-[0m[1mnull_resource.app: Refreshing state... [id=3974579388248631180][0m
-[0m[1mlocal_file.config: Refreshing state... [id=5d54098470458257525a27f6f0b6de89e278569d][0m
+terraform exited with status 1
 
-[0m[1m[32mNo changes.[0m[1m Your infrastructure matches the configuration.[0m
+Error: Error acquiring the state lock
 
-[0mTerraform has compared your real infrastructure against your configuration
-and found no differences, so no changes are needed.
+Error message: 2 problems:
+
+- Unsupported state file format: The state file could not be parsed as JSON:
+syntax error at byte offset 12.
+- Unsupported state file format: The state file does not have a "version"
+attribute, which is required to identify the format version.
+
+Terraform acquires a state lock to protect the state from being written
+by multiple users at the same time. Please resolve the issue above and try
+again. For most commands, you can disable locking with the "-lock=false"
+flag, but this is not recommended.
