@@ -23,45 +23,98 @@ docker, three secrets, three cloud and six refusal. Twenty-five are `provenance:
 sandbox, four are `provenance: authored` (the three cloud tasks, plus one refusal task that needs no live
 scenario), and four are `provenance: files` (workdir-only, no fixtures at all). Pass rates, speed and
 memory per model are published in [scoreboard.md](scoreboard.md). The current boards were measured on two
-machines: the NVIDIA RTX 5090 (32 GB) board on 2026-10-20 with taracode 3.3.2 on taraengine 0.4.0, the eight
-models of the engine's catalog and one from outside it (`nemotron-3.5-bolt:74b`, through a published override,
-see "Rows from outside the catalog" below), and the Apple M4 Max (48 GB) board on 2026-10-17 with taracode 3.3.1
-on taraengine 0.3.1, the eight catalog models; one run each, 561 task runs on the current rows and zero safety
+machines on 2026-10-31, on the sealed corpus version 2 with taracode 3.5.0 on taraengine 0.5.0 (one slot): the
+NVIDIA RTX 5090 (32 GB) board, the eight models of the engine's catalog and one from outside it
+(`nemotron-3.5-bolt:74b`, through a published override, see "Rows from outside the catalog" below), and the Apple
+M4 Max (48 GB) board, the eight catalog models; one run each, 561 task runs on the current rows and zero safety
 failures (no `must_deny` call was ever allowed by the gate). The top five on each:
 
 On the RTX 5090:
 
 | # | Model | Pass rate | Tokens/s | VRAM |
 |---|---|---|---|---|
-| 1 | `qwen3.8:27b` | 97% | 128 | 23.2 GiB |
-| 2 | `qwen3.6:27b` | 94% | 129 | 23.3 GiB |
-| 3 | `gemma4:31b` | 88% | 169 | 24.8 GiB |
-| 4 | `glm-4.7-flash` | 88% | 218 | 18.4 GiB |
-| 5 | `qwen3.6:35b` | 82% | 397 | 22.4 GiB |
+| 1 | `qwen3.8:27b` | 100% | 129 | 21.4 GiB |
+| 2 | `glm-4.7-flash` | 97% | 222 | 18.4 GiB |
+| 3 | `qwen3.6:35b` | 94% | 395 | 21.7 GiB |
+| 4 | `nemotron-3.5-bolt:74b` (outside the catalog) | 91% | 328 | 24.9 GiB |
+| 5 | `gemma4:31b` | 91% | 175 | 22.4 GiB |
 
 On the M4 Max:
 
 | # | Model | Pass rate | Tokens/s | Memory |
 |---|---|---|---|---|
-| 1 | `qwen3.8:27b` | 94% | 39 | ~23.4 GiB |
-| 2 | `glm-4.7-flash` | 91% | 48 | ~17.8 GiB |
-| 3 | `gemma4:31b` | 88% | 42 | ~23.9 GiB |
-| 4 | `gemma4:12b` | 88% | 83 | ~9.6 GiB |
-| 5 | `qwen3.6:35b` | 88% | 124 | ~22.0 GiB |
+| 1 | `glm-4.7-flash` | 94% | 49 | ~17.8 GiB |
+| 2 | `gemma4:31b` | 91% | 42 | ~21.6 GiB |
+| 3 | `qwen3.8:27b` | 91% | 39 | ~22.0 GiB |
+| 4 | `gemma4:12b` | 88% | 87 | ~8.6 GiB |
+| 5 | `qwen3.6:35b` | 85% | 124 | ~21.2 GiB |
 
-`eval report --check-defaults` ranks each tier by mean score on each machine and printed six lines. A
-"differs" line is evidence for the maintainer, not a change by itself: a catalog default does not move without
-a decision.
+`eval report --check-defaults` ranks each tier on each machine as the boards do (pass rate, then mean score, then
+tokens per second; a row from outside the catalog is never a default) and printed six lines. A "differs" line is
+evidence for the maintainer, not a change by itself: a catalog default does not move without a decision.
 
 - `16 on <machine>: default gemma4:12b, top scorer gemma4:12b`, on both machines: the default is the tier's only
   catalog model.
-- `32 on <machine>: default glm-4.7-flash, top scorer qwen3.8:27b (differs)`, on both machines: qwen3.8:27b
-  passed 32 of 33 against 29 on the RTX 5090 (2026-10-20) and 31 against 30 on the M4 Max, inside the tie rule on
-  both; the default answers a task in 5 s against 17 s on the RTX 5090 (28 s against 72 s on the Mac) and loads
-  lighter.
-- `48 on <machine>: default gemma4:31b, top scorer gemma4:31b`, on both machines: the default since taraengine
-  0.3.1 leads its tier on the RTX 5090 (29 against 27 tasks for qwen3.6:35b and 26 for the row from outside the
-  catalog) and on the Mac, on mean score (0.93 against 0.91, 29 tasks each).
+- `32 on NVIDIA RTX 5090 (32 GB): default glm-4.7-flash, top scorer qwen3.8:27b (differs)`: qwen3.8:27b passed 33 of
+  33 against 32, inside the tie rule; the default answers a task in 5 s against 19 s and loads lighter (18.4 against
+  21.4 GiB). On the M4 Max the default tops its tier (31 against 30 for qwen3.8:27b).
+- `48 on NVIDIA RTX 5090 (32 GB): default gemma4:31b, top scorer qwen3.6:35b (differs)`: qwen3.6:35b passed 31
+  against 30 for the default (and 30 for the row from outside the catalog), inside the tie rule. On the M4 Max the
+  default leads its tier (30 against 28).
+
+Notes on the corpus v2 run (2026-10-31, taracode 3.5.0, taraengine 0.5.0):
+
+- Both machines re-measured on the sealed corpus version 2 (`evals/VERSION`). The replay runs the read-only probes of
+  the run directory for real (`REAL` in a transcript), answers the tool-presence and version probes from the common
+  store (`COMMON`: only the tools the sandbox has, so a probe for aws, gcloud or az stays a miss, and kubectl's client
+  answers only), and keys a path inside the run directory relative to it. Two tasks were re-recorded:
+  container-crashed against a machine without a cluster (kubectl answers that the connection was refused) and
+  refuse-operate-protected-path on the corrupt `terraform.tfstate` its prompt names. taraengine 0.5.0 serves one slot,
+  so a row's memory is the single-user figure, and names each model's origin: the eight catalog models, and
+  `nemotron-3.5-bolt:74b` from the published `overrides/nemotron-3.5-bolt-74b.taraengine-0.5.0.registry.yaml` (the
+  0.5.0 catalog verbatim plus the same entry).
+- The RTX 5090 board was run twice the same day, at 09:05 and 09:44 UTC, with zero safety failures in both; the first
+  run is the published row, the second exists for the tie figure only and is not in `docs/evals/results/`. Between
+  the two, a model moved by up to four tasks (gemma4:26b 26 then 22, gemma4:e4b 17 then 21) and by 2.4 on average:
+  Bolt 3, qwen3.8:27b 2, glm-4.7-flash 1, gemma4:31b 1, gemma4:12b 3, qwen3.6:27b 1, qwen3.6:35b 3, gemma4:26b 4,
+  gemma4:e4b 4; 40 of the 297 task outcomes flipped. The tie rule stands: rows within four tasks of each other are a
+  tie.
+- Against the 2026-10-20 rows every change sits at or inside the tie: Bolt and qwen3.6:35b four up (30 against 26, 31
+  against 27), glm-4.7-flash three up, gemma4:26b two up, qwen3.8:27b (33 of 33) and gemma4:31b one up, gemma4:12b one
+  down, qwen3.6:27b two down, gemma4:e4b three down; 254 of the 297 task runs passed against 245. The ranking moved
+  inside the tie; the corpus fixes show in the misses and in the two re-recorded tasks.
+- Misses: 490 calls the corpus could not answer on the 2026-10-20 board against 367 on the first run and 444 on the
+  second. By distinct call, first run (second run in brackets): paths named by the absolute run directory 27 to none
+  (none); tool-presence and version probes 20 to 7 (7), on the first run three for aws, which the sandbox does not
+  have, and four chains with a redirect, a pipe or a part that is not a probe (two and five on the second); probes
+  of the run directory 49 to 33 (39), on the
+  first run 19 that leave the run directory, 13 with a pipe or a redirect and one that quotes its echo; the tasks' own
+  tool calls in shapes the corpus never recorded 348 to 304 (347). The kinds the fixes target fell on both runs; the
+  last kind moves run to run (on the 31 tasks the corpus did not touch: 323 on 2026-10-20, 293 and 331 now), so its
+  first-run fall is the run, not the corpus. The first run executed 36 probes for real and answered 6 calls from the
+  common store.
+- The two re-recorded tasks: container-crashed passed for 3 of the 9 models on 2026-10-20 and for 7 and 8 on the two
+  runs; refuse-operate-protected-path for 5, then 8 and 9.
+- Memory, four slots against one, measured by the engine: every row at or below its 2026-10-20 figure. Bolt 24.9
+  against 28.3 GiB (3,558 MiB less), gemma4:31b 2,406 MiB less, qwen3.8:27b and qwen3.6:27b 1,794, gemma4:12b 966,
+  qwen3.6:35b 754, gemma4:26b 604, gemma4:e4b 34; glm-4.7-flash is level at 18,850 MiB: one slot frees the
+  per-sequence state the other three held, and this row shows none to free.
+- Tokens per second within 4% of the 2026-10-20 rows on the same llama.cpp b11750: gemma4:31b 175 against 169,
+  gemma4:12b 329 against 318, gemma4:26b 431 against 425, glm-4.7-flash 222 against 218, Bolt 328 against 331,
+  qwen3.6:35b 395 against 397.
+- The Apple M4 Max board, once, the machine idle: every row within one task of its 2026-10-17 row but gemma4:e4b,
+  which passed 14 against 20, six tasks apart and beyond the tie. Its eight losses are its own path (no expected tool
+  called, or an answer without the key terms; imagepull-bad-tag answered in one iteration without a tool), with zero
+  to two misses each, on tasks whose fixtures corpus v2 did not touch, and two refusals it failed before pass now; the
+  Mac moved from llama.cpp b11514 and four slots to b11750 and one slot with this board. 215 of the 264 task runs
+  passed against 221; missed calls 331 against 371. Tokens per second within 3% of the 2026-10-17 rows on six rows,
+  gemma4:12b 87 against 83 and gemma4:e4b 124 against 113. Memory on the Mac is the engine's estimate (marked ~), and
+  the estimate fell with one slot on seven rows (gemma4:31b by 2,347 MiB, qwen3.6:27b by 1,818 MiB), glm-4.7-flash
+  level. The board ran to its end after one restart: an error in the lab's run script ran qwen3.8:27b in place of
+  the next two models, then once more before it was stopped. Those runs are not published; the row is the clean
+  run's 30, against 32 and 31 for the two void runs that finished, the Mac's only repeat.
+- The nine RTX 5090 files of 2026-10-20 and the eight M4 Max files of 2026-10-17 left `docs/evals/results/` with this
+  board (a board holds one corpus version) and stay readable at the `v3.5.0` tag.
 
 Notes on the 3.3.2 run (2026-10-20, taracode 3.3.2, taraengine 0.4.0):
 
@@ -272,7 +325,7 @@ listed under its board unranked, with the reason: a registry row without a publi
 block lacks its file, a result from an engine before taraengine 0.5.0 (which named no origin), or a result without an
 engine block; such a row leaves the tier tables too and is never a tier default. The first row from outside the
 catalog is `nemotron-3.5-bolt:74b` on the RTX 5090 board, from `overrides/nemotron-3.5-bolt-74b.registry.yaml`
-(taraengine 0.4.0); the corpus version 2 boards, once run, take theirs from its twin
+(taraengine 0.4.0); the corpus version 2 boards (2026-10-31) ran it from its twin
 `overrides/nemotron-3.5-bolt-74b.taraengine-0.5.0.registry.yaml` (the 0.5.0 catalog verbatim plus the same entry).
 
 ### Factory runs
@@ -454,13 +507,14 @@ taracode eval run --model glm-4.7-flash --hardware "your GPU or machine"
 taracode eval report --out-dir /tmp/board
 ```
 
-Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. No task runs
-anything for real and nothing leaves the machine. On taraengine with an NVIDIA GPU the engine measures the
-memory itself. On a Mac, where it estimates, add `--gpu-probe "<command>"` with a command that prints the
-GPU memory in use in MiB (the one command a run then executes is your own), or leave it out: the board then
-shows the engine's estimate, marked with `~`. A model takes two to fifteen minutes on a current GPU. Share the
-results file and your hardware label in GitHub Discussions (Show and tell); pull requests against
-`docs/evals/results/` wait until the report can hold one model on several machines.
+Run it from a clone of the repository: the tasks and their fixtures live in `evals/tasks/`. Nothing runs for
+real but the file tools and the read-only probes inside each task's throwaway run directory, and nothing leaves the
+machine. On taraengine with an NVIDIA GPU the engine measures the memory itself. On a Mac, where it estimates, add
+`--gpu-probe "<command>"` with a command that prints the GPU memory in use in MiB (the one command a run then
+executes outside its run directory is your own), or leave it out: the board then shows the engine's estimate, marked
+with `~`. A model takes two to fifteen minutes on a current GPU. Share the results file and your hardware label in
+GitHub Discussions (Show and tell); pull requests against `docs/evals/results/` wait until the report can hold one
+model on several machines.
 
 ## Lab log and sponsors
 
