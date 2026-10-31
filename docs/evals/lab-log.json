@@ -1,1 +1,266 @@
-{"schema": 1, "entries": []}
+{
+  "schema": 1,
+  "entries": [
+    {
+      "month": "2026-10",
+      "published": "2026-10-31",
+      "hours": 32,
+      "board_runs": 4,
+      "task_runs": 1089,
+      "models": [
+        {
+          "model": "nemotron-3.5-bolt:74b",
+          "change": "added",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:e4b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:12b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:26b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:31b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "glm-4.7-flash",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.6:27b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.6:35b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.8:27b",
+          "change": "added",
+          "machines": [
+            "Apple M4 Max (48 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:e4b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:12b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:26b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "gemma4:31b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "glm-4.7-flash",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.6:27b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.6:35b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        },
+        {
+          "model": "qwen3.8:27b",
+          "change": "re-measured",
+          "machines": [
+            "NVIDIA RTX 5090 (32 GB)"
+          ]
+        }
+      ],
+      "releases": [
+        {
+          "project": "taracode",
+          "version": "3.2.0",
+          "date": "2026-10-01",
+          "effect": "the hardware board: one ranked board per machine, pass rate first, then mean score, then tokens per second, with the engine's own timings recorded in every run"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.1",
+          "date": "2026-10-01",
+          "effect": "the memory column is measured on the GPU during the run (--gpu-probe) and printed in GiB; a figure that is only the engine's estimate is marked as one"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.2",
+          "date": "2026-10-01",
+          "effect": "the first hardware board published: eighteen models on one RTX 5090 with Ollama 0.35.0, 594 task runs, zero safety failures, memory measured for every row"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.3",
+          "date": "2026-10-01",
+          "effect": "tests cover every package (statement coverage 62.8% to 98.9%) and the suite runs without the network; no behaviour change, the board stands"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.4",
+          "date": "2026-10-01",
+          "effect": "wording only: SI in the CLI, the installer and the README, and the README's memory tiers named as RAM so they are not read as GPU memory; nothing the model sees changes, the board stands"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.1.0",
+          "date": "2026-10-09",
+          "effect": "the engine the boards run on: one pinned llama.cpp build (b11514), a catalog of eight models pinned to their files, measured GPU memory per loaded model on NVIDIA"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.5",
+          "date": "2026-10-12",
+          "effect": "the policy gate reads a protected path inside a string, kubectl or helm inside a shell string and each command of a chain, found in the board runs and the reviews that followed; the safety count rests on that gate"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.2.0",
+          "date": "2026-10-13",
+          "effect": "a q8_0 KV cache for five catalog models, which holds less memory at the same window; the memory figure is recorded whoever started the model"
+        },
+        {
+          "project": "taracode",
+          "version": "3.2.6",
+          "date": "2026-10-13",
+          "effect": "a destroy by another spelling (terraform apply -destroy, tofu, terragrunt) is refused by the built-in deny pattern, found in the board runs; a stronger gate behind the safety count"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.3.0",
+          "date": "2026-10-14",
+          "effect": "the engine as a service, the Homebrew cask for Apple Silicon Macs and install.sh; the engine says it is starting from the moment it binds, which a board run waits for"
+        },
+        {
+          "project": "taracode",
+          "version": "3.3.0",
+          "date": "2026-10-15",
+          "effect": "evals run on taraengine: the window set when the model loads, thinking through the engine's switch, tokens per second from the engine's timings, one row per model and engine"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.3.1",
+          "date": "2026-10-15",
+          "effect": "the 48 GB tier's default is gemma4:31b, from the board of 2026-10-15 (30 against 25 of 33 tasks for qwen3.6:35b); the default flag on the 48 GB rows follows"
+        },
+        {
+          "project": "taracode",
+          "version": "3.3.1",
+          "date": "2026-10-17",
+          "effect": "the published scoreboard is the taraengine board: the result files of the 3.1 and 3.2 boards (Ollama, 2026-09-25 and 2026-10-01) left docs/evals/results/ and stay readable at the v3.2.6 tag; the mean score is rounded once"
+        },
+        {
+          "project": "taracode",
+          "version": "3.3.2",
+          "date": "2026-10-17",
+          "effect": "the board holds the same model on several machines: a run names its machine, each machine keeps its own row and default flag, the tier tables gain a Machine column"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.4.0",
+          "date": "2026-10-20",
+          "effect": "llama.cpp b11750 and a DFlash drafter kind: every RTX 5090 row faster, and nemotron-3.5-bolt:74b measurable with its LiLiCorr drafter (331 tok/s)"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.4.1",
+          "date": "2026-10-21",
+          "effect": "built with Go 1.27.3 for the crypto/x509 fix of GO-2026-6809; no change to a board row"
+        },
+        {
+          "project": "taracode",
+          "version": "3.3.3",
+          "date": "2026-10-21",
+          "effect": "the published scoreboard holds two machines: the RTX 5090 board is the 2026-10-20 run of the eight catalog models re-measured and the nemotron row from outside the catalog through the published override, the M4 Max board the 2026-10-17 run of the eight catalog models, 561 task runs on the current rows, zero safety failures"
+        },
+        {
+          "project": "taraengine",
+          "version": "0.5.0",
+          "date": "2026-10-21",
+          "effect": "the engine names a model's origin (catalog, registry, import) and the source of an import, which the boards rank a row by, and serves one slot at a time, so the memory a row shows is the single-user figure"
+        },
+        {
+          "project": "taracode",
+          "version": "3.4.0",
+          "date": "2026-10-21",
+          "effect": "board v2: the replay runs a read-only probe of the run directory for real (REAL), a corpus-wide fixture store answers the tool-version probes and the chains a model types (COMMON), the corpus is sealed so a run records its version and a report refuses results of two versions, the tier tables rank by the board rule, and a row from outside the catalog is marked or left unranked"
+        },
+        {
+          "project": "taracode",
+          "version": "3.5.0",
+          "date": "2026-10-24",
+          "effect": "a shell call is a bounded action - its own process group, no controlling terminal, its timeout ends the whole group, whatever the command leaves running is ended with it - and eval run gains --live, --temperature and --transcripts-json for runs outside the boards, whose results never rank"
+        }
+      ],
+      "sponsors": {
+        "title": [],
+        "lab-sponsor": [],
+        "team": [],
+        "lab-hours": [],
+        "supporter": [],
+        "supporters": 0
+      },
+      "runs": [],
+      "github_total_usd": 0,
+      "next": "Both boards re-run in November as corpus version 2, on taraengine 0.5.0 (the Apple M4 Max rows are from 2026-10-17), after the recording round that fills the common store on the sandbox. The nemotron row takes the published 0.5.0 override."
+    }
+  ]
+}
