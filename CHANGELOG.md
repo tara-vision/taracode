@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notes (the misses before and after, memory with one slot, the tie). The 2026-10-20 and 2026-10-17 result files stay
   readable at the `v3.5.0` tag.
 
+### Security
+- Built with Go 1.27.4, whose `net/http` fixes the HTTP/1 server crash of GO-2026-6859 (a `MaxBytesReader` header
+  race).
+
 ## [3.5.0] - 2026-10-24
 
 ### Added
