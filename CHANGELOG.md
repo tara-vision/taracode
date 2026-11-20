@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-11-20
+
 ### Changed
 - The published scoreboard is the corpus version 2 boards of 2026-10-31, run with taracode 3.5.0 on taraengine 0.5.0
   (one slot, every model's origin named): the NVIDIA RTX 5090 (32 GB) board, the eight models of the engine's catalog
@@ -966,7 +968,8 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.5.0...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.5.1...HEAD
+[3.5.1]: https://github.com/tara-vision/taracode/compare/v3.5.0...v3.5.1
 [3.5.0]: https://github.com/tara-vision/taracode/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/tara-vision/taracode/compare/v3.3.3...v3.4.0
 [3.3.3]: https://github.com/tara-vision/taracode/compare/v3.3.2...v3.3.3
