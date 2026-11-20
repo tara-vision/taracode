@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `golang.org/x/net` 0.62.0, whose `html` package fixes GO-2026-6866 (`html.Render`). taracode reaches the package
+  only through the markdown renderer and never calls `html.Render`; the update keeps the shipped binary off the
+  affected version.
+
 ## [3.5.1] - 2026-11-20
 
 ### Changed
