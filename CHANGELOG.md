@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-11-28
+
+### Changed
+- `github.com/sashabaranov/go-openai` 1.44.0, the library behind the client for OpenAI-compatible servers: fixes in
+  its error handling and JSON schema validation.
+- The engine client `github.com/tara-vision/taraengine` 0.5.1, the engine's Go 1.27.4 rebuild; the client itself is
+  unchanged.
+
 ### Security
 - `golang.org/x/net` 0.62.0, whose `html` package fixes GO-2026-6866 (`html.Render`). taracode reaches the package
   only through the markdown renderer and never calls `html.Render`; the update keeps the shipped binary off the
@@ -973,7 +981,8 @@ The project evolved through the following milestones before being open-sourced:
 - **v0.3.12** - File reference autocomplete, permissions system
 - **v0.3.8** - Native OpenAI function calling, security tools
 
-[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.5.1...HEAD
+[Unreleased]: https://github.com/tara-vision/taracode/compare/v3.5.2...HEAD
+[3.5.2]: https://github.com/tara-vision/taracode/compare/v3.5.1...v3.5.2
 [3.5.1]: https://github.com/tara-vision/taracode/compare/v3.5.0...v3.5.1
 [3.5.0]: https://github.com/tara-vision/taracode/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/tara-vision/taracode/compare/v3.3.3...v3.4.0
